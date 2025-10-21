@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 17:32'
+updated_date: '2025-10-21 17:33'
 labels:
   - backend
   - certificate
@@ -35,3 +35,20 @@ Implement the tRPC endpoint for issuing server (TLS/SSL) certificates. Generate 
 - [ ] #12 Serial number unique per CA
 - [ ] #13 Audit log entry created
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Create validation utilities for domain names and SANs
+2. Implement the certificate.issue endpoint:
+   - Validate input fields (server type, DN, SANs, validity)
+   - Retrieve and validate CA exists and is active
+   - Generate unique serial number for certificate
+   - Create key pair in KMS
+   - Prepare certificate parameters with extensions
+   - Sign certificate using CA private key via KMS
+   - Store certificate in database
+   - Create audit log entry
+3. Add proper error handling and logging
+4. Test with various inputs
+<!-- SECTION:PLAN:END -->
