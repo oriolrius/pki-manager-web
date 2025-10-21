@@ -1,0 +1,19 @@
+{
+  "name": "pki-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PKI Manager - Web-based Public Key Infrastructure management application",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean && rm -rf node_modules"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@10.17.0"
+}
