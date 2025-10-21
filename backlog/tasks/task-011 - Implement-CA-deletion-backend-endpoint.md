@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 17:21'
+updated_date: '2025-10-21 17:22'
 labels:
   - backend
   - ca
@@ -20,14 +20,14 @@ Implement the tRPC endpoint for permanently deleting a root CA. Validate prerequ
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ca.delete tRPC endpoint implemented
-- [ ] #2 Validation: CA must be revoked or expired
-- [ ] #3 Validation: No active certificates exist
-- [ ] #4 CA record deleted from database
-- [ ] #5 Optional KMS key destruction
-- [ ] #6 Audit logs preserved (not deleted)
-- [ ] #7 Audit entry created before deletion
-- [ ] #8 Orphaned CRLs cleaned up
+- [x] #1 ca.delete tRPC endpoint implemented
+- [x] #2 Validation: CA must be revoked or expired
+- [x] #3 Validation: No active certificates exist
+- [x] #4 CA record deleted from database
+- [x] #5 Optional KMS key destruction
+- [x] #6 Audit logs preserved (not deleted)
+- [x] #7 Audit entry created before deletion
+- [x] #8 Orphaned CRLs cleaned up
 <!-- AC:END -->
 
 ## Implementation Plan
