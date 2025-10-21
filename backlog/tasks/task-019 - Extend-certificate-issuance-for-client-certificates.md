@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 20:00'
+updated_date: '2025-10-21 20:01'
 labels:
   - backend
   - certificate
@@ -20,18 +20,18 @@ Extend the certificate issuance endpoint to support client authentication certif
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Client certificate type supported in certificate.issue
-- [ ] #2 CN validation for email or username format
-- [ ] #3 Email address SAN support
-- [ ] #4 UPN (User Principal Name) SAN support
-- [ ] #5 Key Usage set: Digital Signature, Key Encipherment
-- [ ] #6 Extended Key Usage set: Client Authentication
-- [ ] #7 Optional exportable private key support
-- [ ] #8 PKCS#12 generation for client certificates
-- [ ] #9 Default validity of 1 year
+- [x] #1 Client certificate type supported in certificate.issue
+- [x] #2 CN validation for email or username format
+- [x] #3 Email address SAN support
+- [x] #4 UPN (User Principal Name) SAN support
+- [x] #5 Key Usage set: Digital Signature, Key Encipherment
+- [x] #6 Extended Key Usage set: Client Authentication
+- [x] #7 Optional exportable private key support
+- [x] #8 PKCS#12 generation for client certificates
+- [x] #9 Default validity of 1 year
 
-- [ ] #10 Tests written to validate client certificate issuance
-- [ ] #11 All tests pass
+- [x] #10 Tests written to validate client certificate issuance
+- [x] #11 All tests pass
 <!-- AC:END -->
 
 ## Implementation Plan
