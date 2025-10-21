@@ -992,3 +992,216 @@ describe('certificate.delete', () => {
     ).rejects.toThrow('not found');
   });
 });
+
+describe('certificate.download', () => {
+  let caId: string;
+  let certId: string;
+  let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
+
+  beforeAll(async () => {
+    // Create a test CA
+    caId = randomUUID();
+
+    // Generate CA key pair using node-forge
+    const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    caKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+    };
+
+    const caCert = generateCertificate({
+      subject: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: caKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+      selfSigned: true,
+    });
+
+    await db.insert(certificateAuthorities).values({
+      id: caId,
+      subjectDn: 'CN=Test CA,O=Test Organization,C=US',
+      serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-4096',
+      notBefore: caCert.validity.notBefore,
+      notAfter: caCert.validity.notAfter,
+      kmsKeyId: 'test-ca-key',
+      certificatePem: caCert.pem,
+      status: 'active',
+    });
+
+    // Create a test certificate
+    certId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'download-test.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: certId,
+      caId,
+      subjectDn: 'CN=download-test.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-cert-key',
+      status: 'active',
+    });
+  });
+
+  afterAll(async () => {
+    // Clean up test data
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.id, certId)).execute();
+    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
+  });
+
+  it('should download certificate in PEM format', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const result = await caller.certificate.download({
+      id: certId,
+      format: 'pem',
+    });
+
+    expect(result.format).toBe('pem');
+    expect(result.mimeType).toBe('application/x-pem-file');
+    expect(result.filename).toContain('download-test.example.com');
+    expect(result.filename).toMatch(/\.pem$/);
+    expect(result.data).toContain('-----BEGIN CERTIFICATE-----');
+    expect(result.data).toContain('-----END CERTIFICATE-----');
+  });
+
+  it('should download certificate in DER format', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const result = await caller.certificate.download({
+      id: certId,
+      format: 'der',
+    });
+
+    expect(result.format).toBe('der');
+    expect(result.mimeType).toBe('application/x-x509-ca-cert');
+    expect(result.filename).toMatch(/\.der$/);
+    expect(result.data).toBeDefined();
+    // DER is base64 encoded binary data
+    expect(typeof result.data).toBe('string');
+  });
+
+  it('should download certificate in PEM chain format', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const result = await caller.certificate.download({
+      id: certId,
+      format: 'pem-chain',
+    });
+
+    expect(result.format).toBe('pem-chain');
+    expect(result.mimeType).toBe('application/x-pem-file');
+    expect(result.filename).toContain('-chain.pem');
+    // Should contain both the certificate and CA certificate
+    const certCount = (result.data.match(/-----BEGIN CERTIFICATE-----/g) || []).length;
+    expect(certCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should download certificate in PKCS#7 format', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const result = await caller.certificate.download({
+      id: certId,
+      format: 'pkcs7',
+    });
+
+    expect(result.format).toBe('pkcs7');
+    expect(result.mimeType).toBe('application/pkcs7-mime');
+    expect(result.filename).toMatch(/\.p7b$/);
+    expect(result.data).toBeDefined();
+    // PKCS#7 is base64 encoded binary data
+    expect(typeof result.data).toBe('string');
+  });
+
+  it('should fail to download in PKCS#12 format without password', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    await expect(
+      caller.certificate.download({
+        id: certId,
+        format: 'pkcs12',
+      })
+    ).rejects.toThrow('Password is required for PKCS#12 format');
+  });
+
+  it('should fail PKCS#12 download with NOT_IMPLEMENTED error', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // PKCS#12 requires KMS integration which is not yet implemented
+    await expect(
+      caller.certificate.download({
+        id: certId,
+        format: 'pkcs12',
+        password: 'testpassword123',
+      })
+    ).rejects.toThrow('PKCS#12 export with KMS-stored keys is not yet implemented');
+  });
+
+  it('should throw NOT_FOUND for non-existent certificate', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const nonExistentId = randomUUID();
+
+    await expect(
+      caller.certificate.download({
+        id: nonExistentId,
+        format: 'pem',
+      })
+    ).rejects.toThrow('not found');
+  });
+});

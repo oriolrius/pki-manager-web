@@ -159,6 +159,12 @@ export const deleteCertificateSchema = z.object({
   removeFromCrl: z.boolean().default(false),
 });
 
+export const downloadCertificateSchema = z.object({
+  id: idSchema,
+  format: z.enum(['pem', 'der', 'pem-chain', 'pkcs7', 'pkcs12']).default('pem'),
+  password: z.string().min(8).optional(), // Required for PKCS#12
+});
+
 // CRL schemas
 export const generateCrlSchema = z.object({
   caId: idSchema,

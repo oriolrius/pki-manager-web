@@ -7,6 +7,7 @@ import {
   renewCertificateSchema,
   revokeCertificateSchema,
   deleteCertificateSchema,
+  downloadCertificateSchema,
   certificateTypeSchema,
   certificateStatusSchema,
 } from '../schemas.js';
@@ -1272,9 +1273,177 @@ export const certificateRouter = router({
     }),
 
   download: publicProcedure
-    .input(getCertificateSchema)
+    .input(downloadCertificateSchema)
     .query(async ({ ctx, input }) => {
-      // TODO: Implement in task-018 (Certificate download)
-      throw new Error('Not implemented yet');
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificates, certificateAuthorities, auditLog } = await import('../../db/schema.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+      const forge = await import('node-forge');
+      const { parseCertificate } = await import('../../crypto/index.js');
+
+      // Fetch certificate from database
+      const certResult = await ctx.db
+        .select({
+          certificate: certificates,
+          ca: certificateAuthorities,
+        })
+        .from(certificates)
+        .leftJoin(certificateAuthorities, eq(certificates.caId, certificateAuthorities.id))
+        .where(eq(certificates.id, input.id))
+        .limit(1);
+
+      if (!certResult || certResult.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Certificate with ID ${input.id} not found`,
+        });
+      }
+
+      const { certificate, ca } = certResult[0];
+
+      if (!ca) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Certificate has no associated CA',
+        });
+      }
+
+      // Parse certificate metadata for filename
+      const certMetadata = parseCertificate(certificate.certificatePem, 'PEM');
+      const commonName = certMetadata.subject.CN || 'certificate';
+      const serialShort = certificate.serialNumber.substring(0, 8);
+
+      // Validate password for PKCS#12
+      if (input.format === 'pkcs12' && !input.password) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Password is required for PKCS#12 format',
+        });
+      }
+
+      // Check if certificate has exportable key for PKCS#12
+      if (input.format === 'pkcs12' && !certificate.kmsKeyId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Certificate does not have an exportable private key',
+        });
+      }
+
+      let data: string;
+      let mimeType: string;
+      let filename: string;
+
+      try {
+        const forgeCert = forge.default.pki.certificateFromPem(certificate.certificatePem);
+        const forgeCaCert = forge.default.pki.certificateFromPem(ca.certificatePem);
+
+        switch (input.format) {
+          case 'pem':
+            // PEM format (single certificate)
+            data = certificate.certificatePem;
+            mimeType = 'application/x-pem-file';
+            filename = `${commonName}-${serialShort}.pem`;
+            break;
+
+          case 'der':
+            // DER format (binary)
+            const derBytes = forge.default.asn1.toDer(
+              forge.default.pki.certificateToAsn1(forgeCert)
+            ).getBytes();
+            data = Buffer.from(derBytes, 'binary').toString('base64');
+            mimeType = 'application/x-x509-ca-cert';
+            filename = `${commonName}-${serialShort}.der`;
+            break;
+
+          case 'pem-chain':
+            // PEM chain format (certificate + CA)
+            data = certificate.certificatePem + '\n' + ca.certificatePem;
+            mimeType = 'application/x-pem-file';
+            filename = `${commonName}-${serialShort}-chain.pem`;
+            break;
+
+          case 'pkcs7':
+            // PKCS#7 format (certificate + CA chain)
+            const p7 = forge.default.pkcs7.createSignedData();
+            p7.addCertificate(forgeCert);
+            p7.addCertificate(forgeCaCert);
+            const p7Der = forge.default.asn1.toDer(p7.toAsn1()).getBytes();
+            data = Buffer.from(p7Der, 'binary').toString('base64');
+            mimeType = 'application/pkcs7-mime';
+            filename = `${commonName}-${serialShort}.p7b`;
+            break;
+
+          case 'pkcs12':
+            // PKCS#12 format (certificate + private key + CA chain)
+            // Note: This is a simplified implementation
+            // In production, you'd need to fetch the private key from KMS
+            // For now, we'll create a placeholder error
+            throw new TRPCError({
+              code: 'NOT_IMPLEMENTED',
+              message: 'PKCS#12 export with KMS-stored keys is not yet implemented. Private key retrieval from KMS requires additional implementation.',
+            });
+
+          default:
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Unsupported format: ${input.format}`,
+            });
+        }
+
+        // Create audit log entry
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.download',
+          entityType: 'certificate',
+          entityId: input.id,
+          status: 'success',
+          details: JSON.stringify({
+            format: input.format,
+            serialNumber: certificate.serialNumber,
+            filename: filename,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        logger.info(
+          { certId: input.id, format: input.format, filename },
+          'Certificate downloaded successfully'
+        );
+
+        return {
+          data,
+          mimeType,
+          filename,
+          format: input.format,
+        };
+      } catch (error) {
+        // Log failure to audit log
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.download',
+          entityType: 'certificate',
+          entityId: input.id,
+          status: 'failure',
+          details: JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            format: input.format,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        logger.error({ error, certId: input.id, format: input.format }, 'Failed to download certificate');
+
+        // Re-throw if it's already a TRPCError
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to generate certificate in ${input.format} format: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
     }),
 });
