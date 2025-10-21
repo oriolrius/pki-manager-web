@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 17:45'
+updated_date: '2025-10-21 17:47'
 labels:
   - backend
   - certificate
@@ -21,17 +21,17 @@ Implement the tRPC endpoint for listing certificates with comprehensive filterin
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 certificate.list tRPC endpoint implemented
-- [ ] #2 Filtering by status (active, expired, revoked, expiring soon)
-- [ ] #3 Filtering by CA ID
-- [ ] #4 Filtering by certificate type
-- [ ] #5 Filtering by domain
-- [ ] #6 Date range filtering (issued/expiry)
-- [ ] #7 Search functionality for CN, subject, SAN, serial
-- [ ] #8 Sorting by all major columns
-- [ ] #9 Pagination with configurable page size
-- [ ] #10 Expiry status computed dynamically
-- [ ] #11 Total count returned for pagination
+- [x] #1 certificate.list tRPC endpoint implemented
+- [x] #2 Filtering by status (active, expired, revoked, expiring soon)
+- [x] #3 Filtering by CA ID
+- [x] #4 Filtering by certificate type
+- [x] #5 Filtering by domain
+- [x] #6 Date range filtering (issued/expiry)
+- [x] #7 Search functionality for CN, subject, SAN, serial
+- [x] #8 Sorting by all major columns
+- [x] #9 Pagination with configurable page size
+- [x] #10 Expiry status computed dynamically
+- [x] #11 Total count returned for pagination
 <!-- AC:END -->
 
 ## Implementation Plan
