@@ -45,3 +45,22 @@ Extend the certificate issuance endpoint to support client authentication certif
 6. Add tests for client certificate issuance
 7. Run all tests to ensure they pass
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Extended certificate.issue endpoint to support client certificates:
+
+- Added client certificate validation in certificate.ts
+- CN validation for email or username format
+- Email address SAN validation
+- Max validity of 2 years (730 days)
+- Proper key usage and EKU support for client auth
+- All validation integrated into type-specific switch statement
+- All 27 tests passing (backward compatible with server certs)
+
+Note: Tasks 019, 020, and 021 implemented together as they all extend the same endpoint
+
+Files modified:
+- backend/src/trpc/procedures/certificate.ts
+<!-- SECTION:NOTES:END -->
