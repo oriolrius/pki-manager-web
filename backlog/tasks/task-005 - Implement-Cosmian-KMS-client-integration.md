@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 16:16'
+updated_date: '2025-10-21 16:26'
 labels:
   - backend
   - security
@@ -22,14 +22,14 @@ Create a client library for interacting with Cosmian KMS API including key gener
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 KMS client class created with authentication
-- [ ] #2 Generate key pair operation implemented
-- [ ] #3 Sign data operation implemented
-- [ ] #4 Get public key operation implemented
-- [ ] #5 Destroy key operation implemented
-- [ ] #6 Connection test functionality working
-- [ ] #7 Error handling and retry logic implemented
-- [ ] #8 KMS operations logged to audit trail
+- [x] #1 KMS client class created with authentication
+- [x] #2 Generate key pair operation implemented
+- [x] #3 Sign data operation implemented
+- [x] #4 Get public key operation implemented
+- [x] #5 Destroy key operation implemented
+- [x] #6 Connection test functionality working
+- [x] #7 Error handling and retry logic implemented
+- [x] #8 KMS operations logged to audit trail
 <!-- AC:END -->
 
 ## Implementation Plan
