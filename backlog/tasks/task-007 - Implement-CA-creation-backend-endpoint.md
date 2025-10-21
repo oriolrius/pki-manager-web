@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 17:16'
+updated_date: '2025-10-21 17:17'
 labels:
   - backend
   - ca
@@ -21,14 +21,14 @@ Implement the tRPC endpoint for creating root Certificate Authorities. Generate 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ca.create tRPC endpoint implemented
-- [ ] #2 Input validation with Zod schema
-- [ ] #3 Key pair generated in KMS
-- [ ] #4 Self-signed root certificate created
-- [ ] #5 CA record stored in database with KMS key ID
-- [ ] #6 Audit log entry created for CA creation
-- [ ] #7 Certificate returned in PEM format
-- [ ] #8 Error handling for KMS failures
+- [x] #1 ca.create tRPC endpoint implemented
+- [x] #2 Input validation with Zod schema
+- [x] #3 Key pair generated in KMS
+- [x] #4 Self-signed root certificate created
+- [x] #5 CA record stored in database with KMS key ID
+- [x] #6 Audit log entry created for CA creation
+- [x] #7 Certificate returned in PEM format
+- [x] #8 Error handling for KMS failures
 <!-- AC:END -->
 
 ## Implementation Plan
