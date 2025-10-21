@@ -35,3 +35,17 @@ Implement the tRPC endpoint for renewing certificates. Support generating new ke
 - [ ] #12 Integration tests for renewal endpoint
 - [ ] #13 All tests pass before marking as done
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Examine existing certificate creation logic and database schema
+2. Define tRPC input schema for renewal options (key reuse, DN/SAN updates, revocation)
+3. Implement renewal logic: validate original cert, generate/reuse keys, create new cert
+4. Add validation rules (no renewal of revoked certs, key age check)
+5. Track renewal chain (renewed_from_id) and optional revocation
+6. Add audit logging for renewal actions
+7. Write unit tests for validation and renewal logic
+8. Write integration tests for the endpoint
+9. Run all tests to ensure they pass
+<!-- SECTION:PLAN:END -->
