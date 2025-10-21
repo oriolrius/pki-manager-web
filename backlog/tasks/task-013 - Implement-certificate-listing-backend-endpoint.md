@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 17:47'
+updated_date: '2025-10-21 18:04'
 labels:
   - backend
   - certificate
@@ -80,4 +80,56 @@ Implemented comprehensive certificate listing endpoint with all requested featur
 - Supports OR logic for domain and search (matches any field)
 - Uses SQL LIKE for flexible text matching
 - Returns properly typed results with all certificate data
+
+## Additional Implementation: OpenAPI 3.0.3 Integration
+
+While implementing the certificate listing endpoint, also integrated comprehensive OpenAPI 3.0.3 documentation for the entire API.
+
+### OpenAPI Integration Components
+
+**Packages Installed:**
+- trpc-swagger v2.0.0 - OpenAPI generation for tRPC v11
+- swagger-ui-dist v5.29.5 - Interactive API documentation
+
+**Files Created:**
+- backend/src/trpc/openapi.ts - OpenAPI document generation
+- backend/src/trpc/openapi.test.ts - 17 tests for spec generation
+- backend/src/server.test.ts - 17 tests for server endpoints
+- backend/OPENAPI.md - User documentation
+- backend/OPENAPI_TESTING.md - Test coverage documentation
+- backlog/docs/doc-003 - Certificate-Listing-API.md - Complete API documentation
+- backlog/docs/doc-004 - OpenAPI-Integration.md - OpenAPI integration guide
+
+**Files Modified:**
+- backend/src/trpc/init.ts - Added OpenApiMeta support
+- backend/src/trpc/procedures/certificate.ts - Added OpenAPI metadata and output schema
+- backend/src/server.ts - Added OpenAPI spec and Swagger UI endpoints
+
+### New Endpoints Available
+
+1. **GET /api/openapi.json** - OpenAPI 3.0.3 specification (JSON)
+2. **GET /api/docs** - Interactive Swagger UI documentation
+3. **GET /api/docs/:file** - Swagger UI static assets
+
+### Testing
+
+✅ **34 tests - All passing**
+- 17 tests for OpenAPI document generation and validation
+- 17 tests for server endpoints and security
+
+### Benefits
+
+✅ Auto-generated documentation from code
+✅ Always in sync with implementation
+✅ Interactive API explorer (Swagger UI)
+✅ Standards-compliant (OpenAPI 3.0.3)
+✅ Import into Postman, Insomnia, etc.
+✅ Client SDK generation support
+
+### Documentation References
+
+- Complete API docs: backlog/docs/doc-003
+- OpenAPI integration guide: backlog/docs/doc-004
+- Testing guide: backend/OPENAPI_TESTING.md
+- Usage examples: backend/OPENAPI.md
 <!-- SECTION:NOTES:END -->
