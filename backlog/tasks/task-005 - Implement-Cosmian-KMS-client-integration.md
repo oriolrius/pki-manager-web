@@ -1,9 +1,11 @@
 ---
 id: task-005
 title: Implement Cosmian KMS client integration
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:49'
+updated_date: '2025-10-21 16:15'
 labels:
   - backend
   - security
