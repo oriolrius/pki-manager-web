@@ -4,6 +4,7 @@ title: Extend certificate issuance for code signing certificates
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 19:50'
 labels:
   - backend
   - certificate
@@ -26,4 +27,7 @@ Extend the certificate issuance endpoint to support code signing certificates wi
 - [ ] #6 Maximum validity of 3 years enforced
 - [ ] #7 Enhanced audit logging for code signing certs
 - [ ] #8 Additional verification requirements documented
+
+- [ ] #9 Tests written to validate code signing certificate issuance
+- [ ] #10 All tests pass
 <!-- AC:END -->
