@@ -22,11 +22,11 @@ Implement the tRPC endpoint for issuing server (TLS/SSL) certificates. Generate 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 certificate.issue endpoint implemented for server type
-- [ ] #2 Input validation for server certificate fields
-- [ ] #3 Domain name validation for CN
-- [ ] #4 SAN DNS names validation (including wildcards)
-- [ ] #5 SAN IP addresses validation (IPv4/IPv6)
-- [ ] #6 Key pair generated in KMS
+- [x] #2 Input validation for server certificate fields
+- [x] #3 Domain name validation for CN
+- [x] #4 SAN DNS names validation (including wildcards)
+- [x] #5 SAN IP addresses validation (IPv4/IPv6)
+- [x] #6 Key pair generated in KMS
 - [ ] #7 Certificate signed by CA private key via KMS
 - [ ] #8 Certificate stored in database with metadata
 - [ ] #9 CRL Distribution Point extension added
