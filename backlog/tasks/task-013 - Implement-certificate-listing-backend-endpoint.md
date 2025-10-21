@@ -50,3 +50,34 @@ Implement the tRPC endpoint for listing certificates with comprehensive filterin
 5. Verify sorting works correctly
 6. Verify pagination returns correct total count
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented comprehensive certificate listing endpoint with all requested features:
+
+## Schema Updates (schemas.ts)
+- Enhanced listCertificatesSchema with filtering options: domain, expiryStatus, date ranges (issuedAfter/Before, expiresAfter/Before)
+- Added search parameter for global text search
+- Added sorting options (sortBy, sortOrder) for all major columns
+- Maintained pagination support (limit, offset)
+
+## Implementation (procedures/certificate.ts)
+- Built dynamic query using drizzle-orm with conditional filters
+- Implemented status filtering (active, expired, revoked)
+- Implemented expiry status filtering with dynamic computation (expired, expiring_soon within 30 days, active)
+- Implemented domain filtering searching both CN in subjectDn and SANs
+- Implemented search across CN, subject, serial number, and all SAN types (DNS, IP, Email)
+- Implemented date range filtering for both issue and expiry dates
+- Implemented sorting by any major column (serialNumber, subjectDn, notBefore, notAfter, certificateType, status, createdAt)
+- Implemented pagination with total count
+- Parse and return SAN arrays from JSON storage
+- Return metadata (totalCount, limit, offset) for pagination
+
+## Key Features
+- All filters can be combined for powerful querying
+- Expiry status computed dynamically on each request
+- Supports OR logic for domain and search (matches any field)
+- Uses SQL LIKE for flexible text matching
+- Returns properly typed results with all certificate data
+<!-- SECTION:NOTES:END -->
