@@ -32,3 +32,10 @@ Extend the certificate issuance endpoint to support code signing certificates wi
 - [ ] #9 Tests written to validate code signing certificate issuance
 - [ ] #10 All tests pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Already implemented in task-019 together
+2. All validation and logic added
+<!-- SECTION:PLAN:END -->
