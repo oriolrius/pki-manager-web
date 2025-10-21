@@ -1,9 +1,11 @@
 ---
 id: task-008
 title: Implement CA listing backend endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:49'
+updated_date: '2025-10-21 17:17'
 labels:
   - backend
   - ca
