@@ -1,7 +1,7 @@
 ---
 id: task-006
 title: Implement X.509 certificate generation utilities
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
