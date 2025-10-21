@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 20:01'
+updated_date: '2025-10-21 20:02'
 labels:
   - backend
   - certificate
@@ -39,3 +39,23 @@ Extend the certificate issuance endpoint to support S/MIME email encryption and 
 1. Already implemented in task-019 together
 2. All validation and logic added
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Extended certificate.issue endpoint to support email protection (S/MIME) certificates:
+
+- Added email protection certificate validation in certificate.ts
+- Email address validation (at least one required in SANs)
+- Multiple email addresses support in SAN
+- Same-domain validation for all emails
+- Max validity of 2 years (730 days)
+- Proper key usage and EKU support for email protection
+- All validation integrated into type-specific switch statement
+- All 27 tests passing
+
+Note: Tasks 019, 020, and 021 implemented together
+
+Files modified:
+- backend/src/trpc/procedures/certificate.ts
+<!-- SECTION:NOTES:END -->
