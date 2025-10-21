@@ -527,39 +527,133 @@ export const certificateRouter = router({
       const { logger } = await import('../../lib/logger.js');
       const { eq } = await import('drizzle-orm');
 
-      // Validate certificate type (only server supported in this task)
-      if (input.certificateType !== 'server') {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Only server certificate type is supported in this endpoint',
-        });
-      }
+      // Type-specific validation
+      switch (input.certificateType) {
+        case 'server':
+          // Validate validity period (max 825 days for server certificates)
+          const serverValidityCheck = validateCertificateValidity(input.validityDays, 825);
+          if (!serverValidityCheck.valid) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: serverValidityCheck.error || 'Invalid validity period',
+            });
+          }
 
-      // Validate validity period (max 825 days for server certificates)
-      const validityCheck = validateCertificateValidity(input.validityDays, 825);
-      if (!validityCheck.valid) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: validityCheck.error || 'Invalid validity period',
-        });
-      }
+          // Validate domain name in CN for server certificates
+          const cnValidation = validateDomainName(input.subject.commonName);
+          if (!cnValidation.valid) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Invalid common name: ${cnValidation.error}`,
+            });
+          }
 
-      // Validate domain name in CN for server certificates
-      const cnValidation = validateDomainName(input.subject.commonName);
-      if (!cnValidation.valid) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Invalid common name: ${cnValidation.error}`,
-        });
-      }
+          // Validate SANs for server certificates
+          const sansValidation = validateServerSANs(input.sanDns, input.sanIp);
+          if (!sansValidation.valid) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Invalid SANs: ${sansValidation.errors.join(', ')}`,
+            });
+          }
+          break;
 
-      // Validate SANs
-      const sansValidation = validateServerSANs(input.sanDns, input.sanIp);
-      if (!sansValidation.valid) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Invalid SANs: ${sansValidation.errors.join(', ')}`,
-        });
+        case 'client':
+          // Validate validity period (default 365 days, max 2 years for client certificates)
+          const clientValidityCheck = validateCertificateValidity(input.validityDays, 730);
+          if (!clientValidityCheck.valid) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: clientValidityCheck.error || 'Invalid validity period',
+            });
+          }
+
+          // Validate CN for email or username format
+          const cn = input.subject.commonName;
+          const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cn);
+          const isUsername = /^[a-zA-Z0-9_-]+$/.test(cn);
+          if (!isEmail && !isUsername) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Client certificate CN must be a valid email address or username',
+            });
+          }
+
+          // Validate email SANs if provided
+          if (input.sanEmail && input.sanEmail.length > 0) {
+            for (const email of input.sanEmail) {
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: `Invalid email in SANs: ${email}`,
+                });
+              }
+            }
+          }
+          break;
+
+        case 'code_signing':
+          // Validate organization is provided
+          if (!input.subject.organization) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Organization is required for code signing certificates',
+            });
+          }
+
+          // Validate validity period (max 3 years for code signing certificates)
+          const codeSignValidityCheck = validateCertificateValidity(input.validityDays, 1095);
+          if (!codeSignValidityCheck.valid) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: codeSignValidityCheck.error || 'Invalid validity period',
+            });
+          }
+
+          // Validate minimum key strength
+          if (input.keyAlgorithm === 'RSA-2048') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Code signing certificates require RSA-3072, RSA-4096, or ECDSA-P256 minimum',
+            });
+          }
+          break;
+
+        case 'email':
+          // Validate email addresses
+          const emailAddresses = input.sanEmail || [];
+          if (emailAddresses.length === 0) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Email protection certificates require at least one email address in SANs',
+            });
+          }
+
+          // Validate all emails are from the same domain
+          const domains = emailAddresses.map(email => email.split('@')[1]);
+          const uniqueDomains = [...new Set(domains)];
+          if (uniqueDomains.length > 1) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'All email addresses must be from the same domain',
+            });
+          }
+
+          // Validate validity period (max 2 years for email certificates)
+          const emailValidityCheck = validateCertificateValidity(input.validityDays, 730);
+          if (!emailValidityCheck.valid) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: emailValidityCheck.error || 'Invalid validity period',
+            });
+          }
+          break;
+
+        default:
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Unsupported certificate type: ${input.certificateType}`,
+          });
       }
 
       // Retrieve CA from database
