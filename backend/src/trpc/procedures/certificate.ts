@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { router, publicProcedure } from '../init.js';
 import {
   listCertificatesSchema,
@@ -6,14 +7,204 @@ import {
   renewCertificateSchema,
   revokeCertificateSchema,
   deleteCertificateSchema,
+  certificateTypeSchema,
+  certificateStatusSchema,
 } from '../schemas.js';
 
 export const certificateRouter = router({
   list: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/certificates',
+        tags: ['certificates'],
+        summary: 'List certificates',
+        description: 'Retrieve a paginated list of certificates with optional filtering, searching, and sorting capabilities.',
+      },
+    })
     .input(listCertificatesSchema)
+    .output(
+      z.object({
+        items: z.array(
+          z.object({
+            id: z.string(),
+            caId: z.string(),
+            subjectDn: z.string(),
+            serialNumber: z.string(),
+            certificateType: certificateTypeSchema,
+            notBefore: z.date(),
+            notAfter: z.date(),
+            certificatePem: z.string(),
+            kmsKeyId: z.string().nullable(),
+            status: certificateStatusSchema,
+            revocationDate: z.date().nullable(),
+            revocationReason: z.string().nullable(),
+            sanDns: z.array(z.string()).nullable(),
+            sanIp: z.array(z.string()).nullable(),
+            sanEmail: z.array(z.string()).nullable(),
+            renewedFromId: z.string().nullable(),
+            createdAt: z.date(),
+            updatedAt: z.date(),
+            expiryStatus: z.enum(['active', 'expired', 'expiring_soon']),
+          })
+        ),
+        totalCount: z.number(),
+        limit: z.number(),
+        offset: z.number(),
+      })
+    )
     .query(async ({ ctx, input }) => {
-      // TODO: Implement in task-013 (Certificate listing)
-      return [];
+      const { eq, and, or, gte, lte, like, sql } = await import('drizzle-orm');
+      const { certificates } = await import('../../db/schema.js');
+
+      // Default input if not provided
+      const params = input || {
+        sortBy: 'createdAt' as const,
+        sortOrder: 'desc' as const,
+        limit: 50,
+        offset: 0,
+      };
+      const {
+        caId,
+        status,
+        certificateType,
+        domain,
+        expiryStatus,
+        issuedAfter,
+        issuedBefore,
+        expiresAfter,
+        expiresBefore,
+        search,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        limit = 50,
+        offset = 0,
+      } = params;
+
+      // Build where conditions
+      const whereConditions = [];
+
+      // Basic filters
+      if (caId) {
+        whereConditions.push(eq(certificates.caId, caId));
+      }
+      if (status) {
+        whereConditions.push(eq(certificates.status, status));
+      }
+      if (certificateType) {
+        whereConditions.push(eq(certificates.certificateType, certificateType));
+      }
+
+      // Date range filters
+      if (issuedAfter) {
+        whereConditions.push(gte(certificates.notBefore, issuedAfter));
+      }
+      if (issuedBefore) {
+        whereConditions.push(lte(certificates.notBefore, issuedBefore));
+      }
+      if (expiresAfter) {
+        whereConditions.push(gte(certificates.notAfter, expiresAfter));
+      }
+      if (expiresBefore) {
+        whereConditions.push(lte(certificates.notAfter, expiresBefore));
+      }
+
+      // Expiry status filter (computed dynamically)
+      if (expiryStatus) {
+        const now = new Date();
+        const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        if (expiryStatus === 'expired') {
+          whereConditions.push(lte(certificates.notAfter, now));
+        } else if (expiryStatus === 'expiring_soon') {
+          whereConditions.push(
+            and(
+              gte(certificates.notAfter, now),
+              lte(certificates.notAfter, thirtyDaysFromNow)
+            )!
+          );
+        } else if (expiryStatus === 'active') {
+          whereConditions.push(gte(certificates.notAfter, thirtyDaysFromNow));
+        }
+      }
+
+      // Domain filter (searches in CN and SANs)
+      if (domain) {
+        whereConditions.push(
+          or(
+            like(certificates.subjectDn, `%CN=${domain}%`),
+            like(certificates.sanDns, `%${domain}%`)
+          )!
+        );
+      }
+
+      // Search functionality (CN, subject, SAN, serial)
+      if (search) {
+        whereConditions.push(
+          or(
+            like(certificates.subjectDn, `%${search}%`),
+            like(certificates.serialNumber, `%${search}%`),
+            like(certificates.sanDns, `%${search}%`),
+            like(certificates.sanIp, `%${search}%`),
+            like(certificates.sanEmail, `%${search}%`)
+          )!
+        );
+      }
+
+      // Build final where clause
+      const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+      // Get total count
+      const countResult = await ctx.db
+        .select({ count: sql<number>`count(*)` })
+        .from(certificates)
+        .where(whereClause);
+      const totalCount = countResult[0]?.count || 0;
+
+      // Build order by clause
+      const orderByColumn = certificates[sortBy as keyof typeof certificates];
+      const orderByClause = sortOrder === 'asc'
+        ? sql`${orderByColumn} ASC`
+        : sql`${orderByColumn} DESC`;
+
+      // Execute query with pagination
+      const results = await ctx.db
+        .select()
+        .from(certificates)
+        .where(whereClause)
+        .orderBy(orderByClause)
+        .limit(limit)
+        .offset(offset);
+
+      // Compute expiry status for each result
+      const now = new Date();
+      const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      const formattedResults = results.map((cert) => {
+        let computedExpiryStatus: 'active' | 'expired' | 'expiring_soon';
+        if (cert.notAfter < now) {
+          computedExpiryStatus = 'expired';
+        } else if (cert.notAfter <= thirtyDaysFromNow) {
+          computedExpiryStatus = 'expiring_soon';
+        } else {
+          computedExpiryStatus = 'active';
+        }
+
+        return {
+          ...cert,
+          expiryStatus: computedExpiryStatus,
+          sanDns: cert.sanDns ? JSON.parse(cert.sanDns) : null,
+          sanIp: cert.sanIp ? JSON.parse(cert.sanIp) : null,
+          sanEmail: cert.sanEmail ? JSON.parse(cert.sanEmail) : null,
+        };
+      });
+
+      return {
+        items: formattedResults,
+        totalCount,
+        limit,
+        offset,
+      };
     }),
 
   getById: publicProcedure

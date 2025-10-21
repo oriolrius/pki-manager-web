@@ -1,7 +1,8 @@
 import { initTRPC, TRPCError } from '@trpc/server';
+import type { OpenApiMeta } from 'trpc-swagger';
 import type { Context } from './context.js';
 
-const t = initTRPC.context<Context>().create({
+const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
   errorFormatter({ shape, error }) {
     return {
       ...shape,

@@ -95,9 +95,35 @@ export const createCertificateSchema = z.object({
 
 export const listCertificatesSchema = z
   .object({
+    // Filters
     caId: idSchema.optional(),
     status: certificateStatusSchema.optional(),
     certificateType: certificateTypeSchema.optional(),
+    domain: z.string().optional(), // Filter by domain (searches in CN and SANs)
+    expiryStatus: z.enum(['active', 'expired', 'expiring_soon']).optional(), // Dynamic expiry status
+
+    // Date range filters
+    issuedAfter: z.coerce.date().optional(),
+    issuedBefore: z.coerce.date().optional(),
+    expiresAfter: z.coerce.date().optional(),
+    expiresBefore: z.coerce.date().optional(),
+
+    // Search (searches across CN, subject, SAN, serial)
+    search: z.string().optional(),
+
+    // Sorting
+    sortBy: z.enum([
+      'serialNumber',
+      'subjectDn',
+      'notBefore',
+      'notAfter',
+      'certificateType',
+      'status',
+      'createdAt',
+    ]).optional().default('createdAt'),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
+
+    // Pagination
     limit: z.number().int().min(1).max(100).default(50),
     offset: z.number().int().min(0).default(0),
   })
