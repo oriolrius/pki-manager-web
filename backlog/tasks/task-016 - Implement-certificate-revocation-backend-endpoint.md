@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:53'
+updated_date: '2025-10-21 19:54'
 labels:
   - backend
   - certificate
@@ -46,3 +46,26 @@ Implement the tRPC endpoint for revoking certificates. Update certificate status
 6. Write tests for revocation functionality
 7. Run all tests to ensure they pass
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented certificate.revoke tRPC endpoint with complete functionality:
+
+- Added endpoint in certificate.ts (lines 1016-1148)
+- Validates certificate exists and is not already revoked
+- Validates effective date is between issuance and current time
+- Updates certificate status to 'revoked' with reason and date
+- Creates comprehensive audit log entries for success/failure
+- Added placeholder for future CRL generation (task-022)
+- Comprehensive test suite added with 4 test cases:
+  1. Successful revocation with reason and details
+  2. Validation: cannot revoke already revoked certificate
+  3. Validation: effective date cannot be in the future
+  4. Error handling for non-existent certificates
+- All 15 tests passing (including previous certificate tests)
+
+Files modified:
+- backend/src/trpc/procedures/certificate.ts
+- backend/src/trpc/procedures/certificate.test.ts
+<!-- SECTION:NOTES:END -->
