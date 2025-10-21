@@ -1,9 +1,11 @@
 ---
 id: task-004
 title: Set up React frontend with shadcn/ui
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:49'
+updated_date: '2025-10-21 16:07'
 labels:
   - frontend
   - ui
