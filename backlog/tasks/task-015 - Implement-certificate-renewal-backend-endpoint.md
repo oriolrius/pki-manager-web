@@ -4,6 +4,7 @@ title: Implement certificate renewal backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 19:40'
 labels:
   - backend
   - certificate
@@ -28,4 +29,8 @@ Implement the tRPC endpoint for renewing certificates. Support generating new ke
 - [ ] #8 Validation: cannot renew revoked certificates
 - [ ] #9 Validation: key reuse only if original < 90 days old
 - [ ] #10 Audit log links renewal to original
+
+- [ ] #11 Unit tests written for renewal logic
+- [ ] #12 Integration tests for renewal endpoint
+- [ ] #13 All tests pass before marking as done
 <!-- AC:END -->
