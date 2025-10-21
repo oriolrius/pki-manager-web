@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 17:18'
+updated_date: '2025-10-21 17:19'
 labels:
   - backend
   - ca
@@ -20,14 +20,14 @@ Implement the tRPC endpoint for retrieving detailed information about a specific
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ca.getById tRPC endpoint implemented
-- [ ] #2 Complete CA information returned
-- [ ] #3 Certificate parsed and fields extracted
-- [ ] #4 Extensions parsed (Key Usage, Basic Constraints, SKI)
-- [ ] #5 Certificate fingerprints calculated (SHA-256, SHA-1)
-- [ ] #6 Validity status computed
-- [ ] #7 Issued certificate count included
-- [ ] #8 Error handling for CA not found
+- [x] #1 ca.getById tRPC endpoint implemented
+- [x] #2 Complete CA information returned
+- [x] #3 Certificate parsed and fields extracted
+- [x] #4 Extensions parsed (Key Usage, Basic Constraints, SKI)
+- [x] #5 Certificate fingerprints calculated (SHA-256, SHA-1)
+- [x] #6 Validity status computed
+- [x] #7 Issued certificate count included
+- [x] #8 Error handling for CA not found
 <!-- AC:END -->
 
 ## Implementation Plan
