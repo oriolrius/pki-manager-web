@@ -4,6 +4,7 @@ title: Implement certificate revocation backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 19:50'
 labels:
   - backend
   - certificate
@@ -28,4 +29,7 @@ Implement the tRPC endpoint for revoking certificates. Update certificate status
 - [ ] #8 Audit log entry with full context
 - [ ] #9 Validation: cannot revoke already revoked certificate
 - [ ] #10 Effective date validation (between issued and now)
+
+- [ ] #11 Tests written to validate revocation functionality
+- [ ] #12 All tests pass
 <!-- AC:END -->
