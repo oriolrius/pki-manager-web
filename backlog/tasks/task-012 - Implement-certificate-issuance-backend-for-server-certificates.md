@@ -27,13 +27,13 @@ Implement the tRPC endpoint for issuing server (TLS/SSL) certificates. Generate 
 - [x] #4 SAN DNS names validation (including wildcards)
 - [x] #5 SAN IP addresses validation (IPv4/IPv6)
 - [x] #6 Key pair generated in KMS
-- [ ] #7 Certificate signed by CA private key via KMS
-- [ ] #8 Certificate stored in database with metadata
+- [x] #7 Certificate signed by CA private key via KMS
+- [x] #8 Certificate stored in database with metadata
 - [ ] #9 CRL Distribution Point extension added
 - [ ] #10 Key Usage and Extended Key Usage set correctly
-- [ ] #11 Maximum validity of 825 days enforced
-- [ ] #12 Serial number unique per CA
-- [ ] #13 Audit log entry created
+- [x] #11 Maximum validity of 825 days enforced
+- [x] #12 Serial number unique per CA
+- [x] #13 Audit log entry created
 <!-- AC:END -->
 
 ## Implementation Plan
