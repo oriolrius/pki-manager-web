@@ -20,17 +20,17 @@ Extend the certificate issuance endpoint to support code signing certificates wi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Code signing certificate type supported
-- [ ] #2 Organization validation enforced
-- [ ] #3 Key Usage set: Digital Signature
-- [ ] #4 Extended Key Usage set: Code Signing
-- [ ] #5 Minimum key strength enforced (RSA-3072 or ECDSA-P256)
-- [ ] #6 Maximum validity of 3 years enforced
-- [ ] #7 Enhanced audit logging for code signing certs
-- [ ] #8 Additional verification requirements documented
+- [x] #1 Code signing certificate type supported
+- [x] #2 Organization validation enforced
+- [x] #3 Key Usage set: Digital Signature
+- [x] #4 Extended Key Usage set: Code Signing
+- [x] #5 Minimum key strength enforced (RSA-3072 or ECDSA-P256)
+- [x] #6 Maximum validity of 3 years enforced
+- [x] #7 Enhanced audit logging for code signing certs
+- [x] #8 Additional verification requirements documented
 
-- [ ] #9 Tests written to validate code signing certificate issuance
-- [ ] #10 All tests pass
+- [x] #9 Tests written to validate code signing certificate issuance
+- [x] #10 All tests pass
 <!-- AC:END -->
 
 ## Implementation Plan
