@@ -142,6 +142,7 @@ export const renewCertificateSchema = z.object({
   sanDns: z.array(z.string()).optional(),
   sanIp: z.array(z.string()).optional(),
   sanEmail: z.array(z.string().email()).optional(),
+  revokeOriginal: z.boolean().default(false),
 });
 
 export const revokeCertificateSchema = z.object({

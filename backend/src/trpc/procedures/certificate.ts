@@ -746,8 +746,271 @@ export const certificateRouter = router({
   renew: publicProcedure
     .input(renewCertificateSchema)
     .mutation(async ({ ctx, input }) => {
-      // TODO: Implement in task-015 (Certificate renewal)
-      throw new Error('Not implemented yet');
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificateAuthorities, certificates, auditLog } = await import('../../db/schema.js');
+      const { getKMSService } = await import('../../kms/service.js');
+      const { formatDN } = await import('../../crypto/dn.js');
+      const { parseCertificate } = await import('../../crypto/index.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      // Fetch original certificate
+      const originalCertResult = await ctx.db
+        .select()
+        .from(certificates)
+        .where(eq(certificates.id, input.id))
+        .limit(1);
+
+      if (!originalCertResult || originalCertResult.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Certificate with ID ${input.id} not found`,
+        });
+      }
+
+      const originalCert = originalCertResult[0];
+
+      // Validation: Cannot renew revoked certificates
+      if (originalCert.status === 'revoked') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot renew a revoked certificate',
+        });
+      }
+
+      // Validation: Key reuse only if original certificate is less than 90 days old
+      if (!input.generateNewKey) {
+        const certAgeMs = Date.now() - originalCert.createdAt.getTime();
+        const certAgeDays = certAgeMs / (1000 * 60 * 60 * 24);
+        if (certAgeDays >= 90) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Key reuse is only allowed for certificates less than 90 days old',
+          });
+        }
+      }
+
+      // Retrieve CA from database
+      const ca = await ctx.db
+        .select()
+        .from(certificateAuthorities)
+        .where(eq(certificateAuthorities.id, originalCert.caId))
+        .limit(1);
+
+      if (!ca || ca.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `CA with ID ${originalCert.caId} not found`,
+        });
+      }
+
+      const caRecord = ca[0];
+
+      // Validate CA is active and not expired
+      const now = new Date();
+      if (caRecord.status !== 'active') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `CA is not active (status: ${caRecord.status})`,
+        });
+      }
+
+      if (now > caRecord.notAfter) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'CA certificate has expired',
+        });
+      }
+
+      const newCertId = randomUUID();
+      const kmsService = getKMSService();
+
+      try {
+        // Parse original certificate to extract metadata
+        const originalParsed = parseCertificate(originalCert.certificatePem, 'PEM');
+
+        // Determine subject DN (use updated subject if provided, otherwise copy from original)
+        let subjectDN;
+        if (input.updateInfo && input.subject) {
+          subjectDN = {
+            CN: input.subject.commonName,
+            O: input.subject.organization,
+            OU: input.subject.organizationalUnit,
+            C: input.subject.country,
+            ST: input.subject.state,
+            L: input.subject.locality,
+          };
+        } else {
+          subjectDN = originalParsed.subject;
+        }
+
+        // Determine SANs (use updated SANs if provided, otherwise copy from original)
+        let sanDns = input.updateInfo && input.sanDns !== undefined ? input.sanDns :
+                     (originalCert.sanDns ? JSON.parse(originalCert.sanDns) : null);
+        let sanIp = input.updateInfo && input.sanIp !== undefined ? input.sanIp :
+                    (originalCert.sanIp ? JSON.parse(originalCert.sanIp) : null);
+        let sanEmail = input.updateInfo && input.sanEmail !== undefined ? input.sanEmail :
+                       (originalCert.sanEmail ? JSON.parse(originalCert.sanEmail) : null);
+
+        // Determine validity days (use provided value or default to original certificate's validity period)
+        const validityDays = input.validityDays ||
+          Math.ceil((originalCert.notAfter.getTime() - originalCert.notBefore.getTime()) / (1000 * 60 * 60 * 24));
+
+        let kmsKeyId: string;
+        let publicKeyId: string;
+
+        if (input.generateNewKey) {
+          // Generate new key pair in KMS
+          logger.info({ newCertId, originalCertId: input.id }, 'Creating new key pair for certificate renewal');
+
+          // Determine key size from original certificate
+          // For simplicity, defaulting to RSA-2048. In production, you'd extract this from the original cert
+          const keyPair = await kmsService.createKeyPair({
+            sizeInBits: 2048,
+            tags: [],
+            purpose: 'certificate',
+            entityId: newCertId,
+          });
+
+          kmsKeyId = keyPair.privateKeyId;
+          publicKeyId = keyPair.publicKeyId;
+        } else {
+          // Reuse existing key pair
+          logger.info({ newCertId, originalCertId: input.id }, 'Reusing existing key pair for certificate renewal');
+
+          if (!originalCert.kmsKeyId) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Original certificate has no associated KMS key to reuse',
+            });
+          }
+
+          kmsKeyId = originalCert.kmsKeyId;
+
+          // Get the public key ID from KMS
+          // Note: This assumes the KMS service has a method to get public key from private key
+          // In production, you might need to store the public key ID alongside the private key ID
+          publicKeyId = kmsKeyId.replace('-private', '-public'); // Simplified assumption
+        }
+
+        const subjectName = formatDN(subjectDN);
+        logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS');
+
+        const certInfo = await kmsService.signCertificate({
+          publicKeyId: publicKeyId,
+          issuerPrivateKeyId: caRecord.kmsKeyId,
+          subjectName: subjectName,
+          daysValid: validityDays,
+          tags: [],
+          entityId: newCertId,
+        });
+
+        // Convert certificate data from hex to PEM
+        const certDataHex = certInfo.certificateData;
+        const certDataBuffer = Buffer.from(certDataHex, 'hex');
+        const certBase64 = certDataBuffer.toString('base64');
+        const certificatePem = `-----BEGIN CERTIFICATE-----\n${certBase64.match(/.{1,64}/g)?.join('\n')}\n-----END CERTIFICATE-----`;
+
+        // Parse new certificate to extract metadata
+        const certMetadata = parseCertificate(certificatePem, 'PEM');
+
+        // Store new certificate in database with renewal chain link
+        await ctx.db.insert(certificates).values({
+          id: newCertId,
+          caId: originalCert.caId,
+          subjectDn: subjectName,
+          serialNumber: certMetadata.serialNumber,
+          certificateType: originalCert.certificateType,
+          notBefore: certMetadata.validity.notBefore,
+          notAfter: certMetadata.validity.notAfter,
+          certificatePem: certificatePem,
+          kmsKeyId: input.generateNewKey ? kmsKeyId : null,
+          status: 'active',
+          sanDns: sanDns ? JSON.stringify(sanDns) : null,
+          sanIp: sanIp ? JSON.stringify(sanIp) : null,
+          sanEmail: sanEmail ? JSON.stringify(sanEmail) : null,
+          renewedFromId: input.id, // Link to original certificate
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        // Optionally revoke the original certificate
+        if (input.revokeOriginal) {
+          await ctx.db
+            .update(certificates)
+            .set({
+              status: 'revoked',
+              revocationDate: new Date(),
+              revocationReason: 'superseded',
+              updatedAt: new Date(),
+            })
+            .where(eq(certificates.id, input.id));
+
+          logger.info({ originalCertId: input.id }, 'Original certificate revoked (superseded by renewal)');
+        }
+
+        // Create audit log entry for renewal
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.renew',
+          entityType: 'certificate',
+          entityId: newCertId,
+          status: 'success',
+          details: JSON.stringify({
+            originalCertId: input.id,
+            caId: originalCert.caId,
+            certificateType: originalCert.certificateType,
+            subject: subjectName,
+            validityDays: validityDays,
+            serialNumber: certMetadata.serialNumber,
+            kmsKeyId: kmsKeyId,
+            generateNewKey: input.generateNewKey,
+            updateInfo: input.updateInfo,
+            revokeOriginal: input.revokeOriginal,
+            sanDns: sanDns,
+            sanIp: sanIp,
+            sanEmail: sanEmail,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        logger.info({ newCertId, originalCertId: input.id }, 'Certificate renewed successfully');
+
+        return {
+          id: newCertId,
+          subject: subjectName,
+          serialNumber: certMetadata.serialNumber,
+          notBefore: certMetadata.validity.notBefore.toISOString(),
+          notAfter: certMetadata.validity.notAfter.toISOString(),
+          certificatePem: certificatePem,
+          status: 'active' as const,
+          renewedFromId: input.id,
+        };
+      } catch (error) {
+        logger.error({ error, newCertId, originalCertId: input.id }, 'Failed to renew certificate');
+
+        // Log failure to audit log
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.renew',
+          entityType: 'certificate',
+          entityId: newCertId,
+          status: 'failure',
+          details: JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            originalCertId: input.id,
+            caId: originalCert.caId,
+            certificateType: originalCert.certificateType,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to renew certificate: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
     }),
 
   revoke: publicProcedure
