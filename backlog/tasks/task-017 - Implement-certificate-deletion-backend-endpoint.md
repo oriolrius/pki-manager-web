@@ -4,6 +4,7 @@ title: Implement certificate deletion backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 19:50'
 labels:
   - backend
   - certificate
@@ -26,4 +27,7 @@ Implement the tRPC endpoint for permanently deleting certificate records. Valida
 - [ ] #6 Audit entry created before deletion
 - [ ] #7 Optional removal from CRL
 - [ ] #8 Validation prevents deleting active certificates
+
+- [ ] #9 Tests written to validate deletion functionality
+- [ ] #10 All tests pass
 <!-- AC:END -->
