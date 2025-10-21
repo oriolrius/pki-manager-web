@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:44'
+updated_date: '2025-10-21 19:45'
 labels:
   - backend
   - certificate
@@ -49,3 +49,68 @@ Implement the tRPC endpoint for renewing certificates. Support generating new ke
 8. Write integration tests for the endpoint
 9. Run all tests to ensure they pass
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+# Implementation Summary
+
+Successfully implemented the certificate renewal endpoint with all required features:
+
+## Core Implementation
+
+- **Endpoint**: `certificate.renew` mutation in `/backend/src/trpc/procedures/certificate.ts` (lines 746-998)
+- **Schema**: Extended `renewCertificateSchema` in `/backend/src/trpc/schemas.ts` to include `revokeOriginal` option
+
+## Features Implemented
+
+1. **Flexible Key Management**
+   - Option to generate new key pair or reuse existing key (controlled by `generateNewKey` parameter)
+   - Key reuse validation: only allowed for certificates < 90 days old
+
+2. **Certificate Information Handling**
+   - Subject DN copied from original by default
+   - Subject DN can be updated if `updateInfo: true` and new subject provided
+   - SANs (DNS, IP, Email) copied from original by default
+   - SANs can be updated if `updateInfo: true` and new values provided
+
+3. **Renewal Chain Tracking**
+   - New certificate links to original via `renewedFromId` field
+   - Renewal chain queryable through `getById` endpoint
+
+4. **Original Certificate Revocation**
+   - Optional revocation of original certificate via `revokeOriginal` parameter
+   - Sets revocation reason to "superseded" when enabled
+
+5. **Comprehensive Validation**
+   - ✅ Cannot renew revoked certificates
+   - ✅ Key reuse only allowed for certificates < 90 days old
+   - ✅ CA must be active and not expired
+   - ✅ Original certificate must exist
+
+6. **Audit Logging**
+   - Complete audit trail linking renewal to original certificate
+   - Logs success/failure with full context
+
+## Testing
+
+- **Unit/Integration Tests**: Added 3 comprehensive tests in `/backend/src/trpc/procedures/certificate.test.ts`
+  - Test for rejection of revoked certificate renewal
+  - Test for key reuse age validation (> 90 days)
+  - Test for non-existent certificate handling
+
+- **All Tests Passing**: 74 tests pass (including existing tests)
+
+## Technical Details
+
+- Uses existing KMS service integration for key generation and certificate signing
+- Follows the same certificate generation pattern as `issue` endpoint
+- Maintains consistency with existing error handling patterns
+- Preserves original certificate type and CA relationship
+
+## Files Modified
+
+1. `/backend/src/trpc/procedures/certificate.ts` - Added renew mutation
+2. `/backend/src/trpc/schemas.ts` - Extended renewCertificateSchema
+3. `/backend/src/trpc/procedures/certificate.test.ts` - Added test coverage
+<!-- SECTION:NOTES:END -->
