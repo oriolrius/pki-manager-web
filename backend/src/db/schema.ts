@@ -8,6 +8,9 @@ export const certificateAuthorities = sqliteTable(
     id: text('id').primaryKey(),
     subjectDn: text('subject_dn').notNull(),
     serialNumber: text('serial_number').notNull().unique(),
+    keyAlgorithm: text('key_algorithm', {
+      enum: ['RSA-2048', 'RSA-4096', 'ECDSA-P256', 'ECDSA-P384'],
+    }).notNull(),
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
     kmsKeyId: text('kms_key_id').notNull(),
@@ -27,6 +30,7 @@ export const certificateAuthorities = sqliteTable(
   (table) => ({
     serialIdx: index('idx_ca_serial').on(table.serialNumber),
     statusIdx: index('idx_ca_status').on(table.status),
+    algorithmIdx: index('idx_ca_algorithm').on(table.keyAlgorithm),
   })
 );
 

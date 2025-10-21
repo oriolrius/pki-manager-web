@@ -56,6 +56,10 @@ export const createCaSchema = z.object({
 export const listCasSchema = z
   .object({
     status: certificateStatusSchema.optional(),
+    algorithm: keyAlgorithmSchema.optional(),
+    search: z.string().optional(),
+    sortBy: z.enum(['name', 'issuedDate', 'expiryDate']).optional().default('issuedDate'),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
     limit: z.number().int().min(1).max(100).default(50),
     offset: z.number().int().min(0).default(0),
   })
