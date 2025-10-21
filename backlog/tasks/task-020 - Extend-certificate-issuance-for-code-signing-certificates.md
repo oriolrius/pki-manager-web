@@ -1,7 +1,7 @@
 ---
 id: task-020
 title: Extend certificate issuance for code signing certificates
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
