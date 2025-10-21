@@ -1,9 +1,11 @@
 ---
 id: task-012
 title: Implement certificate issuance backend for server certificates
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 17:32'
 labels:
   - backend
   - certificate
