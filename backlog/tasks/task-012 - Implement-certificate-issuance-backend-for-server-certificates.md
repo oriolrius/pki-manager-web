@@ -52,3 +52,46 @@ Implement the tRPC endpoint for issuing server (TLS/SSL) certificates. Generate 
 3. Add proper error handling and logging
 4. Test with various inputs
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Summary
+
+Implemented server certificate issuance endpoint at `certificate.issue` with comprehensive validation and KMS integration.
+
+### Key Features Implemented
+
+- **Input Validation**: Full validation for server certificate fields including domain names, SANs (DNS with wildcard support, IPv4/IPv6 addresses), and validity period (max 825 days)
+- **CA Verification**: Validates CA exists, is active, and not expired before issuance
+- **KMS Integration**: 
+  - Generates certificate key pair in KMS
+  - Signs certificate using CA private key via KMS certify operation
+- **Database Storage**: Stores certificate with full metadata including SANs as JSON
+- **Audit Logging**: Creates detailed audit log entry for all certificate issuance attempts (success/failure)
+- **Unique Serial Numbers**: KMS generates cryptographically unique serial numbers per certificate
+
+### Files Modified/Created
+
+- `backend/src/trpc/procedures/certificate.ts` - Implemented certificate.issue endpoint
+- `backend/src/crypto/validation.ts` - Created validation utilities for domain names, IP addresses, and SANs
+- `backend/src/crypto/index.ts` - Exported validation utilities
+
+### Validation Implemented
+
+1. Domain name validation (RFC compliant, supports wildcards in first label only)
+2. SAN DNS name validation (including wildcard patterns)
+3. SAN IP address validation (both IPv4 and IPv6)
+4. Certificate validity period enforcement (1-825 days for server certs)
+5. CA status and expiration checks
+
+### Known Limitations
+
+**AC #9 (CRL Distribution Point)**: Not fully implemented - requires CRL infrastructure setup. Added TODO comment in code for future implementation.
+
+**AC #10 (Key Usage and Extended Key Usage)**: Documented in code but limited by KMS certify operation capabilities. The current KMS certify implementation may not support custom certificate extensions. Full extension support would require either:
+- Enhanced KMS API to accept extension parameters in certify operation
+- Alternative approach using local certificate generation with HSM-based signing
+
+Both limitations are documented in the code with clear TODO/NOTE comments and can be addressed in future iterations when CRL infrastructure is ready or KMS capabilities are extended.
+<!-- SECTION:NOTES:END -->
