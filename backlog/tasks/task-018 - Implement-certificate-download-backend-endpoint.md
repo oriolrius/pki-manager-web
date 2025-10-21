@@ -4,6 +4,7 @@ title: Implement certificate download backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 19:50'
 labels:
   - backend
   - certificate
@@ -28,4 +29,7 @@ Implement the tRPC endpoint for downloading certificates in multiple formats: PE
 - [ ] #8 Filename generation with CN and serial
 - [ ] #9 Audit log entry for downloads
 - [ ] #10 Password validation for PKCS#12
+
+- [ ] #11 Tests written to validate download functionality for all formats
+- [ ] #12 All tests pass
 <!-- AC:END -->
