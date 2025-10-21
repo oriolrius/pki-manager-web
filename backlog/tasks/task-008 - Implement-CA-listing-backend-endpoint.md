@@ -44,3 +44,23 @@ Implement the tRPC endpoint for listing all root CAs with filtering, sorting, an
 8. Implement pagination support
 9. Compute status based on current date
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented the CA listing endpoint with comprehensive features:
+
+- Created tRPC query endpoint with Zod input validation
+- Implemented filtering by status (active, expired, revoked) with dynamic date-based expiration checking
+- Added filtering by key algorithm (RSA-2048, RSA-4096, ECDSA-P256, ECDSA-P384)
+- Implemented search functionality that searches within subject DN for CN, O, and OU
+- Added flexible sorting by name (subject DN), issued date, or expiry date
+- Configurable sort order (ascending or descending)
+- Included certificate count for each CA using database aggregation
+- Full pagination support with configurable limit and offset
+- Status is computed dynamically based on current date (expired if notAfter < now)
+- Extended database schema to include keyAlgorithm field with index
+- Extended API schema to support all filtering and sorting parameters
+
+All acceptance criteria have been met.
+<!-- SECTION:NOTES:END -->
