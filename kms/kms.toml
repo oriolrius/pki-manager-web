@@ -1,0 +1,38 @@
+# Cosmian KMS Configuration File
+# Documentation: https://docs.cosmian.com/
+
+[server]
+# Server host and port (internal to container)
+hostname = "0.0.0.0"
+port = 9998
+
+# Database configuration
+[database]
+# SQLite database (default for development)
+type = "sqlite"
+# Path is relative to the container, mounted as volume
+path = "/cosmian-kms/sqlite-data/kms.db"
+
+# Logging configuration
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Authentication configuration (optional)
+# Uncomment and configure for production environments
+# [authentication]
+# type = "jwt"
+# jwt_issuer_uri = "https://your-identity-provider.com"
+
+# TLS configuration (optional)
+# Uncomment for production environments
+# [tls]
+# certificate_path = "/path/to/cert.pem"
+# private_key_path = "/path/to/key.pem"
+
+# CORS configuration (optional)
+# Uncomment to allow cross-origin requests
+# [cors]
+# allowed_origins = ["http://localhost:3000"]
+# allowed_methods = ["GET", "POST", "PUT", "DELETE"]
+# allowed_headers = ["Content-Type", "Authorization"]

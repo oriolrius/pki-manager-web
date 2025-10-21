@@ -1,0 +1,24 @@
+services:
+  kms:
+    image: ghcr.io/cosmian/kms:latest
+    container_name: pki-manager-kms
+    restart: unless-stopped
+    ports:
+      - "42998:9998"
+    volumes:
+      - ./data:/cosmian-kms/sqlite-data
+      - ./kms.toml:/etc/cosmian/kms.toml:ro
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+    networks:
+      - pki-manager-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  pki-manager-network:
+    driver: bridge
