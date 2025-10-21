@@ -44,3 +44,28 @@ Implement the tRPC endpoint for permanently deleting certificate records. Valida
 6. Write comprehensive tests for deletion functionality
 7. Run all tests to ensure they pass
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented certificate.delete tRPC endpoint with complete functionality:
+
+- Added endpoint in certificate.ts (lines 1150-1272)
+- Validates certificate must be revoked or expired > 90 days
+- Creates audit log entry BEFORE deletion to preserve history
+- Deletes certificate record from database
+- Optional KMS key destruction with graceful error handling
+- Prevents deletion of active or recently expired certificates
+- Placeholder for future CRL update (task-022)
+- Comprehensive test suite added with 5 test cases:
+  1. Successfully delete revoked certificate
+  2. Successfully delete expired certificate (> 90 days)
+  3. Validation: prevent deletion of active certificates
+  4. Validation: prevent deletion of recently expired certificates (< 90 days)
+  5. Error handling for non-existent certificates
+- All 20 tests passing
+
+Files modified:
+- backend/src/trpc/procedures/certificate.ts
+- backend/src/trpc/procedures/certificate.test.ts
+<!-- SECTION:NOTES:END -->
