@@ -34,3 +34,15 @@ Implement the tRPC endpoint for revoking certificates. Update certificate status
 - [ ] #11 Tests written to validate revocation functionality
 - [ ] #12 All tests pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Review existing certificate router and database schema
+2. Implement certificate.revoke tRPC endpoint with input validation
+3. Add revocation logic: update status, store reason and date
+4. Add validation rules (cannot revoke already revoked certs)
+5. Create audit log entry
+6. Write tests for revocation functionality
+7. Run all tests to ensure they pass
+<!-- SECTION:PLAN:END -->
