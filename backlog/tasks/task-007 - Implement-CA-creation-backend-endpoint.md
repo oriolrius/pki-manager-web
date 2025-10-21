@@ -1,9 +1,11 @@
 ---
 id: task-007
 title: Implement CA creation backend endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:49'
+updated_date: '2025-10-21 17:16'
 labels:
   - backend
   - ca
