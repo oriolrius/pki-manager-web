@@ -1,7 +1,7 @@
 ---
 id: task-009
 title: Implement CA detail retrieval backend endpoint
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
