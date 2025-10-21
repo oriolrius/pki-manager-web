@@ -43,3 +43,27 @@ Implement the tRPC endpoint for retrieving detailed information about a specific
 8. Count and include issued certificate count
 9. Handle CA not found error case
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented the CA detail retrieval endpoint with comprehensive information:
+
+- Created tRPC query endpoint to retrieve CA by ID
+- Returns complete CA information including all database fields
+- Parses certificate using node-forge to extract detailed metadata
+- Extracts and structures X.509 v3 extensions:
+  - Basic Constraints (cA flag, pathLenConstraint)
+  - Key Usage (digitalSignature, keyCertSign, cRLSign, etc.)
+  - Subject Key Identifier (SKI)
+  - Authority Key Identifier (AKI)
+- Calculates certificate fingerprints using SHA-256 and SHA-1 hashes
+- Formats fingerprints with colon-separated hex pairs
+- Computes validity status (valid, expired, not_yet_valid) based on current date
+- Computes overall CA status (active, revoked, expired)
+- Includes count of certificates issued by this CA
+- Comprehensive error handling for CA not found (404)
+- Returns both structured subject/issuer objects and DN strings
+
+All acceptance criteria have been met.
+<!-- SECTION:NOTES:END -->
