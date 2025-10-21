@@ -690,3 +690,305 @@ describe('certificate.revoke', () => {
     ).rejects.toThrow('not found');
   });
 });
+
+describe('certificate.delete', () => {
+  let caId: string;
+  let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
+
+  beforeAll(async () => {
+    // Create a test CA
+    caId = randomUUID();
+
+    // Generate CA key pair using node-forge
+    const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    caKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+    };
+
+    const caCert = generateCertificate({
+      subject: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: caKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+      selfSigned: true,
+    });
+
+    await db.insert(certificateAuthorities).values({
+      id: caId,
+      subjectDn: 'CN=Test CA,O=Test Organization,C=US',
+      serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-4096',
+      notBefore: caCert.validity.notBefore,
+      notAfter: caCert.validity.notAfter,
+      kmsKeyId: 'test-ca-key',
+      certificatePem: caCert.pem,
+      status: 'active',
+    });
+  });
+
+  afterAll(async () => {
+    // Clean up test data
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
+  });
+
+  it('should delete a revoked certificate successfully', async () => {
+    // Create a revoked certificate
+    const revokedCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'delete-revoked.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: revokedCertId,
+      caId,
+      subjectDn: 'CN=delete-revoked.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-revoked-cert-key',
+      status: 'revoked',
+      revocationDate: new Date(),
+      revocationReason: 'keyCompromise',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Delete the certificate
+    const result = await caller.certificate.delete({
+      id: revokedCertId,
+      destroyKey: false,
+      removeFromCrl: false,
+    });
+
+    expect(result.id).toBe(revokedCertId);
+    expect(result.deleted).toBe(true);
+    expect(result.kmsKeyDestroyed).toBe(false);
+
+    // Verify certificate was deleted from database
+    const { eq } = await import('drizzle-orm');
+    const dbResult = await db.select().from(certificates).where(eq(certificates.id, revokedCertId));
+    expect(dbResult).toHaveLength(0);
+  });
+
+  it('should delete an expired certificate (> 90 days)', async () => {
+    // Create a certificate that expired 91 days ago
+    const expiredCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'expired.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    // Set notAfter to 91 days ago
+    const ninetyOneDaysAgo = new Date();
+    ninetyOneDaysAgo.setDate(ninetyOneDaysAgo.getDate() - 91);
+
+    await db.insert(certificates).values({
+      id: expiredCertId,
+      caId,
+      subjectDn: 'CN=expired.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: new Date(ninetyOneDaysAgo.getTime() - 365 * 24 * 60 * 60 * 1000), // 1 year before expiry
+      notAfter: ninetyOneDaysAgo,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-expired-cert-key',
+      status: 'expired',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Delete the certificate
+    const result = await caller.certificate.delete({
+      id: expiredCertId,
+      destroyKey: false,
+    });
+
+    expect(result.deleted).toBe(true);
+
+    // Verify certificate was deleted from database
+    const { eq } = await import('drizzle-orm');
+    const dbResult = await db.select().from(certificates).where(eq(certificates.id, expiredCertId));
+    expect(dbResult).toHaveLength(0);
+  });
+
+  it('should fail to delete an active certificate', async () => {
+    // Create an active certificate
+    const activeCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'active.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: activeCertId,
+      caId,
+      subjectDn: 'CN=active.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-active-cert-key',
+      status: 'active',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Should fail to delete active certificate
+    await expect(
+      caller.certificate.delete({
+        id: activeCertId,
+        destroyKey: false,
+      })
+    ).rejects.toThrow('Certificate must be revoked or expired for more than 90 days before deletion');
+
+    // Cleanup
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.id, activeCertId)).execute();
+  });
+
+  it('should fail to delete a recently expired certificate (< 90 days)', async () => {
+    // Create a certificate that expired 30 days ago
+    const recentlyExpiredCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'recently-expired.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    // Set notAfter to 30 days ago
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    await db.insert(certificates).values({
+      id: recentlyExpiredCertId,
+      caId,
+      subjectDn: 'CN=recently-expired.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: new Date(thirtyDaysAgo.getTime() - 365 * 24 * 60 * 60 * 1000),
+      notAfter: thirtyDaysAgo,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-recent-expired-cert-key',
+      status: 'expired',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Should fail to delete recently expired certificate
+    await expect(
+      caller.certificate.delete({
+        id: recentlyExpiredCertId,
+        destroyKey: false,
+      })
+    ).rejects.toThrow('Certificate must be revoked or expired for more than 90 days before deletion');
+
+    // Cleanup
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.id, recentlyExpiredCertId)).execute();
+  });
+
+  it('should throw NOT_FOUND for non-existent certificate', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const nonExistentId = randomUUID();
+
+    await expect(
+      caller.certificate.delete({
+        id: nonExistentId,
+        destroyKey: false,
+      })
+    ).rejects.toThrow('not found');
+  });
+});

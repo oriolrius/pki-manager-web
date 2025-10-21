@@ -1150,8 +1150,125 @@ export const certificateRouter = router({
   delete: publicProcedure
     .input(deleteCertificateSchema)
     .mutation(async ({ ctx, input }) => {
-      // TODO: Implement in task-017 (Certificate deletion)
-      throw new Error('Not implemented yet');
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificates, auditLog } = await import('../../db/schema.js');
+      const { getKMSService } = await import('../../kms/service.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      // Fetch certificate from database
+      const certResult = await ctx.db
+        .select()
+        .from(certificates)
+        .where(eq(certificates.id, input.id))
+        .limit(1);
+
+      if (!certResult || certResult.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Certificate with ID ${input.id} not found`,
+        });
+      }
+
+      const cert = certResult[0];
+
+      // Validation: Certificate must be revoked or expired > 90 days
+      const now = new Date();
+      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+      const isRevoked = cert.status === 'revoked';
+      const isExpiredOverNinetyDays = cert.notAfter < ninetyDaysAgo;
+
+      if (!isRevoked && !isExpiredOverNinetyDays) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Certificate must be revoked or expired for more than 90 days before deletion',
+        });
+      }
+
+      try {
+        // Create audit log entry BEFORE deletion
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.delete',
+          entityType: 'certificate',
+          entityId: input.id,
+          status: 'success',
+          details: JSON.stringify({
+            caId: cert.caId,
+            serialNumber: cert.serialNumber,
+            certificateType: cert.certificateType,
+            status: cert.status,
+            destroyKey: input.destroyKey,
+            removeFromCrl: input.removeFromCrl,
+            revocationDate: cert.revocationDate?.toISOString(),
+            revocationReason: cert.revocationReason,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        // Optional: Destroy KMS key if requested
+        if (input.destroyKey && cert.kmsKeyId) {
+          try {
+            const kmsService = getKMSService();
+            await kmsService.destroyKey(cert.kmsKeyId);
+            logger.info(
+              { certId: input.id, kmsKeyId: cert.kmsKeyId },
+              'KMS key destroyed for deleted certificate'
+            );
+          } catch (error) {
+            logger.warn(
+              { error, certId: input.id, kmsKeyId: cert.kmsKeyId },
+              'Failed to destroy KMS key, continuing with certificate deletion'
+            );
+            // Continue with deletion even if KMS key destruction fails
+          }
+        }
+
+        // Delete certificate from database
+        await ctx.db
+          .delete(certificates)
+          .where(eq(certificates.id, input.id));
+
+        logger.info(
+          { certId: input.id, serialNumber: cert.serialNumber },
+          'Certificate deleted successfully'
+        );
+
+        // TODO: Optional removal from CRL (will be implemented in task-022)
+        if (input.removeFromCrl) {
+          logger.info({ caId: cert.caId }, 'CRL update requested (not yet implemented)');
+        }
+
+        return {
+          id: input.id,
+          deleted: true,
+          kmsKeyDestroyed: input.destroyKey && cert.kmsKeyId !== null,
+        };
+      } catch (error) {
+        logger.error({ error, certId: input.id }, 'Failed to delete certificate');
+
+        // Log failure to audit log
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.delete',
+          entityType: 'certificate',
+          entityId: input.id,
+          status: 'failure',
+          details: JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            caId: cert.caId,
+            serialNumber: cert.serialNumber,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to delete certificate: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
     }),
 
   download: publicProcedure
