@@ -1,10 +1,11 @@
 ---
 id: task-014
 title: Implement certificate detail retrieval backend endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 18:11'
+updated_date: '2025-10-21 18:12'
 labels:
   - backend
   - certificate
