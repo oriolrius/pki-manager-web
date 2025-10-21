@@ -1,10 +1,11 @@
 ---
 id: task-018
 title: Implement certificate download backend endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:50'
+updated_date: '2025-10-21 19:57'
 labels:
   - backend
   - certificate
