@@ -1,7 +1,7 @@
 ---
 id: task-021
 title: Extend certificate issuance for email protection certificates
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
