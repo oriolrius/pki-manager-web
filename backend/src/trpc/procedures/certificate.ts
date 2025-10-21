@@ -208,10 +208,305 @@ export const certificateRouter = router({
     }),
 
   getById: publicProcedure
+    .meta({
+      openapi: {
+        method: 'GET',
+        path: '/certificates/{id}',
+        tags: ['certificates'],
+        summary: 'Get certificate details',
+        description: 'Retrieve comprehensive details about a specific certificate including all fields, extensions, fingerprints, and status information.',
+      },
+    })
     .input(getCertificateSchema)
+    .output(
+      z.object({
+        // Basic fields
+        id: z.string(),
+        caId: z.string(),
+        serialNumber: z.string(),
+        certificateType: certificateTypeSchema,
+        status: certificateStatusSchema,
+
+        // Distinguished Names
+        subjectDn: z.string(),
+        subject: z.object({
+          commonName: z.string(),
+          organization: z.string(),
+          organizationalUnit: z.string().optional(),
+          country: z.string(),
+          state: z.string().optional(),
+          locality: z.string().optional(),
+        }),
+        issuerDn: z.string(),
+        issuer: z.object({
+          commonName: z.string().optional(),
+          organization: z.string().optional(),
+          organizationalUnit: z.string().optional(),
+          country: z.string().optional(),
+          state: z.string().optional(),
+          locality: z.string().optional(),
+        }),
+
+        // Validity
+        notBefore: z.date(),
+        notAfter: z.date(),
+        validityStatus: z.enum(['valid', 'expired', 'not_yet_valid']),
+        remainingDays: z.number().nullable(),
+
+        // Key Usage
+        keyUsage: z
+          .object({
+            digitalSignature: z.boolean().optional(),
+            nonRepudiation: z.boolean().optional(),
+            keyEncipherment: z.boolean().optional(),
+            dataEncipherment: z.boolean().optional(),
+            keyAgreement: z.boolean().optional(),
+            keyCertSign: z.boolean().optional(),
+            cRLSign: z.boolean().optional(),
+            encipherOnly: z.boolean().optional(),
+            decipherOnly: z.boolean().optional(),
+          })
+          .nullable(),
+
+        // Extended Key Usage
+        extendedKeyUsage: z.array(z.string()).nullable(),
+
+        // Subject Alternative Names
+        sanDns: z.array(z.string()).nullable(),
+        sanIp: z.array(z.string()).nullable(),
+        sanEmail: z.array(z.string()).nullable(),
+
+        // Basic Constraints
+        basicConstraints: z
+          .object({
+            cA: z.boolean(),
+            pathLenConstraint: z.number().nullable(),
+          })
+          .nullable(),
+
+        // Fingerprints
+        fingerprints: z.object({
+          sha256: z.string(),
+          sha1: z.string(),
+        }),
+
+        // CA Information
+        issuingCA: z.object({
+          id: z.string(),
+          subjectDn: z.string(),
+          serialNumber: z.string(),
+        }),
+
+        // Certificate data
+        certificatePem: z.string(),
+        kmsKeyId: z.string().nullable(),
+
+        // Revocation info
+        revocationDate: z.date().nullable(),
+        revocationReason: z.string().nullable(),
+
+        // Renewal chain
+        renewedFromId: z.string().nullable(),
+        renewedTo: z
+          .array(
+            z.object({
+              id: z.string(),
+              serialNumber: z.string(),
+              createdAt: z.date(),
+            })
+          )
+          .nullable(),
+
+        // Timestamps
+        createdAt: z.date(),
+        updatedAt: z.date(),
+      })
+    )
     .query(async ({ ctx, input }) => {
-      // TODO: Implement in task-014 (Certificate detail retrieval)
-      return null;
+      const { TRPCError } = await import('@trpc/server');
+      const { eq } = await import('drizzle-orm');
+      const { certificates, certificateAuthorities } = await import('../../db/schema.js');
+      const forge = await import('node-forge');
+      const { parseCertificate } = await import('../../crypto/index.js');
+
+      // Query certificate with CA join
+      const result = await ctx.db
+        .select({
+          certificate: certificates,
+          ca: certificateAuthorities,
+        })
+        .from(certificates)
+        .leftJoin(certificateAuthorities, eq(certificates.caId, certificateAuthorities.id))
+        .where(eq(certificates.id, input.id))
+        .limit(1);
+
+      if (!result || result.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Certificate with ID ${input.id} not found`,
+        });
+      }
+
+      const { certificate, ca } = result[0];
+
+      if (!ca) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Certificate has no associated CA',
+        });
+      }
+
+      // Parse certificate to extract details
+      const parsed = parseCertificate(certificate.certificatePem, 'PEM');
+
+      // Parse certificate using node-forge for extensions
+      const forgeCert = forge.default.pki.certificateFromPem(certificate.certificatePem);
+
+      // Calculate fingerprints
+      const certDer = forge.default.asn1.toDer(
+        forge.default.pki.certificateToAsn1(forgeCert)
+      ).getBytes();
+      const sha256Hash = forge.default.md.sha256.create();
+      sha256Hash.update(certDer);
+      const sha256Fingerprint = sha256Hash
+        .digest()
+        .toHex()
+        .toUpperCase()
+        .match(/.{1,2}/g)!
+        .join(':');
+
+      const sha1Hash = forge.default.md.sha1.create();
+      sha1Hash.update(certDer);
+      const sha1Fingerprint = sha1Hash
+        .digest()
+        .toHex()
+        .toUpperCase()
+        .match(/.{1,2}/g)!
+        .join(':');
+
+      // Parse Key Usage extension
+      let keyUsage: any = null;
+      const keyUsageExt = forgeCert.extensions.find((ext: any) => ext.name === 'keyUsage');
+      if (keyUsageExt) {
+        keyUsage = {
+          digitalSignature: keyUsageExt.digitalSignature || undefined,
+          nonRepudiation: keyUsageExt.nonRepudiation || undefined,
+          keyEncipherment: keyUsageExt.keyEncipherment || undefined,
+          dataEncipherment: keyUsageExt.dataEncipherment || undefined,
+          keyAgreement: keyUsageExt.keyAgreement || undefined,
+          keyCertSign: keyUsageExt.keyCertSign || undefined,
+          cRLSign: keyUsageExt.cRLSign || undefined,
+          encipherOnly: keyUsageExt.encipherOnly || undefined,
+          decipherOnly: keyUsageExt.decipherOnly || undefined,
+        };
+      }
+
+      // Parse Extended Key Usage extension
+      let extendedKeyUsage: string[] | null = null;
+      const ekuExt = forgeCert.extensions.find((ext: any) => ext.name === 'extKeyUsage');
+      if (ekuExt) {
+        extendedKeyUsage = [];
+        if (ekuExt.serverAuth) extendedKeyUsage.push('serverAuth');
+        if (ekuExt.clientAuth) extendedKeyUsage.push('clientAuth');
+        if (ekuExt.codeSigning) extendedKeyUsage.push('codeSigning');
+        if (ekuExt.emailProtection) extendedKeyUsage.push('emailProtection');
+        if (ekuExt.timeStamping) extendedKeyUsage.push('timeStamping');
+      }
+
+      // Parse Basic Constraints extension
+      let basicConstraints: any = null;
+      const bcExt = forgeCert.extensions.find((ext: any) => ext.name === 'basicConstraints');
+      if (bcExt) {
+        basicConstraints = {
+          cA: bcExt.cA || false,
+          pathLenConstraint: bcExt.pathLenConstraint ?? null,
+        };
+      }
+
+      // Compute validity status
+      const now = new Date();
+      let validityStatus: 'valid' | 'expired' | 'not_yet_valid';
+      let remainingDays: number | null = null;
+
+      if (now < parsed.validity.notBefore) {
+        validityStatus = 'not_yet_valid';
+      } else if (now > parsed.validity.notAfter) {
+        validityStatus = 'expired';
+        remainingDays = 0;
+      } else {
+        validityStatus = 'valid';
+        const diffMs = parsed.validity.notAfter.getTime() - now.getTime();
+        remainingDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      }
+
+      // Query for certificates renewed from this one
+      const renewedCerts = await ctx.db
+        .select({
+          id: certificates.id,
+          serialNumber: certificates.serialNumber,
+          createdAt: certificates.createdAt,
+        })
+        .from(certificates)
+        .where(eq(certificates.renewedFromId, certificate.id));
+
+      // Convert subject to the expected format
+      const subject = {
+        commonName: parsed.subject.CN || '',
+        organization: parsed.subject.O || '',
+        organizationalUnit: parsed.subject.OU,
+        country: parsed.subject.C || '',
+        state: parsed.subject.ST,
+        locality: parsed.subject.L,
+      };
+
+      // Convert issuer to the expected format
+      const issuer = {
+        commonName: parsed.issuer.CN,
+        organization: parsed.issuer.O,
+        organizationalUnit: parsed.issuer.OU,
+        country: parsed.issuer.C,
+        state: parsed.issuer.ST,
+        locality: parsed.issuer.L,
+      };
+
+      return {
+        id: certificate.id,
+        caId: certificate.caId,
+        serialNumber: certificate.serialNumber,
+        certificateType: certificate.certificateType,
+        status: certificate.status,
+        subjectDn: certificate.subjectDn,
+        subject,
+        issuerDn: ca.subjectDn,
+        issuer,
+        notBefore: certificate.notBefore,
+        notAfter: certificate.notAfter,
+        validityStatus,
+        remainingDays,
+        keyUsage,
+        extendedKeyUsage,
+        sanDns: certificate.sanDns ? JSON.parse(certificate.sanDns) : null,
+        sanIp: certificate.sanIp ? JSON.parse(certificate.sanIp) : null,
+        sanEmail: certificate.sanEmail ? JSON.parse(certificate.sanEmail) : null,
+        basicConstraints,
+        fingerprints: {
+          sha256: sha256Fingerprint,
+          sha1: sha1Fingerprint,
+        },
+        issuingCA: {
+          id: ca.id,
+          subjectDn: ca.subjectDn,
+          serialNumber: ca.serialNumber,
+        },
+        certificatePem: certificate.certificatePem,
+        kmsKeyId: certificate.kmsKeyId,
+        revocationDate: certificate.revocationDate,
+        revocationReason: certificate.revocationReason,
+        renewedFromId: certificate.renewedFromId,
+        renewedTo: renewedCerts.length > 0 ? renewedCerts : null,
+        createdAt: certificate.createdAt,
+        updatedAt: certificate.updatedAt,
+      };
     }),
 
   issue: publicProcedure

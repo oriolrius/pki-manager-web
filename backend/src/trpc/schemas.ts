@@ -188,3 +188,85 @@ export const listAuditLogSchema = z
     offset: z.number().int().min(0).default(0),
   })
   .optional();
+
+// Certificate detail output schema
+export const certificateDetailSchema = z.object({
+  // Basic fields
+  id: z.string(),
+  caId: z.string(),
+  serialNumber: z.string(),
+  certificateType: certificateTypeSchema,
+  status: certificateStatusSchema,
+
+  // Distinguished Names
+  subjectDn: z.string(),
+  subject: distinguishedNameSchema,
+  issuerDn: z.string(),
+  issuer: distinguishedNameSchema,
+
+  // Validity
+  notBefore: z.date(),
+  notAfter: z.date(),
+  validityStatus: z.enum(['valid', 'expired', 'not_yet_valid']),
+  remainingDays: z.number().nullable(),
+
+  // Key Usage
+  keyUsage: z.object({
+    digitalSignature: z.boolean().optional(),
+    nonRepudiation: z.boolean().optional(),
+    keyEncipherment: z.boolean().optional(),
+    dataEncipherment: z.boolean().optional(),
+    keyAgreement: z.boolean().optional(),
+    keyCertSign: z.boolean().optional(),
+    cRLSign: z.boolean().optional(),
+    encipherOnly: z.boolean().optional(),
+    decipherOnly: z.boolean().optional(),
+  }).nullable(),
+
+  // Extended Key Usage
+  extendedKeyUsage: z.array(z.string()).nullable(),
+
+  // Subject Alternative Names
+  sanDns: z.array(z.string()).nullable(),
+  sanIp: z.array(z.string()).nullable(),
+  sanEmail: z.array(z.string()).nullable(),
+
+  // Basic Constraints
+  basicConstraints: z.object({
+    cA: z.boolean(),
+    pathLenConstraint: z.number().nullable(),
+  }).nullable(),
+
+  // Fingerprints
+  fingerprints: z.object({
+    sha256: z.string(),
+    sha1: z.string(),
+  }),
+
+  // CA Information
+  issuingCA: z.object({
+    id: z.string(),
+    subjectDn: z.string(),
+    serialNumber: z.string(),
+  }),
+
+  // Certificate data
+  certificatePem: z.string(),
+  kmsKeyId: z.string().nullable(),
+
+  // Revocation info
+  revocationDate: z.date().nullable(),
+  revocationReason: z.string().nullable(),
+
+  // Renewal chain
+  renewedFromId: z.string().nullable(),
+  renewedTo: z.array(z.object({
+    id: z.string(),
+    serialNumber: z.string(),
+    createdAt: z.date(),
+  })).nullable(),
+
+  // Timestamps
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
