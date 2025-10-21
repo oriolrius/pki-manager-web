@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 17:19'
+updated_date: '2025-10-21 17:21'
 labels:
   - backend
   - ca
@@ -20,14 +20,14 @@ Implement the tRPC endpoint for revoking a root CA. Update CA status, generate C
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ca.revoke tRPC endpoint implemented
-- [ ] #2 Input validation for revocation reason
-- [ ] #3 CA status updated to 'revoked'
-- [ ] #4 Revocation date and reason stored
-- [ ] #5 CRL generated including revoked CA
-- [ ] #6 Audit log entry created
-- [ ] #7 Optional cascade revocation to certificates
-- [ ] #8 Validation prevents re-revoking revoked CA
+- [x] #1 ca.revoke tRPC endpoint implemented
+- [x] #2 Input validation for revocation reason
+- [x] #3 CA status updated to 'revoked'
+- [x] #4 Revocation date and reason stored
+- [x] #5 CRL generated including revoked CA
+- [x] #6 Audit log entry created
+- [x] #7 Optional cascade revocation to certificates
+- [x] #8 Validation prevents re-revoking revoked CA
 <!-- AC:END -->
 
 ## Implementation Plan
