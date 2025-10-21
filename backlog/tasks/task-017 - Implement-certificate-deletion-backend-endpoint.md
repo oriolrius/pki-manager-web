@@ -1,10 +1,11 @@
 ---
 id: task-017
 title: Implement certificate deletion backend endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:50'
+updated_date: '2025-10-21 19:54'
 labels:
   - backend
   - certificate
