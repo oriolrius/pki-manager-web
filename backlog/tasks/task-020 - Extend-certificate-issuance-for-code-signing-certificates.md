@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 20:01'
+updated_date: '2025-10-21 20:02'
 labels:
   - backend
   - certificate
@@ -39,3 +39,22 @@ Extend the certificate issuance endpoint to support code signing certificates wi
 1. Already implemented in task-019 together
 2. All validation and logic added
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Extended certificate.issue endpoint to support code signing certificates:
+
+- Added code signing certificate validation in certificate.ts
+- Organization validation (required for code signing)
+- Minimum key strength enforcement (RSA-3072, RSA-4096, or ECDSA-P256)
+- Max validity of 3 years (1095 days)
+- Proper key usage and EKU support for code signing
+- All validation integrated into type-specific switch statement
+- All 27 tests passing
+
+Note: Tasks 019, 020, and 021 implemented together
+
+Files modified:
+- backend/src/trpc/procedures/certificate.ts
+<!-- SECTION:NOTES:END -->
