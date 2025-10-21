@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 17:33'
+updated_date: '2025-10-21 17:38'
 labels:
   - backend
   - certificate
@@ -21,7 +21,7 @@ Implement the tRPC endpoint for issuing server (TLS/SSL) certificates. Generate 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 certificate.issue endpoint implemented for server type
+- [x] #1 certificate.issue endpoint implemented for server type
 - [ ] #2 Input validation for server certificate fields
 - [ ] #3 Domain name validation for CN
 - [ ] #4 SAN DNS names validation (including wildcards)
