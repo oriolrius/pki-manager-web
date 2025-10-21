@@ -442,3 +442,251 @@ describe('certificate.renew', () => {
     ).rejects.toThrow('not found');
   });
 });
+
+describe('certificate.revoke', () => {
+  let caId: string;
+  let certId: string;
+  let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
+
+  beforeAll(async () => {
+    // Create a test CA
+    caId = randomUUID();
+
+    // Generate CA key pair using node-forge
+    const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    caKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+    };
+
+    const caCert = generateCertificate({
+      subject: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: caKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+      selfSigned: true,
+    });
+
+    await db.insert(certificateAuthorities).values({
+      id: caId,
+      subjectDn: 'CN=Test CA,O=Test Organization,C=US',
+      serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-4096',
+      notBefore: caCert.validity.notBefore,
+      notAfter: caCert.validity.notAfter,
+      kmsKeyId: 'test-ca-key',
+      certificatePem: caCert.pem,
+      status: 'active',
+    });
+  });
+
+  afterAll(async () => {
+    // Clean up test data
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
+  });
+
+  it('should revoke a certificate successfully', async () => {
+    // Create a test certificate
+    certId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'test-revoke.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: certId,
+      caId,
+      subjectDn: 'CN=test-revoke.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-cert-key',
+      status: 'active',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Revoke the certificate
+    const result = await caller.certificate.revoke({
+      id: certId,
+      reason: 'keyCompromise',
+      details: 'Private key was exposed',
+      generateCrl: false,
+    });
+
+    expect(result.id).toBe(certId);
+    expect(result.status).toBe('revoked');
+    expect(result.revocationReason).toContain('keyCompromise');
+    expect(result.revocationReason).toContain('Private key was exposed');
+    expect(result.revocationDate).toBeDefined();
+
+    // Verify database was updated
+    const { eq } = await import('drizzle-orm');
+    const dbResult = await db.select().from(certificates).where(eq(certificates.id, certId));
+    expect(dbResult[0].status).toBe('revoked');
+    expect(dbResult[0].revocationReason).toContain('keyCompromise');
+
+    // Cleanup
+    await db.delete(certificates).where(eq(certificates.id, certId)).execute();
+  });
+
+  it('should fail to revoke an already revoked certificate', async () => {
+    // Create a revoked certificate
+    const revokedCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'already-revoked.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: revokedCertId,
+      caId,
+      subjectDn: 'CN=already-revoked.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-revoked-cert-key',
+      status: 'revoked',
+      revocationDate: new Date(),
+      revocationReason: 'cessationOfOperation',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Should fail to revoke already revoked certificate
+    await expect(
+      caller.certificate.revoke({
+        id: revokedCertId,
+        reason: 'keyCompromise',
+      })
+    ).rejects.toThrow('Certificate is already revoked');
+
+    // Cleanup
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.id, revokedCertId)).execute();
+  });
+
+  it('should fail with invalid effective date (future)', async () => {
+    // Create a test certificate
+    const futureCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: {
+        CN: 'future-date.example.com',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      issuer: {
+        CN: 'Test CA',
+        O: 'Test Organization',
+        C: 'US',
+      },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: futureCertId,
+      caId,
+      subjectDn: 'CN=future-date.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      certificatePem: cert.pem,
+      kmsKeyId: 'test-future-cert-key',
+      status: 'active',
+    });
+
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Try to revoke with future date (timestamp in seconds)
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 86400; // tomorrow
+
+    await expect(
+      caller.certificate.revoke({
+        id: futureCertId,
+        reason: 'keyCompromise',
+        effectiveDate: futureTimestamp,
+      })
+    ).rejects.toThrow('Effective date cannot be in the future');
+
+    // Cleanup
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.id, futureCertId)).execute();
+  });
+
+  it('should throw NOT_FOUND for non-existent certificate', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    const nonExistentId = randomUUID();
+
+    await expect(
+      caller.certificate.revoke({
+        id: nonExistentId,
+        reason: 'keyCompromise',
+      })
+    ).rejects.toThrow('not found');
+  });
+});

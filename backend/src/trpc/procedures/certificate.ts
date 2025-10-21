@@ -1016,8 +1016,135 @@ export const certificateRouter = router({
   revoke: publicProcedure
     .input(revokeCertificateSchema)
     .mutation(async ({ ctx, input }) => {
-      // TODO: Implement in task-016 (Certificate revocation)
-      throw new Error('Not implemented yet');
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificates, auditLog } = await import('../../db/schema.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      // Fetch certificate from database
+      const certResult = await ctx.db
+        .select()
+        .from(certificates)
+        .where(eq(certificates.id, input.id))
+        .limit(1);
+
+      if (!certResult || certResult.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `Certificate with ID ${input.id} not found`,
+        });
+      }
+
+      const cert = certResult[0];
+
+      // Validation: Cannot revoke already revoked certificate
+      if (cert.status === 'revoked') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Certificate is already revoked',
+        });
+      }
+
+      // Determine effective date (default to now if not provided)
+      const effectiveDate = input.effectiveDate
+        ? new Date(input.effectiveDate * 1000)
+        : new Date();
+
+      // Validate effective date is between certificate issuance and now
+      const now = new Date();
+      if (effectiveDate < cert.notBefore) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Effective date cannot be before certificate issuance date',
+        });
+      }
+
+      if (effectiveDate > now) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Effective date cannot be in the future',
+        });
+      }
+
+      try {
+        // Update certificate status to revoked
+        await ctx.db
+          .update(certificates)
+          .set({
+            status: 'revoked',
+            revocationDate: effectiveDate,
+            revocationReason: input.details
+              ? `${input.reason}: ${input.details}`
+              : input.reason,
+            updatedAt: new Date(),
+          })
+          .where(eq(certificates.id, input.id));
+
+        logger.info(
+          {
+            certId: input.id,
+            reason: input.reason,
+            effectiveDate: effectiveDate.toISOString()
+          },
+          'Certificate revoked successfully'
+        );
+
+        // Create audit log entry
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.revoke',
+          entityType: 'certificate',
+          entityId: input.id,
+          status: 'success',
+          details: JSON.stringify({
+            caId: cert.caId,
+            serialNumber: cert.serialNumber,
+            reason: input.reason,
+            effectiveDate: effectiveDate.toISOString(),
+            details: input.details,
+            generateCrl: input.generateCrl,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        // TODO: Optional CRL generation (will be implemented in task-022)
+        if (input.generateCrl) {
+          logger.info({ caId: cert.caId }, 'CRL generation requested (not yet implemented)');
+        }
+
+        return {
+          id: input.id,
+          status: 'revoked' as const,
+          revocationDate: effectiveDate.toISOString(),
+          revocationReason: input.details
+            ? `${input.reason}: ${input.details}`
+            : input.reason,
+        };
+      } catch (error) {
+        logger.error({ error, certId: input.id }, 'Failed to revoke certificate');
+
+        // Log failure to audit log
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.revoke',
+          entityType: 'certificate',
+          entityId: input.id,
+          status: 'failure',
+          details: JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            caId: cert.caId,
+            serialNumber: cert.serialNumber,
+            reason: input.reason,
+          }),
+          ipAddress: ctx.req.ip,
+        });
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to revoke certificate: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
     }),
 
   delete: publicProcedure
