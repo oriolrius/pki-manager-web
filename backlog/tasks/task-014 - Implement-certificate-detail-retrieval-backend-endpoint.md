@@ -4,6 +4,7 @@ title: Implement certificate detail retrieval backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 18:11'
 labels:
   - backend
   - certificate
@@ -28,4 +29,6 @@ Implement the tRPC endpoint for retrieving comprehensive details about a specifi
 - [ ] #8 Issuing CA information included
 - [ ] #9 Renewal chain tracked (if renewed)
 - [ ] #10 Error handling for certificate not found
+
+- [ ] #11 Unit tests validate endpoint functionality and error handling
 <!-- AC:END -->
