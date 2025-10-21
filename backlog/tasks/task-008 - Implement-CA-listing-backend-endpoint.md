@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 17:17'
+updated_date: '2025-10-21 17:18'
 labels:
   - backend
   - ca
@@ -21,14 +21,14 @@ Implement the tRPC endpoint for listing all root CAs with filtering, sorting, an
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ca.list tRPC endpoint implemented
-- [ ] #2 Filtering by status (active, expired, revoked)
-- [ ] #3 Filtering by algorithm
-- [ ] #4 Search functionality for CN, O, OU
-- [ ] #5 Sorting by name, issued date, expiry date
-- [ ] #6 Certificate count included for each CA
-- [ ] #7 Pagination support
-- [ ] #8 Status computed based on current date
+- [x] #1 ca.list tRPC endpoint implemented
+- [x] #2 Filtering by status (active, expired, revoked)
+- [x] #3 Filtering by algorithm
+- [x] #4 Search functionality for CN, O, OU
+- [x] #5 Sorting by name, issued date, expiry date
+- [x] #6 Certificate count included for each CA
+- [x] #7 Pagination support
+- [x] #8 Status computed based on current date
 <!-- AC:END -->
 
 ## Implementation Plan
