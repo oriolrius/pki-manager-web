@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:57'
+updated_date: '2025-10-21 19:59'
 labels:
   - backend
   - certificate
@@ -20,19 +20,19 @@ Implement the tRPC endpoint for downloading certificates in multiple formats: PE
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 certificate.download endpoint implemented
-- [ ] #2 PEM format generation (single certificate)
-- [ ] #3 DER format generation (binary)
-- [ ] #4 PEM chain format (certificate + CA)
-- [ ] #5 PKCS#7 format (certificate + CA)
-- [ ] #6 PKCS#12 format with password protection (if key exportable)
-- [ ] #7 Correct MIME types returned
-- [ ] #8 Filename generation with CN and serial
-- [ ] #9 Audit log entry for downloads
-- [ ] #10 Password validation for PKCS#12
+- [x] #1 certificate.download endpoint implemented
+- [x] #2 PEM format generation (single certificate)
+- [x] #3 DER format generation (binary)
+- [x] #4 PEM chain format (certificate + CA)
+- [x] #5 PKCS#7 format (certificate + CA)
+- [x] #6 PKCS#12 format with password protection (if key exportable)
+- [x] #7 Correct MIME types returned
+- [x] #8 Filename generation with CN and serial
+- [x] #9 Audit log entry for downloads
+- [x] #10 Password validation for PKCS#12
 
-- [ ] #11 Tests written to validate download functionality for all formats
-- [ ] #12 All tests pass
+- [x] #11 Tests written to validate download functionality for all formats
+- [x] #12 All tests pass
 <!-- AC:END -->
 
 ## Implementation Plan
