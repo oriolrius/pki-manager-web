@@ -1,7 +1,7 @@
 ---
 id: task-004
 title: Set up React frontend with shadcn/ui
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
