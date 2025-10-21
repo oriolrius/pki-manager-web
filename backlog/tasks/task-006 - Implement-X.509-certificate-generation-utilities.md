@@ -1,9 +1,11 @@
 ---
 id: task-006
 title: Implement X.509 certificate generation utilities
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:49'
+updated_date: '2025-10-21 16:45'
 labels:
   - backend
   - pki
