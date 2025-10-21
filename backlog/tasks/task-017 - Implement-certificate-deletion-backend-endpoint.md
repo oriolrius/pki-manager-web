@@ -32,3 +32,15 @@ Implement the tRPC endpoint for permanently deleting certificate records. Valida
 - [ ] #9 Tests written to validate deletion functionality
 - [ ] #10 All tests pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Review task requirements and database schema
+2. Implement certificate.delete tRPC endpoint
+3. Add validation: certificate must be revoked or expired > 90 days
+4. Implement deletion logic with audit log preservation
+5. Add optional KMS key destruction support
+6. Write comprehensive tests for deletion functionality
+7. Run all tests to ensure they pass
+<!-- SECTION:PLAN:END -->
