@@ -1,11 +1,11 @@
 ---
 id: task-019
 title: Extend certificate issuance for client certificates
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 20:01'
+updated_date: '2025-10-21 20:02'
 labels:
   - backend
   - certificate
