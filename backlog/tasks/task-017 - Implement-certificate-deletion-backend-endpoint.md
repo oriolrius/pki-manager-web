@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:54'
+updated_date: '2025-10-21 19:57'
 labels:
   - backend
   - certificate
@@ -20,17 +20,17 @@ Implement the tRPC endpoint for permanently deleting certificate records. Valida
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 certificate.delete endpoint implemented
-- [ ] #2 Validation: certificate must be revoked or expired > 90 days
-- [ ] #3 Certificate record deleted from database
-- [ ] #4 Optional KMS key destruction
-- [ ] #5 Audit logs preserved
-- [ ] #6 Audit entry created before deletion
-- [ ] #7 Optional removal from CRL
-- [ ] #8 Validation prevents deleting active certificates
+- [x] #1 certificate.delete endpoint implemented
+- [x] #2 Validation: certificate must be revoked or expired > 90 days
+- [x] #3 Certificate record deleted from database
+- [x] #4 Optional KMS key destruction
+- [x] #5 Audit logs preserved
+- [x] #6 Audit entry created before deletion
+- [x] #7 Optional removal from CRL
+- [x] #8 Validation prevents deleting active certificates
 
-- [ ] #9 Tests written to validate deletion functionality
-- [ ] #10 All tests pass
+- [x] #9 Tests written to validate deletion functionality
+- [x] #10 All tests pass
 <!-- AC:END -->
 
 ## Implementation Plan
