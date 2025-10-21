@@ -29,3 +29,17 @@ Implement the tRPC endpoint for revoking a root CA. Update CA status, generate C
 - [ ] #7 Optional cascade revocation to certificates
 - [ ] #8 Validation prevents re-revoking revoked CA
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Analyze requirements for CA revocation
+2. Implement ca.revoke tRPC endpoint with input validation
+3. Validate CA exists and is not already revoked
+4. Update CA status to revoked in database
+5. Store revocation date and reason
+6. Generate CRL including revoked CA
+7. Create audit log entry
+8. Implement optional cascade revocation to certificates
+9. Add validation to prevent re-revoking
+<!-- SECTION:PLAN:END -->
