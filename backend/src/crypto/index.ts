@@ -88,3 +88,13 @@ export {
   getCRLNextUpdate,
   countRevokedCertificates,
 } from './crl.js';
+
+// Validation utilities
+export {
+  validateDomainName,
+  validateIPv4,
+  validateIPv6,
+  validateIPAddress,
+  validateServerSANs,
+  validateCertificateValidity,
+} from './validation.js';
