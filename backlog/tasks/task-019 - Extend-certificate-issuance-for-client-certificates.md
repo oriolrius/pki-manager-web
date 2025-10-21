@@ -4,6 +4,7 @@ title: Extend certificate issuance for client certificates
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-21 19:50'
 labels:
   - backend
   - certificate
@@ -27,4 +28,7 @@ Extend the certificate issuance endpoint to support client authentication certif
 - [ ] #7 Optional exportable private key support
 - [ ] #8 PKCS#12 generation for client certificates
 - [ ] #9 Default validity of 1 year
+
+- [ ] #10 Tests written to validate client certificate issuance
+- [ ] #11 All tests pass
 <!-- AC:END -->
