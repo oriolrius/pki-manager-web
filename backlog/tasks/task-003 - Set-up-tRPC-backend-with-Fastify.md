@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 16:05'
+updated_date: '2025-10-21 16:07'
 labels:
   - backend
   - api
@@ -21,12 +21,12 @@ Initialize Fastify server with tRPC integration, configure routers for ca, certi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fastify server initialized and running
-- [ ] #2 tRPC middleware configured
-- [ ] #3 Router structure created (ca, certificate, crl, audit)
-- [ ] #4 Zod schemas defined for input validation
-- [ ] #5 Health check endpoint working
-- [ ] #6 CORS and security middleware configured
+- [x] #1 Fastify server initialized and running
+- [x] #2 tRPC middleware configured
+- [x] #3 Router structure created (ca, certificate, crl, audit)
+- [x] #4 Zod schemas defined for input validation
+- [x] #5 Health check endpoint working
+- [x] #6 CORS and security middleware configured
 <!-- AC:END -->
 
 ## Implementation Plan
