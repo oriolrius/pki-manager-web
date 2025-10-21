@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 18:16'
+updated_date: '2025-10-21 19:36'
 labels:
   - backend
   - certificate
@@ -69,4 +69,19 @@ Implemented the tRPC `certificate.getById` endpoint that retrieves comprehensive
 **Query & Error Handling:**
 - Queries certificate by ID with LEFT JOIN to certificateAuthorities table
 - Returns TRPCError with NOT_FOUND code if certificate doesn't exist\n- Validates that CA exists for the certificate\n\n**Certificate Parsing:**\n- Uses `parseCertificate()` utility to extract basic certificate information\n- Parses certificate using node-forge for detailed extension information\n- Converts subject and issuer DNs to structured format\n\n**Fingerprint Calculation:**\n- Calculates SHA-256 fingerprint from DER-encoded certificate\n- Calculates SHA-1 fingerprint from DER-encoded certificate\n- Formats fingerprints as colon-separated hex (e.g., \"AB:CD:EF:...\")\n\n**Extension Parsing:**\n- **Key Usage**: Extracts all key usage flags (digitalSignature, keyEncipherment, etc.)\n- **Extended Key Usage**: Parses EKU purposes (serverAuth, clientAuth, codeSigning, etc.)\n- **Subject Alternative Names**: Returns DNS names, IP addresses, and email addresses from database (already parsed)\n- **Basic Constraints**: Extracts cA flag and pathLenConstraint\n\n**Validity Status Computation:**\n- Determines if certificate is 'valid', 'expired', or 'not_yet_valid'\n- Calculates remaining validity days for valid certificates\n- Sets remainingDays to 0 for expired certificates\n\n**Issuing CA Information:**\n- Includes CA ID, subject DN, and serial number from the joined query\n- Provides complete issuer context for the certificate\n\n**Renewal Chain Tracking:**\n- Queries for certificates that were renewed from this certificate\n- Returns array of renewed certificates with ID, serial number, and creation date\n- Returns null if no renewal chain exists\n\n### Unit Tests (backend/src/trpc/procedures/certificate.test.ts)\nCreated comprehensive test suite covering:\n- Certificate retrieval with all fields\n- Fingerprint calculation and format validation\n- Extension parsing (Key Usage, EKU, SANs, Basic Constraints)\n- Validity status computation\n- Issuing CA information inclusion\n- NOT_FOUND error handling for non-existent certificates\n- Timestamp handling\n- Renewal chain tracking\n\n## Files Modified\n- `backend/src/trpc/schemas.ts`: Added certificateDetailSchema\n- `backend/src/trpc/procedures/certificate.ts`: Implemented getById endpoint with OpenAPI metadata\n\n## Files Created\n- `backend/src/trpc/procedures/certificate.test.ts`: Comprehensive unit tests\n\n## OpenAPI Integration\n- Endpoint exposed at GET `/certificates/{id}`\n- Tagged as 'certificates'\n- Includes summary and description in OpenAPI spec\n- Full request/response schemas for automatic documentation\n\n## Dependencies\n- Uses existing `node-forge` package for certificate parsing and fingerprint calculation\n- Leverages existing crypto utilities from `backend/src/crypto/`\n- Integrates with Drizzle ORM for database queries
+
+## Test Results
+
+**All unit tests passing (8/8):**
+- Certificate retrieval with all fields validation
+- Fingerprint calculation and format verification (SHA-256, SHA-1)
+- Extension parsing (Key Usage, Extended Key Usage, SANs)
+- Validity status computation (valid/expired/not_yet_valid)
+- Remaining days calculation
+- Issuing CA information inclusion
+- NOT_FOUND error handling for non-existent certificates
+- Timestamp handling (createdAt, updatedAt, notBefore, notAfter)
+- Renewal chain tracking
+
+The implementation is complete, fully tested, and ready for use.
 <!-- SECTION:NOTES:END -->
