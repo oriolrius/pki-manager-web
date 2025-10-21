@@ -1,10 +1,11 @@
 ---
 id: task-021
 title: Extend certificate issuance for email protection certificates
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:50'
+updated_date: '2025-10-21 20:01'
 labels:
   - backend
   - certificate
