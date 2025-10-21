@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 18:13'
+updated_date: '2025-10-21 18:16'
 labels:
   - backend
   - certificate
@@ -20,18 +20,18 @@ Implement the tRPC endpoint for retrieving comprehensive details about a specifi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 certificate.getById endpoint implemented
-- [ ] #2 Complete certificate information parsed and returned
-- [ ] #3 Subject and Issuer DN parsed
-- [ ] #4 All extensions parsed (Key Usage, EKU, SAN, etc.)
-- [ ] #5 Fingerprints calculated (SHA-256, SHA-1)
-- [ ] #6 Validity status computed
-- [ ] #7 Remaining validity days calculated
-- [ ] #8 Issuing CA information included
-- [ ] #9 Renewal chain tracked (if renewed)
-- [ ] #10 Error handling for certificate not found
+- [x] #1 certificate.getById endpoint implemented
+- [x] #2 Complete certificate information parsed and returned
+- [x] #3 Subject and Issuer DN parsed
+- [x] #4 All extensions parsed (Key Usage, EKU, SAN, etc.)
+- [x] #5 Fingerprints calculated (SHA-256, SHA-1)
+- [x] #6 Validity status computed
+- [x] #7 Remaining validity days calculated
+- [x] #8 Issuing CA information included
+- [x] #9 Renewal chain tracked (if renewed)
+- [x] #10 Error handling for certificate not found
 
-- [ ] #11 Unit tests validate endpoint functionality and error handling
+- [x] #11 Unit tests validate endpoint functionality and error handling
 <!-- AC:END -->
 
 ## Implementation Plan
