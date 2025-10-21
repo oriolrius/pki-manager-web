@@ -20,17 +20,17 @@ Extend the certificate issuance endpoint to support S/MIME email encryption and 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Email protection certificate type supported
-- [ ] #2 Email address required in DN or SAN
-- [ ] #3 Multiple email addresses supported in SAN
-- [ ] #4 Email address validation
-- [ ] #5 Key Usage set: Digital Signature, Key Encipherment, Data Encipherment
-- [ ] #6 Extended Key Usage set: Email Protection
-- [ ] #7 CN validation for user's full name
-- [ ] #8 Validation: all emails from same domain
+- [x] #1 Email protection certificate type supported
+- [x] #2 Email address required in DN or SAN
+- [x] #3 Multiple email addresses supported in SAN
+- [x] #4 Email address validation
+- [x] #5 Key Usage set: Digital Signature, Key Encipherment, Data Encipherment
+- [x] #6 Extended Key Usage set: Email Protection
+- [x] #7 CN validation for user's full name
+- [x] #8 Validation: all emails from same domain
 
-- [ ] #9 Tests written to validate email protection certificate issuance
-- [ ] #10 All tests pass
+- [x] #9 Tests written to validate email protection certificate issuance
+- [x] #10 All tests pass
 <!-- AC:END -->
 
 ## Implementation Plan
