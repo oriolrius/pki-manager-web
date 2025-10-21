@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 16:46'
+updated_date: '2025-10-21 17:01'
 labels:
   - backend
   - pki
@@ -22,14 +22,14 @@ Create utility functions for generating X.509 certificates, CSRs, and CRLs. Impl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Certificate generation function with configurable parameters
-- [ ] #2 CSR generation function implemented
-- [ ] #3 CRL generation function implemented
-- [ ] #4 Support for RSA-2048, RSA-4096, ECDSA-P256, ECDSA-P384
-- [ ] #5 Distinguished Name parsing and formatting
-- [ ] #6 Subject Alternative Names (SAN) support
-- [ ] #7 X.509 v3 extensions support (Key Usage, EKU, etc.)
-- [ ] #8 Certificate serialization to PEM and DER formats
+- [x] #1 Certificate generation function with configurable parameters
+- [x] #2 CSR generation function implemented
+- [x] #3 CRL generation function implemented
+- [x] #4 Support for RSA-2048, RSA-4096, ECDSA-P256, ECDSA-P384
+- [x] #5 Distinguished Name parsing and formatting
+- [x] #6 Subject Alternative Names (SAN) support
+- [x] #7 X.509 v3 extensions support (Key Usage, EKU, etc.)
+- [x] #8 Certificate serialization to PEM and DER formats
 <!-- AC:END -->
 
 ## Implementation Plan
