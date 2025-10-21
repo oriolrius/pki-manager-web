@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-21 19:40'
+updated_date: '2025-10-21 19:44'
 labels:
   - backend
   - certificate
@@ -20,20 +20,20 @@ Implement the tRPC endpoint for renewing certificates. Support generating new ke
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 certificate.renew endpoint implemented
-- [ ] #2 Option to generate new key pair or reuse existing
-- [ ] #3 Subject DN copied from original (or updated)
-- [ ] #4 SAN copied from original (or updated)
-- [ ] #5 New serial number generated
-- [ ] #6 Renewal chain tracked (renewed_from_id)
-- [ ] #7 Option to revoke original certificate
-- [ ] #8 Validation: cannot renew revoked certificates
-- [ ] #9 Validation: key reuse only if original < 90 days old
-- [ ] #10 Audit log links renewal to original
+- [x] #1 certificate.renew endpoint implemented
+- [x] #2 Option to generate new key pair or reuse existing
+- [x] #3 Subject DN copied from original (or updated)
+- [x] #4 SAN copied from original (or updated)
+- [x] #5 New serial number generated
+- [x] #6 Renewal chain tracked (renewed_from_id)
+- [x] #7 Option to revoke original certificate
+- [x] #8 Validation: cannot renew revoked certificates
+- [x] #9 Validation: key reuse only if original < 90 days old
+- [x] #10 Audit log links renewal to original
 
-- [ ] #11 Unit tests written for renewal logic
-- [ ] #12 Integration tests for renewal endpoint
-- [ ] #13 All tests pass before marking as done
+- [x] #11 Unit tests written for renewal logic
+- [x] #12 Integration tests for renewal endpoint
+- [x] #13 All tests pass before marking as done
 <!-- AC:END -->
 
 ## Implementation Plan
