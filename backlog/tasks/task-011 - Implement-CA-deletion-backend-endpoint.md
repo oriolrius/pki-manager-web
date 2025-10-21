@@ -29,3 +29,17 @@ Implement the tRPC endpoint for permanently deleting a root CA. Validate prerequ
 - [ ] #7 Audit entry created before deletion
 - [ ] #8 Orphaned CRLs cleaned up
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Analyze requirements for CA deletion
+2. Implement ca.delete tRPC endpoint with input validation
+3. Validate CA must be revoked or expired
+4. Validate no active certificates exist
+5. Create audit entry before deletion
+6. Delete CA record from database
+7. Optional KMS key destruction
+8. Ensure audit logs are preserved
+9. Clean up orphaned CRLs
+<!-- SECTION:PLAN:END -->
