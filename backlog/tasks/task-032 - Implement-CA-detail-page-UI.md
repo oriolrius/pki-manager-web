@@ -34,3 +34,19 @@ Create the comprehensive CA detail page with tabs for overview, certificates, re
 - [ ] #12 Copyable fingerprint
 - [ ] #13 Responsive tabs for mobile
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Create CA detail route at /cas/$id
+2. Fetch CA data using tRPC ca.getById
+3. Create overview tab with certificate information cards (Subject, Issuer, Key Info, Extensions)
+4. Create certificates tab with embedded certificate list filtered by CA
+5. Create revocation tab with CRL information
+6. Create audit log tab with filterable log
+7. Implement action buttons: Download, Generate CRL, Revoke, Delete
+8. Add download dropdown for PEM/DER/PKCS#7 formats
+9. Display expiry warning if < 90 days
+10. Make fingerprint copyable
+11. Implement responsive tabs for mobile
+<!-- SECTION:PLAN:END -->
