@@ -1,9 +1,11 @@
 ---
 id: task-031
 title: Implement CA creation form/page UI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 12:24'
 labels:
   - frontend
   - ca
