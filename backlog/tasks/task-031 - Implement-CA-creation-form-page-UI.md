@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:26'
+updated_date: '2025-10-22 12:30'
 labels:
   - frontend
   - ca
@@ -21,18 +21,18 @@ Create the frontend form for creating new root Certificate Authorities with vali
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CA creation page/modal created
-- [ ] #2 Form with all DN fields (CN, O, OU, C, ST, L)
-- [ ] #3 Country code dropdown (ISO 3166-1)
-- [ ] #4 Key algorithm selection (RSA-2048/4096, ECDSA-P256/P384)
-- [ ] #5 Validity period configuration (Not Before, Years)
-- [ ] #6 Optional tags/labels input
-- [ ] #7 Client-side validation matching backend
-- [ ] #8 Review/preview step before submission
-- [ ] #9 Confirmation dialog with security warning
-- [ ] #10 Success page with certificate download options
-- [ ] #11 Error handling and display
-- [ ] #12 Certificate fingerprint display
+- [x] #1 CA creation page/modal created
+- [x] #2 Form with all DN fields (CN, O, OU, C, ST, L)
+- [x] #3 Country code dropdown (ISO 3166-1)
+- [x] #4 Key algorithm selection (RSA-2048/4096, ECDSA-P256/P384)
+- [x] #5 Validity period configuration (Not Before, Years)
+- [x] #6 Optional tags/labels input
+- [x] #7 Client-side validation matching backend
+- [x] #8 Review/preview step before submission
+- [x] #9 Confirmation dialog with security warning
+- [x] #10 Success page with certificate download options
+- [x] #11 Error handling and display
+- [x] #12 Certificate fingerprint display
 <!-- AC:END -->
 
 ## Implementation Plan
