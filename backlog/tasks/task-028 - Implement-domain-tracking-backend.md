@@ -45,3 +45,9 @@ Create backend logic to extract and track domains from certificates. Associate d
 8. Write unit tests
 9. Test domain extraction and listing
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented domain tracking backend that extracts and aggregates domains from certificates on-the-fly. Supports wildcard domains, tracks certificate counts per domain, and provides filtering/search functionality.
+<!-- SECTION:NOTES:END -->
