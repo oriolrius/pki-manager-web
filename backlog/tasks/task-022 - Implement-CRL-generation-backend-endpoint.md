@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 04:05'
+updated_date: '2025-10-22 04:11'
 labels:
   - backend
   - crl
@@ -21,18 +21,18 @@ Implement the tRPC endpoint for generating Certificate Revocation Lists. Collect
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 crl.generate endpoint implemented
-- [ ] #2 All revoked certificates collected for CA
+- [x] #1 crl.generate endpoint implemented
+- [x] #2 All revoked certificates collected for CA
 - [ ] #3 CRL generated in X.509 v2 format
-- [ ] #4 CRL number auto-incremented
-- [ ] #5 This Update and Next Update dates set
+- [x] #4 CRL number auto-incremented
+- [x] #5 This Update and Next Update dates set
 - [ ] #6 CRL extensions included (CRL Number, Authority Key Identifier)
 - [ ] #7 CRL signed with CA private key via KMS
-- [ ] #8 CRL stored in database
-- [ ] #9 Revoked certificate count tracked
-- [ ] #10 Audit log entry created
+- [x] #8 CRL stored in database
+- [x] #9 Revoked certificate count tracked
+- [x] #10 Audit log entry created
 
-- [ ] #11 Unit tests implemented and passing
+- [x] #11 Unit tests implemented and passing
 <!-- AC:END -->
 
 ## Implementation Plan
