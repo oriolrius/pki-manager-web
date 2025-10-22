@@ -4,6 +4,7 @@ title: Implement CRL retrieval backend endpoints
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 03:59'
 labels:
   - backend
   - crl
@@ -26,4 +27,6 @@ Implement tRPC endpoints for retrieving the latest CRL and CRL history for a CA.
 - [ ] #6 CRL validity status computed
 - [ ] #7 Revoked certificate list included
 - [ ] #8 CRL metadata (number, dates, count) included
+
+- [ ] #9 Unit tests implemented and passing
 <!-- AC:END -->
