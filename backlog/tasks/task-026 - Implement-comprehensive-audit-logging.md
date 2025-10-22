@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 04:04'
+updated_date: '2025-10-22 04:05'
 labels:
   - backend
   - audit
@@ -23,16 +23,16 @@ Create audit logging infrastructure that captures all operations across the appl
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Audit logging function/middleware created
-- [ ] #2 All CA operations logged (create/revoke/delete)
-- [ ] #3 All certificate operations logged (issue/renew/revoke/delete/download)
+- [x] #2 All CA operations logged (create/revoke/delete)
+- [x] #3 All certificate operations logged (issue/renew/revoke/delete/download)
 - [ ] #4 All CRL operations logged (generate/publish)
 - [ ] #5 KMS operations linked in audit log
-- [ ] #6 Audit log entries include timestamp, operation, entity, status, details
-- [ ] #7 Audit logs are immutable (append-only)
-- [ ] #8 IP address captured when available
-- [ ] #9 Details stored as JSON
+- [x] #6 Audit log entries include timestamp, operation, entity, status, details
+- [x] #7 Audit logs are immutable (append-only)
+- [x] #8 IP address captured when available
+- [x] #9 Details stored as JSON
 
-- [ ] #10 Unit tests implemented and passing
+- [x] #10 Unit tests implemented and passing
 <!-- AC:END -->
 
 ## Implementation Plan
