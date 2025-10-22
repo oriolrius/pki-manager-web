@@ -1,9 +1,11 @@
 ---
 id: task-030
 title: Implement CA listing page UI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 10:38'
 labels:
   - frontend
   - ca
