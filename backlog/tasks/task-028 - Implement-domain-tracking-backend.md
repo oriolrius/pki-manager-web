@@ -1,7 +1,7 @@
 ---
 id: task-028
 title: Implement domain tracking backend
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
