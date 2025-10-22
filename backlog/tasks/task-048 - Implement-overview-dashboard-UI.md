@@ -34,3 +34,19 @@ Create the main dashboard page with summary cards, charts, expiry timeline, rece
 - [ ] #11 Loading states for charts
 - [ ] #12 Responsive layout for mobile
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Install Recharts library for charts/visualizations
+2. Create reusable Card components for summary statistics
+3. Implement expiry timeline chart showing 12-month certificate expiry forecast
+4. Create pie charts for certificate distribution (by type and status)
+5. Add bar chart showing certificate count by CA
+6. Implement recent activity feed from audit logs
+7. Create expiring soon table with quick action buttons
+8. Make all cards and charts clickable for navigation
+9. Add loading states for all data-driven components
+10. Test responsive layout on mobile/tablet
+11. Verify all acceptance criteria
+<!-- SECTION:PLAN:END -->
