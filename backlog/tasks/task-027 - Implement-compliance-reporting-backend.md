@@ -4,6 +4,7 @@ title: Implement compliance reporting backend
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 04:00'
 labels:
   - backend
   - audit
@@ -30,4 +31,6 @@ Create backend endpoints for generating compliance reports: certificate inventor
 - [ ] #9 Report includes header with generation date
 - [ ] #10 Report includes summary statistics
 - [ ] #11 Report includes tamper-evident hash
+
+- [ ] #12 Unit tests implemented and passing
 <!-- AC:END -->
