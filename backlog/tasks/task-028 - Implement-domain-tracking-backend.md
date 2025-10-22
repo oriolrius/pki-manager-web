@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 04:14'
+updated_date: '2025-10-22 04:15'
 labels:
   - backend
   - domain
@@ -20,16 +20,16 @@ Create backend logic to extract and track domains from certificates. Associate d
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Domain extraction from CN and SAN DNS entries
-- [ ] #2 Case-insensitive domain storage
-- [ ] #3 Wildcard domains tracked separately
-- [ ] #4 Subdomain tracking
-- [ ] #5 Domain-to-CA association
-- [ ] #6 Certificate count per domain
-- [ ] #7 First and last certificate dates tracked
+- [x] #1 Domain extraction from CN and SAN DNS entries
+- [x] #2 Case-insensitive domain storage
+- [x] #3 Wildcard domains tracked separately
+- [x] #4 Subdomain tracking
+- [x] #5 Domain-to-CA association
+- [x] #6 Certificate count per domain
+- [x] #7 First and last certificate dates tracked
 - [ ] #8 Domain list endpoint with filtering and search
 
-- [ ] #9 Unit tests implemented and passing
+- [x] #9 Unit tests implemented and passing
 <!-- AC:END -->
 
 ## Implementation Plan
