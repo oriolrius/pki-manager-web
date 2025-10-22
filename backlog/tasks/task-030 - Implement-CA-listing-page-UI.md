@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 10:38'
+updated_date: '2025-10-22 10:42'
 labels:
   - frontend
   - ca
@@ -21,16 +21,16 @@ Create the frontend page for viewing all root Certificate Authorities with table
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CA list page created at /cas route
-- [ ] #2 Data table component with CA columns (CN, O, status, dates, cert count)
-- [ ] #3 Status badges (Active=green, Expired=orange, Revoked=red)
-- [ ] #4 Filtering by status and algorithm
-- [ ] #5 Search input for CN, O, OU
-- [ ] #6 Sorting by name, issued date, expiry date
-- [ ] #7 Click on row navigates to CA detail page
-- [ ] #8 Loading and error states handled
-- [ ] #9 Pagination controls
-- [ ] #10 Responsive design for mobile
+- [x] #1 CA list page created at /cas route
+- [x] #2 Data table component with CA columns (CN, O, status, dates, cert count)
+- [x] #3 Status badges (Active=green, Expired=orange, Revoked=red)
+- [x] #4 Filtering by status and algorithm
+- [x] #5 Search input for CN, O, OU
+- [x] #6 Sorting by name, issued date, expiry date
+- [x] #7 Click on row navigates to CA detail page
+- [x] #8 Loading and error states handled
+- [x] #9 Pagination controls
+- [x] #10 Responsive design for mobile
 <!-- AC:END -->
 
 ## Implementation Plan
