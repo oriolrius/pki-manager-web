@@ -724,12 +724,15 @@ export const certificateRouter = router({
         // - Key Usage (digitalSignature, keyEncipherment)
         // - Extended Key Usage (serverAuth)
         // - Subject Alternative Names (from input.sanDns, input.sanIp)
-        // - CRL Distribution Point (requires CRL infrastructure - future task)
+        // - CRL Distribution Point (configured via CRL_DISTRIBUTION_URL env var)
         //
         // The KMS certify operation provides basic certificate generation.
-        // Full extension support would require either:
+        // Full extension support including CDP would require either:
         // 1. Enhanced KMS extension support
         // 2. Local certificate generation with HSM signing
+        //
+        // CDP URL configuration is available via process.env.CRL_DISTRIBUTION_URL
+        // Format: http://your-domain.com/crl/{caId}.crl
         // This is documented as a limitation and can be enhanced in future iterations.
 
         const subjectName = formatDN(subjectDN);

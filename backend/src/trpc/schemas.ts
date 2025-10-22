@@ -196,6 +196,14 @@ export const listAuditLogSchema = z
   })
   .optional();
 
+export const generateReportSchema = z.object({
+  reportType: z.enum(['certificate_inventory', 'revocation', 'ca_operations']),
+  format: z.enum(['csv', 'pdf']).default('csv'),
+  caId: idSchema.optional(),
+  startDate: timestampSchema.optional(),
+  endDate: timestampSchema.optional(),
+});
+
 // Certificate detail output schema
 export const certificateDetailSchema = z.object({
   // Basic fields

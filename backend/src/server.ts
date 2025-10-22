@@ -4,6 +4,9 @@ import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { openApiDocument } from './trpc/openapi.js';
+import { db } from './db/client.js';
+import { certificateAuthorities, crls } from './db/schema.js';
+import { eq, desc } from 'drizzle-orm';
 
 const server = Fastify({
   logger: {
@@ -115,6 +118,88 @@ server.get('/api/docs/:file', async (req, reply) => {
   }
 
   return content;
+});
+
+// Public CRL endpoint - serves Certificate Revocation Lists
+server.get('/crl/:caId.:format', async (req, reply) => {
+  const { caId, format } = req.params as { caId: string; format: string };
+
+  // Validate format
+  if (format !== 'crl' && format !== 'der') {
+    reply.code(400);
+    return { error: 'Invalid format. Use .crl for PEM or .der for DER format' };
+  }
+
+  try {
+    // Check if CA exists
+    const ca = await db
+      .select()
+      .from(certificateAuthorities)
+      .where(eq(certificateAuthorities.id, caId))
+      .limit(1);
+
+    if (!ca || ca.length === 0) {
+      reply.code(404);
+      return { error: `CA with ID ${caId} not found` };
+    }
+
+    // Get latest CRL for this CA
+    const latestCrl = await db
+      .select()
+      .from(crls)
+      .where(eq(crls.caId, caId))
+      .orderBy(desc(crls.crlNumber))
+      .limit(1);
+
+    if (!latestCrl || latestCrl.length === 0) {
+      reply.code(404);
+      return { error: `No CRL available for CA ${caId}` };
+    }
+
+    const crl = latestCrl[0];
+
+    // Check if CRL PEM exists
+    if (!crl.crlPem) {
+      reply.code(503);
+      return { error: 'CRL not yet signed - signing with KMS-stored keys not yet implemented' };
+    }
+
+    // Convert to appropriate format
+    let content: Buffer;
+    let contentType: string;
+
+    if (format === 'crl') {
+      // PEM format
+      content = Buffer.from(crl.crlPem, 'utf8');
+      contentType = 'application/pkix-crl';
+    } else {
+      // DER format - convert PEM to DER
+      // Remove PEM headers and decode base64
+      const base64Data = crl.crlPem
+        .replace(/-----BEGIN X509 CRL-----/, '')
+        .replace(/-----END X509 CRL-----/, '')
+        .replace(/\n/g, '')
+        .trim();
+      content = Buffer.from(base64Data, 'base64');
+      contentType = 'application/pkix-crl';
+    }
+
+    // Set headers according to RFC 5280
+    reply.header('Content-Type', contentType);
+    reply.header('Last-Modified', crl.thisUpdate.toUTCString());
+    reply.header('Expires', crl.nextUpdate.toUTCString());
+
+    // Calculate Cache-Control max-age based on time until nextUpdate
+    const now = new Date();
+    const maxAge = Math.max(0, Math.floor((crl.nextUpdate.getTime() - now.getTime()) / 1000));
+    reply.header('Cache-Control', `public, max-age=${maxAge}`);
+
+    return content;
+  } catch (error) {
+    server.log.error({ error, caId }, 'Failed to serve CRL');
+    reply.code(500);
+    return { error: 'Internal server error while serving CRL' };
+  }
 });
 
 // Start server

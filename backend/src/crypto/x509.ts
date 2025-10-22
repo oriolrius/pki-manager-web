@@ -140,6 +140,52 @@ function addExtensions(cert: forge.pki.Certificate, extensions?: X509Extensions)
     });
   }
 
+  // CRL Distribution Points
+  if (extensions.crlDistributionPoints && extensions.crlDistributionPoints.length > 0) {
+    // Note: node-forge has limited support for CRL Distribution Points
+    // We create a custom extension with the proper OID
+    const cdpAsn1 = forge.asn1.create(
+      forge.asn1.Class.UNIVERSAL,
+      forge.asn1.Type.SEQUENCE,
+      true,
+      extensions.crlDistributionPoints.map((url) => {
+        return forge.asn1.create(
+          forge.asn1.Class.UNIVERSAL,
+          forge.asn1.Type.SEQUENCE,
+          true,
+          [
+            forge.asn1.create(
+              forge.asn1.Class.CONTEXT_SPECIFIC,
+              0,
+              true,
+              [
+                forge.asn1.create(
+                  forge.asn1.Class.CONTEXT_SPECIFIC,
+                  0,
+                  true,
+                  [
+                    forge.asn1.create(
+                      forge.asn1.Class.CONTEXT_SPECIFIC,
+                      6,
+                      false,
+                      url
+                    ),
+                  ]
+                ),
+              ]
+            ),
+          ]
+        );
+      })
+    );
+
+    certExtensions.push({
+      id: '2.5.29.31', // CRL Distribution Points OID
+      critical: false,
+      value: forge.asn1.toDer(cdpAsn1).getBytes(),
+    });
+  }
+
   // Add all extensions to certificate
   cert.setExtensions(certExtensions);
 }

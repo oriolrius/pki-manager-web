@@ -101,6 +101,8 @@ export interface X509Extensions {
   subjectKeyIdentifier?: boolean;
   /** Authority Key Identifier */
   authorityKeyIdentifier?: boolean;
+  /** CRL Distribution Points */
+  crlDistributionPoints?: string[];
 }
 
 /**
