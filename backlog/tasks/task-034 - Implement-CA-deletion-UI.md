@@ -47,3 +47,47 @@ Create the UI flow for permanently deleting a Certificate Authority including pr
 10. Redirect to CA list after deletion
 11. Add comprehensive error handling
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented CA deletion UI with the following features:
+
+- Created dedicated deletion page at /cas/$id/delete with danger styling
+- Implemented comprehensive prerequisite checking system:
+  - Visual checklist with green checkmarks or red X icons
+  - CA must be revoked or expired (validates status and expiry date)
+  - No active certificates check (queries certificate list)
+  - Real-time validation feedback
+- Added prominent error displays when prerequisites not met:
+  - Shows which requirements are failing
+  - Provides action button to revoke CA if needed
+  - Clear explanation of why deletion is blocked
+- Created danger-styled UI with red theme:
+  - Destructive color scheme throughout
+  - Critical warning alerts
+  - Clear "Permanent Deletion" messaging
+- Added "What will be deleted" section showing:
+  - CA certificate and metadata
+  - All CRLs
+  - All certificate records with count
+  - Private key in KMS (if option checked)
+- Added "What will be preserved" section:
+  - Audit log entries (compliance requirement)
+  - Historical operation records
+- Implemented KMS key destruction checkbox:
+  - Optional destruction of private key
+  - Clear warning about permanence
+  - Visual warning icon
+  - Explanation of consequences
+- Added CN confirmation input:
+  - Requires exact match of Common Name
+  - Real-time validation feedback
+  - Shows error if mismatch
+- Integrated with tRPC ca.delete mutation
+- Automatic cache invalidation and navigation to CA list on success
+- Comprehensive error handling with descriptive messages
+- Form validation ensures all requirements met before allowing deletion
+
+All acceptance criteria completed. UI provides multiple safety checks for this critical destructive operation.
+<!-- SECTION:NOTES:END -->
