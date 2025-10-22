@@ -1,7 +1,7 @@
 ---
 id: task-032
 title: Implement CA detail page UI
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
