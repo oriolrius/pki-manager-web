@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:11'
+updated_date: '2025-10-22 12:13'
 labels:
   - backend
   - audit
@@ -21,17 +21,17 @@ Create backend endpoints for generating compliance reports: certificate inventor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 audit.generateReport endpoint implemented
-- [ ] #2 Certificate Inventory Report generation
-- [ ] #3 Revocation Report generation
-- [ ] #4 CA Operations Report generation
-- [ ] #5 Date range filtering
-- [ ] #6 CA filtering
-- [ ] #7 CSV format export
+- [x] #1 audit.generateReport endpoint implemented
+- [x] #2 Certificate Inventory Report generation
+- [x] #3 Revocation Report generation
+- [x] #4 CA Operations Report generation
+- [x] #5 Date range filtering
+- [x] #6 CA filtering
+- [x] #7 CSV format export
 - [ ] #8 PDF format export (with professional formatting)
-- [ ] #9 Report includes header with generation date
-- [ ] #10 Report includes summary statistics
-- [ ] #11 Report includes tamper-evident hash
+- [x] #9 Report includes header with generation date
+- [x] #10 Report includes summary statistics
+- [x] #11 Report includes tamper-evident hash
 
 - [ ] #12 Unit tests implemented and passing
 <!-- AC:END -->
