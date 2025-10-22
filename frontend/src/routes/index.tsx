@@ -413,9 +413,10 @@ function Dashboard() {
                       </Pie>
                       <Tooltip />
                     </PieChart>
-                  </CardContent>
-                </Card>
-              )}
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Certificates by CA */}
             {certsByCA.length > 0 && (
