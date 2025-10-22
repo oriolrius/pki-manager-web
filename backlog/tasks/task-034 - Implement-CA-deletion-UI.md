@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:34'
+updated_date: '2025-10-22 12:37'
 labels:
   - frontend
   - ca
@@ -20,16 +20,16 @@ Create the UI flow for permanently deleting a Certificate Authority including pr
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CA deletion dialog component created
-- [ ] #2 Prerequisite checks: CA revoked, no active certificates
-- [ ] #3 Error display if prerequisites not met
-- [ ] #4 Danger-styled dialog with warnings
-- [ ] #5 Checkbox for KMS key destruction option
-- [ ] #6 Text input requiring exact CN match
-- [ ] #7 Audit log preservation notice
-- [ ] #8 Success notification
-- [ ] #9 Redirect to CA list after deletion
-- [ ] #10 Error handling and display
+- [x] #1 CA deletion dialog component created
+- [x] #2 Prerequisite checks: CA revoked, no active certificates
+- [x] #3 Error display if prerequisites not met
+- [x] #4 Danger-styled dialog with warnings
+- [x] #5 Checkbox for KMS key destruction option
+- [x] #6 Text input requiring exact CN match
+- [x] #7 Audit log preservation notice
+- [x] #8 Success notification
+- [x] #9 Redirect to CA list after deletion
+- [x] #10 Error handling and display
 <!-- AC:END -->
 
 ## Implementation Plan
