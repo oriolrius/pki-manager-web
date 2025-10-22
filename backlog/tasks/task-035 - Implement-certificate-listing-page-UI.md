@@ -34,3 +34,20 @@ Create the frontend page for viewing all certificates with comprehensive table v
 - [ ] #11 Loading states and skeleton screens
 - [ ] #12 Responsive design with mobile view
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Create certificate listing route at /certificates
+2. Create data table with columns: status, CN, type, CA, dates, actions
+3. Add status indicators with colored dots and badges
+4. Implement multi-select filters (status, CA, type, domain, date range)
+5. Add search input with debouncing
+6. Implement column sorting
+7. Add checkbox column for bulk selection
+8. Implement bulk actions dropdown (Download Selected, Export CSV, Revoke)
+9. Add pagination with configurable page size
+10. Highlight expiring soon certificates (< 30 days)
+11. Add loading states and skeleton screens
+12. Implement responsive design for mobile
+<!-- SECTION:PLAN:END -->
