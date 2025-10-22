@@ -31,3 +31,17 @@ Create backend logic to extract and track domains from certificates. Associate d
 
 - [ ] #9 Unit tests implemented and passing
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Examine database schema for domain tracking requirements
+2. Create domain extraction utility to parse CN and SAN fields
+3. Implement domain.list endpoint with filtering and search
+4. Track certificate counts per domain
+5. Track first and last certificate dates
+6. Associate domains with CAs
+7. Handle wildcard domains
+8. Write unit tests
+9. Test domain extraction and listing
+<!-- SECTION:PLAN:END -->
