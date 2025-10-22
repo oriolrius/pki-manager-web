@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:03'
+updated_date: '2025-10-22 12:05'
 labels:
   - backend
   - crl
@@ -20,16 +20,16 @@ Create public HTTP endpoint for serving CRLs. Make CRLs accessible at predictabl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Public HTTP endpoint created at /crl/{ca-id}.crl
-- [ ] #2 CRLs served without authentication
-- [ ] #3 Content-Type: application/pkix-crl header set
-- [ ] #4 Cache-Control headers set based on Next Update
-- [ ] #5 Last-Modified header set to This Update
-- [ ] #6 Expires header set to Next Update
-- [ ] #7 Support for both PEM (.crl) and DER (.der) formats
-- [ ] #8 404 handling for non-existent CAs
+- [x] #1 Public HTTP endpoint created at /crl/{ca-id}.crl
+- [x] #2 CRLs served without authentication
+- [x] #3 Content-Type: application/pkix-crl header set
+- [x] #4 Cache-Control headers set based on Next Update
+- [x] #5 Last-Modified header set to This Update
+- [x] #6 Expires header set to Next Update
+- [x] #7 Support for both PEM (.crl) and DER (.der) formats
+- [x] #8 404 handling for non-existent CAs
 
-- [ ] #9 Unit tests implemented and passing
+- [x] #9 Unit tests implemented and passing
 <!-- AC:END -->
 
 ## Implementation Plan
