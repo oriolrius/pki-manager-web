@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:05'
+updated_date: '2025-10-22 12:06'
 labels:
   - backend
   - crl
@@ -44,3 +44,31 @@ Create public HTTP endpoint for serving CRLs. Make CRLs accessible at predictabl
 7. Write unit tests for the endpoint
 8. Test all acceptance criteria
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented public CRL HTTP endpoint in server.ts:
+
+- Added GET /crl/:caId.crl endpoint for PEM format
+- Added GET /crl/:caId.der endpoint for DER format
+- Set proper HTTP headers:
+  - Content-Type: application/pkix-crl
+  - Cache-Control: public, max-age calculated from nextUpdate
+  - Last-Modified: set to CRL thisUpdate
+  - Expires: set to CRL nextUpdate
+- Added comprehensive error handling:
+  - 404 for non-existent CAs
+  - 404 for CAs without CRLs
+  - 400 for invalid format
+  - 503 for unsigned CRLs
+- Implemented conversion from PEM to DER format
+- No authentication required (public endpoint)
+- Created comprehensive test suite with 13 passing tests
+
+Files modified:
+- backend/src/server.ts (added endpoint and imports)
+
+Files created:
+- backend/src/server.crl-endpoint.test.ts (test suite)
+<!-- SECTION:NOTES:END -->
