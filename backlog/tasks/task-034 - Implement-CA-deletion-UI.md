@@ -1,9 +1,11 @@
 ---
 id: task-034
 title: Implement CA deletion UI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 12:34'
 labels:
   - frontend
   - ca
