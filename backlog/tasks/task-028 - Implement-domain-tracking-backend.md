@@ -1,10 +1,11 @@
 ---
 id: task-028
 title: Implement domain tracking backend
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 04:00'
+updated_date: '2025-10-22 04:14'
 labels:
   - backend
   - domain
