@@ -1,10 +1,11 @@
 ---
 id: task-025
 title: Add CRL Distribution Point to issued certificates
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 03:59'
+updated_date: '2025-10-22 12:06'
 labels:
   - backend
   - certificate
