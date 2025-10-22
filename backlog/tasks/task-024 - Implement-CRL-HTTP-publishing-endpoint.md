@@ -4,6 +4,7 @@ title: Implement CRL HTTP publishing endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 03:59'
 labels:
   - backend
   - crl
@@ -26,4 +27,6 @@ Create public HTTP endpoint for serving CRLs. Make CRLs accessible at predictabl
 - [ ] #6 Expires header set to Next Update
 - [ ] #7 Support for both PEM (.crl) and DER (.der) formats
 - [ ] #8 404 handling for non-existent CAs
+
+- [ ] #9 Unit tests implemented and passing
 <!-- AC:END -->
