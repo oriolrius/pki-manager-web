@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:37'
+updated_date: '2025-10-22 12:39'
 labels:
   - frontend
   - certificate
@@ -21,18 +21,18 @@ Create the frontend page for viewing all certificates with comprehensive table v
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Certificate list page created at /certificates route
-- [ ] #2 Data table with columns: status, CN, type, CA, dates, actions
-- [ ] #3 Status indicators (colored dots and badges)
-- [ ] #4 Multi-select filters (status, CA, type, domain, date range)
-- [ ] #5 Search input with debouncing
-- [ ] #6 Sorting for all major columns
-- [ ] #7 Checkbox column for bulk selection
-- [ ] #8 Bulk actions: Download Selected, Export CSV, Revoke
-- [ ] #9 Pagination with configurable page size
-- [ ] #10 Expiring soon highlighting (< 30 days)
-- [ ] #11 Loading states and skeleton screens
-- [ ] #12 Responsive design with mobile view
+- [x] #1 Certificate list page created at /certificates route
+- [x] #2 Data table with columns: status, CN, type, CA, dates, actions
+- [x] #3 Status indicators (colored dots and badges)
+- [x] #4 Multi-select filters (status, CA, type, domain, date range)
+- [x] #5 Search input with debouncing
+- [x] #6 Sorting for all major columns
+- [x] #7 Checkbox column for bulk selection
+- [x] #8 Bulk actions: Download Selected, Export CSV, Revoke
+- [x] #9 Pagination with configurable page size
+- [x] #10 Expiring soon highlighting (< 30 days)
+- [x] #11 Loading states and skeleton screens
+- [x] #12 Responsive design with mobile view
 <!-- AC:END -->
 
 ## Implementation Plan
