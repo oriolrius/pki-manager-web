@@ -43,3 +43,35 @@ Automatically add CRL Distribution Point extension to all issued certificates po
 7. Write unit tests
 8. Test all acceptance criteria
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented CRL Distribution Point (CDP) support for certificates:
+
+**Completed:**
+- Added CDP URL configuration via CRL_DISTRIBUTION_URL environment variable (AC #2, #3)
+- CDP URL supports both HTTP and HTTPS protocols (AC #4)
+- Added crlDistributionPoints field to X509Extensions type interface
+- Implemented CDP extension (OID 2.5.29.31) in x509.ts with proper ASN.1 encoding
+- Created comprehensive test suite (6/8 tests passing) (AC #7)
+- Updated certificate.ts documentation to reference CDP URL configuration
+
+**Current Limitation:**
+Certificates are signed using Cosmian KMS certify operation, which currently does not support custom X.509 extensions including CDP (AC #1, #5, #6 blocked). The implementation is code-complete and ready for when:
+1. KMS adds extension support, OR
+2. Certificate generation switches to local signing with KMS-stored keys
+
+**Files Modified:**
+- backend/.env.example (added CRL_DISTRIBUTION_URL)
+- backend/src/crypto/types.ts (added crlDistributionPoints to X509Extensions)
+- backend/src/crypto/x509.ts (implemented CDP extension with ASN.1 encoding)
+- backend/src/trpc/procedures/certificate.ts (updated documentation)
+
+**Files Created:**
+- backend/src/crypto/cdp.test.ts (test suite)
+
+**Configuration Format:**
+CRL_DISTRIBUTION_URL=http://localhost:3000/crl
+Certificates would receive CDP: http://localhost:3000/crl/{caId}.crl
+<!-- SECTION:NOTES:END -->
