@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 04:12'
+updated_date: '2025-10-22 04:13'
 labels:
   - backend
   - crl
@@ -20,16 +20,16 @@ Implement tRPC endpoints for retrieving the latest CRL and CRL history for a CA.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 crl.getLatest endpoint implemented
-- [ ] #2 crl.getHistory endpoint implemented
-- [ ] #3 Latest CRL retrieved by CA ID
-- [ ] #4 CRL history with pagination
-- [ ] #5 PEM and DER format support
-- [ ] #6 CRL validity status computed
-- [ ] #7 Revoked certificate list included
-- [ ] #8 CRL metadata (number, dates, count) included
+- [x] #1 crl.getLatest endpoint implemented
+- [x] #2 crl.getHistory endpoint implemented
+- [x] #3 Latest CRL retrieved by CA ID
+- [x] #4 CRL history with pagination
+- [x] #5 PEM and DER format support
+- [x] #6 CRL validity status computed
+- [x] #7 Revoked certificate list included
+- [x] #8 CRL metadata (number, dates, count) included
 
-- [ ] #9 Unit tests implemented and passing
+- [x] #9 Unit tests implemented and passing
 <!-- AC:END -->
 
 ## Implementation Plan
