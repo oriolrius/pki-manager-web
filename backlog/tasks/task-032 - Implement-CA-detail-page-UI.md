@@ -50,3 +50,31 @@ Create the comprehensive CA detail page with tabs for overview, certificates, re
 10. Make fingerprint copyable
 11. Implement responsive tabs for mobile
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented comprehensive CA detail page with the following features:
+
+- Created tabbed CA detail page at /cas/$id using TanStack Router
+- Integrated with tRPC ca.getById, certificate.list, crl.list, and audit.list queries
+- Implemented Overview tab with multiple information cards:
+  - Status & Information card with status badge, serial number, SHA-256 fingerprint (copyable), and issued certificate count
+  - Subject and Issuer cards displaying all DN components (CN, O, OU, C, ST, L)
+  - Key Information card showing algorithm, validity dates
+  - Extensions card displaying Basic Constraints, Key Usage, Subject/Authority Key Identifiers
+  - Revocation information card (shown when CA is revoked)
+- Implemented Certificates tab showing all certificates issued by the CA with clickable rows
+- Implemented Revocation tab displaying CRL list with download capability
+- Implemented Audit Log tab with expandable entries showing operation details
+- Added action buttons:
+  - Download dropdown menu with PEM/DER/PKCS#7 format options
+  - Revoke CA button (disabled if already revoked)
+  - Delete CA button (destructive variant)
+- Added expiry warning alert when CA expires in < 90 days
+- Implemented copyable fingerprint with visual feedback (check icon on copy)
+- Used responsive Radix UI Tabs component for mobile-friendly navigation
+- Created UI components: tabs.tsx and dropdown-menu.tsx
+
+All acceptance criteria completed. Page is fully functional with comprehensive CA information display.
+<!-- SECTION:NOTES:END -->
