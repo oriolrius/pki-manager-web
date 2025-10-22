@@ -1,10 +1,11 @@
 ---
 id: task-023
 title: Implement CRL retrieval backend endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 03:59'
+updated_date: '2025-10-22 04:12'
 labels:
   - backend
   - crl
