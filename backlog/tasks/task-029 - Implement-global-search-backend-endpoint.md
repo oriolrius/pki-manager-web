@@ -4,6 +4,7 @@ title: Implement global search backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 04:00'
 labels:
   - backend
   - search
@@ -28,4 +29,6 @@ Create backend endpoint for global search across CAs, certificates, and domains.
 - [ ] #8 Highlighting of matching text
 - [ ] #9 Support for quick filters (status:, type:)
 - [ ] #10 Special character handling and SQL injection prevention
+
+- [ ] #11 Unit tests implemented and passing
 <!-- AC:END -->
