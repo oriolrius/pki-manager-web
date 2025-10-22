@@ -51,3 +51,25 @@ Create the frontend form for creating new root Certificate Authorities with vali
 11. Calculate and display certificate fingerprint
 12. Test the complete flow
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented complete CA creation form with the following features:
+
+- Created UI components: dialog, label, textarea, checkbox, alert for form interactions
+- Built comprehensive CA creation form at /cas/new with all DN fields (CN, O, OU, C, ST, L)
+- Added ISO 3166-1 country code dropdown with full country list
+- Implemented key algorithm selection (RSA-2048/4096, ECDSA-P256/P384) and validity period configuration
+- Added optional tags/labels input with dynamic add/remove
+- Implemented client-side validation matching backend schema requirements
+- Created multi-step flow: form → review → confirmation → success
+- Added confirmation dialog with security warning about CA creation
+- Built success page with certificate details and download options (PEM/DER)
+- Integrated with tRPC ca.create mutation for backend communication
+- Added comprehensive error handling and display
+- Display certificate fingerprint on success page (currently using serial number)
+- Updated CA list page with "Create CA" buttons linking to new form
+
+All acceptance criteria completed. Form is fully functional and ready for testing.
+<!-- SECTION:NOTES:END -->
