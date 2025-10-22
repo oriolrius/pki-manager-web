@@ -1,10 +1,11 @@
 ---
 id: task-024
 title: Implement CRL HTTP publishing endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 03:59'
+updated_date: '2025-10-22 12:02'
 labels:
   - backend
   - crl
