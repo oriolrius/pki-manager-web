@@ -1,11 +1,11 @@
 ---
 id: task-022
 title: Implement CRL generation backend endpoint
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 04:11'
+updated_date: '2025-10-22 04:12'
 labels:
   - backend
   - crl
