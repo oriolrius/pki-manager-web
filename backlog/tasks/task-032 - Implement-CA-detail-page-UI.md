@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:30'
+updated_date: '2025-10-22 12:33'
 labels:
   - frontend
   - ca
@@ -20,19 +20,19 @@ Create the comprehensive CA detail page with tabs for overview, certificates, re
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CA detail page created at /cas/:id route
-- [ ] #2 Overview tab with certificate information cards
-- [ ] #3 Subject and Issuer DN display
-- [ ] #4 Key Information card
-- [ ] #5 Extensions card (Key Usage, Basic Constraints, SKI)
-- [ ] #6 Certificates tab with embedded certificate list
-- [ ] #7 Revocation tab with CRL information
-- [ ] #8 Audit Log tab with filterable log
-- [ ] #9 Action buttons: Download, Generate CRL, Revoke, Delete
-- [ ] #10 Download dropdown for PEM/DER/PKCS#7 formats
-- [ ] #11 Expiry warning if < 90 days
-- [ ] #12 Copyable fingerprint
-- [ ] #13 Responsive tabs for mobile
+- [x] #1 CA detail page created at /cas/:id route
+- [x] #2 Overview tab with certificate information cards
+- [x] #3 Subject and Issuer DN display
+- [x] #4 Key Information card
+- [x] #5 Extensions card (Key Usage, Basic Constraints, SKI)
+- [x] #6 Certificates tab with embedded certificate list
+- [x] #7 Revocation tab with CRL information
+- [x] #8 Audit Log tab with filterable log
+- [x] #9 Action buttons: Download, Generate CRL, Revoke, Delete
+- [x] #10 Download dropdown for PEM/DER/PKCS#7 formats
+- [x] #11 Expiry warning if < 90 days
+- [x] #12 Copyable fingerprint
+- [x] #13 Responsive tabs for mobile
 <!-- AC:END -->
 
 ## Implementation Plan
