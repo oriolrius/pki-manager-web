@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:33'
+updated_date: '2025-10-22 12:34'
 labels:
   - frontend
   - ca
@@ -20,16 +20,16 @@ Create the UI flow for revoking a Certificate Authority including warning dialog
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CA revocation dialog component created
-- [ ] #2 Warning message with impact summary
-- [ ] #3 Revocation reason dropdown with all standard reasons
-- [ ] #4 Confirmation checkbox
-- [ ] #5 Text input requiring 'REVOKE' to confirm
-- [ ] #6 Option to cascade revoke all issued certificates
-- [ ] #7 Validation prevents re-revoking
-- [ ] #8 Success notification
-- [ ] #9 CA status updated in UI after revocation
-- [ ] #10 Error handling and display
+- [x] #1 CA revocation dialog component created
+- [x] #2 Warning message with impact summary
+- [x] #3 Revocation reason dropdown with all standard reasons
+- [x] #4 Confirmation checkbox
+- [x] #5 Text input requiring 'REVOKE' to confirm
+- [x] #6 Option to cascade revoke all issued certificates
+- [x] #7 Validation prevents re-revoking
+- [x] #8 Success notification
+- [x] #9 CA status updated in UI after revocation
+- [x] #10 Error handling and display
 <!-- AC:END -->
 
 ## Implementation Plan
