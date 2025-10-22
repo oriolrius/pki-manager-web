@@ -8,7 +8,7 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "composite": true
   },
   "include": ["vite.config.ts"]
 }

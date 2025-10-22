@@ -20,6 +20,15 @@ export const Route = createRootRoute({
                 >
                   Dashboard
                 </Link>
+                <Link
+                  to="/cas"
+                  className="inline-flex items-center px-1 pt-1 text-sm font-medium hover:text-primary transition-colors"
+                  activeProps={{
+                    className: 'text-primary border-b-2 border-primary',
+                  }}
+                >
+                  Certificate Authorities
+                </Link>
               </div>
             </div>
           </div>
