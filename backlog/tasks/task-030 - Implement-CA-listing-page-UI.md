@@ -32,3 +32,19 @@ Create the frontend page for viewing all root Certificate Authorities with table
 - [ ] #9 Pagination controls
 - [ ] #10 Responsive design for mobile
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add missing shadcn/ui components (Table, Badge, Input, Select)
+2. Create CA listing page at /cas route
+3. Implement data fetching with tRPC ca.list query
+4. Build table with CA columns and status badges
+5. Add search and filter controls
+6. Implement sorting functionality
+7. Add pagination controls
+8. Implement row click navigation to detail page
+9. Add loading and error states
+10. Test responsive design
+11. Update navigation in root layout
+<!-- SECTION:PLAN:END -->
