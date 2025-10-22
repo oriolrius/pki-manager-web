@@ -47,3 +47,58 @@ Create audit logging infrastructure that captures all operations across the appl
 7. Write unit tests for audit logging
 8. Test all operations to ensure audit logs are created correctly
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Summary
+
+Implemented comprehensive audit logging infrastructure for the PKI Manager application.
+
+### What Was Implemented
+
+1. **Audit Logging Utility Library** (`backend/src/lib/audit.ts`)
+   - Created `createAuditLog()` function for consistent audit log creation
+   - Added `auditSuccess()` and `auditFailure()` helper functions
+   - Supports all required fields: operation, entityType, entityId, status, details, ipAddress, kmsOperationId
+   - Graceful error handling to prevent audit logging failures from breaking main operations
+
+2. **Audit Log List Endpoint** (`backend/src/trpc/procedures/audit.ts`)
+   - Implemented `audit.list` endpoint with comprehensive filtering:
+     - Filter by operation, entityType, entityId, status
+     - Date range filtering (startDate, endDate)
+     - Pagination support (limit, offset)
+   - Returns audit logs in descending timestamp order (most recent first)
+   - Parses JSON details field for client consumption
+   - Self-audits list queries (non-blocking)
+
+3. **Comprehensive Test Coverage**
+   - Created unit tests for audit utility functions (`backend/src/lib/audit.test.ts`)
+   - Created integration tests for audit.list endpoint (`backend/src/trpc/procedures/audit.test.ts`)
+   - All tests passing (18 tests total)
+
+### Already Implemented (Prior Work)
+
+Audit logging was already in place for all CA and certificate operations:
+- CA operations: create, revoke, delete (both success and failure)
+- Certificate operations: issue, renew, revoke, delete, download (both success and failure)
+- All operations capture: timestamp, operation, entityType, entityId, ipAddress, status, details JSON
+
+### Remaining Work
+
+- AC #4: CRL operations audit logging will be added when CRL endpoints are implemented (task-022, task-023, task-024)
+- AC #5: KMS operations linking - The infrastructure supports kmsOperationId, but KMS service integration would need to be enhanced to return operation IDs
+
+### Files Modified/Created
+
+- Created: `backend/src/lib/audit.ts`
+- Modified: `backend/src/trpc/procedures/audit.ts`
+- Created: `backend/src/lib/audit.test.ts`
+- Created: `backend/src/trpc/procedures/audit.test.ts`
+
+### Testing
+
+All tests passing:
+- 8 tests for audit utility
+- 10 tests for audit list endpoint
+<!-- SECTION:NOTES:END -->
