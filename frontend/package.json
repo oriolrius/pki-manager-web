@@ -30,6 +30,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.15",
     "@tanstack/router-plugin": "^1.94.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
