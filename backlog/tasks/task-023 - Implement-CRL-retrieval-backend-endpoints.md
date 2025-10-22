@@ -44,3 +44,9 @@ Implement tRPC endpoints for retrieving the latest CRL and CRL history for a CA.
 7. Write unit tests
 8. Test both endpoints
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented CRL retrieval endpoints with comprehensive filtering and format support. Both crl.getLatest and crl.list endpoints working with 12 tests passing.
+<!-- SECTION:NOTES:END -->
