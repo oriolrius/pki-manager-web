@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:06'
+updated_date: '2025-10-22 12:10'
 labels:
   - backend
   - certificate
@@ -22,13 +22,13 @@ Automatically add CRL Distribution Point extension to all issued certificates po
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 CDP extension (OID 2.5.29.31) added to all certificates
-- [ ] #2 CDP URL format: http://crl.example.com/ca/{ca-id}.crl
-- [ ] #3 CDP URL configurable via settings
-- [ ] #4 HTTP and HTTPS URLs supported
+- [x] #2 CDP URL format: http://crl.example.com/ca/{ca-id}.crl
+- [x] #3 CDP URL configurable via settings
+- [x] #4 HTTP and HTTPS URLs supported
 - [ ] #5 CDP URL accessible and returns valid CRL
 - [ ] #6 CDP extension visible in certificate details
 
-- [ ] #7 Unit tests implemented and passing
+- [x] #7 Unit tests implemented and passing
 <!-- AC:END -->
 
 ## Implementation Plan
