@@ -1,9 +1,11 @@
 ---
 id: task-035
 title: Implement certificate listing page UI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 12:37'
 labels:
   - frontend
   - certificate
