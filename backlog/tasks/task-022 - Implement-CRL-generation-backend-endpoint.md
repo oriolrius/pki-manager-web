@@ -4,6 +4,7 @@ title: Implement CRL generation backend endpoint
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 03:59'
 labels:
   - backend
   - crl
@@ -29,4 +30,6 @@ Implement the tRPC endpoint for generating Certificate Revocation Lists. Collect
 - [ ] #8 CRL stored in database
 - [ ] #9 Revoked certificate count tracked
 - [ ] #10 Audit log entry created
+
+- [ ] #11 Unit tests implemented and passing
 <!-- AC:END -->
