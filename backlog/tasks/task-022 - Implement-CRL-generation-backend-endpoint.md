@@ -34,3 +34,18 @@ Implement the tRPC endpoint for generating Certificate Revocation Lists. Collect
 
 - [ ] #11 Unit tests implemented and passing
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Review X.509 CRL v2 format and node-forge CRL generation capabilities
+2. Create CRL generation utility function in crypto module
+3. Implement crl.generate endpoint in procedures/crl.ts
+4. Collect revoked certificates for the given CA
+5. Generate CRL with proper extensions (CRL Number, Authority Key Identifier)
+6. Sign CRL using CA private key via KMS (or node-forge if KMS doesn't support CRL signing)
+7. Store generated CRL in database with auto-incremented CRL number
+8. Add audit logging for CRL generation
+9. Write unit tests for CRL generation
+10. Test the complete flow
+<!-- SECTION:PLAN:END -->
