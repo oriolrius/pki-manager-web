@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:24'
+updated_date: '2025-10-22 12:26'
 labels:
   - frontend
   - ca
@@ -34,3 +34,20 @@ Create the frontend form for creating new root Certificate Authorities with vali
 - [ ] #11 Error handling and display
 - [ ] #12 Certificate fingerprint display
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Create dialog and form UI components (dialog.tsx, label.tsx, textarea.tsx)
+2. Create CA creation route at /cas/new with the form
+3. Implement form with all DN fields and validation
+4. Add country dropdown with ISO 3166-1 codes
+5. Add key algorithm and validity period inputs
+6. Create review/preview component
+7. Add confirmation dialog with security warning
+8. Implement form submission with tRPC mutation
+9. Create success page with download options
+10. Add error handling and display
+11. Calculate and display certificate fingerprint
+12. Test the complete flow
+<!-- SECTION:PLAN:END -->
