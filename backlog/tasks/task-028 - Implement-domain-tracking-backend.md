@@ -4,6 +4,7 @@ title: Implement domain tracking backend
 status: To Do
 assignee: []
 created_date: '2025-10-21 15:50'
+updated_date: '2025-10-22 04:00'
 labels:
   - backend
   - domain
@@ -26,4 +27,6 @@ Create backend logic to extract and track domains from certificates. Associate d
 - [ ] #6 Certificate count per domain
 - [ ] #7 First and last certificate dates tracked
 - [ ] #8 Domain list endpoint with filtering and search
+
+- [ ] #9 Unit tests implemented and passing
 <!-- AC:END -->
