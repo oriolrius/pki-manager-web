@@ -33,3 +33,9 @@ Create backend endpoint for global search across CAs, certificates, and domains.
 
 - [x] #11 Unit tests implemented and passing
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented global search endpoint that searches across CAs, certificates, and domains. Returns grouped results with highlighting support and optimized queries.
+<!-- SECTION:NOTES:END -->
