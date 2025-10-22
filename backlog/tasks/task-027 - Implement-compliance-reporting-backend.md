@@ -52,3 +52,45 @@ Create backend endpoints for generating compliance reports: certificate inventor
 11. Write unit tests
 12. Test all acceptance criteria
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented compliance reporting backend with audit.generateReport endpoint:
+
+**Completed:**
+- audit.generateReport tRPC endpoint (AC #1)
+- Certificate Inventory Report with full certificate details (AC #2)
+- Revocation Report with revocation details (AC #3)
+- CA Operations Report from audit log (AC #4)
+- Date range filtering (startDate, endDate) (AC #5)
+- CA filtering (caId parameter) (AC #6)
+- CSV format export with proper formatting (AC #7)
+- Report header with generation date (AC #9)
+- Summary statistics for each report type (AC #10)
+- Tamper-evident SHA256 hash of report content (AC #11)
+
+**Not Implemented:**
+- PDF format export (AC #8) - requires PDF library (pdfkit/puppeteer)
+- Dedicated unit tests for reports (AC #12) - existing audit tests pass
+
+**Implementation Details:**
+Created generateReport mutation that:
+1. Queries database based on report type and filters
+2. Generates CSV with comment header including:
+   - Report name and generation timestamp
+   - Applied filters (CA, date range)
+   - Summary statistics
+   - SHA256 hash for tamper detection
+3. Returns structured response with content, summary, and metadata
+4. Logs report generation to audit trail
+
+**Files Modified:**
+- backend/src/trpc/schemas.ts (added generateReportSchema)
+- backend/src/trpc/procedures/audit.ts (implemented generateReport endpoint)
+
+**Report Types:**
+- certificate_inventory: All certificates with status breakdown
+- revocation: Revoked certificates with revocation details
+- ca_operations: CA lifecycle events from audit log
+<!-- SECTION:NOTES:END -->
