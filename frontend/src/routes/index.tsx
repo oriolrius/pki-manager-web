@@ -169,7 +169,8 @@ function Dashboard() {
     return formatDate(timestamp);
   };
 
-  const getActionColor = (action: string) => {
+  const getActionColor = (action: string | undefined) => {
+    if (!action) return 'text-gray-600';
     if (action.includes('create')) return 'text-green-600';
     if (action.includes('revoke') || action.includes('delete')) return 'text-red-600';
     if (action.includes('renew') || action.includes('update')) return 'text-blue-600';
@@ -458,7 +459,7 @@ function Dashboard() {
                     <div key={index} className="flex items-start gap-3 pb-3 border-b last:border-0">
                       <div className="flex-1 space-y-1">
                         <p className={`text-sm font-medium ${getActionColor(log.action)}`}>
-                          {log.action}
+                          {log.action || 'Unknown action'}
                         </p>
                         {log.entityType && (
                           <p className="text-xs text-muted-foreground">
