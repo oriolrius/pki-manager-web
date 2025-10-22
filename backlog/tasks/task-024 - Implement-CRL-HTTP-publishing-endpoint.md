@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:50'
-updated_date: '2025-10-22 12:02'
+updated_date: '2025-10-22 12:03'
 labels:
   - backend
   - crl
@@ -31,3 +31,16 @@ Create public HTTP endpoint for serving CRLs. Make CRLs accessible at predictabl
 
 - [ ] #9 Unit tests implemented and passing
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Analyze existing CRL code and server structure
+2. Add GET /crl/:caId.crl endpoint in server.ts for PEM format
+3. Add GET /crl/:caId.der endpoint in server.ts for DER format
+4. Set proper HTTP headers (Content-Type, Cache-Control, Last-Modified, Expires)
+5. Add 404 handling for non-existent CAs/CRLs
+6. Ensure no authentication required
+7. Write unit tests for the endpoint
+8. Test all acceptance criteria
+<!-- SECTION:PLAN:END -->
