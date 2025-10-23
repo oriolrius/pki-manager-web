@@ -48,10 +48,8 @@ export const caRouter = router({
       }
     }
 
-    // Filter by algorithm
-    if (params.algorithm) {
-      conditions.push(eq(certificateAuthorities.keyAlgorithm, params.algorithm));
-    }
+    // Filter by algorithm - removed from minimal schema
+    // Algorithm information now fetched from KMS on-demand
 
     // Search in CN, O, OU (within subjectDn)
     if (params.search) {
@@ -108,7 +106,6 @@ export const caRouter = router({
           id: ca.id,
           subject: ca.subjectDn,
           serialNumber: ca.serialNumber,
-          keyAlgorithm: ca.keyAlgorithm,
           notBefore: ca.notBefore.toISOString(),
           notAfter: ca.notAfter.toISOString(),
           status: computedStatus,
@@ -139,12 +136,19 @@ export const caRouter = router({
     const caRecord = ca[0];
     const now = new Date();
 
+    // Fetch certificate from KMS
+    const kmsService = getKMSService();
+    const certificatePem = await kmsService.getCertificate(
+      caRecord.kmsCertificateId,
+      caRecord.id
+    );
+
     // Parse certificate to extract detailed information
-    const certMetadata = parseCertificate(caRecord.certificatePem, 'PEM');
+    const certMetadata = parseCertificate(certificatePem, 'PEM');
 
     // Calculate fingerprints using node-forge
     const forge = (await import('node-forge')).default;
-    const cert = forge.pki.certificateFromPem(caRecord.certificatePem);
+    const cert = forge.pki.certificateFromPem(certificatePem);
 
     // Create message digests
     const derBytes = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
@@ -222,7 +226,7 @@ export const caRouter = router({
       issuer: certMetadata.issuer,
       issuerDn: caRecord.subjectDn, // Self-signed, so issuer = subject
       serialNumber: caRecord.serialNumber,
-      keyAlgorithm: caRecord.keyAlgorithm,
+      keyAlgorithm: certMetadata.keyAlgorithm, // Extracted from certificate
       notBefore: caRecord.notBefore.toISOString(),
       notAfter: caRecord.notAfter.toISOString(),
       validityStatus,
@@ -232,7 +236,7 @@ export const caRouter = router({
         sha256: formatFingerprint(sha256Fingerprint),
         sha1: formatFingerprint(sha1Fingerprint),
       },
-      certificatePem: caRecord.certificatePem,
+      certificatePem: certificatePem, // Fetched from KMS
       issuedCertificateCount: Number(certCount[0]?.count || 0),
       revocationDate: caRecord.revocationDate?.toISOString(),
       revocationReason: caRecord.revocationReason,
@@ -264,31 +268,23 @@ export const caRouter = router({
           keySizeInBits = 2048;
         }
 
-        // Generate key pair in KMS
-        logger.info({ caId, keyAlgorithm: input.keyAlgorithm }, 'Creating CA key pair in KMS');
-        const keyPair = await kmsService.createKeyPair({
-          sizeInBits: keySizeInBits,
-          tags: input.tags || [],
-          purpose: 'ca',
-          entityId: caId,
-        });
-
         // Create self-signed root certificate using KMS certify
+        // KMS will generate the key pair atomically during certificate creation
         const validityDays = (input.validityYears || 20) * 365;
         const subjectName = formatDN(subjectDN);
 
         logger.info(
-          { caId, subjectName, validityDays },
-          'Creating self-signed root certificate in KMS',
+          { caId, subjectName, validityDays, keySizeInBits },
+          'Creating self-signed root certificate with key pair in KMS',
         );
 
         const certInfo = await kmsService.signCertificate({
-          publicKeyId: keyPair.publicKeyId,
-          issuerPrivateKeyId: keyPair.privateKeyId, // Self-signed: use own private key
+          // Don't pass publicKeyId or issuerPrivateKeyId - let KMS generate keys
           subjectName: subjectName,
           daysValid: validityDays,
           tags: input.tags || [],
           entityId: caId,
+          keySizeInBits, // Pass key size so KMS knows what to generate
         });
 
         // Convert certificate data from hex to PEM
@@ -304,17 +300,24 @@ export const caRouter = router({
         const notBefore = certMetadata.validity.notBefore;
         const notAfter = certMetadata.validity.notAfter;
 
-        // Store CA record in database
+        // Note: Cosmian KMS generates keys during Certify but doesn't return their IDs
+        // We'll need to implement key discovery/query later
+        if (!certInfo.privateKeyId || !certInfo.publicKeyId) {
+          logger.warn(
+            { caId, certificateId: certInfo.certificateId },
+            'KMS did not return generated key IDs - will need to query them later'
+          );
+        }
+
+        // Store CA record in database (minimal schema - cert PEM stored only in KMS)
         await ctx.db.insert(certificateAuthorities).values({
           id: caId,
+          kmsCertificateId: certInfo.certificateId,
+          kmsKeyId: certInfo.privateKeyId || certInfo.certificateId, // Use cert ID as placeholder
           subjectDn: subjectName,
           serialNumber: certMetadata.serialNumber,
-          keyAlgorithm: input.keyAlgorithm || 'RSA-4096',
           notBefore: notBefore,
           notAfter: notAfter,
-          kmsKeyId: keyPair.privateKeyId,
-          kmsCertificateId: certInfo.certificateId,
-          certificatePem: certificatePem,
           status: 'active',
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -332,7 +335,8 @@ export const caRouter = router({
             keyAlgorithm: input.keyAlgorithm,
             validityYears: input.validityYears,
             serialNumber: certMetadata.serialNumber,
-            kmsKeyId: keyPair.privateKeyId,
+            kmsPrivateKeyId: certInfo.privateKeyId,
+            kmsPublicKeyId: certInfo.publicKeyId,
           }),
           ipAddress: ctx.req.ip,
         });
@@ -345,7 +349,6 @@ export const caRouter = router({
           serialNumber: certMetadata.serialNumber,
           notBefore: notBefore.toISOString(),
           notAfter: notAfter.toISOString(),
-          certificatePem: certificatePem,
           status: 'active' as const,
         };
       } catch (error) {

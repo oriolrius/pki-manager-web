@@ -317,9 +317,11 @@ export class KMSClient {
     publicKeyId?: string;
     issuerPrivateKeyId?: string;
     issuerCertificateId?: string;
+    issuerName?: string;
     subjectName?: string;
     daysValid?: number;
     tags?: string[];
+    keySizeInBits?: number; // Key size for KMS to generate (default 4096)
   }): Promise<CertificateInfo> {
     const requestValue: KMIPElement[] = [];
 
@@ -337,61 +339,212 @@ export class KMSClient {
       });
     }
 
-    // Add public key ID if provided
-    if (options.publicKeyId) {
-      requestValue.push({
-        tag: "PublicKeyIdentifier",
-        type: "TextString",
-        value: options.publicKeyId,
-      });
-    }
+    // Build Attributes structure for KMIP 2.1
+    const attributes: KMIPElement[] = [];
 
-    // Add issuer private key ID
-    if (options.issuerPrivateKeyId) {
-      requestValue.push({
-        tag: "PrivateKeyIdentifier",
-        type: "TextString",
-        value: options.issuerPrivateKeyId,
-      });
-    }
+    // Add CertificateType (required when Certificate Request Type is omitted)
+    attributes.push({
+      tag: "CertificateType",
+      type: "Enumeration",
+      value: "X509",
+    });
 
-    // Add issuer certificate ID
+    // Add cryptographic algorithm information (required for key pair generation)
+    // When no key links are provided, Cosmian will generate a new key pair
+    attributes.push({
+      tag: "CryptographicAlgorithm",
+      type: "Enumeration",
+      value: "RSA",
+    });
+    attributes.push({
+      tag: "CryptographicLength",
+      type: "Integer",
+      value: options.keySizeInBits || 4096, // Default to 4096 if not specified
+    });
+
+    // Add Link to issuer certificate (for non-self-signed)
     if (options.issuerCertificateId) {
-      requestValue.push({
-        tag: "CertificateIdentifier",
-        type: "TextString",
-        value: options.issuerCertificateId,
+      attributes.push({
+        tag: "Link",
+        value: [
+          {
+            tag: "LinkType",
+            type: "Enumeration",
+            value: "CertificateLink",
+          },
+          {
+            tag: "LinkedObjectIdentifier",
+            type: "TextString",
+            value: options.issuerCertificateId,
+          },
+        ],
       });
     }
 
-    // Add subject name
+    // Add subject name using CertificateAttributes structure with individual fields
     if (options.subjectName) {
-      requestValue.push({
-        tag: "CertificateRequestSubjectDN",
-        type: "TextString",
-        value: options.subjectName,
+      // Parse the DN string into individual components
+      const dnParts = options.subjectName.split(',').map(part => {
+        const [key, ...valueParts] = part.trim().split('=');
+        return { key: key.trim(), value: valueParts.join('=').trim() };
       });
+
+      const certAttrs: KMIPElement[] = [];
+      const isSelfSigned = !options.issuerCertificateId;
+
+      for (const part of dnParts) {
+        switch (part.key) {
+          case 'CN':
+            certAttrs.push({
+              tag: "CertificateSubjectCn",
+              type: "TextString",
+              value: part.value,
+            });
+            if (isSelfSigned) {
+              certAttrs.push({
+                tag: "CertificateIssuerCn",
+                type: "TextString",
+                value: part.value,
+              });
+            }
+            break;
+          case 'O':
+            certAttrs.push({
+              tag: "CertificateSubjectO",
+              type: "TextString",
+              value: part.value,
+            });
+            if (isSelfSigned) {
+              certAttrs.push({
+                tag: "CertificateIssuerO",
+                type: "TextString",
+                value: part.value,
+              });
+            }
+            break;
+          case 'OU':
+            certAttrs.push({
+              tag: "CertificateSubjectOu",
+              type: "TextString",
+              value: part.value,
+            });
+            if (isSelfSigned) {
+              certAttrs.push({
+                tag: "CertificateIssuerOu",
+                type: "TextString",
+                value: part.value,
+              });
+            }
+            break;
+          case 'C':
+            certAttrs.push({
+              tag: "CertificateSubjectC",
+              type: "TextString",
+              value: part.value,
+            });
+            if (isSelfSigned) {
+              certAttrs.push({
+                tag: "CertificateIssuerC",
+                type: "TextString",
+                value: part.value,
+              });
+            }
+            break;
+          case 'ST':
+            certAttrs.push({
+              tag: "CertificateSubjectSt",
+              type: "TextString",
+              value: part.value,
+            });
+            if (isSelfSigned) {
+              certAttrs.push({
+                tag: "CertificateIssuerSt",
+                type: "TextString",
+                value: part.value,
+              });
+            }
+            break;
+          case 'L':
+            certAttrs.push({
+              tag: "CertificateSubjectL",
+              type: "TextString",
+              value: part.value,
+            });
+            if (isSelfSigned) {
+              certAttrs.push({
+                tag: "CertificateIssuerL",
+                type: "TextString",
+                value: part.value,
+              });
+            }
+            break;
+        }
+      }
+
+      // Add required empty fields for all X.509 subject components that Cosmian KMS expects
+      // Based on X.509 DN attributes and Cosmian KMS requirements
+      const requiredSubjectFields = [
+        "CertificateSubjectEmail",
+        "CertificateSubjectUid",
+        "CertificateSubjectSerialNumber",
+        "CertificateSubjectTitle",
+        "CertificateSubjectGivenName",
+        "CertificateSubjectInitials",
+        "CertificateSubjectGenerationQualifier",
+        "CertificateSubjectDnQualifier",
+        "CertificateSubjectPseudonym",
+        "CertificateSubjectDc",  // Domain Component
+      ];
+
+      for (const field of requiredSubjectFields) {
+        const hasField = certAttrs.some(attr => attr.tag === field);
+        if (!hasField) {
+          certAttrs.push({
+            tag: field,
+            type: "TextString",
+            value: "",
+          });
+        }
+      }
+
+      // For self-signed certificates, also add empty issuer fields
+      if (isSelfSigned) {
+        const requiredIssuerFields = [
+          "CertificateIssuerEmail",
+          "CertificateIssuerUid",
+          "CertificateIssuerSerialNumber",
+          "CertificateIssuerTitle",
+          "CertificateIssuerGivenName",
+          "CertificateIssuerInitials",
+          "CertificateIssuerGenerationQualifier",
+          "CertificateIssuerDnQualifier",
+          "CertificateIssuerPseudonym",
+          "CertificateIssuerDc",
+        ];
+
+        for (const field of requiredIssuerFields) {
+          const hasField = certAttrs.some(attr => attr.tag === field);
+          if (!hasField) {
+            certAttrs.push({
+              tag: field,
+              type: "TextString",
+              value: "",
+            });
+          }
+        }
+      }
+
+      if (certAttrs.length > 0) {
+        attributes.push({
+          tag: "CertificateAttributes",
+          value: certAttrs,
+        });
+      }
     }
 
-    // Add validity period
-    if (options.daysValid) {
-      requestValue.push({
-        tag: "NotBefore",
-        type: "DateTime",
-        value: new Date().toISOString(),
-      });
-      const notAfter = new Date();
-      notAfter.setDate(notAfter.getDate() + options.daysValid);
-      requestValue.push({
-        tag: "NotAfter",
-        type: "DateTime",
-        value: notAfter.toISOString(),
-      });
-    }
-
-    // Add tags
+    // Add tags as vendor attribute
     if (options.tags && options.tags.length > 0) {
-      requestValue.push({
+      attributes.push({
         tag: "Attribute",
         value: [
           {
@@ -413,6 +566,23 @@ export class KMSClient {
       });
     }
 
+    // Add Attributes structure to request
+    if (attributes.length > 0) {
+      requestValue.push({
+        tag: "Attributes",
+        value: attributes,
+      });
+    }
+
+    // Add subject name at request level for "Certify from Subject" mode
+    if (options.subjectName) {
+      requestValue.push({
+        tag: "Subject",
+        type: "TextString",
+        value: options.subjectName,
+      });
+    }
+
     const request: KMIPRequest = {
       tag: "Certify",
       value: requestValue,
@@ -420,16 +590,91 @@ export class KMSClient {
 
     const response = await this.sendKMIPRequest(request);
 
+    // Cosmian's Certify response only returns the certificate ID
+    // We need to Get the certificate to retrieve its data and linked key IDs
     const certificateId = this.findElement(
       response.value,
       "UniqueIdentifier"
     );
-    const certificate = this.findElement(response.value, "Certificate");
+    const certId = this.getStringValue(certificateId);
 
-    return {
-      certificateId: this.getStringValue(certificateId),
-      certificateData: this.getByteStringValue(certificate),
+    // Fetch the certificate object to get its data and attributes
+    const getRequest: KMIPRequest = {
+      tag: "Get",
+      value: [
+        {
+          tag: "UniqueIdentifier",
+          type: "TextString",
+          value: certId,
+        },
+      ],
     };
+
+    const getResponse = await this.sendKMIPRequest(getRequest);
+
+    // The Certificate is a structure containing CertificateType and CertificateValue
+    const certificate = this.findElement(getResponse.value, "Certificate");
+    const certificateValue = this.findElement((certificate as any).value, "CertificateValue");
+
+    const result: CertificateInfo = {
+      certificateId: certId,
+      certificateData: this.getByteStringValue(certificateValue),
+    };
+
+    // Try to extract key IDs from the certificate's attributes or links
+    // These might be in the Get response as links
+    try {
+      const attributes = this.findElement(getResponse.value, "Attributes");
+      if (attributes && Array.isArray((attributes as any).value)) {
+        for (const attr of (attributes as any).value) {
+          if (attr.tag === "Link") {
+            const linkType = this.findElement(attr.value, "LinkType");
+            const linkId = this.findElement(attr.value, "LinkedObjectIdentifier");
+            const linkTypeValue = this.getStringValue(linkType);
+
+            if (linkTypeValue === "PrivateKeyLink") {
+              result.privateKeyId = this.getStringValue(linkId);
+            } else if (linkTypeValue === "PublicKeyLink") {
+              result.publicKeyId = this.getStringValue(linkId);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Key IDs not found in response - need to implement key discovery via Locate/Query operations
+    }
+
+    return result;
+  }
+
+  /**
+   * Get certificate from KMS by ID and return PEM format
+   */
+  async getCertificate(certificateId: string): Promise<string> {
+    const getRequest: KMIPRequest = {
+      tag: "Get",
+      value: [
+        {
+          tag: "UniqueIdentifier",
+          type: "TextString",
+          value: certificateId,
+        },
+      ],
+    };
+
+    const getResponse = await this.sendKMIPRequest(getRequest);
+
+    // Extract certificate from response
+    const certificate = this.findElement(getResponse.value, "Certificate");
+    const certificateValue = this.findElement((certificate as any).value, "CertificateValue");
+    const certDataHex = this.getByteStringValue(certificateValue);
+
+    // Convert hex to PEM
+    const certDataBuffer = Buffer.from(certDataHex, 'hex');
+    const certBase64 = certDataBuffer.toString('base64');
+    const certificatePem = `-----BEGIN CERTIFICATE-----\n${certBase64.match(/.{1,64}/g)?.join('\n')}\n-----END CERTIFICATE-----`;
+
+    return certificatePem;
   }
 
   /**

@@ -35,7 +35,6 @@ export const certificateRouter = router({
             certificateType: certificateTypeSchema,
             notBefore: z.date(),
             notAfter: z.date(),
-            certificatePem: z.string(),
             kmsKeyId: z.string().nullable(),
             status: certificateStatusSchema,
             revocationDate: z.date().nullable(),
@@ -357,11 +356,19 @@ export const certificateRouter = router({
         });
       }
 
+      // Fetch certificate from KMS
+      const { getKMSService } = await import('../../kms/service.js');
+      const kmsService = getKMSService();
+      const certificatePem = await kmsService.getCertificate(
+        certificate.kmsCertificateId,
+        certificate.id
+      );
+
       // Parse certificate to extract details
-      const parsed = parseCertificate(certificate.certificatePem, 'PEM');
+      const parsed = parseCertificate(certificatePem, 'PEM');
 
       // Parse certificate using node-forge for extensions
-      const forgeCert = forge.default.pki.certificateFromPem(certificate.certificatePem);
+      const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
 
       // Calculate fingerprints
       const certDer = forge.default.asn1.toDer(
@@ -766,7 +773,7 @@ export const certificateRouter = router({
           certificateType: input.certificateType,
           notBefore: certMetadata.validity.notBefore,
           notAfter: certMetadata.validity.notAfter,
-          certificatePem: certificatePem,
+          kmsCertificateId: certInfo.certificateId,
           kmsKeyId: keyPair.privateKeyId,
           status: 'active',
           sanDns: input.sanDns ? JSON.stringify(input.sanDns) : null,
@@ -926,8 +933,14 @@ export const certificateRouter = router({
       const kmsService = getKMSService();
 
       try {
+        // Fetch original certificate from KMS
+        const originalCertificatePem = await kmsService.getCertificate(
+          originalCert.kmsCertificateId,
+          originalCert.id
+        );
+
         // Parse original certificate to extract metadata
-        const originalParsed = parseCertificate(originalCert.certificatePem, 'PEM');
+        const originalParsed = parseCertificate(originalCertificatePem, 'PEM');
 
         // Determine subject DN (use updated subject if provided, otherwise copy from original)
         let subjectDN;
@@ -1023,7 +1036,7 @@ export const certificateRouter = router({
           certificateType: originalCert.certificateType,
           notBefore: certMetadata.validity.notBefore,
           notAfter: certMetadata.validity.notAfter,
-          certificatePem: certificatePem,
+          kmsCertificateId: certInfo.certificateId,
           kmsKeyId: input.generateNewKey ? kmsKeyId : null,
           status: 'active',
           sanDns: sanDns ? JSON.stringify(sanDns) : null,
@@ -1408,8 +1421,20 @@ export const certificateRouter = router({
         });
       }
 
+      // Fetch certificates from KMS
+      const { getKMSService } = await import('../../kms/service.js');
+      const kmsService = getKMSService();
+      const certificatePem = await kmsService.getCertificate(
+        certificate.kmsCertificateId,
+        certificate.id
+      );
+      const caCertificatePem = await kmsService.getCertificate(
+        ca.kmsCertificateId,
+        ca.id
+      );
+
       // Parse certificate metadata for filename
-      const certMetadata = parseCertificate(certificate.certificatePem, 'PEM');
+      const certMetadata = parseCertificate(certificatePem, 'PEM');
       const commonName = certMetadata.subject.CN || 'certificate';
       const serialShort = certificate.serialNumber.substring(0, 8);
 
@@ -1434,13 +1459,13 @@ export const certificateRouter = router({
       let filename: string;
 
       try {
-        const forgeCert = forge.default.pki.certificateFromPem(certificate.certificatePem);
-        const forgeCaCert = forge.default.pki.certificateFromPem(ca.certificatePem);
+        const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+        const forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
 
         switch (input.format) {
           case 'pem':
             // PEM format (single certificate)
-            data = certificate.certificatePem;
+            data = certificatePem;
             mimeType = 'application/x-pem-file';
             filename = `${commonName}-${serialShort}.pem`;
             break;
@@ -1457,7 +1482,7 @@ export const certificateRouter = router({
 
           case 'pem-chain':
             // PEM chain format (certificate + CA)
-            data = certificate.certificatePem + '\n' + ca.certificatePem;
+            data = certificatePem + '\n' + caCertificatePem;
             mimeType = 'application/x-pem-file';
             filename = `${commonName}-${serialShort}-chain.pem`;
             break;

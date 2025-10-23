@@ -1,26 +1,31 @@
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
-// Certificate Authorities table
+// Certificate Authorities table (minimal schema - fetch cert/key data from KMS)
 export const certificateAuthorities = sqliteTable(
   'certificate_authorities',
   {
+    // Identity
     id: text('id').primaryKey(),
+
+    // KMS references (essential)
+    kmsCertificateId: text('kms_certificate_id').notNull(),
+    kmsKeyId: text('kms_key_id').notNull(),
+
+    // Query optimization fields (denormalized for performance)
     subjectDn: text('subject_dn').notNull(),
     serialNumber: text('serial_number').notNull().unique(),
-    keyAlgorithm: text('key_algorithm', {
-      enum: ['RSA-2048', 'RSA-4096', 'ECDSA-P256', 'ECDSA-P384'],
-    }).notNull(),
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
-    kmsKeyId: text('kms_key_id').notNull(),
-    kmsCertificateId: text('kms_certificate_id').notNull(),
-    certificatePem: text('certificate_pem').notNull(),
+
+    // Application state (not in X.509 certificate)
     status: text('status', { enum: ['active', 'revoked', 'expired'] })
       .notNull()
       .default('active'),
     revocationDate: integer('revocation_date', { mode: 'timestamp' }),
     revocationReason: text('revocation_reason'),
+
+    // Metadata
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -31,18 +36,27 @@ export const certificateAuthorities = sqliteTable(
   (table) => ({
     serialIdx: index('idx_ca_serial').on(table.serialNumber),
     statusIdx: index('idx_ca_status').on(table.status),
-    algorithmIdx: index('idx_ca_algorithm').on(table.keyAlgorithm),
+    kmsCertIdx: index('idx_ca_kms_cert').on(table.kmsCertificateId),
   })
 );
 
-// Certificates table
+// Certificates table (minimal schema - fetch cert data from KMS)
 export const certificates = sqliteTable(
   'certificates',
   {
+    // Identity
     id: text('id').primaryKey(),
+
+    // Relationships
     caId: text('ca_id')
       .notNull()
       .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+
+    // KMS references (essential)
+    kmsCertificateId: text('kms_certificate_id').notNull(),
+    kmsKeyId: text('kms_key_id'),
+
+    // Query optimization fields (denormalized for performance)
     subjectDn: text('subject_dn').notNull(),
     serialNumber: text('serial_number').notNull().unique(),
     certificateType: text('certificate_type', {
@@ -50,17 +64,23 @@ export const certificates = sqliteTable(
     }).notNull(),
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
-    certificatePem: text('certificate_pem').notNull(),
-    kmsKeyId: text('kms_key_id'),
+
+    // Application state (not in X.509 certificate)
     status: text('status', { enum: ['active', 'revoked', 'expired'] })
       .notNull()
       .default('active'),
     revocationDate: integer('revocation_date', { mode: 'timestamp' }),
     revocationReason: text('revocation_reason'),
+
+    // SAN fields for quick filtering (denormalized)
     sanDns: text('san_dns'), // JSON array
     sanIp: text('san_ip'), // JSON array
     sanEmail: text('san_email'), // JSON array
+
+    // Certificate renewal tracking
     renewedFromId: text('renewed_from_id').references(() => certificates.id),
+
+    // Metadata
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -73,6 +93,7 @@ export const certificates = sqliteTable(
     statusIdx: index('idx_certificates_status').on(table.status),
     serialIdx: index('idx_certificates_serial').on(table.serialNumber),
     typeIdx: index('idx_certificates_type').on(table.certificateType),
+    kmsCertIdx: index('idx_cert_kms_cert').on(table.kmsCertificateId),
   })
 );
 

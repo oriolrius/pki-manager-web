@@ -1,12 +1,13 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
-import path from 'path';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import { TanStackRouterVite } from '@tanstack/router-vite-plugin'
+import path from 'path'
 
+// https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    TanStackRouterVite(),
     react(),
+    TanStackRouterVite(),
   ],
   resolve: {
     alias: {
@@ -14,12 +15,12 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 5173,
-    proxy: {
-      '/trpc': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-    },
+    allowedHosts: [
+      'wsl.ymbihq.local',
+      'localhost',
+      '.ymbihq.local', // Allow all subdomains
+    ],
   },
-});
+})

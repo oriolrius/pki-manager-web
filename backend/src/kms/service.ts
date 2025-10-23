@@ -142,6 +142,37 @@ export class KMSService {
   }
 
   /**
+   * Get certificate from KMS in PEM format
+   */
+  async getCertificate(certificateId: string, entityId?: string): Promise<string> {
+    const operationId = randomUUID();
+    try {
+      const result = await this.client.getCertificate(certificateId);
+
+      await this.logAudit(
+        "kms.get_certificate",
+        "certificate",
+        entityId || certificateId,
+        "success",
+        { certificateId },
+        operationId
+      );
+
+      return result;
+    } catch (error) {
+      await this.logAudit(
+        "kms.get_certificate",
+        "certificate",
+        entityId || certificateId,
+        "failure",
+        { error: String(error), certificateId },
+        operationId
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Get public key in PEM format
    */
   async getPublicKey(keyId: string, entityId?: string): Promise<string> {
@@ -180,14 +211,26 @@ export class KMSService {
     publicKeyId?: string;
     issuerPrivateKeyId?: string;
     issuerCertificateId?: string;
+    issuerName?: string;
     subjectName?: string;
     daysValid?: number;
     tags?: string[];
     entityId?: string;
+    keySizeInBits?: number; // Key size for KMS to generate (when not providing existing keys)
   }): Promise<CertificateInfo> {
     const operationId = randomUUID();
     try {
-      const result = await this.client.certify(options);
+      const result = await this.client.certify({
+        csr: options.csr,
+        publicKeyId: options.publicKeyId,
+        issuerPrivateKeyId: options.issuerPrivateKeyId,
+        issuerCertificateId: options.issuerCertificateId,
+        issuerName: options.issuerName,
+        subjectName: options.subjectName,
+        daysValid: options.daysValid,
+        tags: options.tags,
+        keySizeInBits: options.keySizeInBits,
+      });
 
       await this.logAudit(
         "kms.sign_certificate",
@@ -339,10 +382,7 @@ let kmsServiceInstance: KMSService | null = null;
  */
 export function getKMSService(): KMSService {
   if (!kmsServiceInstance) {
-    const kmsUrl = process.env.KMS_URL;
-    if (!kmsUrl) {
-      throw new Error("KMS_URL environment variable is not set");
-    }
+    const kmsUrl = process.env.KMS_URL || 'http://wsl.ymbihq.local:42998';
 
     kmsServiceInstance = new KMSService({
       kmsUrl,

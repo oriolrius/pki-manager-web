@@ -1,60 +1,70 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-  }
+@theme {
+  /* Light mode colors - Vibrant Orange Scheme */
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(20% 0.01 20);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(20% 0.01 20);
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(20% 0.01 20);
+  /* Primary: Vibrant Orange #ff6b35 */
+  --color-primary: oklch(68% 0.19 35);
+  --color-primary-foreground: oklch(100% 0 0);
+  /* Secondary: Warm coral */
+  --color-secondary: oklch(97% 0.02 24);
+  --color-secondary-foreground: oklch(45% 0.14 16);
+  /* Muted: Warm gray */
+  --color-muted: oklch(96% 0.01 30);
+  --color-muted-foreground: oklch(55% 0.02 25);
+  /* Accent: Deep orange */
+  --color-accent: oklch(65% 0.17 30);
+  --color-accent-foreground: oklch(100% 0 0);
+  /* Destructive: Red for errors */
+  --color-destructive: oklch(60% 0.22 20);
+  --color-destructive-foreground: oklch(100% 0 0);
+  /* Border and Input */
+  --color-border: oklch(90% 0.01 20);
+  --color-input: oklch(90% 0.01 20);
+  --color-ring: oklch(68% 0.19 35);
+  --radius: 0.5rem;
 }
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
+  .dark {
+    /* Dark mode colors - Deep dark with orange accents */
+    --color-background: oklch(18% 0.01 20);
+    --color-foreground: oklch(95% 0.01 30);
+    --color-card: oklch(20% 0.01 20);
+    --color-card-foreground: oklch(95% 0.01 30);
+    --color-popover: oklch(20% 0.01 20);
+    --color-popover-foreground: oklch(95% 0.01 30);
+    /* Primary: Bright orange in dark mode */
+    --color-primary: oklch(70% 0.20 35);
+    --color-primary-foreground: oklch(18% 0.01 20);
+    /* Secondary: Dark warm gray */
+    --color-secondary: oklch(25% 0.01 20);
+    --color-secondary-foreground: oklch(95% 0.01 30);
+    /* Muted: Medium dark gray */
+    --color-muted: oklch(30% 0.01 20);
+    --color-muted-foreground: oklch(65% 0.01 30);
+    /* Accent: Vibrant orange accent */
+    --color-accent: oklch(68% 0.18 30);
+    --color-accent-foreground: oklch(100% 0 0);
+    /* Destructive: Bright red */
+    --color-destructive: oklch(58% 0.20 20);
+    --color-destructive-foreground: oklch(100% 0 0);
+    --color-border: oklch(28% 0.01 20);
+    --color-input: oklch(28% 0.01 20);
+    --color-ring: oklch(70% 0.20 35);
   }
+
+  * {
+    border-color: var(--color-border);
+  }
+
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
+    background-color: var(--color-background);
+    color: var(--color-foreground);
   }
 }

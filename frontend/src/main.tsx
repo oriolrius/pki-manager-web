@@ -1,11 +1,13 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { httpBatchLink } from '@trpc/client';
-import { trpc } from './lib/trpc';
-import { routeTree } from './routeTree.gen';
+import { trpc, trpcClient } from './lib/trpc';
+import { ThemeProvider } from './components/theme-provider';
 import './index.css';
+
+// Import the generated route tree
+import { routeTree } from './routeTree.gen';
 
 // Create a new router instance
 const router = createRouter({ routeTree });
@@ -17,24 +19,17 @@ declare module '@tanstack/react-router' {
   }
 }
 
-// Create QueryClient
+// Create a QueryClient
 const queryClient = new QueryClient();
 
-// Create tRPC client
-const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: '/trpc',
-    }),
-  ],
-});
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </trpc.Provider>
-  </React.StrictMode>
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </trpc.Provider>
+    </ThemeProvider>
+  </StrictMode>,
 );

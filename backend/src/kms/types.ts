@@ -114,6 +114,8 @@ export interface KeyPairIds {
 export interface CertificateInfo {
   certificateId: string;
   certificateData: string; // PEM or DER encoded
+  privateKeyId?: string; // Returned when KMS generates key pair during Certify
+  publicKeyId?: string; // Returned when KMS generates key pair during Certify
 }
 
 // Error types

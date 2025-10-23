@@ -20,9 +20,27 @@ const server = Fastify({
   },
 });
 
-// Register CORS
+// Register CORS - Allow multiple origins
 await server.register(cors, {
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, cb) => {
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://wsl.ymbihq.local:5173',
+      'http://127.0.0.1:5173',
+    ];
+
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      cb(null, true);
+      return;
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Not allowed by CORS'), false);
+    }
+  },
   credentials: true,
 });
 

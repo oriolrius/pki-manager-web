@@ -1,6 +1,6 @@
 ---
 id: decision-002
-title: Cosmian KMS Integration Implementation
+title: 002 - Cosmian KMS Integration Implementation
 date: '2025-10-21 16:35'
 status: approved
 ---

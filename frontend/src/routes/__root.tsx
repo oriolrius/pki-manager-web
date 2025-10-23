@@ -1,42 +1,60 @@
-import { createRootRoute, Link, Outlet } from '@tanstack/react-router';
+import { createRootRoute, Outlet, Link } from '@tanstack/react-router';
+import { TanStackRouterDevtools } from '@tanstack/router-devtools';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 export const Route = createRootRoute({
-  component: () => (
+  component: RootComponent,
+});
+
+function RootComponent() {
+  return (
     <div className="min-h-screen bg-background">
-      <nav className="border-b bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <h1 className="text-xl font-bold">PKI Manager</h1>
-              </div>
-              <div className="ml-6 flex space-x-8">
+      <nav className="border-b bg-card shadow-sm">
+        <div className="container mx-auto px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-8">
+              <Link to="/" className="text-2xl font-bold text-primary hover:text-primary/80 transition-colors">
+                PKI Manager
+              </Link>
+              <div className="flex space-x-1">
                 <Link
                   to="/"
-                  className="inline-flex items-center px-1 pt-1 text-sm font-medium hover:text-primary transition-colors"
+                  className="px-3 py-2 text-sm font-medium rounded-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
                   activeProps={{
-                    className: 'text-primary border-b-2 border-primary',
+                    className: 'px-3 py-2 text-sm font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/15 transition-colors'
                   }}
+                  activeOptions={{ exact: true }}
                 >
                   Dashboard
                 </Link>
                 <Link
                   to="/cas"
-                  className="inline-flex items-center px-1 pt-1 text-sm font-medium hover:text-primary transition-colors"
+                  className="px-3 py-2 text-sm font-medium rounded-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
                   activeProps={{
-                    className: 'text-primary border-b-2 border-primary',
+                    className: 'px-3 py-2 text-sm font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/15 transition-colors'
                   }}
                 >
                   Certificate Authorities
                 </Link>
+                <Link
+                  to="/certificates"
+                  className="px-3 py-2 text-sm font-medium rounded-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
+                  activeProps={{
+                    className: 'px-3 py-2 text-sm font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/15 transition-colors'
+                  }}
+                >
+                  Certificates
+                </Link>
               </div>
             </div>
+            <ThemeToggle />
           </div>
         </div>
       </nav>
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <main className="container mx-auto px-6 py-6">
         <Outlet />
       </main>
+      <TanStackRouterDevtools position="bottom-right" />
     </div>
-  ),
-});
+  );
+}

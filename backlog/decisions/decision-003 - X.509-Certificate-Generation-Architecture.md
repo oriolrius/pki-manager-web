@@ -1,9 +1,11 @@
-# ADR-003: X.509 Certificate Generation Architecture
+---
+id: decision-003
+title: 003 - X.509 Certificate Generation Architecture
+date: '2025-10-21 15:58'
+status: accepted
+---
 
-**Status:** Accepted
-**Date:** 2025-10-21
-**Deciders:** Development Team
-**Related:** ADR-001 (Technology Stack), ADR-002 (KMS Integration)
+# Decision 003: X.509 Certificate Generation Architecture
 
 ## Context
 
@@ -398,27 +400,27 @@ import {
 
 ### Positive
 
-✅ **Security:** Private keys never leave KMS/HSM
-✅ **Functionality:** Full X.509 v3 support with rich extensions
-✅ **Type Safety:** Complete TypeScript definitions
-✅ **Maintainability:** Well-structured modules with clear responsibilities
-✅ **Testability:** 97% test coverage of core functionality
-✅ **Standards Compliance:** RFC 5280 and RFC 2253 adherence
-✅ **Flexibility:** Support for multiple algorithms and formats
-✅ **Production Ready:** Mature, battle-tested library (node-forge)
+- ✅ **Security:** Private keys never leave KMS/HSM
+- ✅ **Functionality:** Full X.509 v3 support with rich extensions
+- ✅ **Type Safety:** Complete TypeScript definitions
+- ✅ **Maintainability:** Well-structured modules with clear responsibilities
+- ✅ **Testability:** 97% test coverage of core functionality
+- ✅ **Standards Compliance:** RFC 5280 and RFC 2253 adherence
+- ✅ **Flexibility:** Support for multiple algorithms and formats
+- ✅ **Production Ready:** Mature, battle-tested library (node-forge)
 
 ### Negative
 
-⚠️ **CSR Extension Limitations:** Requires manual OID mapping (documented)
-⚠️ **CRL Parsing:** Simplified implementation requires enhancement
-⚠️ **ECDSA Support:** Requires KMS ECDSA verification
-⚠️ **Certificate Verification:** Basic implementation, not full chain validation
+- ⚠️ CSR extension handling is limited — manual OID mapping required; extensions are often added during signing rather than embedded in the CSR.
+- ⚠️ CRL parsing is simplified and incomplete — full ASN.1 decoding or an external parsing library is needed for reliable revocation checks.
+- ⚠️ ECDSA support is partial — requires verification that Cosmian KMS supports ECDSA or a secure native/third‑party fallback for signing.
+- ⚠️ Certificate chain validation is basic — full RFC‑5280 path validation, trust anchor management, and revocation (CRL/OCSP) checks are not yet implemented.
 
 ### Neutral
 
-ℹ️ **Dependency:** Adds node-forge to project (well-maintained, no security issues)
-ℹ️ **Learning Curve:** Team needs familiarity with X.509 concepts
-ℹ️ **Future Work:** Some features require iteration
+- ℹ️ **Dependency:** Adds node-forge to project (well-maintained, no security issues)
+- ℹ️ **Learning Curve:** Team needs familiarity with X.509 concepts
+- ℹ️ **Future Work:** Some features require iteration
 
 ## Future Enhancements
 
