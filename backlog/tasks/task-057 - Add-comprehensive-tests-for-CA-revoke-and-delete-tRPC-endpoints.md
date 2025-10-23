@@ -50,3 +50,38 @@ Create comprehensive test coverage for Certificate Authority revocation and dele
 5. Fix any test failures or issues discovered
 6. Verify tests cover all acceptance criteria
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added comprehensive test coverage for CA revoke and delete tRPC endpoints.
+
+## Tests Implemented
+
+### CA Revoke Tests (6 test scenarios):
+- Cascade revocation to active child certificates
+- CRL generation with correct numbering and dates
+- All 8 revocation reasons (unspecified, keyCompromise, caCompromise, etc.)
+- Audit logging with proper operation name and details
+- Edge case: CA with no certificates
+- Edge case: CA with mixed certificate statuses
+
+### CA Delete Tests (5 test scenarios):
+- Expired CA deletion (validates expired status allows deletion)
+- Prevention of deletion with active certificates
+- CRL cleanup (orphaned CRL records)
+- Audit logging before deletion (preserves metadata)
+- destroyKey parameter handling (false case)
+
+## Key Findings & Fixes:
+- Fixed import organization (moved drizzle-orm imports to top)
+- Corrected audit log operation names (ca.revoke, ca.delete)
+- Fixed audit detail field names (cascadeRevoked, destroyKey)
+
+## Test Results:
+21 tests total - ALL PASSING
+- 11 original tests (ca.list, basic revoke/delete)
+- 10 new comprehensive tests
+
+Modified file: backend/src/trpc/procedures/ca.test.ts
+<!-- SECTION:NOTES:END -->
