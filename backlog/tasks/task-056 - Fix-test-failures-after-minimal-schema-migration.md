@@ -1,7 +1,7 @@
 ---
 id: task-056
 title: Fix test failures after minimal schema migration
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-23 14:12'
