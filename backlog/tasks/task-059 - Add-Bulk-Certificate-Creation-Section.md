@@ -47,3 +47,51 @@ Enable users to create multiple certificates at once by providing a CSV format i
 8. Add frontend tests for Bulk section UI
 9. Test end-to-end bulk creation workflow manually
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Summary
+Implemented bulk certificate creation feature that enables users to create multiple certificates at once via CSV input.
+
+### Backend Implementation
+- Added `bulkCreateCertificatesSchema` to schemas.ts for input validation
+- Created `bulkIssue` procedure in certificate.ts that:
+  - Parses CSV data (format: certificateType, CN, O, C, SANs, validityDays)
+  - Auto-detects SAN types (email, IP, DNS) based on format
+  - Validates each row using existing certificate validation logic
+  - Returns detailed success/failure results per row
+- Added comprehensive tests in certificate-bulk.test.ts (8 tests passing)
+
+### Frontend Implementation
+- Created `/certificates/bulk` route with dedicated UI
+- Features:
+  - CA selection dropdown
+  - Default validity days input field
+  - Large CSV textarea with example format
+  - Comprehensive format guide panel
+  - Real-time results display showing success/failure per row
+- Added "Bulk" navigation link to main menu
+
+### CSV Format
+Format: `certificateType, CN, O, C, SANs (semicolon-separated), validityDays`
+
+Example:
+```
+server,example.com,Acme Corp,US,example.com;www.example.com,365
+client,john.doe,Acme Corp,US,,730
+email,jane@example.com,Acme Corp,US,jane@example.com,365
+```
+
+### Files Modified
+- backend/src/trpc/schemas.ts
+- backend/src/trpc/procedures/certificate.ts
+- backend/src/trpc/procedures/certificate-bulk.test.ts (new)
+- frontend/src/routes/certificates.bulk.tsx (new)
+- frontend/src/routes/__root.tsx
+
+### Testing
+- Backend: 8 unit tests passing (validation, error handling, SAN parsing)
+- Frontend: Manual testing recommended
+- AC 10 (frontend tests) deferred - would require React Testing Library setup
+<!-- SECTION:NOTES:END -->
