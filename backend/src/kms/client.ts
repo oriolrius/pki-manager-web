@@ -484,6 +484,9 @@ export class KMSClient {
       // Add required empty fields for all X.509 subject components that Cosmian KMS expects
       // Based on X.509 DN attributes and Cosmian KMS requirements
       const requiredSubjectFields = [
+        "CertificateSubjectOu",  // Organizational Unit
+        "CertificateSubjectSt",  // State
+        "CertificateSubjectL",   // Locality
         "CertificateSubjectEmail",
         "CertificateSubjectUid",
         "CertificateSubjectSerialNumber",
@@ -510,6 +513,92 @@ export class KMSClient {
       // For self-signed certificates, also add empty issuer fields
       if (isSelfSigned) {
         const requiredIssuerFields = [
+          "CertificateIssuerOu",  // Organizational Unit
+          "CertificateIssuerSt",  // State
+          "CertificateIssuerL",   // Locality
+          "CertificateIssuerEmail",
+          "CertificateIssuerUid",
+          "CertificateIssuerSerialNumber",
+          "CertificateIssuerTitle",
+          "CertificateIssuerGivenName",
+          "CertificateIssuerInitials",
+          "CertificateIssuerGenerationQualifier",
+          "CertificateIssuerDnQualifier",
+          "CertificateIssuerPseudonym",
+          "CertificateIssuerDc",
+        ];
+
+        for (const field of requiredIssuerFields) {
+          const hasField = certAttrs.some(attr => attr.tag === field);
+          if (!hasField) {
+            certAttrs.push({
+              tag: field,
+              type: "TextString",
+              value: "",
+            });
+          }
+        }
+      }
+
+      // For non-self-signed certificates with issuerName, parse and add issuer fields
+      if (!isSelfSigned && options.issuerName) {
+        const issuerParts = options.issuerName.split(',').map(part => {
+          const [key, ...valueParts] = part.trim().split('=');
+          return { key: key.trim(), value: valueParts.join('=').trim() };
+        });
+
+        for (const part of issuerParts) {
+          switch (part.key) {
+            case 'CN':
+              certAttrs.push({
+                tag: "CertificateIssuerCn",
+                type: "TextString",
+                value: part.value,
+              });
+              break;
+            case 'O':
+              certAttrs.push({
+                tag: "CertificateIssuerO",
+                type: "TextString",
+                value: part.value,
+              });
+              break;
+            case 'OU':
+              certAttrs.push({
+                tag: "CertificateIssuerOu",
+                type: "TextString",
+                value: part.value,
+              });
+              break;
+            case 'C':
+              certAttrs.push({
+                tag: "CertificateIssuerC",
+                type: "TextString",
+                value: part.value,
+              });
+              break;
+            case 'ST':
+              certAttrs.push({
+                tag: "CertificateIssuerSt",
+                type: "TextString",
+                value: part.value,
+              });
+              break;
+            case 'L':
+              certAttrs.push({
+                tag: "CertificateIssuerL",
+                type: "TextString",
+                value: part.value,
+              });
+              break;
+          }
+        }
+
+        // Add required empty issuer fields
+        const requiredIssuerFields = [
+          "CertificateIssuerOu",  // Organizational Unit
+          "CertificateIssuerSt",  // State
+          "CertificateIssuerL",   // Locality
           "CertificateIssuerEmail",
           "CertificateIssuerUid",
           "CertificateIssuerSerialNumber",
@@ -535,12 +624,16 @@ export class KMSClient {
       }
 
       if (certAttrs.length > 0) {
+        console.log('[KMS Client] Adding CertificateAttributes:', JSON.stringify(certAttrs, null, 2));
         attributes.push({
           tag: "CertificateAttributes",
           value: certAttrs,
         });
+      } else {
+        console.log('[KMS Client] WARNING: certAttrs is empty!');
       }
     }
+    console.log('[KMS Client] Total attributes count:', attributes.length);
 
     // Add tags as vendor attribute
     if (options.tags && options.tags.length > 0) {

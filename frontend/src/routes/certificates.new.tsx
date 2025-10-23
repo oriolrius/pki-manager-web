@@ -160,7 +160,7 @@ function NewCertificate() {
               className="w-full px-3 py-2 border rounded-md bg-background"
             >
               <option value="">Select a CA</option>
-              {casQuery.data?.map(ca => {
+              {casQuery.data?.filter(ca => ca.status === 'active').map(ca => {
                 const cnMatch = ca.subject.match(/CN=([^,]+)/);
                 const cn = cnMatch ? cnMatch[1] : ca.subject;
                 return (

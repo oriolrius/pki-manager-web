@@ -42,6 +42,21 @@ function Certificates() {
     offset: 0,
   });
 
+  // Fetch CAs list for lookup
+  const casQuery = trpc.ca.list.useQuery({});
+
+  // Create CA lookup map
+  const caLookup = useMemo(() => {
+    if (!casQuery.data) return new Map();
+    const map = new Map();
+    casQuery.data.forEach(ca => {
+      const cnMatch = ca.subject.match(/CN=([^,]+)/);
+      const cn = cnMatch ? cnMatch[1] : ca.subject;
+      map.set(ca.id, { id: ca.id, cn, subject: ca.subject });
+    });
+    return map;
+  }, [casQuery.data]);
+
   // Load filters from localStorage on mount
   useEffect(() => {
     const storedCA = localStorage.getItem(CA_FILTER_STORAGE_KEY);
@@ -82,19 +97,18 @@ function Certificates() {
 
   // Extract unique CAs from certificates
   const uniqueCAs = useMemo(() => {
-    if (!certificatesQuery.data?.items) return [];
+    if (!certificatesQuery.data?.items || !caLookup.size) return [];
 
     const caMap = new Map<string, { id: string; cn: string }>();
     certificatesQuery.data.items.forEach(cert => {
-      if (cert.issuingCA && !caMap.has(cert.issuingCA.id)) {
-        const cnMatch = cert.issuingCA.subjectDn.match(/CN=([^,]+)/);
-        const cn = cnMatch ? cnMatch[1] : cert.issuingCA.subjectDn;
-        caMap.set(cert.issuingCA.id, { id: cert.issuingCA.id, cn });
+      const ca = caLookup.get(cert.caId);
+      if (ca && !caMap.has(ca.id)) {
+        caMap.set(ca.id, { id: ca.id, cn: ca.cn });
       }
     });
 
     return Array.from(caMap.values()).sort((a, b) => a.cn.localeCompare(b.cn));
-  }, [certificatesQuery.data]);
+  }, [certificatesQuery.data, caLookup]);
 
   // Extract unique certificate types
   const uniqueTypes = useMemo(() => {
@@ -116,7 +130,7 @@ function Certificates() {
   // Filter certificates by CN, SAN, CA, status, and type
   const filteredCertificates = certificatesQuery.data?.items.filter((cert) => {
     // Filter by CA if selected
-    if (selectedCA && cert.issuingCA?.id !== selectedCA) {
+    if (selectedCA && cert.caId !== selectedCA) {
       return false;
     }
 
@@ -151,10 +165,10 @@ function Certificates() {
       return true;
     }
 
-    // Parse and check SANs
-    const sanDns = cert.sanDns ? JSON.parse(cert.sanDns) : [];
-    const sanIp = cert.sanIp ? JSON.parse(cert.sanIp) : [];
-    const sanEmail = cert.sanEmail ? JSON.parse(cert.sanEmail) : [];
+    // SANs are already arrays from backend, use them directly
+    const sanDns = cert.sanDns || [];
+    const sanIp = cert.sanIp || [];
+    const sanEmail = cert.sanEmail || [];
     const allSans = [...sanDns, ...sanIp, ...sanEmail];
 
     return allSans.some(san => san.toLowerCase().includes(searchLower));
@@ -162,8 +176,19 @@ function Certificates() {
 
   return (
     <div className="space-y-4">
+      <style>{`
+        @keyframes filterPulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+          50% { box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.2); }
+        }
+        .filter-active {
+          animation: filterPulse 3s ease-in-out infinite;
+          border-radius: 0.375rem;
+          background: rgba(249, 115, 22, 0.05);
+        }
+      `}</style>
       <div className="flex items-center gap-4 flex-wrap">
-        <div className="relative flex-1 max-w-md">
+        <div className={`relative flex-1 max-w-md ${searchTerm ? 'filter-active' : ''}`}>
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
@@ -176,7 +201,7 @@ function Certificates() {
         <select
           value={selectedCA}
           onChange={(e) => setSelectedCA(e.target.value)}
-          className="px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px]"
+          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px] ${selectedCA ? 'filter-active' : ''}`}
         >
           <option value="">All CAs</option>
           {uniqueCAs.map(ca => (
@@ -188,7 +213,7 @@ function Certificates() {
         <select
           value={selectedStatus}
           onChange={(e) => setSelectedStatus(e.target.value)}
-          className="px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[140px]"
+          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[140px] ${selectedStatus ? 'filter-active' : ''}`}
         >
           <option value="">All Status</option>
           <option value="active">Active</option>
@@ -198,7 +223,7 @@ function Certificates() {
         <select
           value={selectedType}
           onChange={(e) => setSelectedType(e.target.value)}
-          className="px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[150px]"
+          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[150px] ${selectedType ? 'filter-active' : ''}`}
         >
           <option value="">All Types</option>
           {uniqueTypes.map(type => (
@@ -266,10 +291,10 @@ function Certificates() {
                     const cnMatch = cert.subjectDn.match(/CN=([^,]+)/);
                     const commonName = cnMatch ? cnMatch[1] : cert.subjectDn;
 
-                    // Parse SANs
-                    const sanDns = cert.sanDns ? JSON.parse(cert.sanDns) : [];
-                    const sanIp = cert.sanIp ? JSON.parse(cert.sanIp) : [];
-                    const sanEmail = cert.sanEmail ? JSON.parse(cert.sanEmail) : [];
+                    // SANs are already parsed by backend, just use them directly
+                    const sanDns = cert.sanDns || [];
+                    const sanIp = cert.sanIp || [];
+                    const sanEmail = cert.sanEmail || [];
                     const allSans = [...sanDns, ...sanIp, ...sanEmail];
                     const sanDisplay = allSans.length > 0
                       ? allSans.slice(0, 2).join(', ') + (allSans.length > 2 ? ` +${allSans.length - 2}` : '')
@@ -280,9 +305,9 @@ function Certificates() {
                     const isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0;
                     const isExpired = daysUntilExpiry <= 0;
 
-                    // Extract CA CN
-                    const caCnMatch = cert.issuingCA?.subjectDn.match(/CN=([^,]+)/);
-                    const caCN = caCnMatch ? caCnMatch[1] : cert.issuingCA?.subjectDn || 'Unknown';
+                    // Extract CA CN from lookup
+                    const ca = caLookup.get(cert.caId);
+                    const caCN = ca?.cn || 'Unknown';
 
                     // Get certificate type icon
                     const typeInfo = getCertificateTypeIcon(cert.certificateType);
