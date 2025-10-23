@@ -313,6 +313,7 @@ export const caRouter = router({
           notBefore: notBefore,
           notAfter: notAfter,
           kmsKeyId: keyPair.privateKeyId,
+          kmsCertificateId: certInfo.certificateId,
           certificatePem: certificatePem,
           status: 'active',
           createdAt: new Date(),

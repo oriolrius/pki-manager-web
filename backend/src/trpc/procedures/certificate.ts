@@ -741,6 +741,7 @@ export const certificateRouter = router({
         const certInfo = await kmsService.signCertificate({
           publicKeyId: keyPair.publicKeyId,
           issuerPrivateKeyId: caRecord.kmsKeyId,
+          issuerCertificateId: caRecord.kmsCertificateId,
           subjectName: subjectName,
           daysValid: input.validityDays,
           tags: input.tags || [],

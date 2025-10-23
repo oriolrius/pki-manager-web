@@ -14,6 +14,7 @@ export const certificateAuthorities = sqliteTable(
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
     kmsKeyId: text('kms_key_id').notNull(),
+    kmsCertificateId: text('kms_certificate_id').notNull(),
     certificatePem: text('certificate_pem').notNull(),
     status: text('status', { enum: ['active', 'revoked', 'expired'] })
       .notNull()
