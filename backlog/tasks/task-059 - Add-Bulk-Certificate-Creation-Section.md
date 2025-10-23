@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-23 17:22'
-updated_date: '2025-10-23 17:24'
+updated_date: '2025-10-23 17:25'
 labels:
   - frontend
   - feature
@@ -33,3 +33,17 @@ Enable users to create multiple certificates at once by providing a CSV format i
 - [ ] #9 Backend tests pass for bulk certificate creation functionality
 - [ ] #10 Frontend tests pass for Bulk section UI and CSV validation
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Explore backend certificate creation procedure to understand the API structure
+2. Create backend tRPC procedure for bulk certificate creation with CSV parsing
+3. Add backend tests for bulk creation endpoint
+4. Create frontend route /bulk (certificates.bulk.tsx)
+5. Add "Bulk" navigation item to __root.tsx menu
+6. Implement bulk certificate form with CA selector, default expiration, and CSV textarea
+7. Implement CSV validation and error display logic
+8. Add frontend tests for Bulk section UI
+9. Test end-to-end bulk creation workflow manually
+<!-- SECTION:PLAN:END -->
