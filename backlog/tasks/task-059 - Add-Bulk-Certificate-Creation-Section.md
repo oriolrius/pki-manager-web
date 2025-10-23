@@ -1,7 +1,7 @@
 ---
 id: task-059
 title: Add Bulk Certificate Creation Section
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-23 17:22'
