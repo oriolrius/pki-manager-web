@@ -1,7 +1,7 @@
 ---
 id: task-057
 title: Add comprehensive tests for CA revoke and delete tRPC endpoints
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2025-10-23 15:15'
