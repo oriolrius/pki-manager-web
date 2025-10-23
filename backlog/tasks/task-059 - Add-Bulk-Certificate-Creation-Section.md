@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-23 17:22'
-updated_date: '2025-10-23 17:25'
+updated_date: '2025-10-23 17:35'
 labels:
   - frontend
   - feature
@@ -21,16 +21,16 @@ Enable users to create multiple certificates at once by providing a CSV format i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 User can access 'Bulk' section from top navigation menu
-- [ ] #2 User can select a Certificate Authority from dropdown
-- [ ] #3 User can set a default expiration time using a time input field
-- [ ] #4 User can paste CSV data into a text area with format: cert type, CN, SAN, expiration time
-- [ ] #5 System validates CSV format and shows clear error messages for invalid entries
-- [ ] #6 System creates certificates in bulk using provided CSV data and selected CA
-- [ ] #7 User receives feedback showing successful creations and any errors per row
-- [ ] #8 Default expiration time is used when CSV row doesn't specify expiration
+- [x] #1 User can access 'Bulk' section from top navigation menu
+- [x] #2 User can select a Certificate Authority from dropdown
+- [x] #3 User can set a default expiration time using a time input field
+- [x] #4 User can paste CSV data into a text area with format: cert type, CN, SAN, expiration time
+- [x] #5 System validates CSV format and shows clear error messages for invalid entries
+- [x] #6 System creates certificates in bulk using provided CSV data and selected CA
+- [x] #7 User receives feedback showing successful creations and any errors per row
+- [x] #8 Default expiration time is used when CSV row doesn't specify expiration
 
-- [ ] #9 Backend tests pass for bulk certificate creation functionality
+- [x] #9 Backend tests pass for bulk certificate creation functionality
 - [ ] #10 Frontend tests pass for Bulk section UI and CSV validation
 <!-- AC:END -->
 
