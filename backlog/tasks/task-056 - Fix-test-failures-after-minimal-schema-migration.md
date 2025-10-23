@@ -1,9 +1,11 @@
 ---
 id: task-056
 title: Fix test failures after minimal schema migration
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-23 14:12'
+updated_date: '2025-10-23 14:50'
 labels:
   - backend
   - testing
