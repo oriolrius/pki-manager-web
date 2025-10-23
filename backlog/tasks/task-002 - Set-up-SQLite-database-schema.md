@@ -32,13 +32,14 @@ Implement the complete database schema as specified in the PRD including tables 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Set up Drizzle ORM configuration and database client
-2. Create database schema file with all tables (CAs, certificates, CRLs, audit log)
-3. Add indexes and constraints as per PRD
-4. Set up Drizzle Kit for migrations
-5. Generate initial migration
-6. Test database connection and schema creation
-7. Add database utility functions for initialization
+1. Update list endpoint - remove certificatePem from output schema
+2. Update getById endpoint - fetch certificate from KMS instead of DB
+3. Update issue endpoint - store kmsCertificateId reference only, not certificatePem
+4. Update renew endpoint - fetch from KMS and store only kmsCertificateId
+5. Update download endpoint - fetch certificates from KMS on-demand
+6. Check CRL procedures for certificatePem references
+7. Update test files to match new schema
+8. Run full test suite and verify no regressions
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
