@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-23 15:15'
-updated_date: '2025-10-23 15:15'
+updated_date: '2025-10-23 15:21'
 labels:
   - backend
   - testing
@@ -23,21 +23,21 @@ Create comprehensive test coverage for Certificate Authority revocation and dele
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Test CA revoke cascades to all active child certificates
-- [ ] #2 Test CA revoke generates CRL record with correct number and dates
-- [ ] #3 Test CA revoke preserves all revocation reasons (unspecified, keyCompromise, caCompromise, etc.)
-- [ ] #4 Test CA revoke creates proper audit log entry
-- [ ] #5 Test CA revoke with CA that has no certificates
-- [ ] #6 Test CA revoke with CA that has mixed certificate statuses
-- [ ] #7 Test CA delete validates revoked status requirement
-- [ ] #8 Test CA delete validates expired status allows deletion
-- [ ] #9 Test CA delete prevents deletion with active certificates
-- [ ] #10 Test CA delete destroys KMS key when destroyKey=true
-- [ ] #11 Test CA delete handles already-revoked KMS keys gracefully
-- [ ] #12 Test CA delete cleans up orphaned CRL records
-- [ ] #13 Test CA delete creates audit log before deletion
-- [ ] #14 Test CA delete with destroyKey=false preserves KMS key
-- [ ] #15 All tests pass in CI pipeline
+- [x] #1 Test CA revoke cascades to all active child certificates
+- [x] #2 Test CA revoke generates CRL record with correct number and dates
+- [x] #3 Test CA revoke preserves all revocation reasons (unspecified, keyCompromise, caCompromise, etc.)
+- [x] #4 Test CA revoke creates proper audit log entry
+- [x] #5 Test CA revoke with CA that has no certificates
+- [x] #6 Test CA revoke with CA that has mixed certificate statuses
+- [x] #7 Test CA delete validates revoked status requirement
+- [x] #8 Test CA delete validates expired status allows deletion
+- [x] #9 Test CA delete prevents deletion with active certificates
+- [x] #10 Test CA delete destroys KMS key when destroyKey=true
+- [x] #11 Test CA delete handles already-revoked KMS keys gracefully
+- [x] #12 Test CA delete cleans up orphaned CRL records
+- [x] #13 Test CA delete creates audit log before deletion
+- [x] #14 Test CA delete with destroyKey=false preserves KMS key
+- [x] #15 All tests pass in CI pipeline
 <!-- AC:END -->
 
 ## Implementation Plan
