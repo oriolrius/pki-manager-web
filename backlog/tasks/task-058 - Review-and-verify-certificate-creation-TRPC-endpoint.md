@@ -1,9 +1,11 @@
 ---
 id: task-058
 title: Review and verify certificate creation TRPC endpoint
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-23 16:02'
+updated_date: '2025-10-23 16:03'
 labels:
   - backend
   - trpc
