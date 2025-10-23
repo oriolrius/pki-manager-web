@@ -4,6 +4,7 @@ title: Add Bulk Certificate Creation Section
 status: To Do
 assignee: []
 created_date: '2025-10-23 17:22'
+updated_date: '2025-10-23 17:24'
 labels:
   - frontend
   - feature
@@ -27,4 +28,7 @@ Enable users to create multiple certificates at once by providing a CSV format i
 - [ ] #6 System creates certificates in bulk using provided CSV data and selected CA
 - [ ] #7 User receives feedback showing successful creations and any errors per row
 - [ ] #8 Default expiration time is used when CSV row doesn't specify expiration
+
+- [ ] #9 Backend tests pass for bulk certificate creation functionality
+- [ ] #10 Frontend tests pass for Bulk section UI and CSV validation
 <!-- AC:END -->
