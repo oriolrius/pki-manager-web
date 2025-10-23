@@ -1,11 +1,11 @@
 ---
 id: task-002
 title: Set up SQLite database schema
-status: Done
+status: In Progress
 assignee:
   - '@claude'
 created_date: '2025-10-21 15:49'
-updated_date: '2025-10-21 16:05'
+updated_date: '2025-10-23 14:05'
 labels:
   - backend
   - database
