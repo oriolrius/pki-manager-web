@@ -1,9 +1,11 @@
 ---
 id: task-057
 title: Add comprehensive tests for CA revoke and delete tRPC endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2025-10-23 15:15'
+updated_date: '2025-10-23 15:15'
 labels:
   - backend
   - testing
