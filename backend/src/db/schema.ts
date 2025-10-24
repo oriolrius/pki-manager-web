@@ -15,6 +15,7 @@ export const certificateAuthorities = sqliteTable(
     // Query optimization fields (denormalized for performance)
     subjectDn: text('subject_dn').notNull(),
     serialNumber: text('serial_number').notNull().unique(),
+    keyAlgorithm: text('key_algorithm'),
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
 

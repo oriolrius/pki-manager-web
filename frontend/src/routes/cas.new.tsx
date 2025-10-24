@@ -17,7 +17,7 @@ function NewCA() {
     country: '',
     state: '',
     locality: '',
-    keyAlgorithm: 'RSA-4096' as 'RSA-2048' | 'RSA-4096' | 'ECDSA-P256' | 'ECDSA-P384',
+    keyAlgorithm: 'RSA-4096' as 'RSA-2048' | 'RSA-4096',
     validityYears: 20,
   });
 
@@ -219,11 +219,9 @@ function NewCA() {
                 >
                   <option value="RSA-2048">RSA 2048 (Standard)</option>
                   <option value="RSA-4096">RSA 4096 (Recommended for CAs)</option>
-                  <option value="ECDSA-P256">ECDSA P-256 (Fast, Modern)</option>
-                  <option value="ECDSA-P384">ECDSA P-384 (High Security)</option>
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  RSA-4096 is recommended for root CAs due to long validity periods
+                  RSA-4096 is recommended for root CAs. ECDSA not supported by KMS.
                 </p>
               </div>
 

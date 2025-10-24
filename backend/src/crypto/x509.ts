@@ -296,6 +296,23 @@ export function generateCertificate(params: CertificateParams): GeneratedCertifi
 /**
  * Parse a certificate from PEM or DER format
  */
+/**
+ * Extract key algorithm from certificate's public key
+ */
+function getKeyAlgorithmFromCert(cert: forge.pki.Certificate): string {
+  const publicKey = cert.publicKey as any;
+
+  // Check if it's an RSA key (has 'n' and 'e' properties)
+  if (publicKey.n && publicKey.e) {
+    const keySize = publicKey.n.bitLength();
+    return keySize >= 4096 ? 'RSA-4096' : 'RSA-2048';
+  }
+
+  // Otherwise assume ECDSA (could be improved with better detection)
+  // Default to ECDSA-P256 for unknown ECDSA keys
+  return 'ECDSA-P256';
+}
+
 export function parseCertificate(
   data: string,
   format: CertificateFormat = 'PEM',
@@ -305,6 +322,7 @@ export function parseCertificate(
   issuer: any;
   validity: { notBefore: Date; notAfter: Date };
   extensions: any[];
+  keyAlgorithm: string;
 } {
   try {
     let cert: forge.pki.Certificate;
@@ -327,6 +345,7 @@ export function parseCertificate(
         notAfter: cert.validity.notAfter,
       },
       extensions: cert.extensions,
+      keyAlgorithm: getKeyAlgorithmFromCert(cert),
     };
   } catch (error) {
     throw new Error(

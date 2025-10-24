@@ -98,9 +98,13 @@ function CertificateAuthorities() {
                           <div className="text-xs text-muted-foreground font-mono truncate max-w-xs">{ca.subject}</div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium font-mono bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                            {ca.keyAlgorithm}
-                          </span>
+                          {ca.keyAlgorithm ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium font-mono bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                              {ca.keyAlgorithm}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-sm font-medium">{ca.certificateCount}</div>

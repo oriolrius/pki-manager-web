@@ -156,20 +156,47 @@ export class KMSClient {
   }
 
   /**
-   * Create an RSA key pair
+   * Map keyAlgorithm to KMIP algorithm and size
+   */
+  private parseKeyAlgorithm(keyAlgorithm?: string): { algorithm: string; sizeInBits: number } {
+    if (!keyAlgorithm) {
+      return { algorithm: "RSA", sizeInBits: 4096 };
+    }
+
+    // Parse format like "RSA-4096", "RSA-2048", "ECDSA-P256", "ECDSA-P384"
+    if (keyAlgorithm.startsWith("RSA-")) {
+      const size = parseInt(keyAlgorithm.split("-")[1], 10);
+      return { algorithm: "RSA", sizeInBits: size };
+    } else if (keyAlgorithm.startsWith("ECDSA-P")) {
+      const curve = keyAlgorithm.split("-")[1]; // e.g., "P256" or "P384"
+      const sizeInBits = curve === "P256" ? 256 : curve === "P384" ? 384 : 256;
+      return { algorithm: "ECDSA", sizeInBits };
+    }
+
+    // Default to RSA-4096
+    return { algorithm: "RSA", sizeInBits: 4096 };
+  }
+
+  /**
+   * Create a key pair (RSA or ECDSA)
    */
   async createKeyPair(options: {
     sizeInBits?: number;
     tags?: string[];
+    keyAlgorithm?: string;
   }): Promise<KeyPairIds> {
-    const sizeInBits = options.sizeInBits || 4096;
     const tags = options.tags || [];
+
+    // Parse algorithm from keyAlgorithm parameter
+    const { algorithm, sizeInBits } = options.keyAlgorithm
+      ? this.parseKeyAlgorithm(options.keyAlgorithm)
+      : { algorithm: "RSA", sizeInBits: options.sizeInBits || 4096 };
 
     const commonAttributes: KMIPElement[] = [
       {
         tag: "CryptographicAlgorithm",
         type: "Enumeration",
-        value: "RSA",
+        value: algorithm,
       },
       {
         tag: "CryptographicLength",
@@ -321,7 +348,8 @@ export class KMSClient {
     subjectName?: string;
     daysValid?: number;
     tags?: string[];
-    keySizeInBits?: number; // Key size for KMS to generate (default 4096)
+    keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
+    keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
   }): Promise<CertificateInfo> {
     const requestValue: KMIPElement[] = [];
 
@@ -349,17 +377,22 @@ export class KMSClient {
       value: "X509",
     });
 
+    // Parse algorithm from keyAlgorithm parameter or fall back to keySizeInBits
+    const { algorithm, sizeInBits } = options.keyAlgorithm
+      ? this.parseKeyAlgorithm(options.keyAlgorithm)
+      : { algorithm: "RSA", sizeInBits: options.keySizeInBits || 4096 };
+
     // Add cryptographic algorithm information (required for key pair generation)
     // When no key links are provided, Cosmian will generate a new key pair
     attributes.push({
       tag: "CryptographicAlgorithm",
       type: "Enumeration",
-      value: "RSA",
+      value: algorithm,
     });
     attributes.push({
       tag: "CryptographicLength",
       type: "Integer",
-      value: options.keySizeInBits || 4096, // Default to 4096 if not specified
+      value: sizeInBits,
     });
 
     // Add Link to issuer certificate (for non-self-signed)

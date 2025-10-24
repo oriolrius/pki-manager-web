@@ -89,19 +89,21 @@ export class KMSService {
   }
 
   /**
-   * Create an RSA key pair for a CA or certificate
+   * Create a key pair (RSA or ECDSA) for a CA or certificate
    */
   async createKeyPair(options: {
     sizeInBits?: number;
     tags?: string[];
     purpose: "ca" | "certificate";
     entityId?: string;
+    keyAlgorithm?: string; // e.g., "RSA-4096", "ECDSA-P256"
   }): Promise<KeyPairIds> {
     const operationId = randomUUID();
     try {
       const result = await this.client.createKeyPair({
         sizeInBits: options.sizeInBits,
         tags: options.tags,
+        keyAlgorithm: options.keyAlgorithm,
       });
 
       await this.logAudit(
@@ -216,7 +218,8 @@ export class KMSService {
     daysValid?: number;
     tags?: string[];
     entityId?: string;
-    keySizeInBits?: number; // Key size for KMS to generate (when not providing existing keys)
+    keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
+    keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
   }): Promise<CertificateInfo> {
     const operationId = randomUUID();
     try {
@@ -230,6 +233,7 @@ export class KMSService {
         daysValid: options.daysValid,
         tags: options.tags,
         keySizeInBits: options.keySizeInBits,
+        keyAlgorithm: options.keyAlgorithm,
       });
 
       await this.logAudit(

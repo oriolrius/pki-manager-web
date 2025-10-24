@@ -14,12 +14,10 @@ export const distinguishedNameSchema = z.object({
   locality: z.string().max(128).optional(),
 });
 
-// Key algorithm schemas
+// Key algorithm schemas (only RSA supported by Cosmian KMS)
 export const keyAlgorithmSchema = z.enum([
   'RSA-2048',
   'RSA-4096',
-  'ECDSA-P256',
-  'ECDSA-P384',
 ]);
 
 // Certificate status schema

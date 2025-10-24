@@ -106,6 +106,7 @@ export const caRouter = router({
           id: ca.id,
           subject: ca.subjectDn,
           serialNumber: ca.serialNumber,
+          keyAlgorithm: ca.keyAlgorithm,
           notBefore: ca.notBefore.toISOString(),
           notAfter: ca.notAfter.toISOString(),
           status: computedStatus,
@@ -262,19 +263,13 @@ export const caRouter = router({
           L: input.subject.locality,
         };
 
-        // Determine key size from algorithm
-        let keySizeInBits = 4096;
-        if (input.keyAlgorithm === 'RSA-2048') {
-          keySizeInBits = 2048;
-        }
-
         // Create self-signed root certificate using KMS certify
         // KMS will generate the key pair atomically during certificate creation
         const validityDays = (input.validityYears || 20) * 365;
         const subjectName = formatDN(subjectDN);
 
         logger.info(
-          { caId, subjectName, validityDays, keySizeInBits },
+          { caId, subjectName, validityDays, keyAlgorithm: input.keyAlgorithm },
           'Creating self-signed root certificate with key pair in KMS',
         );
 
@@ -284,7 +279,7 @@ export const caRouter = router({
           daysValid: validityDays,
           tags: input.tags || [],
           entityId: caId,
-          keySizeInBits, // Pass key size so KMS knows what to generate
+          keyAlgorithm: input.keyAlgorithm, // Pass algorithm (e.g., "RSA-4096", "ECDSA-P256")
         });
 
         // Convert certificate data from hex to PEM
@@ -316,6 +311,7 @@ export const caRouter = router({
           kmsKeyId: certInfo.privateKeyId || certInfo.certificateId, // Use cert ID as placeholder
           subjectDn: subjectName,
           serialNumber: certMetadata.serialNumber,
+          keyAlgorithm: certMetadata.keyAlgorithm,
           notBefore: notBefore,
           notAfter: notAfter,
           status: 'active',
