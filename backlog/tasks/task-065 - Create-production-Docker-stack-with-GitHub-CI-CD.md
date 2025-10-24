@@ -4,7 +4,7 @@ title: Create production Docker stack with GitHub CI/CD
 status: To Do
 assignee: []
 created_date: '2025-10-24 14:04'
-updated_date: '2025-10-24 14:06'
+updated_date: '2025-10-24 14:08'
 labels: []
 dependencies: []
 ---
@@ -25,4 +25,6 @@ Set up production-ready Docker infrastructure with Dockerfile, docker-compose, a
 - [ ] #6 Production configuration includes health checks, restart policies, resource limits, and structured logging
 
 - [ ] #7 Documentation covers local setup, production deployment, environment variables, and secrets management
+
+- [ ] #8 Environment configuration uses .env files with sensible production defaults as fallbacks when .env is not present
 <!-- AC:END -->
