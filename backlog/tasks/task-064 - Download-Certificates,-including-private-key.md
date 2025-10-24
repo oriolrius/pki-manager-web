@@ -20,4 +20,10 @@ Implement certificate download functionality that allows users to download certi
 - [ ] #1 Users can download a certificate with its private key from the certificate details page
 - [ ] #2 Downloaded files are properly formatted and can be used by standard tools (openssl, keytool, etc.)
 - [ ] #3 Private key download requires appropriate security confirmation/warning
+
+- [ ] #4 Download supports PEM and CRT formats (ASCII text)
+- [ ] #5 Download supports DER and CER formats (binary)
+- [ ] #6 Download supports PKCS#7/P7B format (certificate + chain, no private key)
+- [ ] #7 Download supports PKCS#12/PFX/P12 format (certificate + chain + private key, password protected)
+- [ ] #8 Download supports Java KeyStore (JKS) format (password protected)
 <!-- AC:END -->
