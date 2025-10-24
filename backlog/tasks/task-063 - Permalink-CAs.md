@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 07:21'
-updated_date: '2025-10-24 12:10'
+updated_date: '2025-10-24 12:15'
 labels: []
 dependencies: []
 ---
@@ -72,4 +72,37 @@ Added permalink functionality for Certificate Authorities (CAs) to enable easy s
 - Shows full URL with copy button for easy access
 - Provides visual feedback (Copy icon → Check icon) when clicked
 - Makes the permalink more discoverable within the page content
+
+### Download Endpoint Implementation:
+
+**Backend (server.ts):**
+- Created REST endpoint: `GET /cas/:caId.:format`
+- Supported formats: `.pem`, `.crt`, `.cer`, `.der`
+- Fetches certificate from KMS
+- Returns proper headers (Content-Type, Content-Disposition, Cache-Control)
+- Automatically converts PEM to DER for binary formats
+- Filename extracted from CN for better UX
+
+**Frontend (cas.$id.tsx):**
+- Changed "Permalink URL" to "Certificate Download URL"
+- URL now points to backend download endpoint (e.g., `/cas/:id.pem`)
+- Both header "Copy Link" button and Storage Location copy button now copy download URL
+- Dynamically uses VITE_API_URL environment variable
+
+**Testing:**
+```bash
+# PEM format (ASCII)
+curl http://wsl.ymbihq.local:52081/cas/280245c2-6e20-4665-ad69-eeb3ff6f3838.pem
+
+# DER format (binary)
+curl http://wsl.ymbihq.local:52081/cas/280245c2-6e20-4665-ad69-eeb3ff6f3838.der -o ca.der
+
+# CRT format (ASCII, alternative to PEM)
+curl http://wsl.ymbihq.local:52081/cas/280245c2-6e20-4665-ad69-eeb3ff6f3838.crt
+
+# CER format (binary, Windows compatible)
+curl http://wsl.ymbihq.local:52081/cas/280245c2-6e20-4665-ad69-eeb3ff6f3838.cer -o ca.cer
+```
+
+Now users can directly download CA certificates using curl or any HTTP client\!
 <!-- SECTION:NOTES:END -->
