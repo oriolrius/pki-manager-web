@@ -1,10 +1,11 @@
 ---
 id: task-064
 title: 'Download Certificates, including private key'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-10-24 07:27'
-updated_date: '2025-10-24 08:32'
+updated_date: '2025-10-24 08:33'
 labels: []
 dependencies: []
 ---
@@ -27,3 +28,14 @@ Implement certificate download functionality that allows users to download certi
 - [ ] #7 Download supports PKCS#12/PFX/P12 format (certificate + chain + private key, password protected)
 - [ ] #8 Download supports Java KeyStore (JKS) format (password protected)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add backend API endpoints for certificate download in various formats
+2. Implement format conversion utilities (PEM, DER, PKCS#7, PKCS#12, JKS)
+3. Add password protection for PKCS#12 and JKS formats
+4. Create frontend UI with format selection dropdown
+5. Add security warning dialog for private key downloads
+6. Test all formats with openssl and keytool
+<!-- SECTION:PLAN:END -->
