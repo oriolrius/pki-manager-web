@@ -1,9 +1,11 @@
 ---
 id: task-062
 title: Improve UI look and feel
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-10-24 07:20'
+updated_date: '2025-10-24 07:20'
 labels: []
 dependencies: []
 ---
