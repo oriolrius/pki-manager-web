@@ -3,6 +3,7 @@ import { TanStackRouterDevtools } from '@tanstack/router-devtools';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChartLine, faShield, faCertificate, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
+import packageJson from '../../../package.json';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -17,7 +18,7 @@ function RootComponent() {
             <div className="flex items-center space-x-8">
               <Link to="/" className="flex flex-col hover:opacity-80 transition-opacity">
                 <span className="text-2xl font-bold text-primary">PKI Manager</span>
-                <span className="text-xs text-gray-400 self-end">v0.0.0</span>
+                <span className="text-xs text-gray-400 self-end">v{packageJson.version}</span>
               </Link>
               <div className="flex space-x-1">
                 <Link
