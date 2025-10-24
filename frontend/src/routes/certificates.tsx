@@ -292,9 +292,9 @@ function Certificates() {
 
       {/* Bulk Action Bar */}
       {selectedCertificates.size > 0 && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-blue-900">
+            <span className="font-medium text-foreground">
               {selectedCertificates.size} certificate{selectedCertificates.size !== 1 ? 's' : ''} selected
             </span>
           </div>
@@ -302,7 +302,7 @@ function Certificates() {
             <button
               onClick={handleBulkDownload}
               disabled={bulkDownload.isFetching}
-              className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 text-sm"
+              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-1 text-sm"
             >
               <Download className="h-4 w-4" />
               Download

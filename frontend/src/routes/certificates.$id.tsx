@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { ArrowLeft, Download, RotateCcw, XCircle, Trash2, Calendar, Shield, Key, Database, Award } from 'lucide-react';
 import { useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faArrowLeft, faDownload, faRotate, faCircleXmark, faTrash, faCalendar, faShield, faKey, faDatabase, faAward } from '@fortawesome/free-solid-svg-icons';
 
 export const Route = createFileRoute('/certificates/$id')({
   component: CertificateDetail,
@@ -24,6 +25,20 @@ const REVOCATION_REASONS = [
   { value: 'privilegeWithdrawn', label: 'Privilege Withdrawn' },
 ] as const;
 
+const DOWNLOAD_FORMATS = [
+  { value: 'pem', label: 'PEM - Certificate only (ASCII)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'crt', label: 'CRT - Certificate only (ASCII)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'der', label: 'DER - Certificate only (Binary)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'cer', label: 'CER - Certificate only (Binary, Windows)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pem-chain', label: 'PEM Chain - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pkcs7', label: 'PKCS#7 - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'p7b', label: 'P7B - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: true, hasPrivateKey: true },
+  { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: true, hasPrivateKey: true },
+  { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: true, hasPrivateKey: true },
+  { value: 'jks', label: 'JKS - Java KeyStore (converted from PKCS#12)', requiresPassword: true, hasPrivateKey: true },
+] as const;
+
 function CertificateDetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
@@ -32,17 +47,61 @@ function CertificateDetail() {
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [selectedReason, setSelectedReason] = useState<string>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState<string>('pem');
+  const [downloadPassword, setDownloadPassword] = useState('');
+  const [showPrivateKeyWarning, setShowPrivateKeyWarning] = useState(false);
 
   const renewMutation = trpc.certificate.renew.useMutation();
   const revokeMutation = trpc.certificate.revoke.useMutation();
   const deleteMutation = trpc.certificate.delete.useMutation();
 
-  const handleDownload = async () => {
-    try {
-      const result = await utils.certificate.download.fetch({ id, format: 'pem' });
+  const selectedFormat = DOWNLOAD_FORMATS.find(f => f.value === downloadFormat);
 
-      // Create download link
-      const blob = new Blob([result.data], { type: result.mimeType });
+  const handleDownload = () => {
+    setShowDownloadDialog(true);
+  };
+
+  const confirmDownload = async () => {
+    // Validate password for formats that require it
+    if (selectedFormat?.requiresPassword && !downloadPassword) {
+      alert('Password is required for this format');
+      return;
+    }
+
+    if (selectedFormat?.requiresPassword && downloadPassword.length < 8) {
+      alert('Password must be at least 8 characters long');
+      return;
+    }
+
+    // Show warning for private key exports
+    if (selectedFormat?.hasPrivateKey && !showPrivateKeyWarning) {
+      setShowPrivateKeyWarning(true);
+      return;
+    }
+
+    try {
+      const result = await utils.certificate.download.fetch({
+        id,
+        format: downloadFormat as any,
+        password: selectedFormat?.requiresPassword ? downloadPassword : undefined,
+      });
+
+      // Decode base64 data for binary formats
+      const isBinaryFormat = ['der', 'cer', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12', 'jks'].includes(downloadFormat);
+      let blob: Blob;
+
+      if (isBinaryFormat) {
+        const binaryData = atob(result.data);
+        const bytes = new Uint8Array(binaryData.length);
+        for (let i = 0; i < binaryData.length; i++) {
+          bytes[i] = binaryData.charCodeAt(i);
+        }
+        blob = new Blob([bytes], { type: result.mimeType });
+      } else {
+        blob = new Blob([result.data], { type: result.mimeType });
+      }
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -51,6 +110,12 @@ function CertificateDetail() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+
+      // Reset dialog state
+      setShowDownloadDialog(false);
+      setDownloadFormat('pem');
+      setDownloadPassword('');
+      setShowPrivateKeyWarning(false);
     } catch (error: any) {
       alert(`Failed to download certificate: ${error.message}`);
     }
@@ -140,6 +205,124 @@ function CertificateDetail() {
 
   return (
     <div key={id} className="space-y-4">
+      {/* Download Dialog */}
+      {showDownloadDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+            <h2 className="text-xl font-bold mb-4">Download Certificate</h2>
+
+            {showPrivateKeyWarning ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                  <h3 className="font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                    ⚠️ Security Warning
+                  </h3>
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                    This format includes the <strong>private key</strong>. Keep this file secure and never share it publicly.
+                    Anyone with access to this file and the password can impersonate this certificate.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowPrivateKeyWarning(false)}
+                    className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium"
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    onClick={confirmDownload}
+                    className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 font-medium shadow-sm"
+                  >
+                    I Understand, Download
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="format" className="block text-sm font-medium mb-2">
+                      Format
+                    </label>
+                    <select
+                      id="format"
+                      value={downloadFormat}
+                      onChange={(e) => setDownloadFormat(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                    >
+                      {DOWNLOAD_FORMATS.map((format) => (
+                        <option key={format.value} value={format.value}>
+                          {format.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedFormat?.requiresPassword && (
+                    <div>
+                      <label htmlFor="password" className="block text-sm font-medium mb-2">
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        id="password"
+                        value={downloadPassword}
+                        onChange={(e) => setDownloadPassword(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md bg-background"
+                        placeholder="Minimum 8 characters"
+                        minLength={8}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This password will protect the private key
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedFormat?.hasPrivateKey && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                      <p className="text-xs text-blue-800 dark:text-blue-300">
+                        <strong>Note:</strong> This format includes the private key and will be password protected.
+                      </p>
+                    </div>
+                  )}
+
+                  {downloadFormat === 'jks' && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                      <p className="text-xs text-amber-800 dark:text-amber-300">
+                        <strong>JKS Note:</strong> The file will be downloaded as PKCS#12 (.p12). Convert to JKS using:
+                        <code className="block mt-1 p-1 bg-black/10 dark:bg-white/10 rounded">
+                          keytool -importkeystore -srckeystore file.p12 -srcstoretype PKCS12 -destkeystore file.jks -deststoretype JKS
+                        </code>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowDownloadDialog(false);
+                      setDownloadFormat('pem');
+                      setDownloadPassword('');
+                      setShowPrivateKeyWarning(false);
+                    }}
+                    className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmDownload}
+                    className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
+                  >
+                    Download
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Revocation Dialog */}
       {showRevokeDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -209,9 +392,9 @@ function CertificateDetail() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate({ to: '/certificates' })}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
           Back to Certificates
         </button>
 
@@ -220,7 +403,7 @@ function CertificateDetail() {
             onClick={handleDownload}
             className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
           >
-            <Download className="h-4 w-4" />
+            <FontAwesomeIcon icon={faDownload} className="h-4 w-4" />
             Download
           </button>
 
@@ -229,18 +412,18 @@ function CertificateDetail() {
               <button
                 onClick={handleRenew}
                 disabled={renewMutation.isPending}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium shadow-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
               >
-                <RotateCcw className="h-4 w-4" />
+                <FontAwesomeIcon icon={faRotate} className="h-4 w-4" />
                 Renew
               </button>
 
               <button
                 onClick={handleRevoke}
                 disabled={revokeMutation.isPending}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 font-medium shadow-sm disabled:opacity-50"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 font-medium shadow-sm disabled:opacity-50"
               >
-                <XCircle className="h-4 w-4" />
+                <FontAwesomeIcon icon={faCircleXmark} className="h-4 w-4" />
                 Revoke
               </button>
             </>
@@ -251,7 +434,7 @@ function CertificateDetail() {
             disabled={deleteMutation.isPending}
             className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 font-medium shadow-sm disabled:opacity-50"
           >
-            <Trash2 className="h-4 w-4" />
+            <FontAwesomeIcon icon={faTrash} className="h-4 w-4" />
             Delete
           </button>
         </div>
@@ -275,7 +458,17 @@ function CertificateDetail() {
               }`}>
                 {cert.status.toUpperCase()}
               </span>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                cert.certificateType === 'server'
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                  : cert.certificateType === 'client'
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                  : cert.certificateType === 'code_signing'
+                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                  : cert.certificateType === 'email'
+                  ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'
+                  : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+              }`}>
                 {cert.certificateType}
               </span>
             </div>
@@ -285,7 +478,7 @@ function CertificateDetail() {
         <div className="p-4 space-y-4">
           {/* Validity Period - Prominent */}
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
-            <Calendar className="h-5 w-5 text-primary mt-0.5" />
+            <FontAwesomeIcon icon={faCalendar} className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Validity Period</h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -312,7 +505,7 @@ function CertificateDetail() {
 
           {/* Subject Alternative Names - Prominent */}
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
-            <Shield className="h-5 w-5 text-primary mt-0.5" />
+            <FontAwesomeIcon icon={faShield} className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Subject Alternative Names (SAN)</h3>
               {!cert.sanDns?.length && !cert.sanIp?.length && !cert.sanEmail?.length ? (
@@ -367,7 +560,7 @@ function CertificateDetail() {
             role="button"
             tabIndex={0}
           >
-            <Award className="h-5 w-5 text-primary mt-0.5" />
+            <FontAwesomeIcon icon={faAward} className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Issued By (Certificate Authority)</h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
@@ -386,7 +579,7 @@ function CertificateDetail() {
 
           {/* Technical Details */}
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
-            <Key className="h-5 w-5 text-primary mt-0.5" />
+            <FontAwesomeIcon icon={faKey} className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Technical Details</h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -412,7 +605,7 @@ function CertificateDetail() {
 
           {/* KMS Storage Information */}
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
-            <Database className="h-5 w-5 text-primary mt-0.5" />
+            <FontAwesomeIcon icon={faDatabase} className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Storage Location</h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
@@ -441,7 +634,7 @@ function CertificateDetail() {
           {/* Revocation Information */}
           {cert.status === 'revoked' && cert.revocationDate && (
             <div className="flex items-start gap-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
-              <XCircle className="h-5 w-5 text-red-600 mt-0.5" />
+              <FontAwesomeIcon icon={faCircleXmark} className="h-5 w-5 text-red-600 mt-0.5" />
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-red-900 dark:text-red-200 mb-2">Revocation Information</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">

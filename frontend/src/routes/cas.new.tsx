@@ -76,7 +76,7 @@ function NewCA() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate({ to: '/cas' })}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Certificate Authorities
@@ -246,9 +246,9 @@ function NewCA() {
           </div>
 
           {/* Information Box */}
-          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-            <h4 className="font-medium text-sm text-blue-900 dark:text-blue-200 mb-2">What happens when you create a CA?</h4>
-            <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
+          <div className="p-4 bg-primary/10 border border-primary/20 rounded-md">
+            <h4 className="font-medium text-sm text-foreground mb-2">What happens when you create a CA?</h4>
+            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
               <li>A new key pair is generated and stored securely in Cosmian KMS</li>
               <li>A self-signed X.509 v3 certificate is created with CA=true</li>
               <li>The certificate is configured to sign other certificates and CRLs</li>

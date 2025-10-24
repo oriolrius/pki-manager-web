@@ -337,6 +337,64 @@ export class KMSClient {
   }
 
   /**
+   * Get private key in PEM format (PKCS#8)
+   * WARNING: This exports the private key from KMS. Use with caution and only when necessary.
+   */
+  async getPrivateKey(keyId: string): Promise<string> {
+    const request: KMIPRequest = {
+      tag: "Get",
+      value: [
+        {
+          tag: "UniqueIdentifier",
+          type: "TextString",
+          value: keyId,
+        },
+        {
+          tag: "KeyFormatType",
+          type: "Enumeration",
+          value: "PKCS8",
+        },
+        {
+          tag: "KeyWrapType",
+          type: "Enumeration",
+          value: "AsRegistered",
+        },
+      ],
+    };
+
+    const response = await this.sendKMIPRequest(request);
+
+    // Navigate to KeyMaterial
+    const privateKeyElement = this.findElement(response.value, "PrivateKey");
+    if (!privateKeyElement || !Array.isArray(privateKeyElement.value)) {
+      throw new Error("Invalid response structure: PrivateKey not found");
+    }
+
+    const keyBlock = this.findElement(privateKeyElement.value, "KeyBlock");
+    if (!keyBlock || !Array.isArray(keyBlock.value)) {
+      throw new Error("Invalid response structure: KeyBlock not found");
+    }
+
+    const keyValue = this.findElement(keyBlock.value, "KeyValue");
+    if (!keyValue || !Array.isArray(keyValue.value)) {
+      throw new Error("Invalid response structure: KeyValue not found");
+    }
+
+    const keyMaterial = this.findElement(keyValue.value, "KeyMaterial");
+    const keyMaterialBytes = this.getByteStringValue(keyMaterial);
+
+    // Convert hex string to PEM format
+    const derHex = keyMaterialBytes;
+    const derBytes = Buffer.from(derHex, "hex");
+    const base64 = derBytes.toString("base64");
+
+    // Format as PEM (PKCS#8)
+    const pem = `-----BEGIN PRIVATE KEY-----\n${base64.match(/.{1,64}/g)?.join("\n")}\n-----END PRIVATE KEY-----`;
+
+    return pem;
+  }
+
+  /**
    * Certify a certificate signing request or public key
    */
   async certify(options: {

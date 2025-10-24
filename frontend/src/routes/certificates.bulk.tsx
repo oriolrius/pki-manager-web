@@ -72,7 +72,7 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
         <button
           type="button"
           onClick={() => navigate({ to: '/certificates' })}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Certificates
@@ -149,7 +149,7 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
             <button
               type="submit"
               disabled={bulkIssueMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {bulkIssueMutation.isPending ? (
                 <>Processing...</>
@@ -165,12 +165,12 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
 
         {/* Instructions and Results Section */}
         <div className="space-y-6">
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-6">
             <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+              <AlertCircle className="h-5 w-5 text-primary mt-0.5" />
               <div>
-                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">CSV Format Guide</h3>
-                <div className="text-sm text-blue-800 dark:text-blue-200 space-y-2">
+                <h3 className="text-sm font-semibold text-foreground mb-2">CSV Format Guide</h3>
+                <div className="text-sm text-muted-foreground space-y-2">
                   <p><strong>Required fields:</strong></p>
                   <ul className="list-disc list-inside ml-2 space-y-1">
                     <li><strong>certificateType:</strong> server, client, code_signing, or email</li>
@@ -248,7 +248,7 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                             <p>Serial: {result.serialNumber}</p>
                             <a
                               href={`/certificates/${result.certificateId}`}
-                              className="text-blue-600 dark:text-blue-400 hover:underline"
+                              className="text-primary hover:underline"
                             >
                               View Certificate
                             </a>

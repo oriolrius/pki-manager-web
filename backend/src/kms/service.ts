@@ -206,6 +206,43 @@ export class KMSService {
   }
 
   /**
+   * Get private key in PEM format (PKCS#8)
+   * WARNING: This exports the private key from KMS. Use with caution and only when necessary.
+   */
+  async getPrivateKey(keyId: string, entityId?: string): Promise<string> {
+    const operationId = randomUUID();
+    try {
+      const result = await this.client.getPrivateKey(keyId);
+
+      await this.logAudit(
+        "kms.get_private_key",
+        "key",
+        entityId || keyId,
+        "success",
+        { keyId },
+        operationId
+      );
+
+      logger.warn(
+        { keyId, entityId },
+        "Private key exported from KMS - ensure secure handling"
+      );
+
+      return result;
+    } catch (error) {
+      await this.logAudit(
+        "kms.get_private_key",
+        "key",
+        entityId || keyId,
+        "failure",
+        { error: String(error), keyId },
+        operationId
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Sign a certificate (certify operation)
    */
   async signCertificate(options: {

@@ -1444,16 +1444,20 @@ export const certificateRouter = router({
       const commonName = certMetadata.subject.CN || 'certificate';
       const serialShort = certificate.serialNumber.substring(0, 8);
 
-      // Validate password for PKCS#12
-      if (input.format === 'pkcs12' && !input.password) {
+      // Formats that require a private key
+      const formatsRequiringKey = ['pkcs12', 'pfx', 'p12', 'jks'];
+      const requiresKey = formatsRequiringKey.includes(input.format);
+
+      // Validate password for formats that require it
+      if (requiresKey && !input.password) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Password is required for PKCS#12 format',
+          message: `Password is required for ${input.format.toUpperCase()} format`,
         });
       }
 
-      // Check if certificate has exportable key for PKCS#12
-      if (input.format === 'pkcs12' && !certificate.kmsKeyId) {
+      // Check if certificate has exportable key for formats that require it
+      if (requiresKey && !certificate.kmsKeyId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: 'Certificate does not have an exportable private key',
@@ -1470,20 +1474,22 @@ export const certificateRouter = router({
 
         switch (input.format) {
           case 'pem':
+          case 'crt':
             // PEM format (single certificate)
             data = certificatePem;
             mimeType = 'application/x-pem-file';
-            filename = `${commonName}-${serialShort}.pem`;
+            filename = `${commonName}-${serialShort}.${input.format}`;
             break;
 
           case 'der':
+          case 'cer':
             // DER format (binary)
             const derBytes = forge.default.asn1.toDer(
               forge.default.pki.certificateToAsn1(forgeCert)
             ).getBytes();
             data = Buffer.from(derBytes, 'binary').toString('base64');
             mimeType = 'application/x-x509-ca-cert';
-            filename = `${commonName}-${serialShort}.der`;
+            filename = `${commonName}-${serialShort}.${input.format}`;
             break;
 
           case 'pem-chain':
@@ -1494,25 +1500,95 @@ export const certificateRouter = router({
             break;
 
           case 'pkcs7':
-            // PKCS#7 format (certificate + CA chain)
+          case 'p7b':
+            // PKCS#7 format (certificate + CA chain, no private key)
             const p7 = forge.default.pkcs7.createSignedData();
             p7.addCertificate(forgeCert);
             p7.addCertificate(forgeCaCert);
             const p7Der = forge.default.asn1.toDer(p7.toAsn1()).getBytes();
             data = Buffer.from(p7Der, 'binary').toString('base64');
             mimeType = 'application/pkcs7-mime';
-            filename = `${commonName}-${serialShort}.p7b`;
+            filename = `${commonName}-${serialShort}.${input.format === 'pkcs7' ? 'p7b' : input.format}`;
             break;
 
           case 'pkcs12':
-            // PKCS#12 format (certificate + private key + CA chain)
-            // Note: This is a simplified implementation
-            // In production, you'd need to fetch the private key from KMS
-            // For now, we'll create a placeholder error
-            throw new TRPCError({
-              code: 'NOT_IMPLEMENTED',
-              message: 'PKCS#12 export with KMS-stored keys is not yet implemented. Private key retrieval from KMS requires additional implementation.',
-            });
+          case 'pfx':
+          case 'p12': {
+            // PKCS#12 format (certificate + private key + CA chain, password protected)
+            if (!certificate.kmsKeyId) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'Certificate does not have a private key',
+              });
+            }
+
+            // Fetch private key from KMS
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+
+            // Convert PEM private key to forge format
+            const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+
+            // Create PKCS#12
+            const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
+              forgePrivateKey,
+              [forgeCert, forgeCaCert],
+              input.password!,
+              {
+                algorithm: '3des',
+                friendlyName: commonName,
+              }
+            );
+            const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
+            data = Buffer.from(p12Der, 'binary').toString('base64');
+            mimeType = 'application/x-pkcs12';
+            filename = `${commonName}-${serialShort}.${input.format === 'pkcs12' ? 'p12' : input.format}`;
+            break;
+          }
+
+          case 'jks': {
+            // JKS (Java KeyStore) format
+            if (!certificate.kmsKeyId) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'Certificate does not have a private key',
+              });
+            }
+
+            // Fetch private key from KMS
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+
+            // For JKS, we need to use a Java library or convert to PKCS#12 first
+            // Since node-forge doesn't support JKS directly, we'll use pkcs12 as intermediate
+            // and provide instructions to convert using keytool
+            // For now, we'll return PKCS#12 with instructions
+            const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+            const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
+              forgePrivateKey,
+              [forgeCert, forgeCaCert],
+              input.password!,
+              {
+                algorithm: '3des',
+                friendlyName: input.alias || commonName,
+              }
+            );
+            const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
+            data = Buffer.from(p12Der, 'binary').toString('base64');
+            mimeType = 'application/x-pkcs12';
+            // Return as .p12 with note that it can be imported into JKS
+            filename = `${commonName}-${serialShort}.p12`;
+
+            logger.warn(
+              { certId: input.id },
+              'JKS format requested but returning PKCS#12. Use: keytool -importkeystore -srckeystore file.p12 -srcstoretype PKCS12 -destkeystore file.jks -deststoretype JKS'
+            );
+            break;
+          }
 
           default:
             throw new TRPCError({
