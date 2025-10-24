@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 07:21'
-updated_date: '2025-10-24 12:15'
+updated_date: '2025-10-24 12:18'
 labels: []
 dependencies: []
 ---
@@ -105,4 +105,27 @@ curl http://wsl.ymbihq.local:52081/cas/280245c2-6e20-4665-ad69-eeb3ff6f3838.cer 
 ```
 
 Now users can directly download CA certificates using curl or any HTTP client\!
+
+### Enhanced with Format Selector:
+
+**Header:**
+- Added format dropdown selector (PEM, CRT, DER, CER)
+- "Copy Link" button copies URL in selected format
+- Format selection persists across both header and storage location
+
+**Storage Location Section:**
+- Displays all 4 download URLs simultaneously:
+  - PEM: ASCII format (most common)
+  - CRT: ASCII format (alternative extension)
+  - DER: Binary format (compact)
+  - CER: Binary format (Windows compatible)
+- Format selector dropdown at the top
+- "Copy URL" button copies the selected format
+- All URLs are clickable and open in new tab
+
+**User Experience:**
+1. Select desired format from dropdown (PEM, CRT, DER, or CER)
+2. Click "Copy Link" in header or "Copy URL" in Storage Location
+3. Format selection is synchronized between both locations
+4. Visual feedback with checkmark when copied
 <!-- SECTION:NOTES:END -->
