@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Lock, Server, Home, Zap, Shield } from 'lucide-react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faShield, faShieldHalved, faCertificate, faFileContract } from '@fortawesome/free-solid-svg-icons';
 
 export const Route = createFileRoute('/')({
   component: Dashboard,
@@ -13,82 +15,122 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-lg border bg-card p-6">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Total CAs
-          </h3>
-          <p className="text-2xl font-bold mt-2">
-            {statsQuery.isLoading ? (
-              <span className="text-muted-foreground">...</span>
-            ) : statsQuery.isError ? (
-              <span className="text-destructive">Error</span>
-            ) : (
-              statsQuery.data.totalCAs
-            )}
-          </p>
-          {statsQuery.data && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {statsQuery.data.activeCAs} active
-            </p>
-          )}
+      {/* Purpose Banner */}
+      <div className="relative rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-background overflow-hidden">
+        <div className="absolute inset-0 bg-grid-white/5 [mask-image:linear-gradient(0deg,transparent,black)]" />
+        <div className="relative p-8">
+          <div className="flex items-center gap-8">
+            <div className="flex-shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg shadow-primary/25">
+                <Lock className="h-10 w-10 text-primary-foreground" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent mb-2">
+                Own Your Security Infrastructure
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed mb-5 max-w-3xl">
+                Effortlessly manage your Private Key Infrastructure (PKI) and issue SSL/TLS certificates without relying on external authorities.
+                Perfect for enterprises, home labs, and development environments that demand full control.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Shield className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm leading-tight">Full Control</div>
+                    <div className="text-xs text-muted-foreground leading-tight">Own your cert lifecycle</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <Server className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm leading-tight">Enterprise Ready</div>
+                    <div className="text-xs text-muted-foreground leading-tight">Secure your infrastructure</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-background/50 border border-border/50">
+                  <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center">
+                    <Zap className="h-4 w-4 text-green-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm leading-tight">Zero Dependencies</div>
+                    <div className="text-xs text-muted-foreground leading-tight">No external CAs needed</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Cards - Compact Design */}
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-lg border bg-card px-3 py-2">
+          <div className="flex items-center gap-3">
+            <FontAwesomeIcon icon={faShield} className="h-5 w-5 text-muted-foreground/50" />
+            <div className="flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold">
+                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.totalCAs}
+                </span>
+                <span className="text-xs text-muted-foreground">Total CAs</span>
+              </div>
+              {statsQuery.data && (
+                <p className="text-xs text-muted-foreground">{statsQuery.data.activeCAs} active</p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Active CAs
-          </h3>
-          <p className="text-2xl font-bold mt-2 text-primary">
-            {statsQuery.isLoading ? (
-              <span className="text-muted-foreground">...</span>
-            ) : statsQuery.isError ? (
-              <span className="text-destructive">Error</span>
-            ) : (
-              statsQuery.data.activeCAs
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Currently valid
-          </p>
+        <div className="rounded-lg border bg-card px-3 py-2">
+          <div className="flex items-center gap-3">
+            <FontAwesomeIcon icon={faShieldHalved} className="h-5 w-5 text-primary/70" />
+            <div className="flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold text-primary">
+                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.activeCAs}
+                </span>
+                <span className="text-xs text-muted-foreground">Active CAs</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Currently valid</p>
+            </div>
+          </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Total Certificates
-          </h3>
-          <p className="text-2xl font-bold mt-2">
-            {statsQuery.isLoading ? (
-              <span className="text-muted-foreground">...</span>
-            ) : statsQuery.isError ? (
-              <span className="text-destructive">Error</span>
-            ) : (
-              statsQuery.data.totalCertificates
-            )}
-          </p>
-          {statsQuery.data && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {statsQuery.data.activeCertificates} active
-            </p>
-          )}
+        <div className="rounded-lg border bg-card px-3 py-2">
+          <div className="flex items-center gap-3">
+            <FontAwesomeIcon icon={faCertificate} className="h-5 w-5 text-muted-foreground/50" />
+            <div className="flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold">
+                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.totalCertificates}
+                </span>
+                <span className="text-xs text-muted-foreground">Total Certs</span>
+              </div>
+              {statsQuery.data && (
+                <p className="text-xs text-muted-foreground">{statsQuery.data.activeCertificates} active</p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="rounded-lg border bg-card p-6">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Active Certificates
-          </h3>
-          <p className="text-2xl font-bold mt-2 text-primary">
-            {statsQuery.isLoading ? (
-              <span className="text-muted-foreground">...</span>
-            ) : statsQuery.isError ? (
-              <span className="text-destructive">Error</span>
-            ) : (
-              statsQuery.data.activeCertificates
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Currently valid
-          </p>
+        <div className="rounded-lg border bg-card px-3 py-2">
+          <div className="flex items-center gap-3">
+            <FontAwesomeIcon icon={faFileContract} className="h-5 w-5 text-primary/70" />
+            <div className="flex-1">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold text-primary">
+                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.activeCertificates}
+                </span>
+                <span className="text-xs text-muted-foreground">Active Certs</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Currently valid</p>
+            </div>
+          </div>
         </div>
       </div>
 
