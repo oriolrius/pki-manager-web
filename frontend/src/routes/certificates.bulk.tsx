@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { ArrowLeft, FileText, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export const Route = createFileRoute('/certificates/bulk')({
   component: BulkCertificates,
@@ -15,6 +15,8 @@ interface BulkResult {
   serialNumber?: string;
   error?: string;
 }
+
+const STORAGE_KEY = 'pki-manager-bulk-ca-id';
 
 function BulkCertificates() {
   const navigate = useNavigate();
@@ -33,6 +35,24 @@ function BulkCertificates() {
 
   const casQuery = trpc.ca.list.useQuery({ limit: 100, offset: 0 });
   const bulkIssueMutation = trpc.certificate.bulkIssue.useMutation();
+
+  // Load CA ID from localStorage on mount
+  useEffect(() => {
+    const savedCaId = localStorage.getItem(STORAGE_KEY);
+    if (savedCaId) {
+      setFormData(prev => ({ ...prev, caId: savedCaId }));
+    }
+  }, []);
+
+  // Update localStorage when CA selection changes
+  const handleCaChange = (caId: string) => {
+    setFormData(prev => ({ ...prev, caId }));
+    if (caId) {
+      localStorage.setItem(STORAGE_KEY, caId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,7 +111,7 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
               <select
                 required
                 value={formData.caId}
-                onChange={(e) => setFormData(prev => ({ ...prev, caId: e.target.value }))}
+                onChange={(e) => handleCaChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white"
                 disabled={casQuery.isLoading}
               >
