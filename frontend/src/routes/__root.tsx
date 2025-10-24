@@ -45,6 +45,15 @@ function RootComponent() {
                 >
                   Certificates
                 </Link>
+                <Link
+                  to="/certificates/bulk"
+                  className="px-3 py-2 text-sm font-medium rounded-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
+                  activeProps={{
+                    className: 'px-3 py-2 text-sm font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/15 transition-colors'
+                  }}
+                >
+                  Bulk
+                </Link>
               </div>
             </div>
             <ThemeToggle />

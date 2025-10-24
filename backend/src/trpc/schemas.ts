@@ -165,6 +165,12 @@ export const downloadCertificateSchema = z.object({
   password: z.string().min(8).optional(), // Required for PKCS#12
 });
 
+export const bulkCreateCertificatesSchema = z.object({
+  caId: idSchema,
+  defaultValidityDays: z.number().int().min(1).max(825).optional(),
+  csvData: z.string().min(1),
+});
+
 // CRL schemas
 export const generateCrlSchema = z.object({
   caId: idSchema,

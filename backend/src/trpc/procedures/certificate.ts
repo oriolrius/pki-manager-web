@@ -10,6 +10,7 @@ import {
   downloadCertificateSchema,
   certificateTypeSchema,
   certificateStatusSchema,
+  bulkCreateCertificatesSchema,
 } from '../schemas.js';
 
 export const certificateRouter = router({
@@ -1569,5 +1570,341 @@ export const certificateRouter = router({
           message: `Failed to generate certificate in ${input.format} format: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
+    }),
+
+  bulkIssue: publicProcedure
+    .input(bulkCreateCertificatesSchema)
+    .output(
+      z.object({
+        successful: z.number(),
+        failed: z.number(),
+        results: z.array(
+          z.object({
+            row: z.number(),
+            success: z.boolean(),
+            certificateId: z.string().optional(),
+            subject: z.string().optional(),
+            serialNumber: z.string().optional(),
+            error: z.string().optional(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificateAuthorities, certificates, auditLog } = await import('../../db/schema.js');
+      const { getKMSService } = await import('../../kms/service.js');
+      const { formatDN } = await import('../../crypto/dn.js');
+      const { parseCertificate } = await import('../../crypto/index.js');
+      const {
+        validateDomainName,
+        validateServerSANs,
+        validateCertificateValidity,
+      } = await import('../../crypto/validation.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      // Verify CA exists and is active
+      const ca = await ctx.db
+        .select()
+        .from(certificateAuthorities)
+        .where(eq(certificateAuthorities.id, input.caId))
+        .limit(1);
+
+      if (!ca || ca.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `CA with ID ${input.caId} not found`,
+        });
+      }
+
+      const caRecord = ca[0];
+
+      // Validate CA is active and not expired
+      const now = new Date();
+      if (caRecord.status !== 'active') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `CA is not active (status: ${caRecord.status})`,
+        });
+      }
+
+      if (now > caRecord.notAfter) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'CA certificate has expired',
+        });
+      }
+
+      // Parse CSV data
+      const lines = input.csvData.trim().split('\n').filter(line => line.trim());
+      const results: Array<{
+        row: number;
+        success: boolean;
+        certificateId?: string;
+        subject?: string;
+        serialNumber?: string;
+        error?: string;
+      }> = [];
+
+      let successful = 0;
+      let failed = 0;
+
+      // Helper function to detect SAN type
+      const parseSAN = (sanString: string) => {
+        const sans = sanString.split(';').map(s => s.trim()).filter(s => s);
+        const sanDns: string[] = [];
+        const sanIp: string[] = [];
+        const sanEmail: string[] = [];
+
+        for (const san of sans) {
+          // Check if it's an email
+          if (san.includes('@')) {
+            sanEmail.push(san);
+          }
+          // Check if it's an IP address
+          else if (/^(\d{1,3}\.){3}\d{1,3}$/.test(san)) {
+            sanIp.push(san);
+          }
+          // Otherwise treat as DNS name
+          else {
+            sanDns.push(san);
+          }
+        }
+
+        return { sanDns, sanIp, sanEmail };
+      };
+
+      // Process each CSV row
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const rowNumber = i + 1;
+
+        try {
+          // Parse CSV line (format: certificateType, CN, O, C, SANs, validityDays)
+          const parts = line.split(',').map(p => p.trim());
+
+          if (parts.length < 4) {
+            throw new Error(`Invalid CSV format. Expected at least 4 fields (certificateType, CN, O, C), got ${parts.length}`);
+          }
+
+          const certificateType = parts[0];
+          const commonName = parts[1];
+          const organization = parts[2];
+          const country = parts[3];
+          const sanString = parts[4] || '';
+          const validityDays = parts[5] ? parseInt(parts[5], 10) : input.defaultValidityDays || 365;
+
+          // Validate certificate type
+          if (!['server', 'client', 'code_signing', 'email'].includes(certificateType)) {
+            throw new Error(`Invalid certificate type: ${certificateType}. Must be one of: server, client, code_signing, email`);
+          }
+
+          // Validate required fields
+          if (!commonName) {
+            throw new Error('Common Name (CN) is required');
+          }
+          if (!organization) {
+            throw new Error('Organization (O) is required');
+          }
+          if (!country || country.length !== 2) {
+            throw new Error('Country (C) must be a 2-letter code');
+          }
+
+          // Parse SANs
+          const { sanDns, sanIp, sanEmail } = parseSAN(sanString);
+
+          // Create subject DN
+          const subjectDN = {
+            CN: commonName,
+            O: organization,
+            C: country,
+          };
+
+          // Type-specific validation (simplified from issue procedure)
+          switch (certificateType) {
+            case 'server':
+              const serverValidityCheck = validateCertificateValidity(validityDays, 825);
+              if (!serverValidityCheck.valid) {
+                throw new Error(serverValidityCheck.error || 'Invalid validity period');
+              }
+
+              const cnValidation = validateDomainName(commonName);
+              if (!cnValidation.valid) {
+                throw new Error(`Invalid common name: ${cnValidation.error}`);
+              }
+
+              const sansValidation = validateServerSANs(sanDns.length > 0 ? sanDns : undefined, sanIp.length > 0 ? sanIp : undefined);
+              if (!sansValidation.valid) {
+                throw new Error(`Invalid SANs: ${sansValidation.errors.join(', ')}`);
+              }
+              break;
+
+            case 'client':
+              const clientValidityCheck = validateCertificateValidity(validityDays, 730);
+              if (!clientValidityCheck.valid) {
+                throw new Error(clientValidityCheck.error || 'Invalid validity period');
+              }
+
+              const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commonName);
+              const isUsername = /^[a-zA-Z0-9._-]+$/.test(commonName);
+              if (!isEmail && !isUsername) {
+                throw new Error('Client certificate CN must be a valid email address or username');
+              }
+              break;
+
+            case 'code_signing':
+              const codeSignValidityCheck = validateCertificateValidity(validityDays, 1095);
+              if (!codeSignValidityCheck.valid) {
+                throw new Error(codeSignValidityCheck.error || 'Invalid validity period');
+              }
+              break;
+
+            case 'email':
+              if (sanEmail.length === 0) {
+                throw new Error('Email protection certificates require at least one email address in SANs');
+              }
+
+              const emailValidityCheck = validateCertificateValidity(validityDays, 730);
+              if (!emailValidityCheck.valid) {
+                throw new Error(emailValidityCheck.error || 'Invalid validity period');
+              }
+              break;
+          }
+
+          // Generate certificate
+          const certId = randomUUID();
+          const kmsService = getKMSService();
+
+          // Default to RSA-2048
+          const keySizeInBits = 2048;
+
+          // Generate key pair in KMS
+          logger.info({ certId, certificateType, row: rowNumber }, 'Creating certificate key pair in KMS (bulk)');
+          const keyPair = await kmsService.createKeyPair({
+            sizeInBits: keySizeInBits,
+            tags: [],
+            purpose: 'certificate',
+            entityId: certId,
+          });
+
+          // Sign certificate via KMS
+          const subjectName = formatDN(subjectDN);
+          logger.info({ certId, subjectName, caId: input.caId, row: rowNumber }, 'Signing certificate via KMS (bulk)');
+
+          const certInfo = await kmsService.signCertificate({
+            publicKeyId: keyPair.publicKeyId,
+            issuerPrivateKeyId: caRecord.kmsKeyId,
+            issuerCertificateId: caRecord.kmsCertificateId,
+            issuerName: caRecord.subjectDn,
+            subjectName: subjectName,
+            daysValid: validityDays,
+            tags: [],
+            entityId: certId,
+          });
+
+          // Convert certificate data from hex to PEM
+          const certDataHex = certInfo.certificateData;
+          const certDataBuffer = Buffer.from(certDataHex, 'hex');
+          const certBase64 = certDataBuffer.toString('base64');
+          const certificatePem = `-----BEGIN CERTIFICATE-----\n${certBase64.match(/.{1,64}/g)?.join('\n')}\n-----END CERTIFICATE-----`;
+
+          // Parse certificate to extract metadata
+          const certMetadata = parseCertificate(certificatePem, 'PEM');
+
+          // Store certificate in database
+          await ctx.db.insert(certificates).values({
+            id: certId,
+            caId: input.caId,
+            subjectDn: subjectName,
+            serialNumber: certMetadata.serialNumber,
+            certificateType: certificateType as any,
+            notBefore: certMetadata.validity.notBefore,
+            notAfter: certMetadata.validity.notAfter,
+            kmsCertificateId: certInfo.certificateId,
+            kmsKeyId: keyPair.privateKeyId,
+            status: 'active',
+            sanDns: sanDns.length > 0 ? JSON.stringify(sanDns) : null,
+            sanIp: sanIp.length > 0 ? JSON.stringify(sanIp) : null,
+            sanEmail: sanEmail.length > 0 ? JSON.stringify(sanEmail) : null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          // Create audit log entry
+          await ctx.db.insert(auditLog).values({
+            id: randomUUID(),
+            operation: 'certificate.bulkIssue',
+            entityType: 'certificate',
+            entityId: certId,
+            status: 'success',
+            details: JSON.stringify({
+              caId: input.caId,
+              certificateType: certificateType,
+              subject: subjectName,
+              keyAlgorithm: 'RSA-2048',
+              validityDays: validityDays,
+              serialNumber: certMetadata.serialNumber,
+              kmsKeyId: keyPair.privateKeyId,
+              sanDns: sanDns,
+              sanIp: sanIp,
+              sanEmail: sanEmail,
+              bulkRow: rowNumber,
+            }),
+            ipAddress: ctx.req.ip,
+          });
+
+          logger.info({ certId, subjectName, caId: input.caId, row: rowNumber }, 'Certificate issued successfully (bulk)');
+
+          results.push({
+            row: rowNumber,
+            success: true,
+            certificateId: certId,
+            subject: subjectName,
+            serialNumber: certMetadata.serialNumber,
+          });
+
+          successful++;
+        } catch (error) {
+          logger.error({ error, row: rowNumber }, 'Failed to issue certificate in bulk');
+
+          results.push({
+            row: rowNumber,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          failed++;
+        }
+      }
+
+      // Create overall audit log entry
+      await ctx.db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'certificate.bulkIssue',
+        entityType: 'bulk_operation',
+        entityId: input.caId,
+        status: failed === 0 ? 'success' : 'partial',
+        details: JSON.stringify({
+          caId: input.caId,
+          totalRows: lines.length,
+          successful,
+          failed,
+          defaultValidityDays: input.defaultValidityDays,
+        }),
+        ipAddress: ctx.req.ip,
+      });
+
+      logger.info(
+        { caId: input.caId, totalRows: lines.length, successful, failed },
+        'Bulk certificate issuance completed'
+      );
+
+      return {
+        successful,
+        failed,
+        results,
+      };
     }),
 });
