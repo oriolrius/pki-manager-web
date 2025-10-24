@@ -32,30 +32,30 @@
 
 @layer base {
   .dark {
-    /* Dark mode colors - Deep dark with orange accents */
-    --color-background: oklch(18% 0.01 20);
-    --color-foreground: oklch(95% 0.01 30);
-    --color-card: oklch(20% 0.01 20);
-    --color-card-foreground: oklch(95% 0.01 30);
-    --color-popover: oklch(20% 0.01 20);
-    --color-popover-foreground: oklch(95% 0.01 30);
+    /* Dark mode colors - Very high contrast dark with orange accents */
+    --color-background: oklch(8% 0.01 20);
+    --color-foreground: oklch(99% 0 0);
+    --color-card: oklch(30% 0.01 20);
+    --color-card-foreground: oklch(99% 0 0);
+    --color-popover: oklch(30% 0.01 20);
+    --color-popover-foreground: oklch(99% 0 0);
     /* Primary: Bright orange in dark mode */
     --color-primary: oklch(70% 0.20 35);
-    --color-primary-foreground: oklch(18% 0.01 20);
-    /* Secondary: Dark warm gray */
-    --color-secondary: oklch(25% 0.01 20);
-    --color-secondary-foreground: oklch(95% 0.01 30);
-    /* Muted: Medium dark gray */
-    --color-muted: oklch(30% 0.01 20);
-    --color-muted-foreground: oklch(65% 0.01 30);
+    --color-primary-foreground: oklch(8% 0.01 20);
+    /* Secondary: Medium gray for strong contrast */
+    --color-secondary: oklch(38% 0.01 20);
+    --color-secondary-foreground: oklch(99% 0 0);
+    /* Muted: Light gray with very strong contrast */
+    --color-muted: oklch(42% 0.01 20);
+    --color-muted-foreground: oklch(80% 0 0);
     /* Accent: Vibrant orange accent */
     --color-accent: oklch(68% 0.18 30);
     --color-accent-foreground: oklch(100% 0 0);
     /* Destructive: Bright red */
     --color-destructive: oklch(58% 0.20 20);
     --color-destructive-foreground: oklch(100% 0 0);
-    --color-border: oklch(28% 0.01 20);
-    --color-input: oklch(28% 0.01 20);
+    --color-border: oklch(45% 0.01 20);
+    --color-input: oklch(45% 0.01 20);
     --color-ring: oklch(70% 0.20 35);
   }
 
