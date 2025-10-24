@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+**/dist/
+.turbo/
+
+# Database
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Environment files (use docker-compose env)
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Development
+*.log
+dev.log
+.vscode/
+.idea/
+
+# Testing
+test-results/
+playwright-report/
+coverage/
+*.test.ts
+*.spec.ts
+
+# Documentation
+*.md
+!README.md
+docs/
+backlog/
+
+# Misc
+.DS_Store
+Thumbs.db
+.claude/
+assets/
+
+# KMS (will use official image)
+kms/

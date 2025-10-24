@@ -1,0 +1,113 @@
+services:
+  # Cosmian KMS
+  kms:
+    image: ghcr.io/cosmian/kms:4.20.2
+    container_name: pki-kms
+    restart: unless-stopped
+    networks:
+      - pki-network
+    volumes:
+      - kms-data:/root/cosmian-kms
+    environment:
+      - KMS_PORT=${KMS_PORT:-9998}
+      - RUST_LOG=${KMS_LOG_LEVEL:-info}
+    ports:
+      - "${KMS_EXTERNAL_PORT:-9998}:9998"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9998/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-pki-manager}/pki-manager-backend:${IMAGE_TAG:-latest}
+    container_name: pki-backend
+    restart: unless-stopped
+    networks:
+      - pki-network
+    volumes:
+      - backend-data:/app/backend/data
+    environment:
+      # Server configuration
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${BACKEND_PORT:-3000}
+      - HOST=${BACKEND_HOST:-0.0.0.0}
+
+      # Frontend URL for CORS
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
+
+      # Database
+      - DATABASE_PATH=${DATABASE_PATH:-/app/backend/data/pki.db}
+
+      # Cosmian KMS Configuration
+      - KMS_URL=${KMS_URL:-http://kms:9998}
+      - KMS_API_KEY=${KMS_API_KEY:-}
+    ports:
+      - "${BACKEND_EXTERNAL_PORT:-3000}:3000"
+    depends_on:
+      kms:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+
+  # Frontend UI
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: frontend
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-pki-manager}/pki-manager-frontend:${IMAGE_TAG:-latest}
+    container_name: pki-frontend
+    restart: unless-stopped
+    networks:
+      - pki-network
+    ports:
+      - "${FRONTEND_EXTERNAL_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+
+networks:
+  pki-network:
+    driver: bridge
+    name: pki-network
+
+volumes:
+  kms-data:
+    name: pki-kms-data
+  backend-data:
+    name: pki-backend-data
