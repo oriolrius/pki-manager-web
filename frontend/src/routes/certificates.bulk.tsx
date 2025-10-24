@@ -97,22 +97,22 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
           <ArrowLeft className="h-4 w-4" />
           Back to Certificates
         </button>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Bulk Certificate Creation</h1>
+        <h1 className="text-3xl font-bold text-foreground">Bulk Certificate Creation</h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Form Section */}
-        <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+        <div className="bg-card shadow rounded-lg p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-card-foreground mb-2">
                 Certificate Authority *
               </label>
               <select
                 required
                 value={formData.caId}
                 onChange={(e) => handleCaChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white"
+                className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                 disabled={casQuery.isLoading}
               >
                 <option value="">{casQuery.isLoading ? 'Loading CAs...' : 'Select a CA'}</option>
@@ -127,13 +127,13 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                   );
                 })}
               </select>
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Select the CA to sign all certificates
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-card-foreground mb-2">
                 Default Validity (days)
               </label>
               <input
@@ -142,15 +142,15 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                 max="825"
                 value={formData.defaultValidityDays}
                 onChange={(e) => setFormData(prev => ({ ...prev, defaultValidityDays: parseInt(e.target.value, 10) }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white"
+                className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
               />
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Used when validity is not specified in CSV
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-card-foreground mb-2">
                 CSV Data *
               </label>
               <textarea
@@ -158,10 +158,10 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                 value={formData.csvData}
                 onChange={(e) => setFormData(prev => ({ ...prev, csvData: e.target.value }))}
                 rows={12}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-900 dark:text-white font-mono text-sm"
+                className="w-full px-3 py-2 bg-background text-foreground border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary font-mono text-sm"
                 placeholder={exampleCSV}
               />
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Format: certificateType, CN, O, C, SANs (semicolon-separated), validityDays
               </p>
             </div>
@@ -185,12 +185,12 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
 
         {/* Instructions and Results Section */}
         <div className="space-y-6">
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-6">
+          <div className="bg-primary/10 dark:bg-primary/5 border border-primary/20 dark:border-primary/10 rounded-lg p-6">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-primary mt-0.5" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-2">CSV Format Guide</h3>
-                <div className="text-sm text-muted-foreground space-y-2">
+                <div className="text-sm text-foreground/80 space-y-2">
                   <p><strong>Required fields:</strong></p>
                   <ul className="list-disc list-inside ml-2 space-y-1">
                     <li><strong>certificateType:</strong> server, client, code_signing, or email</li>
@@ -213,7 +213,7 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                   </ul>
 
                   <p className="mt-3"><strong>Example:</strong></p>
-                  <pre className="mt-2 p-2 bg-white dark:bg-gray-800 rounded text-xs overflow-x-auto">
+                  <pre className="mt-2 p-3 bg-background/50 border border-border rounded text-xs overflow-x-auto font-mono">
                     {exampleCSV}
                   </pre>
                 </div>
@@ -223,8 +223,8 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
 
           {/* Results Display */}
           {results && (
-            <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Results</h3>
+            <div className="bg-card shadow rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-card-foreground mb-4">Results</h3>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
@@ -261,9 +261,9 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                         <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5" />
                       )}
                       <div className="flex-1 text-sm">
-                        <p className="font-medium text-gray-900 dark:text-white">Row {result.row}</p>
+                        <p className="font-medium text-card-foreground">Row {result.row}</p>
                         {result.success ? (
-                          <div className="text-gray-600 dark:text-gray-400 space-y-1">
+                          <div className="text-muted-foreground space-y-1">
                             <p>Subject: {result.subject}</p>
                             <p>Serial: {result.serialNumber}</p>
                             <a
