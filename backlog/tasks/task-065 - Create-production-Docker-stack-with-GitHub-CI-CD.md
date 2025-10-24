@@ -1,10 +1,11 @@
 ---
 id: task-065
 title: Create production Docker stack with GitHub CI/CD
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-10-24 14:04'
-updated_date: '2025-10-24 14:09'
+updated_date: '2025-10-24 14:11'
 labels: []
 dependencies: []
 ---
