@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2025-10-24 07:21'
-updated_date: '2025-10-24 10:39'
+updated_date: '2025-10-24 10:40'
 labels: []
 dependencies: []
 ---
@@ -22,3 +22,12 @@ Add permalink/direct link functionality for CAs to allow users to easily share a
 - [ ] #2 CA permalink URLs are shareable and bookmarkable
 - [ ] #3 Navigating to a CA permalink loads the correct CA cert file
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add "Copy Permalink" button to CA detail page header
+2. Implement copy-to-clipboard functionality using browser API
+3. Show feedback when link is copied
+4. Test that direct navigation to /cas/:id works correctly
+<!-- SECTION:PLAN:END -->
