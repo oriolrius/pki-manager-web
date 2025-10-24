@@ -4,7 +4,7 @@ title: 'Download Certificates, including private key'
 status: To Do
 assignee: []
 created_date: '2025-10-24 07:27'
-updated_date: '2025-10-24 08:23'
+updated_date: '2025-10-24 08:31'
 labels: []
 dependencies: []
 ---
@@ -12,7 +12,7 @@ dependencies: []
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Implement certificate download functionality that allows users to download certificates along with their private keys in various formats (PEM, PKCS12, etc.). This is needed for certificate distribution and deployment.
+Implement certificate download functionality that allows users to download certificates along with their private keys in various formats. Supported formats: PEM (ASCII with BEGIN/END markers), CRT (.crt extension), DER (binary), CER (DER with .cer for Windows), PKCS#7/P7B (cert + chain, no key), PKCS#12/PFX/P12 (cert + chain + key, password protected), and Java KeyStore/JKS (Java keystore, password protected).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
