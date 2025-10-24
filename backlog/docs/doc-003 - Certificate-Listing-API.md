@@ -1,9 +1,12 @@
-# Certificate Listing API Documentation
+---
+id: doc-003
+title: 003 - Certificate Listing API Documentation
+type: other
+created_date: '2025-10-21 15:26'
+---
 
-**Document ID:** doc-003
-**Created:** 2025-10-21
-**Status:** Active
-**Related Tasks:** task-013
+# Certificate Listing API Documentation
+(related_tasks: task-013)
 
 ## Overview
 

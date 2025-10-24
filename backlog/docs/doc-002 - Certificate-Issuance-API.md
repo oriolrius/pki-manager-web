@@ -1,9 +1,12 @@
-# Certificate Issuance API Documentation
+---
+id: doc-002
+title: 002 - Certificate Issuance API Documentation
+type: other
+created_date: '2025-10-21 15:26'
+---
 
-**Document ID**: doc-002
-**Created**: 2025-10-21
-**Status**: Active
-**Related Tasks**: task-012
+# Certificate Issuance API Documentation
+(related_tasks: task-012)
 
 ## Overview
 

@@ -1,9 +1,12 @@
-# OpenAPI 3.0.3 Integration Documentation
+---
+id: doc-004
+title: 004 - OpenAPI Integration Documentation
+type: other
+created_date: '2025-10-21 15:26'
+---
 
-**Document ID:** doc-004
-**Created:** 2025-10-21
-**Status:** Active
-**Related Tasks:** task-013
+# OpenAPI 3.0.3 Integration Documentation
+(related_tasks: task-013)
 
 ## Overview
 
