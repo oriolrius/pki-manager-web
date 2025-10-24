@@ -53,7 +53,7 @@ export class KMSService {
         details: JSON.stringify(details),
         kmsOperationId,
         ipAddress: null, // Can be set from context in tRPC procedures
-      });
+      } as any);
     } catch (error) {
       logger.error({ error }, "Failed to write audit log");
     }

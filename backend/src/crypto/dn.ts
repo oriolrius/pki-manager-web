@@ -64,7 +64,9 @@ export function forgeAttributesToDn(
   for (const attr of attributes) {
     const shortName = attr.shortName || OID_TO_SHORT_NAME[attr.type || ''];
     if (shortName && attr.value) {
-      dn[shortName as keyof DistinguishedName] = attr.value;
+      // attr.value can be string or any[], convert to string if needed
+      const value = Array.isArray(attr.value) ? attr.value.join(',') : attr.value;
+      dn[shortName as keyof DistinguishedName] = value;
     }
   }
 

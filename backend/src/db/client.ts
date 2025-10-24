@@ -26,7 +26,7 @@ sqlite.pragma('journal_mode = WAL');
 export const db = drizzle(sqlite, { schema });
 
 // Export the raw SQLite instance for advanced operations
-export const sqliteDb = sqlite;
+export const sqliteDb: Database.Database = sqlite;
 
 // Helper function to close database connection (for graceful shutdown)
 export function closeDatabase() {

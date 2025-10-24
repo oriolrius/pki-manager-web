@@ -1,13 +1,13 @@
 services:
   # Cosmian KMS
   kms:
-    image: ghcr.io/cosmian/kms:4.20.2
+    image: ghcr.io/cosmian/kms:5.10.0
     container_name: pki-kms
     restart: unless-stopped
     networks:
       - pki-network
     volumes:
-      - kms-data:/root/cosmian-kms
+      - ../kms:/root/cosmian-kms
     environment:
       - KMS_PORT=${KMS_PORT:-9998}
       - RUST_LOG=${KMS_LOG_LEVEL:-info}
@@ -28,8 +28,8 @@ services:
   # Backend API
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       target: backend
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-pki-manager}/pki-manager-backend:${IMAGE_TAG:-latest}
     container_name: pki-backend
@@ -37,7 +37,7 @@ services:
     networks:
       - pki-network
     volumes:
-      - backend-data:/app/backend/data
+      - ../pki:/app/backend/data
     environment:
       # Server configuration
       - NODE_ENV=${NODE_ENV:-production}
@@ -73,8 +73,8 @@ services:
   # Frontend UI
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       target: frontend
       args:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
@@ -105,9 +105,3 @@ networks:
   pki-network:
     driver: bridge
     name: pki-network
-
-volumes:
-  kms-data:
-    name: pki-kms-data
-  backend-data:
-    name: pki-backend-data

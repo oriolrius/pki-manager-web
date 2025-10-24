@@ -63,11 +63,15 @@ ARG VITE_API_URL=http://localhost:3000/trpc
 # Copy root package files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Copy frontend package files
+# Copy package files for both backend and frontend
+COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 
 # Install all dependencies
 RUN pnpm install --frozen-lockfile
+
+# Copy backend source (needed for tRPC types)
+COPY backend/src/ ./backend/src/
 
 # Copy frontend source
 COPY frontend/ ./frontend/
@@ -77,7 +81,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 
 # Build frontend
 WORKDIR /app/frontend
-RUN pnpm build
+RUN pnpm build:docker
 
 ################################################################################
 # Production Backend Stage

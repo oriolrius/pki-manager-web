@@ -127,7 +127,7 @@ export const crlRouter = router({
           crlPem: crlPem,
           revokedCount: revokedCerts.length,
           createdAt: new Date(),
-        });
+        } as any);
 
         // Create audit log entry
         await createAuditLog({

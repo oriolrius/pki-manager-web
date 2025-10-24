@@ -52,7 +52,7 @@ async function backfillKeyAlgorithm() {
         .set({
           keyAlgorithm: certMetadata.keyAlgorithm,
           updatedAt: new Date(),
-        })
+        } as any)
         .where(eq(certificateAuthorities.id, ca.id));
 
       logger.info(

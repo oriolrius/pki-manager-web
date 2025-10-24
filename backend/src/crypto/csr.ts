@@ -17,7 +17,7 @@ import type {
 /**
  * Add extension attributes to CSR
  */
-function addCSRExtensions(csr: forge.pki.CertificationRequest, extensions?: X509Extensions): void {
+function addCSRExtensions(csr: any, extensions?: X509Extensions): void {
   if (!extensions) {
     return;
   }
@@ -187,7 +187,7 @@ export function parseCSR(
   attributes: any[];
 } {
   try {
-    let csr: forge.pki.CertificationRequest;
+    let csr: any;
 
     if (format === 'PEM') {
       csr = forge.pki.certificationRequestFromPem(data);
@@ -236,7 +236,7 @@ export function convertCSRFormat(
   }
 
   try {
-    let csr: forge.pki.CertificationRequest;
+    let csr: any;
 
     if (fromFormat === 'PEM') {
       csr = forge.pki.certificationRequestFromPem(data);

@@ -317,7 +317,7 @@ export const caRouter = router({
           status: 'active',
           createdAt: new Date(),
           updatedAt: new Date(),
-        });
+        } as any);
 
         // Create audit log entry
         await ctx.db.insert(auditLog).values({
@@ -335,7 +335,7 @@ export const caRouter = router({
             kmsPublicKeyId: certInfo.publicKeyId,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         logger.info({ caId, subjectName }, 'CA created successfully');
 
@@ -369,7 +369,7 @@ export const caRouter = router({
             }),
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -416,7 +416,7 @@ export const caRouter = router({
             revocationDate: revocationDate,
             revocationReason: input.reason,
             updatedAt: new Date(),
-          })
+          } as any)
           .where(eq(certificateAuthorities.id, input.id));
 
         // Optional: Cascade revocation to all active certificates issued by this CA
@@ -480,7 +480,7 @@ export const caRouter = router({
           crlPem: '', // TODO: Generate actual CRL PEM with KMS signing
           revokedCount: revokedCerts.length,
           createdAt: new Date(),
-        });
+        } as any);
 
         // Create audit log entry
         await ctx.db.insert(auditLog).values({
@@ -498,7 +498,7 @@ export const caRouter = router({
             crlNumber: nextCrlNumber,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         logger.info(
           { caId: input.id, reason: input.reason, cascadeRevoked: revokedCertCount },
@@ -529,7 +529,7 @@ export const caRouter = router({
             reason: input.reason,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -600,7 +600,7 @@ export const caRouter = router({
             wasExpired: isExpired,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         // Optional: Destroy KMS key
         let keyDestroyed = false;
@@ -666,7 +666,7 @@ export const caRouter = router({
             error: error instanceof Error ? error.message : String(error),
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',

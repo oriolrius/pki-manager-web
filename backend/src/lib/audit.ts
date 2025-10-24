@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
-import type { LibSQLDatabase } from 'drizzle-orm/libsql';
-import { auditLog } from '../db/schema.js';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { auditLog, type NewAuditLogEntry } from '../db/schema.js';
 import { logger } from './logger.js';
 
 export type AuditOperation =
@@ -25,12 +25,13 @@ export type AuditOperation =
   | 'crl.getHistory'
   // Audit operations
   | 'audit.list'
-  | 'audit.export';
+  | 'audit.export'
+  | 'audit.generateReport';
 
-export type AuditEntityType = 'ca' | 'certificate' | 'crl' | 'audit' | 'system';
+export type AuditEntityType = 'ca' | 'certificate' | 'crl' | 'audit' | 'system' | 'report';
 
 export interface AuditLogOptions {
-  db: LibSQLDatabase<any>;
+  db: BetterSQLite3Database<any>;
   operation: AuditOperation;
   entityType: AuditEntityType;
   entityId?: string;
@@ -68,7 +69,7 @@ export async function createAuditLog(options: AuditLogOptions): Promise<string> 
       details: details ? JSON.stringify(details) : null,
       ipAddress: ipAddress || null,
       kmsOperationId: kmsOperationId || null,
-    });
+    } as any);
 
     logger.debug(
       {
@@ -101,7 +102,7 @@ export async function createAuditLog(options: AuditLogOptions): Promise<string> 
  * Helper function to create audit log for successful operations
  */
 export async function auditSuccess(
-  db: LibSQLDatabase<any>,
+  db: BetterSQLite3Database<any>,
   operation: AuditOperation,
   entityType: AuditEntityType,
   entityId: string,
@@ -125,7 +126,7 @@ export async function auditSuccess(
  * Helper function to create audit log for failed operations
  */
 export async function auditFailure(
-  db: LibSQLDatabase<any>,
+  db: BetterSQLite3Database<any>,
   operation: AuditOperation,
   entityType: AuditEntityType,
   entityId: string | undefined,

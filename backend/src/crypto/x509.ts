@@ -404,7 +404,7 @@ export function verifyCertificateSignature(
     let publicKey: forge.pki.PublicKey;
 
     if (issuerPublicKeyPem) {
-      publicKey = pemToForgeKey(issuerPublicKeyPem, 'public');
+      publicKey = pemToForgeKey(issuerPublicKeyPem, 'public') as forge.pki.PublicKey;
     } else {
       // Use the certificate's own public key for self-signed certs
       publicKey = cert.publicKey as forge.pki.rsa.PublicKey;

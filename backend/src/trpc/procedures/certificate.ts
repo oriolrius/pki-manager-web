@@ -809,7 +809,7 @@ export const certificateRouter = router({
             sanEmail: input.sanEmail,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         logger.info({ certId, subjectName, caId: input.caId }, 'Certificate issued successfully');
 
@@ -846,7 +846,7 @@ export const certificateRouter = router({
             }),
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -1091,7 +1091,7 @@ export const certificateRouter = router({
             sanEmail: sanEmail,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         logger.info({ newCertId, originalCertId: input.id }, 'Certificate renewed successfully');
 
@@ -1122,7 +1122,7 @@ export const certificateRouter = router({
             certificateType: originalCert.certificateType,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -1224,7 +1224,7 @@ export const certificateRouter = router({
             generateCrl: input.generateCrl,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         // TODO: Optional CRL generation (will be implemented in task-022)
         if (input.generateCrl) {
@@ -1256,7 +1256,7 @@ export const certificateRouter = router({
             reason: input.reason,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -1324,7 +1324,7 @@ export const certificateRouter = router({
             revocationReason: cert.revocationReason,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         // Optional: Destroy KMS key if requested
         if (input.destroyKey && cert.kmsKeyId) {
@@ -1380,7 +1380,7 @@ export const certificateRouter = router({
             serialNumber: cert.serialNumber,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -1771,7 +1771,7 @@ export const certificateRouter = router({
             filename: filename,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         logger.info(
           { certId: input.id, format: input.format, filename },
@@ -1797,7 +1797,7 @@ export const certificateRouter = router({
             format: input.format,
           }),
           ipAddress: ctx.req.ip,
-        });
+        } as any);
 
         logger.error({ error, certId: input.id, format: input.format }, 'Failed to download certificate');
 
@@ -2094,7 +2094,7 @@ export const certificateRouter = router({
               bulkRow: rowNumber,
             }),
             ipAddress: ctx.req.ip,
-          });
+          } as any);
 
           logger.info({ certId, subjectName, caId: input.caId, row: rowNumber }, 'Certificate issued successfully (bulk)');
 
@@ -2135,7 +2135,7 @@ export const certificateRouter = router({
           defaultValidityDays: input.defaultValidityDays,
         }),
         ipAddress: ctx.req.ip,
-      });
+      } as any);
 
       logger.info(
         { caId: input.caId, totalRows: lines.length, successful, failed },
@@ -2236,7 +2236,7 @@ export const certificateRouter = router({
               generateCrl: input.generateCrl,
             }),
             ipAddress: ctx.req.ip,
-          });
+          } as any);
 
           results.push({
             certificateId: certId,
@@ -2272,7 +2272,7 @@ export const certificateRouter = router({
           generateCrl: input.generateCrl,
         }),
         ipAddress: ctx.req.ip,
-      });
+      } as any);
 
       logger.info(
         { totalCertificates: input.certificateIds.length, successful, failed },
@@ -2502,7 +2502,7 @@ export const certificateRouter = router({
               revokeOriginal: input.revokeOriginal,
             }),
             ipAddress: ctx.req.ip,
-          });
+          } as any);
 
           logger.info({ newCertId, originalCertId: certId }, 'Certificate renewed successfully (bulk)');
 
@@ -2541,7 +2541,7 @@ export const certificateRouter = router({
           revokeOriginal: input.revokeOriginal,
         }),
         ipAddress: ctx.req.ip,
-      });
+      } as any);
 
       logger.info(
         { totalCertificates: input.certificateIds.length, successful, failed },
@@ -2630,7 +2630,7 @@ export const certificateRouter = router({
               removeFromCrl: input.removeFromCrl,
             }),
             ipAddress: ctx.req.ip,
-          });
+          } as any);
 
           // Optional: Destroy KMS key if requested
           if (input.destroyKey && cert.kmsKeyId) {
@@ -2692,7 +2692,7 @@ export const certificateRouter = router({
           destroyKey: input.destroyKey,
         }),
         ipAddress: ctx.req.ip,
-      });
+      } as any);
 
       logger.info(
         { totalCertificates: input.certificateIds.length, successful, failed },
@@ -2962,7 +2962,7 @@ export const certificateRouter = router({
           format: input.format,
         }),
         ipAddress: ctx.req.ip,
-      });
+      } as any);
 
       logger.info(
         { totalCertificates: input.certificateIds.length, format: input.format },

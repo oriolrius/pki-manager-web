@@ -2,3 +2,17 @@
 /test-results/
 /playwright-report/
 /playwright/.cache/
+backend/dist/
+frontend/dist/
+dist/
+node_modules/
+.env
+*.log
+.vscode/
+backend/data
+frontend/node_modules/
+backend/node_modules/
+frontend/.env
+backend/.env
+frontend/build/
+
