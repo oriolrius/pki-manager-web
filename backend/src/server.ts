@@ -22,25 +22,7 @@ const server = Fastify({
 
 // Register CORS - Allow multiple origins
 await server.register(cors, {
-  origin: (origin, cb) => {
-    const allowedOrigins = [
-      'http://localhost:5173',
-      'http://wsl.ymbihq.local:5173',
-      'http://127.0.0.1:5173',
-    ];
-
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      cb(null, true);
-      return;
-    }
-
-    if (allowedOrigins.includes(origin)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Not allowed by CORS'), false);
-    }
-  },
+  origin: true, // Allow all origins in development
   credentials: true,
 });
 
@@ -138,6 +120,85 @@ server.get('/api/docs/:file', async (req, reply) => {
   return content;
 });
 
+// Public CA certificate endpoint - serves CA certificates for download
+server.get('/cas/:caId.:format', async (req, reply) => {
+  const { caId, format } = req.params as { caId: string; format: string };
+
+  // Validate format
+  const validFormats = ['pem', 'crt', 'cer', 'der'];
+  if (!validFormats.includes(format)) {
+    reply.code(400);
+    return { error: `Invalid format. Supported formats: ${validFormats.join(', ')}` };
+  }
+
+  try {
+    // Check if CA exists
+    const ca = await db
+      .select()
+      .from(certificateAuthorities)
+      .where(eq(certificateAuthorities.id, caId))
+      .limit(1);
+
+    if (!ca || ca.length === 0) {
+      reply.code(404);
+      return { error: `CA with ID ${caId} not found` };
+    }
+
+    const caRecord = ca[0];
+
+    // Get certificate from KMS
+    const { getKMSService } = await import('./kms/service.js');
+    const kmsService = getKMSService();
+    const certificatePem = await kmsService.getCertificate(
+      caRecord.kmsCertificateId,
+      caRecord.id
+    );
+
+    // Convert to appropriate format
+    let content: Buffer;
+    let contentType: string;
+    let filename: string;
+
+    // Extract CN for filename
+    const cnMatch = caRecord.subjectDn.match(/CN=([^,]+)/);
+    const cn = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca-certificate';
+
+    if (format === 'pem' || format === 'crt') {
+      // PEM format (ASCII)
+      content = Buffer.from(certificatePem, 'utf8');
+      contentType = 'application/x-pem-file';
+      filename = `${cn}.${format}`;
+    } else if (format === 'der' || format === 'cer') {
+      // DER format (binary) - convert PEM to DER
+      const base64Data = certificatePem
+        .replace(/-----BEGIN CERTIFICATE-----/, '')
+        .replace(/-----END CERTIFICATE-----/, '')
+        .replace(/\n/g, '')
+        .trim();
+      content = Buffer.from(base64Data, 'base64');
+      contentType = 'application/x-x509-ca-cert';
+      filename = `${cn}.${format}`;
+    } else {
+      reply.code(400);
+      return { error: 'Invalid format' };
+    }
+
+    // Set headers for download
+    reply.header('Content-Type', contentType);
+    reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+    reply.header('Content-Length', content.length);
+
+    // Add caching headers
+    reply.header('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+
+    return content;
+  } catch (error) {
+    server.log.error({ error, caId }, 'Failed to serve CA certificate');
+    reply.code(500);
+    return { error: 'Internal server error while serving CA certificate' };
+  }
+});
+
 // Public CRL endpoint - serves Certificate Revocation Lists
 server.get('/crl/:caId.:format', async (req, reply) => {
   const { caId, format } = req.params as { caId: string; format: string };
@@ -223,7 +284,7 @@ server.get('/crl/:caId.:format', async (req, reply) => {
 // Start server
 const start = async () => {
   try {
-    const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+    const port = 52081; // Fixed port to avoid conflicts
     const host = process.env.HOST || '0.0.0.0';
 
     await server.listen({ port, host });

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award } from 'lucide-react';
+import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 
 export const Route = createFileRoute('/cas/$id')({
@@ -32,9 +32,24 @@ function CADetail() {
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [selectedReason, setSelectedReason] = useState<string>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer'>('pem');
 
   const revokeMutation = trpc.ca.revoke.useMutation();
   const deleteMutation = trpc.ca.delete.useMutation();
+
+  // Get backend base URL from environment variable
+  const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:52081/trpc').replace('/trpc', '');
+
+  // Certificate download URLs for all formats
+  const downloadUrls = {
+    pem: `${apiBaseUrl}/cas/${id}.pem`,
+    crt: `${apiBaseUrl}/cas/${id}.crt`,
+    der: `${apiBaseUrl}/cas/${id}.der`,
+    cer: `${apiBaseUrl}/cas/${id}.cer`,
+  };
+
+  const downloadUrl = downloadUrls[selectedFormat];
 
   const handleRevoke = () => {
     setShowRevokeDialog(true);
@@ -75,6 +90,17 @@ function CADetail() {
           },
         }
       );
+    }
+  };
+
+  const handleCopyPermalink = async () => {
+    try {
+      await navigator.clipboard.writeText(downloadUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy link:', error);
+      alert('Failed to copy link to clipboard');
     }
   };
 
@@ -176,13 +202,41 @@ function CADetail() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate({ to: '/cas' })}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Certificate Authorities
         </button>
 
         <div className="flex gap-2">
+          <select
+            value={selectedFormat}
+            onChange={(e) => setSelectedFormat(e.target.value as any)}
+            className="px-3 py-1.5 text-sm border rounded-md bg-background"
+          >
+            <option value="pem">PEM - Text format</option>
+            <option value="crt">CRT - Text certificate</option>
+            <option value="der">DER - Binary compact</option>
+            <option value="cer">CER - Windows compatible</option>
+          </select>
+
+          <button
+            onClick={handleCopyPermalink}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
+          >
+            {linkCopied ? (
+              <>
+                <Check className="h-4 w-4" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Link className="h-4 w-4" />
+                Copy Link
+              </>
+            )}
+          </button>
+
           {ca.status === 'active' && (
             <button
               onClick={handleRevoke}
@@ -308,17 +362,42 @@ function CADetail() {
             <Database className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Storage Location</h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                {/* Left column: Certificate Download URLs */}
+                <div>
+                  <span className="text-muted-foreground text-xs block mb-1">Certificate Download URLs:</span>
+                  <div className="space-y-1">
+                    {Object.entries(downloadUrls).map(([format, url]) => (
+                      <div key={format} className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase w-8">
+                          {format}:
+                        </span>
+                        <a
+                          href={url}
+                          className="font-mono text-xs text-primary hover:underline break-all flex-1"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {url}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right column: KMS Provider */}
                 <div>
                   <span className="text-muted-foreground text-xs">KMS Provider:</span>
                   <p className="font-mono">Cosmian KMS</p>
+                  {ca.kmsKeyId && (
+                    <div className="mt-3">
+                      <span className="text-muted-foreground text-xs">KMS Key ID:</span>
+                      <p className="font-mono text-xs break-all">{ca.kmsKeyId}</p>
+                    </div>
+                  )}
                 </div>
-                {ca.kmsKeyId && (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground text-xs">KMS Key ID:</span>
-                    <p className="font-mono text-xs break-all">{ca.kmsKeyId}</p>
-                  </div>
-                )}
+
+                {/* Bottom row: Created and Last Modified */}
                 <div>
                   <span className="text-muted-foreground text-xs">Created:</span>
                   <p>{new Date(ca.createdAt).toLocaleString()}</p>
