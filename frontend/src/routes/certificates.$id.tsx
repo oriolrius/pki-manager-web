@@ -31,12 +31,14 @@ const DOWNLOAD_FORMATS = [
   { value: 'der', label: 'DER - Certificate only (Binary)', requiresPassword: false, hasPrivateKey: false },
   { value: 'cer', label: 'CER - Certificate only (Binary, Windows)', requiresPassword: false, hasPrivateKey: false },
   { value: 'pem-chain', label: 'PEM Chain - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pem-key', label: 'PEM with Private Key - ZIP with .pem + .priv files', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'pkcs7', label: 'PKCS#7 - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
   { value: 'p7b', label: 'P7B - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
-  { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: true, hasPrivateKey: true },
-  { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: true, hasPrivateKey: true },
-  { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: true, hasPrivateKey: true },
-  { value: 'jks', label: 'JKS - Java KeyStore (converted from PKCS#12)', requiresPassword: true, hasPrivateKey: true },
+  { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks', label: 'JKS - Java KeyStore (converted from PKCS#12)', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'all', label: 'All Formats - All formats in one ZIP', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
 ] as const;
 
 function CertificateDetail() {
@@ -50,6 +52,7 @@ function CertificateDetail() {
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<string>('pem');
   const [downloadPassword, setDownloadPassword] = useState('');
+  const [encryptPrivateKey, setEncryptPrivateKey] = useState(true);
   const [showPrivateKeyWarning, setShowPrivateKeyWarning] = useState(false);
 
   const renewMutation = trpc.certificate.renew.useMutation();
@@ -63,13 +66,13 @@ function CertificateDetail() {
   };
 
   const confirmDownload = async () => {
-    // Validate password for formats that require it
-    if (selectedFormat?.requiresPassword && !downloadPassword) {
-      alert('Password is required for this format');
+    // Validate password only if encryption is enabled for formats with private keys
+    if (selectedFormat?.hasPrivateKey && encryptPrivateKey && !downloadPassword) {
+      alert('Password is required when private key encryption is enabled');
       return;
     }
 
-    if (selectedFormat?.requiresPassword && downloadPassword.length < 8) {
+    if (selectedFormat?.hasPrivateKey && encryptPrivateKey && downloadPassword.length < 8) {
       alert('Password must be at least 8 characters long');
       return;
     }
@@ -84,11 +87,12 @@ function CertificateDetail() {
       const result = await utils.certificate.download.fetch({
         id,
         format: downloadFormat as any,
-        password: selectedFormat?.requiresPassword ? downloadPassword : undefined,
+        password: (selectedFormat?.hasPrivateKey && encryptPrivateKey) ? downloadPassword : undefined,
+        encryptPrivateKey: selectedFormat?.hasPrivateKey ? encryptPrivateKey : undefined,
       });
 
-      // Decode base64 data for binary formats
-      const isBinaryFormat = ['der', 'cer', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12', 'jks'].includes(downloadFormat);
+      // Decode base64 data for binary formats (including ZIP for 'all' and 'pem-key')
+      const isBinaryFormat = ['der', 'cer', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12', 'jks', 'pem-key', 'all'].includes(downloadFormat);
       let blob: Blob;
 
       if (isBinaryFormat) {
@@ -115,6 +119,7 @@ function CertificateDetail() {
       setShowDownloadDialog(false);
       setDownloadFormat('pem');
       setDownloadPassword('');
+      setEncryptPrivateKey(true);
       setShowPrivateKeyWarning(false);
     } catch (error: any) {
       alert(`Failed to download certificate: ${error.message}`);
@@ -258,31 +263,48 @@ function CertificateDetail() {
                     </select>
                   </div>
 
-                  {selectedFormat?.requiresPassword && (
-                    <div>
-                      <label htmlFor="password" className="block text-sm font-medium mb-2">
-                        Password <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="password"
-                        id="password"
-                        value={downloadPassword}
-                        onChange={(e) => setDownloadPassword(e.target.value)}
-                        className="w-full px-3 py-2 border rounded-md bg-background"
-                        placeholder="Minimum 8 characters"
-                        minLength={8}
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        This password will protect the private key
-                      </p>
-                    </div>
-                  )}
-
                   {selectedFormat?.hasPrivateKey && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
-                      <p className="text-xs text-blue-800 dark:text-blue-300">
-                        <strong>Note:</strong> This format includes the private key and will be password protected.
-                      </p>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="encryptKey"
+                          checked={encryptPrivateKey}
+                          onChange={(e) => setEncryptPrivateKey(e.target.checked)}
+                          className="w-4 h-4 rounded border-gray-300"
+                        />
+                        <label htmlFor="encryptKey" className="text-sm font-medium cursor-pointer">
+                          Encrypt private key with password
+                        </label>
+                      </div>
+
+                      {encryptPrivateKey && (
+                        <div>
+                          <label htmlFor="password" className="block text-sm font-medium mb-2">
+                            Password <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="password"
+                            id="password"
+                            value={downloadPassword}
+                            onChange={(e) => setDownloadPassword(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-md bg-background"
+                            placeholder="Minimum 8 characters"
+                            minLength={8}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            This password will protect the private key
+                          </p>
+                        </div>
+                      )}
+
+                      {!encryptPrivateKey && (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                          <p className="text-xs text-red-800 dark:text-red-300">
+                            <strong>⚠️ Warning:</strong> The private key will be exported <strong>unencrypted</strong>. Anyone with access to this file can use the certificate.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -296,6 +318,14 @@ function CertificateDetail() {
                       </p>
                     </div>
                   )}
+
+                  {downloadFormat === 'all' && (
+                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
+                      <p className="text-xs text-purple-800 dark:text-purple-300">
+                        <strong>All Formats:</strong> The certificate will be exported in all available formats and packaged in a ZIP file.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 mt-6">
@@ -304,6 +334,7 @@ function CertificateDetail() {
                       setShowDownloadDialog(false);
                       setDownloadFormat('pem');
                       setDownloadPassword('');
+                      setEncryptPrivateKey(true);
                       setShowPrivateKeyWarning(false);
                     }}
                     className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium"

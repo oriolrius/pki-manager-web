@@ -1445,14 +1445,14 @@ export const certificateRouter = router({
       const serialShort = certificate.serialNumber.substring(0, 8);
 
       // Formats that require a private key
-      const formatsRequiringKey = ['pkcs12', 'pfx', 'p12', 'jks'];
+      const formatsRequiringKey = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
       const requiresKey = formatsRequiringKey.includes(input.format);
 
-      // Validate password for formats that require it
-      if (requiresKey && !input.password) {
+      // Validate password only if encryption is enabled
+      if (requiresKey && input.encryptPrivateKey && !input.password) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: `Password is required for ${input.format.toUpperCase()} format`,
+          message: `Password is required when private key encryption is enabled for ${input.format.toUpperCase()} format`,
         });
       }
 
@@ -1472,7 +1472,118 @@ export const certificateRouter = router({
         const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
         const forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
 
-        switch (input.format) {
+        // Handle 'all' format - generate all formats in a ZIP
+        if (input.format === 'all') {
+          const JSZip = await import('jszip');
+          const zip = new JSZip.default();
+
+          const formats = ['pem', 'crt', 'der', 'cer', 'pem-chain', 'pem-key', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12'];
+
+          for (const format of formats) {
+            try {
+              let fileContent: string;
+              let fileExtension: string;
+
+              switch (format) {
+                case 'pem':
+                case 'crt':
+                  fileContent = certificatePem;
+                  fileExtension = format;
+                  break;
+
+                case 'der':
+                case 'cer':
+                  const derBytes = forge.default.asn1.toDer(
+                    forge.default.pki.certificateToAsn1(forgeCert)
+                  ).getBytes();
+                  fileContent = Buffer.from(derBytes, 'binary').toString('base64');
+                  fileExtension = format;
+                  break;
+
+                case 'pem-chain':
+                  fileContent = certificatePem + '\n' + caCertificatePem;
+                  fileExtension = 'pem';
+                  break;
+
+                case 'pem-key': {
+                  const privateKeyPem = await kmsService.getPrivateKey(
+                    certificate.kmsKeyId!,
+                    certificate.id
+                  );
+
+                  // Add certificate as .pem file
+                  zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
+
+                  // Add private key as .priv file (encrypted or unencrypted)
+                  if (input.encryptPrivateKey && input.password) {
+                    const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+                    const encryptedKeyPem = forge.default.pki.encryptRsaPrivateKey(
+                      forgePrivateKey,
+                      input.password,
+                      { algorithm: 'aes256' }
+                    );
+                    zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
+                  } else {
+                    // Unencrypted private key
+                    zip.file(`${commonName}-${serialShort}.priv`, privateKeyPem);
+                  }
+                  continue; // Skip the normal file adding since we already added to zip
+                }
+
+                case 'pkcs7':
+                case 'p7b':
+                  const p7 = forge.default.pkcs7.createSignedData();
+                  p7.addCertificate(forgeCert);
+                  p7.addCertificate(forgeCaCert);
+                  const p7Der = forge.default.asn1.toDer(p7.toAsn1()).getBytes();
+                  fileContent = Buffer.from(p7Der, 'binary').toString('base64');
+                  fileExtension = format === 'pkcs7' ? 'p7b' : format;
+                  break;
+
+                case 'pkcs12':
+                case 'pfx':
+                case 'p12': {
+                  const privateKeyPem = await kmsService.getPrivateKey(
+                    certificate.kmsKeyId!,
+                    certificate.id
+                  );
+                  const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+
+                  // PKCS12 requires a password, use empty string if encryption is disabled
+                  const password = input.encryptPrivateKey ? input.password! : '';
+                  const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
+                    forgePrivateKey,
+                    [forgeCert, forgeCaCert],
+                    password,
+                    {
+                      algorithm: input.encryptPrivateKey ? '3des' : undefined,
+                      friendlyName: commonName,
+                    }
+                  );
+                  const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
+                  fileContent = Buffer.from(p12Der, 'binary').toString('base64');
+                  fileExtension = format === 'pkcs12' ? 'p12' : format;
+                  break;
+                }
+
+                default:
+                  continue;
+              }
+
+              const fileName = `${commonName}-${serialShort}.${fileExtension}`;
+              zip.file(fileName, fileContent);
+            } catch (error) {
+              logger.warn({ certId: input.id, format, error }, 'Failed to generate format for certificate');
+            }
+          }
+
+          const zipData = await zip.generateAsync({ type: 'base64' });
+          data = zipData;
+          mimeType = 'application/zip';
+          filename = `${commonName}-${serialShort}-all-formats.zip`;
+        } else {
+          // Handle single format downloads
+          switch (input.format) {
           case 'pem':
           case 'crt':
             // PEM format (single certificate)
@@ -1499,6 +1610,50 @@ export const certificateRouter = router({
             filename = `${commonName}-${serialShort}-chain.pem`;
             break;
 
+          case 'pem-key': {
+            // PEM format with private key - exported as ZIP with separate .pem and .priv files
+            if (!certificate.kmsKeyId) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'Certificate does not have a private key',
+              });
+            }
+
+            // Fetch private key from KMS
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+
+            // Create ZIP file with separate certificate and private key files
+            const JSZip = await import('jszip');
+            const zip = new JSZip.default();
+
+            // Add certificate as .pem file
+            zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
+
+            // Add private key as .priv file (encrypted or unencrypted)
+            if (input.encryptPrivateKey && input.password) {
+              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+              const encryptedKeyPem = forge.default.pki.encryptRsaPrivateKey(
+                forgePrivateKey,
+                input.password,
+                { algorithm: 'aes256' }
+              );
+              zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
+            } else {
+              // Unencrypted private key
+              zip.file(`${commonName}-${serialShort}.priv`, privateKeyPem);
+            }
+
+            // Generate ZIP
+            const zipData = await zip.generateAsync({ type: 'base64' });
+            data = zipData;
+            mimeType = 'application/zip';
+            filename = `${commonName}-${serialShort}-with-key.zip`;
+            break;
+          }
+
           case 'pkcs7':
           case 'p7b':
             // PKCS#7 format (certificate + CA chain, no private key)
@@ -1514,7 +1669,7 @@ export const certificateRouter = router({
           case 'pkcs12':
           case 'pfx':
           case 'p12': {
-            // PKCS#12 format (certificate + private key + CA chain, password protected)
+            // PKCS#12 format (certificate + private key + CA chain, optionally encrypted)
             if (!certificate.kmsKeyId) {
               throw new TRPCError({
                 code: 'BAD_REQUEST',
@@ -1531,13 +1686,15 @@ export const certificateRouter = router({
             // Convert PEM private key to forge format
             const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
 
+            // PKCS12 requires a password, use empty string if encryption is disabled
+            const password = input.encryptPrivateKey ? input.password! : '';
             // Create PKCS#12
             const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
               forgePrivateKey,
               [forgeCert, forgeCaCert],
-              input.password!,
+              password,
               {
-                algorithm: '3des',
+                algorithm: input.encryptPrivateKey ? '3des' : undefined,
                 friendlyName: commonName,
               }
             );
@@ -1568,12 +1725,15 @@ export const certificateRouter = router({
             // and provide instructions to convert using keytool
             // For now, we'll return PKCS#12 with instructions
             const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+
+            // PKCS12 requires a password, use empty string if encryption is disabled
+            const password = input.encryptPrivateKey ? input.password! : '';
             const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
               forgePrivateKey,
               [forgeCert, forgeCaCert],
-              input.password!,
+              password,
               {
-                algorithm: '3des',
+                algorithm: input.encryptPrivateKey ? '3des' : undefined,
                 friendlyName: input.alias || commonName,
               }
             );
@@ -1595,6 +1755,7 @@ export const certificateRouter = router({
               code: 'BAD_REQUEST',
               message: `Unsupported format: ${input.format}`,
             });
+          }
         }
 
         // Create audit log entry
@@ -2584,6 +2745,140 @@ export const certificateRouter = router({
       const kmsService = getKMSService();
       const zip = new JSZip.default();
 
+      // Validate password only if encryption is enabled
+      const formatsRequiringKey = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+      const requiresKey = formatsRequiringKey.includes(input.format);
+
+      if (requiresKey && input.encryptPrivateKey && !input.password) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Password is required when private key encryption is enabled for ${input.format.toUpperCase()} format`,
+        });
+      }
+
+      // Helper function to generate certificate in a specific format
+      const generateCertificateFile = async (
+        certificate: any,
+        ca: any,
+        format: string,
+        password?: string,
+        encryptKey?: boolean
+      ): Promise<{ content: string; extension: string }> => {
+        const certificatePem = await kmsService.getCertificate(
+          certificate.kmsCertificateId,
+          certificate.id
+        );
+        const caCertificatePem = await kmsService.getCertificate(
+          ca.kmsCertificateId,
+          ca.id
+        );
+        const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+        const forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
+
+        switch (format) {
+          case 'pem':
+          case 'crt':
+            return {
+              content: certificatePem,
+              extension: format,
+            };
+
+          case 'der':
+          case 'cer':
+            const derBytes = forge.default.asn1.toDer(
+              forge.default.pki.certificateToAsn1(forgeCert)
+            ).getBytes();
+            return {
+              content: Buffer.from(derBytes, 'binary').toString('base64'),
+              extension: format,
+            };
+
+          case 'pem-chain':
+            return {
+              content: certificatePem + '\n' + caCertificatePem,
+              extension: 'pem',
+            };
+
+          case 'pem-key': {
+            if (!certificate.kmsKeyId) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `Certificate ${certificate.id} does not have an exportable private key`,
+              });
+            }
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+
+            // Return as special marker - caller will handle creating two files
+            const keyContent = encryptKey && password
+              ? forge.default.pki.encryptRsaPrivateKey(
+                  forge.default.pki.privateKeyFromPem(privateKeyPem),
+                  password,
+                  { algorithm: 'aes256' }
+                )
+              : privateKeyPem;
+
+            return {
+              content: certificatePem + '\n__KEY_SEPARATOR__\n' + keyContent,
+              extension: 'pem-key-split', // Special marker
+            };
+          }
+
+          case 'pkcs7':
+          case 'p7b':
+            const p7 = forge.default.pkcs7.createSignedData();
+            p7.addCertificate(forgeCert);
+            p7.addCertificate(forgeCaCert);
+            const p7Der = forge.default.asn1.toDer(p7.toAsn1()).getBytes();
+            return {
+              content: Buffer.from(p7Der, 'binary').toString('base64'),
+              extension: format === 'pkcs7' ? 'p7b' : format,
+            };
+
+          case 'pkcs12':
+          case 'pfx':
+          case 'p12':
+          case 'jks': {
+            if (!certificate.kmsKeyId) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `Certificate ${certificate.id} does not have an exportable private key`,
+              });
+            }
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+            const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+
+            // PKCS12 requires a password, use empty string if encryption is disabled
+            const pkcs12Password = encryptKey ? password! : '';
+            const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
+              forgePrivateKey,
+              [forgeCert, forgeCaCert],
+              pkcs12Password,
+              {
+                algorithm: encryptKey ? '3des' : undefined,
+                friendlyName: certificate.subjectDn,
+              }
+            );
+            const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
+            return {
+              content: Buffer.from(p12Der, 'binary').toString('base64'),
+              extension: format === 'pkcs12' || format === 'jks' ? 'p12' : format,
+            };
+          }
+
+          default:
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Unsupported format: ${format}`,
+            });
+        }
+      };
+
       // Process each certificate
       for (const { certificate, ca } of certResults) {
         if (!ca) {
@@ -2592,55 +2887,61 @@ export const certificateRouter = router({
         }
 
         try {
-          // Fetch certificate from KMS
-          const certificatePem = await kmsService.getCertificate(
-            certificate.kmsCertificateId,
-            certificate.id
-          );
-
           // Extract CN for filename
           const cnMatch = certificate.subjectDn.match(/CN=([^,]+)/);
           const commonName = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'certificate';
           const serialShort = certificate.serialNumber.substring(0, 8);
 
-          let fileContent: string;
-          let fileExtension: string;
+          if (input.format === 'all') {
+            // Generate all formats for this certificate
+            const formats = ['pem', 'crt', 'der', 'cer', 'pem-chain', 'pem-key', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12'];
+            const certFolder = `${commonName}-${serialShort}`;
 
-          switch (input.format) {
-            case 'pem':
-              fileContent = certificatePem;
-              fileExtension = 'pem';
-              break;
+            for (const format of formats) {
+              try {
+                const { content, extension } = await generateCertificateFile(
+                  certificate,
+                  ca,
+                  format,
+                  input.password,
+                  input.encryptPrivateKey
+                );
 
-            case 'der':
-              const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
-              const derBytes = forge.default.asn1.toDer(
-                forge.default.pki.certificateToAsn1(forgeCert)
-              ).getBytes();
-              fileContent = Buffer.from(derBytes, 'binary').toString('base64');
-              fileExtension = 'der';
-              break;
+                // Handle pem-key special case - split into .pem and .priv files
+                if (extension === 'pem-key-split') {
+                  const parts = content.split('\n__KEY_SEPARATOR__\n');
+                  zip.file(`${certFolder}/${commonName}-${serialShort}.pem`, parts[0]);
+                  zip.file(`${certFolder}/${commonName}-${serialShort}.priv`, parts[1]);
+                } else {
+                  const filename = `${certFolder}/${commonName}-${serialShort}.${extension}`;
+                  zip.file(filename, content);
+                }
+              } catch (error) {
+                logger.warn({ certId: certificate.id, format, error }, 'Failed to generate format for certificate');
+              }
+            }
+          } else {
+            // Generate single format
+            const { content, extension } = await generateCertificateFile(
+              certificate,
+              ca,
+              input.format,
+              input.password,
+              input.encryptPrivateKey
+            );
 
-            case 'pem-chain':
-              const caCertificatePem = await kmsService.getCertificate(
-                ca.kmsCertificateId,
-                ca.id
-              );
-              fileContent = certificatePem + '\n' + caCertificatePem;
-              fileExtension = 'pem';
-              break;
-
-            default:
-              logger.warn({ format: input.format }, 'Unsupported format, defaulting to PEM');
-              fileContent = certificatePem;
-              fileExtension = 'pem';
+            // Handle pem-key special case - split into .pem and .priv files
+            if (extension === 'pem-key-split') {
+              const parts = content.split('\n__KEY_SEPARATOR__\n');
+              zip.file(`${commonName}-${serialShort}.pem`, parts[0]);
+              zip.file(`${commonName}-${serialShort}.priv`, parts[1]);
+            } else {
+              const filename = `${commonName}-${serialShort}.${extension}`;
+              zip.file(filename, content);
+            }
           }
 
-          // Add to ZIP
-          const filename = `${commonName}-${serialShort}.${fileExtension}`;
-          zip.file(filename, fileContent);
-
-          logger.info({ certId: certificate.id, filename }, 'Certificate added to ZIP (bulk download)');
+          logger.info({ certId: certificate.id, format: input.format }, 'Certificate processed for bulk download');
         } catch (error) {
           logger.error({ error, certId: certificate.id }, 'Failed to process certificate for bulk download');
         }

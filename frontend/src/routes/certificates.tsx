@@ -11,6 +11,22 @@ const CA_FILTER_STORAGE_KEY = 'pki-manager-ca-filter';
 const STATUS_FILTER_STORAGE_KEY = 'pki-manager-status-filter';
 const TYPE_FILTER_STORAGE_KEY = 'pki-manager-type-filter';
 
+const DOWNLOAD_FORMATS = [
+  { value: 'pem', label: 'PEM - Certificate only (ASCII)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'crt', label: 'CRT - Certificate only (ASCII)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'der', label: 'DER - Certificate only (Binary)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'cer', label: 'CER - Certificate only (Binary, Windows)', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pem-chain', label: 'PEM Chain - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pem-key', label: 'PEM with Private Key - ZIP with .pem + .priv files', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'pkcs7', label: 'PKCS#7 - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'p7b', label: 'P7B - Certificate + CA Chain', requiresPassword: false, hasPrivateKey: false },
+  { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks', label: 'JKS - Java KeyStore (converted from PKCS#12)', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'all', label: 'All Formats - All formats in one ZIP', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+] as const;
+
 // Helper function to get certificate type icon
 function getCertificateTypeIcon(type: string) {
   switch (type.toLowerCase()) {
@@ -42,6 +58,11 @@ function Certificates() {
     type: 'revoke' | 'renew' | 'delete';
     callback: () => void;
   } | null>(null);
+  const [showBulkDownloadDialog, setShowBulkDownloadDialog] = useState(false);
+  const [bulkDownloadFormat, setBulkDownloadFormat] = useState<string>('pem');
+  const [bulkDownloadPassword, setBulkDownloadPassword] = useState('');
+  const [bulkEncryptPrivateKey, setBulkEncryptPrivateKey] = useState(true);
+  const [showBulkPrivateKeyWarning, setShowBulkPrivateKeyWarning] = useState(false);
 
   const certificatesQuery = trpc.certificate.list.useQuery({
     limit: 50,
@@ -84,7 +105,12 @@ function Certificates() {
     },
   });
   const bulkDownload = trpc.certificate.bulkDownload.useQuery(
-    { certificateIds: Array.from(selectedCertificates), format: 'pem' },
+    {
+      certificateIds: Array.from(selectedCertificates),
+      format: bulkDownloadFormat as any,
+      password: bulkDownloadPassword || undefined,
+      encryptPrivateKey: bulkEncryptPrivateKey,
+    },
     { enabled: false }
   );
 
@@ -131,13 +157,47 @@ function Certificates() {
     setShowConfirmDialog(true);
   };
 
-  const handleBulkDownload = async () => {
-    const result = await bulkDownload.refetch();
-    if (result.data) {
-      const link = document.createElement('a');
-      link.href = `data:${result.data.mimeType};base64,${result.data.data}`;
-      link.download = result.data.filename;
-      link.click();
+  const handleBulkDownload = () => {
+    setShowBulkDownloadDialog(true);
+  };
+
+  const confirmBulkDownload = async () => {
+    const selectedFormat = DOWNLOAD_FORMATS.find(f => f.value === bulkDownloadFormat);
+
+    // Validate password only if encryption is enabled for formats with private keys
+    if (selectedFormat?.hasPrivateKey && bulkEncryptPrivateKey && !bulkDownloadPassword) {
+      alert('Password is required when private key encryption is enabled');
+      return;
+    }
+
+    if (selectedFormat?.hasPrivateKey && bulkEncryptPrivateKey && bulkDownloadPassword.length < 8) {
+      alert('Password must be at least 8 characters long');
+      return;
+    }
+
+    // Show warning for private key exports
+    if (selectedFormat?.hasPrivateKey && !showBulkPrivateKeyWarning) {
+      setShowBulkPrivateKeyWarning(true);
+      return;
+    }
+
+    try {
+      const result = await bulkDownload.refetch();
+      if (result.data) {
+        const link = document.createElement('a');
+        link.href = `data:${result.data.mimeType};base64,${result.data.data}`;
+        link.download = result.data.filename;
+        link.click();
+      }
+
+      // Reset dialog state
+      setShowBulkDownloadDialog(false);
+      setBulkDownloadFormat('pem');
+      setBulkDownloadPassword('');
+      setBulkEncryptPrivateKey(true);
+      setShowBulkPrivateKeyWarning(false);
+    } catch (error: any) {
+      alert(`Failed to download certificates: ${error.message}`);
     }
   };
 
@@ -331,6 +391,140 @@ function Certificates() {
               <Trash2 className="h-4 w-4" />
               Delete
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Download Dialog */}
+      {showBulkDownloadDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+            <h2 className="text-xl font-bold mb-4">Download {selectedCertificates.size} Certificate{selectedCertificates.size !== 1 ? 's' : ''}</h2>
+
+            {showBulkPrivateKeyWarning ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                  <h3 className="font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                    ⚠️ Security Warning
+                  </h3>
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                    This format includes <strong>private keys</strong>. Keep these files secure and never share them publicly.
+                    Anyone with access to these files and the password can impersonate these certificates.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowBulkPrivateKeyWarning(false)}
+                    className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium"
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    onClick={confirmBulkDownload}
+                    className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 font-medium shadow-sm"
+                  >
+                    I Understand, Download
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="bulk-format" className="block text-sm font-medium mb-2">
+                      Format
+                    </label>
+                    <select
+                      id="bulk-format"
+                      value={bulkDownloadFormat}
+                      onChange={(e) => setBulkDownloadFormat(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md bg-background"
+                    >
+                      {DOWNLOAD_FORMATS.map((format) => (
+                        <option key={format.value} value={format.value}>
+                          {format.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {DOWNLOAD_FORMATS.find(f => f.value === bulkDownloadFormat)?.hasPrivateKey && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="bulk-encryptKey"
+                          checked={bulkEncryptPrivateKey}
+                          onChange={(e) => setBulkEncryptPrivateKey(e.target.checked)}
+                          className="w-4 h-4 rounded border-gray-300"
+                        />
+                        <label htmlFor="bulk-encryptKey" className="text-sm font-medium cursor-pointer">
+                          Encrypt private keys with password
+                        </label>
+                      </div>
+
+                      {bulkEncryptPrivateKey && (
+                        <div>
+                          <label htmlFor="bulk-password" className="block text-sm font-medium mb-2">
+                            Password <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="password"
+                            id="bulk-password"
+                            value={bulkDownloadPassword}
+                            onChange={(e) => setBulkDownloadPassword(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-md bg-background"
+                            placeholder="Minimum 8 characters"
+                            minLength={8}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            This password will protect the private keys
+                          </p>
+                        </div>
+                      )}
+
+                      {!bulkEncryptPrivateKey && (
+                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                          <p className="text-xs text-red-800 dark:text-red-300">
+                            <strong>⚠️ Warning:</strong> Private keys will be exported <strong>unencrypted</strong>. Anyone with access to these files can use the certificates.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {bulkDownloadFormat === 'all' && (
+                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
+                      <p className="text-xs text-purple-800 dark:text-purple-300">
+                        <strong>All Formats:</strong> Each certificate will be exported in all available formats and organized in separate folders within the ZIP file.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowBulkDownloadDialog(false);
+                      setBulkDownloadFormat('pem');
+                      setBulkDownloadPassword('');
+                      setBulkEncryptPrivateKey(true);
+                      setShowBulkPrivateKeyWarning(false);
+                    }}
+                    className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmBulkDownload}
+                    disabled={bulkDownload.isFetching}
+                    className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
+                  >
+                    {bulkDownload.isFetching ? 'Downloading...' : 'Download'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -165,15 +165,28 @@ export const downloadCertificateSchema = z.object({
     'der',      // DER format (binary, certificate only)
     'cer',      // Same as DER, different extension (Windows)
     'pem-chain', // PEM chain (certificate + CA)
+    'pem-key',  // PEM certificate + private key (optionally encrypted)
     'pkcs7',    // PKCS#7/P7B (certificate + chain, no key)
     'p7b',      // Same as PKCS#7, different extension
     'pkcs12',   // PKCS#12 (certificate + chain + key, password protected)
     'pfx',      // Same as PKCS#12, different extension
     'p12',      // Same as PKCS#12, different extension
     'jks',      // Java KeyStore (password protected)
+    'all',      // All formats in one ZIP file
   ]).default('pem'),
-  password: z.string().min(8).optional(), // Required for PKCS#12, PFX, P12, JKS
+  password: z.string().min(8).optional(), // Optional, used when encryptPrivateKey is true
+  encryptPrivateKey: z.boolean().default(true), // Whether to encrypt private key with password
   alias: z.string().optional(), // Alias for JKS keystore (defaults to certificate CN)
+}).refine((data) => {
+  // If format requires key and encryption is enabled, password is required
+  const keyFormats = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+  if (keyFormats.includes(data.format) && data.encryptPrivateKey && !data.password) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Password is required when private key encryption is enabled',
+  path: ['password'],
 });
 
 export const bulkCreateCertificatesSchema = z.object({
@@ -204,7 +217,33 @@ export const bulkDeleteCertificatesSchema = z.object({
 
 export const bulkDownloadCertificatesSchema = z.object({
   certificateIds: z.array(idSchema).min(1).max(100),
-  format: z.enum(['pem', 'der', 'pem-chain']).default('pem'),
+  format: z.enum([
+    'pem',       // PEM format (ASCII, certificate only)
+    'crt',       // Same as PEM, different extension
+    'der',       // DER format (binary, certificate only)
+    'cer',       // Same as DER, different extension (Windows)
+    'pem-chain', // PEM chain (certificate + CA)
+    'pem-key',   // PEM certificate + private key (optionally encrypted)
+    'pkcs7',     // PKCS#7/P7B (certificate + chain, no key)
+    'p7b',       // Same as PKCS#7, different extension
+    'pkcs12',    // PKCS#12 (certificate + chain + key, password protected)
+    'pfx',       // Same as PKCS#12, different extension
+    'p12',       // Same as PKCS#12, different extension
+    'jks',       // Java KeyStore (converted from PKCS#12)
+    'all',       // All formats in one zip
+  ]).default('pem'),
+  password: z.string().min(8).optional(), // Optional, used when encryptPrivateKey is true
+  encryptPrivateKey: z.boolean().default(true), // Whether to encrypt private key with password
+}).refine((data) => {
+  // If format requires key and encryption is enabled, password is required
+  const keyFormats = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+  if (keyFormats.includes(data.format) && data.encryptPrivateKey && !data.password) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Password is required when private key encryption is enabled',
+  path: ['password'],
 });
 
 // CRL schemas
