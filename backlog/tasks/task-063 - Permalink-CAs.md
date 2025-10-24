@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 07:21'
-updated_date: '2025-10-24 12:18'
+updated_date: '2025-10-24 12:21'
 labels: []
 dependencies: []
 ---
@@ -128,4 +128,31 @@ Now users can directly download CA certificates using curl or any HTTP client\!
 2. Click "Copy Link" in header or "Copy URL" in Storage Location
 3. Format selection is synchronized between both locations
 4. Visual feedback with checkmark when copied
+
+### Final Layout:
+
+**Storage Location Section:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Storage Location                                            │
+├──────────────────────────────┬──────────────────────────────┤
+│ Certificate Download URLs:   │ KMS Provider:                │
+│   PEM: [link]                │ Cosmian KMS                  │
+│   CRT: [link]                │                              │
+│   DER: [link]                │ KMS Key ID:                  │
+│   CER: [link]                │ [key-id]                     │
+├──────────────────────────────┼──────────────────────────────┤
+│ Created:                     │ Last Modified:               │
+│ [date/time]                  │ [date/time]                  │
+└──────────────────────────────┴──────────────────────────────┘
+```
+
+**Header:**
+- Format selector dropdown (PEM, CRT, DER, CER)
+- "Copy Link" button copies selected format URL
+
+**User Flow:**
+1. Select format from header dropdown
+2. Click "Copy Link" to copy that format URL
+3. Or click any format link directly in Storage Location to download
 <!-- SECTION:NOTES:END -->
