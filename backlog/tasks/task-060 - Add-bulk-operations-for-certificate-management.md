@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2025-10-24 03:51'
-updated_date: '2025-10-24 03:54'
+updated_date: '2025-10-24 05:21'
 labels:
   - frontend
   - backend
@@ -22,14 +22,14 @@ Enable users to select multiple certificates from the /certificates table and pe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 User can select multiple certificates using checkboxes in the /certificates table
-- [ ] #2 Bulk action bar appears when one or more certificates are selected showing available operations (revoke, renew, delete, download)
-- [ ] #3 User can bulk revoke selected certificates with confirmation dialog
-- [ ] #4 User can bulk renew selected certificates with appropriate validation
-- [ ] #5 User can bulk delete selected certificates with confirmation dialog
-- [ ] #6 User can bulk download selected certificates as a ZIP file
-- [ ] #7 Backend tRPC procedures for bulk operations are implemented (bulkRevoke, bulkRenew, bulkDelete, bulkDownload)
-- [ ] #8 Frontend components for bulk selection UI and operation buttons are implemented
+- [x] #1 User can select multiple certificates using checkboxes in the /certificates table
+- [x] #2 Bulk action bar appears when one or more certificates are selected showing available operations (revoke, renew, delete, download)
+- [x] #3 User can bulk revoke selected certificates with confirmation dialog
+- [x] #4 User can bulk renew selected certificates with appropriate validation
+- [x] #5 User can bulk delete selected certificates with confirmation dialog
+- [x] #6 User can bulk download selected certificates as a ZIP file
+- [x] #7 Backend tRPC procedures for bulk operations are implemented (bulkRevoke, bulkRenew, bulkDelete, bulkDownload)
+- [x] #8 Frontend components for bulk selection UI and operation buttons are implemented
 - [ ] #9 All backend unit tests pass for bulk operation procedures
 - [ ] #10 All frontend integration tests pass for bulk selection and operations
 - [ ] #11 Error handling displays clear messages for partial failures in bulk operations (e.g., some certificates failed to revoke)
