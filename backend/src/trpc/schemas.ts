@@ -171,6 +171,31 @@ export const bulkCreateCertificatesSchema = z.object({
   csvData: z.string().min(1),
 });
 
+export const bulkRevokeCertificatesSchema = z.object({
+  certificateIds: z.array(idSchema).min(1).max(100),
+  reason: revocationReasonSchema,
+  details: z.string().max(500).optional(),
+  generateCrl: z.boolean().default(true),
+});
+
+export const bulkRenewCertificatesSchema = z.object({
+  certificateIds: z.array(idSchema).min(1).max(100),
+  generateNewKey: z.boolean().default(true),
+  validityDays: z.number().int().min(1).max(825).optional(),
+  revokeOriginal: z.boolean().default(false),
+});
+
+export const bulkDeleteCertificatesSchema = z.object({
+  certificateIds: z.array(idSchema).min(1).max(100),
+  destroyKey: z.boolean().default(true),
+  removeFromCrl: z.boolean().default(false),
+});
+
+export const bulkDownloadCertificatesSchema = z.object({
+  certificateIds: z.array(idSchema).min(1).max(100),
+  format: z.enum(['pem', 'der', 'pem-chain']).default('pem'),
+});
+
 // CRL schemas
 export const generateCrlSchema = z.object({
   caId: idSchema,

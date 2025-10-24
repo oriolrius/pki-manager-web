@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 
 export const Route = createFileRoute('/certificates')({
@@ -36,6 +36,12 @@ function Certificates() {
   const [selectedCA, setSelectedCA] = useState<string>('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('');
+  const [selectedCertificates, setSelectedCertificates] = useState<Set<string>>(new Set());
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    type: 'revoke' | 'renew' | 'delete';
+    callback: () => void;
+  } | null>(null);
 
   const certificatesQuery = trpc.certificate.list.useQuery({
     limit: 50,
@@ -56,6 +62,102 @@ function Certificates() {
     });
     return map;
   }, [casQuery.data]);
+
+  // Bulk operation mutations
+  const utils = trpc.useUtils();
+  const bulkRevoke = trpc.certificate.bulkRevoke.useMutation({
+    onSuccess: () => {
+      utils.certificate.list.invalidate();
+      setSelectedCertificates(new Set());
+    },
+  });
+  const bulkRenew = trpc.certificate.bulkRenew.useMutation({
+    onSuccess: () => {
+      utils.certificate.list.invalidate();
+      setSelectedCertificates(new Set());
+    },
+  });
+  const bulkDelete = trpc.certificate.bulkDelete.useMutation({
+    onSuccess: () => {
+      utils.certificate.list.invalidate();
+      setSelectedCertificates(new Set());
+    },
+  });
+  const bulkDownload = trpc.certificate.bulkDownload.useQuery(
+    { certificateIds: Array.from(selectedCertificates), format: 'pem' },
+    { enabled: false }
+  );
+
+  // Handlers for bulk operations
+  const handleBulkRevoke = () => {
+    setConfirmAction({
+      type: 'revoke',
+      callback: () => {
+        bulkRevoke.mutate({
+          certificateIds: Array.from(selectedCertificates),
+          reason: 'unspecified',
+        });
+        setShowConfirmDialog(false);
+      },
+    });
+    setShowConfirmDialog(true);
+  };
+
+  const handleBulkRenew = () => {
+    setConfirmAction({
+      type: 'renew',
+      callback: () => {
+        bulkRenew.mutate({
+          certificateIds: Array.from(selectedCertificates),
+          generateNewKey: true,
+        });
+        setShowConfirmDialog(false);
+      },
+    });
+    setShowConfirmDialog(true);
+  };
+
+  const handleBulkDelete = () => {
+    setConfirmAction({
+      type: 'delete',
+      callback: () => {
+        bulkDelete.mutate({
+          certificateIds: Array.from(selectedCertificates),
+          destroyKey: true,
+        });
+        setShowConfirmDialog(false);
+      },
+    });
+    setShowConfirmDialog(true);
+  };
+
+  const handleBulkDownload = async () => {
+    const result = await bulkDownload.refetch();
+    if (result.data) {
+      const link = document.createElement('a');
+      link.href = `data:${result.data.mimeType};base64,${result.data.data}`;
+      link.download = result.data.filename;
+      link.click();
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedCertificates.size === filteredCertificates.length) {
+      setSelectedCertificates(new Set());
+    } else {
+      setSelectedCertificates(new Set(filteredCertificates.map(c => c.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedCertificates);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedCertificates(newSelected);
+  };
 
   // Load filters from localStorage on mount
   useEffect(() => {
@@ -187,6 +289,86 @@ function Certificates() {
           background: rgba(249, 115, 22, 0.05);
         }
       `}</style>
+
+      {/* Bulk Action Bar */}
+      {selectedCertificates.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-blue-900">
+              {selectedCertificates.size} certificate{selectedCertificates.size !== 1 ? 's' : ''} selected
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkDownload}
+              disabled={bulkDownload.isFetching}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 text-sm"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
+            <button
+              onClick={handleBulkRenew}
+              disabled={bulkRenew.isPending}
+              className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center gap-1 text-sm"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Renew
+            </button>
+            <button
+              onClick={handleBulkRevoke}
+              disabled={bulkRevoke.isPending}
+              className="px-3 py-1.5 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 flex items-center gap-1 text-sm"
+            >
+              <XCircle className="h-4 w-4" />
+              Revoke
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDelete.isPending}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex items-center gap-1 text-sm"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && confirmAction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="h-6 w-6 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-lg mb-2">
+                  Confirm Bulk {confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1)}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Are you sure you want to {confirmAction.type} {selectedCertificates.size} certificate
+                  {selectedCertificates.size !== 1 ? 's' : ''}? This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                className="px-4 py-2 border rounded-md hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmAction.callback}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 flex-wrap">
         <div className={`relative flex-1 max-w-md ${searchTerm ? 'filter-active' : ''}`}>
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -258,6 +440,14 @@ function Certificates() {
             <table className="w-full">
               <thead className="border-b bg-muted/50">
                 <tr>
+                  <th className="px-4 py-3 text-center w-12">
+                    <input
+                      type="checkbox"
+                      checked={selectedCertificates.size === filteredCertificates.length && filteredCertificates.length > 0}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300"
+                    />
+                  </th>
                   <th className="px-4 py-3 text-center text-sm font-medium w-20">
                     {/* Icons column */}
                   </th>
@@ -279,7 +469,7 @@ function Certificates() {
                 {filteredCertificates.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-4 py-8 text-center text-muted-foreground"
                     >
                       {searchTerm || selectedCA || selectedStatus || selectedType ? 'No certificates match your filters' : 'No certificates found'}
@@ -320,11 +510,19 @@ function Certificates() {
                     return (
                       <tr
                         key={cert.id}
-                        className="hover:bg-muted/50 cursor-pointer"
-                        onClick={() => navigate({ to: `/certificates/${cert.id}` })}
+                        className="hover:bg-muted/50"
                       >
+                        {/* Checkbox column */}
+                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCertificates.has(cert.id)}
+                            onChange={() => toggleSelect(cert.id)}
+                            className="rounded border-gray-300"
+                          />
+                        </td>
                         {/* Icons column */}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 cursor-pointer" onClick={() => navigate({ to: `/certificates/${cert.id}` })}>
                           <div className="flex items-center justify-center gap-2">
                             <span title={cert.status === 'active' ? 'Active' : 'Revoked'}>
                               <StatusIcon
@@ -339,7 +537,7 @@ function Certificates() {
                           </div>
                         </td>
                         {/* Expiration column */}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 cursor-pointer" onClick={() => navigate({ to: `/certificates/${cert.id}` })}>
                           <div className="text-sm">{new Date(cert.notAfter).toLocaleDateString()}</div>
                           {cert.status === 'active' && (
                             <div className={`text-xs font-medium ${
@@ -350,18 +548,18 @@ function Certificates() {
                           )}
                         </td>
                         {/* Common Name column */}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 cursor-pointer" onClick={() => navigate({ to: `/certificates/${cert.id}` })}>
                           <div className="text-sm font-medium">{commonName}</div>
                           <div className="text-xs text-muted-foreground font-mono truncate max-w-xs">{cert.subjectDn}</div>
                         </td>
                         {/* SANs column */}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 cursor-pointer" onClick={() => navigate({ to: `/certificates/${cert.id}` })}>
                           <div className="text-xs font-mono text-muted-foreground max-w-xs truncate">
                             {sanDisplay}
                           </div>
                         </td>
                         {/* Issuing CA column */}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 cursor-pointer">
                           <div
                             className="text-xs font-medium text-primary hover:underline max-w-xs truncate"
                             onClick={(e) => {

@@ -11,6 +11,10 @@ import {
   certificateTypeSchema,
   certificateStatusSchema,
   bulkCreateCertificatesSchema,
+  bulkRevokeCertificatesSchema,
+  bulkRenewCertificatesSchema,
+  bulkDeleteCertificatesSchema,
+  bulkDownloadCertificatesSchema,
 } from '../schemas.js';
 
 export const certificateRouter = router({
@@ -1905,6 +1909,693 @@ export const certificateRouter = router({
         successful,
         failed,
         results,
+      };
+    }),
+
+  bulkRevoke: publicProcedure
+    .input(bulkRevokeCertificatesSchema)
+    .output(
+      z.object({
+        successful: z.number(),
+        failed: z.number(),
+        results: z.array(
+          z.object({
+            certificateId: z.string(),
+            success: z.boolean(),
+            error: z.string().optional(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificates, auditLog } = await import('../../db/schema.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      const results: Array<{
+        certificateId: string;
+        success: boolean;
+        error?: string;
+      }> = [];
+
+      let successful = 0;
+      let failed = 0;
+
+      // Process each certificate
+      for (const certId of input.certificateIds) {
+        try {
+          // Fetch certificate from database
+          const certResult = await ctx.db
+            .select()
+            .from(certificates)
+            .where(eq(certificates.id, certId))
+            .limit(1);
+
+          if (!certResult || certResult.length === 0) {
+            throw new Error(`Certificate with ID ${certId} not found`);
+          }
+
+          const cert = certResult[0];
+
+          // Validation: Cannot revoke already revoked certificate
+          if (cert.status === 'revoked') {
+            throw new Error('Certificate is already revoked');
+          }
+
+          const effectiveDate = new Date();
+
+          // Update certificate status to revoked
+          await ctx.db
+            .update(certificates)
+            .set({
+              status: 'revoked',
+              revocationDate: effectiveDate,
+              revocationReason: input.details
+                ? `${input.reason}: ${input.details}`
+                : input.reason,
+              updatedAt: new Date(),
+            })
+            .where(eq(certificates.id, certId));
+
+          logger.info(
+            { certId, reason: input.reason },
+            'Certificate revoked successfully (bulk)'
+          );
+
+          // Create audit log entry
+          await ctx.db.insert(auditLog).values({
+            id: randomUUID(),
+            operation: 'certificate.bulkRevoke',
+            entityType: 'certificate',
+            entityId: certId,
+            status: 'success',
+            details: JSON.stringify({
+              caId: cert.caId,
+              serialNumber: cert.serialNumber,
+              reason: input.reason,
+              details: input.details,
+              generateCrl: input.generateCrl,
+            }),
+            ipAddress: ctx.req.ip,
+          });
+
+          results.push({
+            certificateId: certId,
+            success: true,
+          });
+
+          successful++;
+        } catch (error) {
+          logger.error({ error, certId }, 'Failed to revoke certificate in bulk');
+
+          results.push({
+            certificateId: certId,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          failed++;
+        }
+      }
+
+      // Create overall audit log entry
+      await ctx.db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'certificate.bulkRevoke',
+        entityType: 'bulk_operation',
+        entityId: 'bulk-revoke',
+        status: failed === 0 ? 'success' : 'partial',
+        details: JSON.stringify({
+          totalCertificates: input.certificateIds.length,
+          successful,
+          failed,
+          reason: input.reason,
+          generateCrl: input.generateCrl,
+        }),
+        ipAddress: ctx.req.ip,
+      });
+
+      logger.info(
+        { totalCertificates: input.certificateIds.length, successful, failed },
+        'Bulk certificate revocation completed'
+      );
+
+      return {
+        successful,
+        failed,
+        results,
+      };
+    }),
+
+  bulkRenew: publicProcedure
+    .input(bulkRenewCertificatesSchema)
+    .output(
+      z.object({
+        successful: z.number(),
+        failed: z.number(),
+        results: z.array(
+          z.object({
+            originalCertificateId: z.string(),
+            newCertificateId: z.string().optional(),
+            success: z.boolean(),
+            error: z.string().optional(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificateAuthorities, certificates, auditLog } = await import('../../db/schema.js');
+      const { getKMSService } = await import('../../kms/service.js');
+      const { formatDN } = await import('../../crypto/dn.js');
+      const { parseCertificate } = await import('../../crypto/index.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      const results: Array<{
+        originalCertificateId: string;
+        newCertificateId?: string;
+        success: boolean;
+        error?: string;
+      }> = [];
+
+      let successful = 0;
+      let failed = 0;
+
+      const kmsService = getKMSService();
+
+      // Process each certificate
+      for (const certId of input.certificateIds) {
+        const newCertId = randomUUID();
+
+        try {
+          // Fetch original certificate
+          const originalCertResult = await ctx.db
+            .select()
+            .from(certificates)
+            .where(eq(certificates.id, certId))
+            .limit(1);
+
+          if (!originalCertResult || originalCertResult.length === 0) {
+            throw new Error(`Certificate with ID ${certId} not found`);
+          }
+
+          const originalCert = originalCertResult[0];
+
+          // Validation: Cannot renew revoked certificates
+          if (originalCert.status === 'revoked') {
+            throw new Error('Cannot renew a revoked certificate');
+          }
+
+          // Validation: Key reuse only if original certificate is less than 90 days old
+          if (!input.generateNewKey) {
+            const certAgeMs = Date.now() - originalCert.createdAt.getTime();
+            const certAgeDays = certAgeMs / (1000 * 60 * 60 * 24);
+            if (certAgeDays >= 90) {
+              throw new Error('Key reuse is only allowed for certificates less than 90 days old');
+            }
+          }
+
+          // Retrieve CA from database
+          const ca = await ctx.db
+            .select()
+            .from(certificateAuthorities)
+            .where(eq(certificateAuthorities.id, originalCert.caId))
+            .limit(1);
+
+          if (!ca || ca.length === 0) {
+            throw new Error(`CA with ID ${originalCert.caId} not found`);
+          }
+
+          const caRecord = ca[0];
+
+          // Validate CA is active and not expired
+          const now = new Date();
+          if (caRecord.status !== 'active') {
+            throw new Error(`CA is not active (status: ${caRecord.status})`);
+          }
+
+          if (now > caRecord.notAfter) {
+            throw new Error('CA certificate has expired');
+          }
+
+          // Fetch original certificate from KMS
+          const originalCertificatePem = await kmsService.getCertificate(
+            originalCert.kmsCertificateId,
+            originalCert.id
+          );
+
+          // Parse original certificate to extract metadata
+          const originalParsed = parseCertificate(originalCertificatePem, 'PEM');
+
+          const subjectDN = originalParsed.subject;
+
+          // Determine SANs (copy from original)
+          const sanDns = originalCert.sanDns ? JSON.parse(originalCert.sanDns) : null;
+          const sanIp = originalCert.sanIp ? JSON.parse(originalCert.sanIp) : null;
+          const sanEmail = originalCert.sanEmail ? JSON.parse(originalCert.sanEmail) : null;
+
+          // Determine validity days
+          const validityDays = input.validityDays ||
+            Math.ceil((originalCert.notAfter.getTime() - originalCert.notBefore.getTime()) / (1000 * 60 * 60 * 24));
+
+          let kmsKeyId: string;
+          let publicKeyId: string;
+
+          if (input.generateNewKey) {
+            // Generate new key pair in KMS
+            logger.info({ newCertId, originalCertId: certId }, 'Creating new key pair for certificate renewal (bulk)');
+
+            const keyPair = await kmsService.createKeyPair({
+              sizeInBits: 2048,
+              tags: [],
+              purpose: 'certificate',
+              entityId: newCertId,
+            });
+
+            kmsKeyId = keyPair.privateKeyId;
+            publicKeyId = keyPair.publicKeyId;
+          } else {
+            // Reuse existing key pair
+            logger.info({ newCertId, originalCertId: certId }, 'Reusing existing key pair for certificate renewal (bulk)');
+
+            if (!originalCert.kmsKeyId) {
+              throw new Error('Original certificate has no associated KMS key to reuse');
+            }
+
+            kmsKeyId = originalCert.kmsKeyId;
+            publicKeyId = kmsKeyId.replace('-private', '-public');
+          }
+
+          const subjectName = formatDN(subjectDN);
+          logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS (bulk)');
+
+          const certInfo = await kmsService.signCertificate({
+            publicKeyId: publicKeyId,
+            issuerPrivateKeyId: caRecord.kmsKeyId,
+            subjectName: subjectName,
+            daysValid: validityDays,
+            tags: [],
+            entityId: newCertId,
+          });
+
+          // Convert certificate data from hex to PEM
+          const certDataHex = certInfo.certificateData;
+          const certDataBuffer = Buffer.from(certDataHex, 'hex');
+          const certBase64 = certDataBuffer.toString('base64');
+          const certificatePem = `-----BEGIN CERTIFICATE-----\n${certBase64.match(/.{1,64}/g)?.join('\n')}\n-----END CERTIFICATE-----`;
+
+          // Parse new certificate to extract metadata
+          const certMetadata = parseCertificate(certificatePem, 'PEM');
+
+          // Store new certificate in database with renewal chain link
+          await ctx.db.insert(certificates).values({
+            id: newCertId,
+            caId: originalCert.caId,
+            subjectDn: subjectName,
+            serialNumber: certMetadata.serialNumber,
+            certificateType: originalCert.certificateType,
+            notBefore: certMetadata.validity.notBefore,
+            notAfter: certMetadata.validity.notAfter,
+            kmsCertificateId: certInfo.certificateId,
+            kmsKeyId: input.generateNewKey ? kmsKeyId : null,
+            status: 'active',
+            sanDns: sanDns ? JSON.stringify(sanDns) : null,
+            sanIp: sanIp ? JSON.stringify(sanIp) : null,
+            sanEmail: sanEmail ? JSON.stringify(sanEmail) : null,
+            renewedFromId: certId,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          // Optionally revoke the original certificate
+          if (input.revokeOriginal) {
+            await ctx.db
+              .update(certificates)
+              .set({
+                status: 'revoked',
+                revocationDate: new Date(),
+                revocationReason: 'superseded',
+                updatedAt: new Date(),
+              })
+              .where(eq(certificates.id, certId));
+
+            logger.info({ originalCertId: certId }, 'Original certificate revoked (superseded by renewal) (bulk)');
+          }
+
+          // Create audit log entry for renewal
+          await ctx.db.insert(auditLog).values({
+            id: randomUUID(),
+            operation: 'certificate.bulkRenew',
+            entityType: 'certificate',
+            entityId: newCertId,
+            status: 'success',
+            details: JSON.stringify({
+              originalCertId: certId,
+              caId: originalCert.caId,
+              certificateType: originalCert.certificateType,
+              subject: subjectName,
+              validityDays: validityDays,
+              serialNumber: certMetadata.serialNumber,
+              kmsKeyId: kmsKeyId,
+              generateNewKey: input.generateNewKey,
+              revokeOriginal: input.revokeOriginal,
+            }),
+            ipAddress: ctx.req.ip,
+          });
+
+          logger.info({ newCertId, originalCertId: certId }, 'Certificate renewed successfully (bulk)');
+
+          results.push({
+            originalCertificateId: certId,
+            newCertificateId: newCertId,
+            success: true,
+          });
+
+          successful++;
+        } catch (error) {
+          logger.error({ error, newCertId, originalCertId: certId }, 'Failed to renew certificate in bulk');
+
+          results.push({
+            originalCertificateId: certId,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          failed++;
+        }
+      }
+
+      // Create overall audit log entry
+      await ctx.db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'certificate.bulkRenew',
+        entityType: 'bulk_operation',
+        entityId: 'bulk-renew',
+        status: failed === 0 ? 'success' : 'partial',
+        details: JSON.stringify({
+          totalCertificates: input.certificateIds.length,
+          successful,
+          failed,
+          generateNewKey: input.generateNewKey,
+          revokeOriginal: input.revokeOriginal,
+        }),
+        ipAddress: ctx.req.ip,
+      });
+
+      logger.info(
+        { totalCertificates: input.certificateIds.length, successful, failed },
+        'Bulk certificate renewal completed'
+      );
+
+      return {
+        successful,
+        failed,
+        results,
+      };
+    }),
+
+  bulkDelete: publicProcedure
+    .input(bulkDeleteCertificatesSchema)
+    .output(
+      z.object({
+        successful: z.number(),
+        failed: z.number(),
+        results: z.array(
+          z.object({
+            certificateId: z.string(),
+            success: z.boolean(),
+            error: z.string().optional(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificates, auditLog } = await import('../../db/schema.js');
+      const { getKMSService } = await import('../../kms/service.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq } = await import('drizzle-orm');
+
+      const results: Array<{
+        certificateId: string;
+        success: boolean;
+        error?: string;
+      }> = [];
+
+      let successful = 0;
+      let failed = 0;
+
+      // Process each certificate
+      for (const certId of input.certificateIds) {
+        try {
+          // Fetch certificate from database
+          const certResult = await ctx.db
+            .select()
+            .from(certificates)
+            .where(eq(certificates.id, certId))
+            .limit(1);
+
+          if (!certResult || certResult.length === 0) {
+            throw new Error(`Certificate with ID ${certId} not found`);
+          }
+
+          const cert = certResult[0];
+
+          // Validation: Certificate must be revoked or expired > 90 days
+          const now = new Date();
+          const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+          const isRevoked = cert.status === 'revoked';
+          const isExpiredOverNinetyDays = cert.notAfter < ninetyDaysAgo;
+
+          if (!isRevoked && !isExpiredOverNinetyDays) {
+            throw new Error('Certificate must be revoked or expired for more than 90 days before deletion');
+          }
+
+          // Create audit log entry BEFORE deletion
+          await ctx.db.insert(auditLog).values({
+            id: randomUUID(),
+            operation: 'certificate.bulkDelete',
+            entityType: 'certificate',
+            entityId: certId,
+            status: 'success',
+            details: JSON.stringify({
+              caId: cert.caId,
+              serialNumber: cert.serialNumber,
+              certificateType: cert.certificateType,
+              status: cert.status,
+              destroyKey: input.destroyKey,
+              removeFromCrl: input.removeFromCrl,
+            }),
+            ipAddress: ctx.req.ip,
+          });
+
+          // Optional: Destroy KMS key if requested
+          if (input.destroyKey && cert.kmsKeyId) {
+            try {
+              const kmsService = getKMSService();
+              await kmsService.destroyKey(cert.kmsKeyId);
+              logger.info(
+                { certId, kmsKeyId: cert.kmsKeyId },
+                'KMS key destroyed for deleted certificate (bulk)'
+              );
+            } catch (error) {
+              logger.warn(
+                { error, certId, kmsKeyId: cert.kmsKeyId },
+                'Failed to destroy KMS key, continuing with certificate deletion (bulk)'
+              );
+            }
+          }
+
+          // Delete certificate from database
+          await ctx.db
+            .delete(certificates)
+            .where(eq(certificates.id, certId));
+
+          logger.info(
+            { certId, serialNumber: cert.serialNumber },
+            'Certificate deleted successfully (bulk)'
+          );
+
+          results.push({
+            certificateId: certId,
+            success: true,
+          });
+
+          successful++;
+        } catch (error) {
+          logger.error({ error, certId }, 'Failed to delete certificate in bulk');
+
+          results.push({
+            certificateId: certId,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          failed++;
+        }
+      }
+
+      // Create overall audit log entry
+      await ctx.db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'certificate.bulkDelete',
+        entityType: 'bulk_operation',
+        entityId: 'bulk-delete',
+        status: failed === 0 ? 'success' : 'partial',
+        details: JSON.stringify({
+          totalCertificates: input.certificateIds.length,
+          successful,
+          failed,
+          destroyKey: input.destroyKey,
+        }),
+        ipAddress: ctx.req.ip,
+      });
+
+      logger.info(
+        { totalCertificates: input.certificateIds.length, successful, failed },
+        'Bulk certificate deletion completed'
+      );
+
+      return {
+        successful,
+        failed,
+        results,
+      };
+    }),
+
+  bulkDownload: publicProcedure
+    .input(bulkDownloadCertificatesSchema)
+    .output(
+      z.object({
+        data: z.string(),
+        filename: z.string(),
+        mimeType: z.string(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { TRPCError } = await import('@trpc/server');
+      const { randomUUID } = await import('crypto');
+      const { certificates, certificateAuthorities, auditLog } = await import('../../db/schema.js');
+      const { getKMSService } = await import('../../kms/service.js');
+      const { logger } = await import('../../lib/logger.js');
+      const { eq, inArray } = await import('drizzle-orm');
+      const JSZip = await import('jszip');
+      const forge = await import('node-forge');
+
+      // Fetch all certificates
+      const certResults = await ctx.db
+        .select({
+          certificate: certificates,
+          ca: certificateAuthorities,
+        })
+        .from(certificates)
+        .leftJoin(certificateAuthorities, eq(certificates.caId, certificateAuthorities.id))
+        .where(inArray(certificates.id, input.certificateIds));
+
+      if (certResults.length === 0) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'No certificates found',
+        });
+      }
+
+      const kmsService = getKMSService();
+      const zip = new JSZip.default();
+
+      // Process each certificate
+      for (const { certificate, ca } of certResults) {
+        if (!ca) {
+          logger.warn({ certId: certificate.id }, 'Certificate has no associated CA, skipping');
+          continue;
+        }
+
+        try {
+          // Fetch certificate from KMS
+          const certificatePem = await kmsService.getCertificate(
+            certificate.kmsCertificateId,
+            certificate.id
+          );
+
+          // Extract CN for filename
+          const cnMatch = certificate.subjectDn.match(/CN=([^,]+)/);
+          const commonName = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'certificate';
+          const serialShort = certificate.serialNumber.substring(0, 8);
+
+          let fileContent: string;
+          let fileExtension: string;
+
+          switch (input.format) {
+            case 'pem':
+              fileContent = certificatePem;
+              fileExtension = 'pem';
+              break;
+
+            case 'der':
+              const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+              const derBytes = forge.default.asn1.toDer(
+                forge.default.pki.certificateToAsn1(forgeCert)
+              ).getBytes();
+              fileContent = Buffer.from(derBytes, 'binary').toString('base64');
+              fileExtension = 'der';
+              break;
+
+            case 'pem-chain':
+              const caCertificatePem = await kmsService.getCertificate(
+                ca.kmsCertificateId,
+                ca.id
+              );
+              fileContent = certificatePem + '\n' + caCertificatePem;
+              fileExtension = 'pem';
+              break;
+
+            default:
+              logger.warn({ format: input.format }, 'Unsupported format, defaulting to PEM');
+              fileContent = certificatePem;
+              fileExtension = 'pem';
+          }
+
+          // Add to ZIP
+          const filename = `${commonName}-${serialShort}.${fileExtension}`;
+          zip.file(filename, fileContent);
+
+          logger.info({ certId: certificate.id, filename }, 'Certificate added to ZIP (bulk download)');
+        } catch (error) {
+          logger.error({ error, certId: certificate.id }, 'Failed to process certificate for bulk download');
+        }
+      }
+
+      // Generate ZIP file
+      const zipData = await zip.generateAsync({ type: 'base64' });
+
+      // Create audit log entry
+      await ctx.db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'certificate.bulkDownload',
+        entityType: 'bulk_operation',
+        entityId: 'bulk-download',
+        status: 'success',
+        details: JSON.stringify({
+          totalCertificates: input.certificateIds.length,
+          format: input.format,
+        }),
+        ipAddress: ctx.req.ip,
+      });
+
+      logger.info(
+        { totalCertificates: input.certificateIds.length, format: input.format },
+        'Bulk certificate download completed'
+      );
+
+      return {
+        data: zipData,
+        filename: `certificates-${new Date().toISOString().split('T')[0]}.zip`,
+        mimeType: 'application/zip',
       };
     }),
 });
