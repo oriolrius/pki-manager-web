@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2025-10-24 05:24'
-updated_date: '2025-10-24 05:26'
+updated_date: '2025-10-24 05:27'
 labels: []
 dependencies: []
 ---
@@ -22,3 +22,14 @@ The 'key algorithm' column in the CA table at /cas route displays no values for 
 - [ ] #2 Column shows correct algorithm values (e.g., RSA, ECDSA)
 - [ ] #3 Data is correctly fetched from backend or KMS
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add keyAlgorithm field to database schema as denormalized field
+2. Generate and run migration
+3. Update CA create endpoint to store keyAlgorithm
+4. Update CA list endpoint to return keyAlgorithm
+5. Create script to backfill existing CAs
+6. Test the fix
+<!-- SECTION:PLAN:END -->
