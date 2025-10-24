@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 07:21'
-updated_date: '2025-10-24 10:42'
+updated_date: '2025-10-24 12:10'
 labels: []
 dependencies: []
 ---
@@ -64,4 +64,12 @@ Added permalink functionality for Certificate Authorities (CAs) to enable easy s
 ### Files Modified:
 
 - `frontend/src/routes/cas.$id.tsx` - Added Copy Link button and clipboard functionality
+
+### Additional Enhancement:
+
+**Permalink in Storage Location Section:**
+- Added permalink URL display in the "Storage Location" section
+- Shows full URL with copy button for easy access
+- Provides visual feedback (Copy icon → Check icon) when clicked
+- Makes the permalink more discoverable within the page content
 <!-- SECTION:NOTES:END -->
