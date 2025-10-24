@@ -1,11 +1,11 @@
 ---
 id: task-061
 title: Fix empty key algorithm column in CA table
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 05:24'
-updated_date: '2025-10-24 05:27'
+updated_date: '2025-10-24 13:45'
 labels: []
 dependencies: []
 ---
