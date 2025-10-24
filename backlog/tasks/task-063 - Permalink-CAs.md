@@ -1,11 +1,11 @@
 ---
 id: task-063
 title: Permalink CAs
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 07:21'
-updated_date: '2025-10-24 10:41'
+updated_date: '2025-10-24 10:42'
 labels: []
 dependencies: []
 ---
