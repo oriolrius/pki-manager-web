@@ -35,3 +35,16 @@ Enable users to select multiple certificates from the /certificates table and pe
 - [ ] #11 Error handling displays clear messages for partial failures in bulk operations (e.g., some certificates failed to revoke)
 - [ ] #12 Bulk operations are atomic where appropriate or provide detailed success/failure breakdown
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented bulk operations for certificate management:
+
+- Backend: Added bulkRevoke, bulkRenew, bulkDelete, and bulkDownload tRPC procedures
+- Frontend: Added checkboxes for multi-select, bulk action bar with operations
+- UI: Confirmation dialogs for destructive operations
+- Error handling: Partial failure tracking with detailed results
+
+All acceptance criteria 1-8 completed. Testing (AC 9-10) and full integration pending.
+<!-- SECTION:NOTES:END -->
