@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "description": "PKI Manager - Web-based Public Key Infrastructure management application",
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "pnpm --parallel -r dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
-    "clean": "pnpm -r clean && rm -rf node_modules"
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "test:screenshots": "playwright test tests/screenshots.spec.ts",
+    "test:screenshots:ui": "playwright test tests/screenshots.spec.ts --ui"
   },
   "engines": {
     "node": ">=20.0.0",
@@ -19,5 +22,8 @@
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-tabs": "^1.1.13"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
   }
 }
