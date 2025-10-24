@@ -1,9 +1,11 @@
 ---
 id: task-060
 title: Add bulk operations for certificate management
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-10-24 03:51'
+updated_date: '2025-10-24 03:54'
 labels:
   - frontend
   - backend
