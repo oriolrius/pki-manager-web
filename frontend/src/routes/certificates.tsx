@@ -193,6 +193,17 @@ function Certificates() {
   const confirmBulkDownload = async () => {
     const selectedFormat = DOWNLOAD_FORMATS.find(f => f.value === bulkDownloadFormat);
 
+    // Validate password for formats that always require it (like jks-truststore)
+    if (selectedFormat?.requiresPassword && !bulkDownloadPassword) {
+      alert('Password is required for this format');
+      return;
+    }
+
+    if (selectedFormat?.requiresPassword && bulkDownloadPassword.length < 8) {
+      alert('Password must be at least 8 characters long');
+      return;
+    }
+
     // Validate password only if encryption is enabled for formats with private keys
     if (selectedFormat?.hasPrivateKey && bulkEncryptPrivateKey && !bulkDownloadPassword) {
       alert('Password is required when private key encryption is enabled');
@@ -613,6 +624,29 @@ function Certificates() {
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* JKS Truststore password field (always required) */}
+                  {bulkDownloadFormat === 'jks-truststore' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label htmlFor="bulk-truststore-password" className="block text-sm font-medium mb-2">
+                          Truststore Password <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          id="bulk-truststore-password"
+                          value={bulkDownloadPassword}
+                          onChange={(e) => setBulkDownloadPassword(e.target.value)}
+                          className="w-full px-3 py-2 border rounded-md bg-background"
+                          placeholder="Minimum 8 characters"
+                          minLength={8}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          This password protects the JKS truststore file integrity
+                        </p>
+                      </div>
                     </div>
                   )}
 
