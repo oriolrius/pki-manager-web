@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 17:23'
+updated_date: '2025-11-27 17:25'
 labels:
   - openapi
   - backend
@@ -146,4 +146,84 @@ Not Implemented (with helpful messages):
 - `csr-pem` - CSRs not stored after certificate issuance
 
 All implementations use node-forge for PKCS#12 creation and KMS service for private key retrieval.
+
+## Download Format KMS Integration Tests
+
+Created `backend/src/rest/routes/certificate-download.test.ts` with 20 tests that verify all download formats work correctly with real Cosmian KMS.
+
+### Test Output Summary
+
+```
+✓ src/rest/routes/certificate-download.test.ts (20 tests) 1275ms
+
+Certificate Download - KMS Integration
+  Certificate Format Downloads
+    ✓ should download certificate in PEM format
+    ✓ should download certificate in DER format  
+    ✓ should download certificate chain in PEM format
+  Private Key Format Downloads
+    ✓ should download private key in PEM format (key-pem)
+    ✓ should download private key in PKCS8 PEM format
+    ✓ should download private key in DER format (key-der)
+    ✓ should download private key in PKCS8 DER format
+    ✓ should download encrypted private key with password (pkcs8-encrypted)
+    ✓ should require password for pkcs8-encrypted format
+  PKCS#12 Bundle Downloads
+    ✓ should download PKCS#12 bundle (p12)
+    ✓ should download PKCS#12 bundle (pfx alias)
+    ✓ should require password for p12 format
+    ✓ should require password for pfx format
+  Full PEM Downloads
+    ✓ should download full PEM (certificate + key)
+  Non-implemented Formats
+    ✓ should return 501 for JKS format with helpful message
+    ✓ should return 400 for full-der format with P12 suggestion
+    ✓ should return 400 for CSR format with explanation
+  Error Handling
+    ✓ should return 404 for non-existent certificate
+    ✓ should return 400 for invalid format
+    ✓ should return 400 when format is missing
+```
+
+### What Each Test Validates
+
+**Certificate Format Downloads:**
+- `pem`: Verifies response contains valid base64-encoded PEM with `-----BEGIN CERTIFICATE-----` header
+- `der`: Verifies binary DER format with correct MIME type `application/x-x509-ca-cert`
+- `chain-pem`: Verifies chain file with `_chain.pem` suffix
+
+**Private Key Format Downloads (KMS Integration):**
+- `key-pem`: Fetches private key from KMS, verifies PEM format with `-----BEGIN.*PRIVATE KEY-----`
+- `pkcs8-pem`: Same as key-pem, alias for PKCS#8 PEM format
+- `key-der`: Fetches from KMS, converts to DER, verifies `application/pkcs8` MIME type
+- `pkcs8-der`: Same as key-der, alias for PKCS#8 DER format
+- `pkcs8-encrypted`: Encrypts key with password using AES-256, verifies `ENCRYPTED` in PEM header, **actually decrypts with node-forge to verify**
+
+**PKCS#12 Bundle Downloads (KMS Integration):**
+- `p12`: Fetches cert + key from KMS, creates PKCS#12 with 3DES encryption, **actually parses P12 with node-forge and verifies it contains both certBag and pkcs8ShroudedKeyBag**
+- `pfx`: Alias for p12, verifies same behavior
+- Password validation: Both formats return 400 `PASSWORD_REQUIRED` when password missing
+
+**Full PEM Downloads (KMS Integration):**
+- `full-pem`: Fetches key from KMS, combines with cert, verifies output contains both `-----BEGIN CERTIFICATE-----` AND `-----BEGIN.*PRIVATE KEY-----`
+
+**Non-implemented Format Handling:**
+- `jks`: Returns 501 with message containing `keytool` conversion command
+- `full-der`: Returns 400 `USE_P12` suggesting P12 format instead
+- `csr-pem`: Returns 400 `CSR_NOT_AVAILABLE` explaining CSRs aren't stored
+
+**Error Handling:**
+- Non-existent certificate: Returns 404 `CERTIFICATE_NOT_FOUND`
+- Invalid format enum: Returns 400 (Fastify schema validation)
+- Missing format param: Returns 400 (required parameter)
+
+### Full Test Suite Results
+
+```
+Test Files  16 passed (16)
+     Tests  276 passed | 1 skipped (276)
+  Duration  28.08s
+```
+
+All tests run against real Cosmian KMS with actual certificate and key generation.
 <!-- SECTION:NOTES:END -->
