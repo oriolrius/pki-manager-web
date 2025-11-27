@@ -1,7 +1,7 @@
 ---
 id: task-073
 title: Implement Certificate REST endpoints
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
@@ -54,15 +54,15 @@ Reference: doc-005 (OpenAPI Specification Design)
 - [x] #17 Integration tests in certificate.routes.test.ts cover all 7 endpoints with success and error cases
 - [x] #18 Tests validate HTTP status codes: 200/201 success, 400 validation errors, 404 not found, 409 conflict
 
-- [ ] #19 KMS integration tests verify key-pem format returns valid PEM private key from KMS
-- [ ] #20 KMS integration tests verify key-der format returns valid DER private key from KMS
-- [ ] #21 KMS integration tests verify pkcs8-pem and pkcs8-der formats work with KMS private keys
-- [ ] #22 KMS integration tests verify pkcs8-encrypted format encrypts private key with password
-- [ ] #23 KMS integration tests verify p12/pfx format bundles certificate and private key from KMS
-- [ ] #24 KMS integration tests verify full-pem format returns certificate + private key combined
-- [ ] #25 Download endpoint returns 400 when password is missing for encrypted formats (p12, pfx, pkcs8-encrypted)
-- [ ] #26 Download endpoint returns 501 for JKS format with keytool conversion instructions
-- [ ] #27 KMS integration tests in certificate-download.test.ts verify all download formats with real KMS
+- [x] #19 KMS integration tests verify key-pem format returns valid PEM private key from KMS
+- [x] #20 KMS integration tests verify key-der format returns valid DER private key from KMS
+- [x] #21 KMS integration tests verify pkcs8-pem and pkcs8-der formats work with KMS private keys
+- [x] #22 KMS integration tests verify pkcs8-encrypted format encrypts private key with password
+- [x] #23 KMS integration tests verify p12/pfx format bundles certificate and private key from KMS
+- [x] #24 KMS integration tests verify full-pem format returns certificate + private key combined
+- [x] #25 Download endpoint returns 400 when password is missing for encrypted formats (p12, pfx, pkcs8-encrypted)
+- [x] #26 Download endpoint returns 501 for JKS format with keytool conversion instructions
+- [x] #27 KMS integration tests in certificate-download.test.ts verify all download formats with real KMS
 <!-- AC:END -->
 
 ## Implementation Notes
