@@ -1,10 +1,11 @@
 ---
 id: task-070
 title: Extract shared business logic into service layer
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 15:59'
+updated_date: '2025-11-27 16:00'
 labels:
   - openapi
   - backend
