@@ -1,10 +1,11 @@
 ---
 id: task-073
 title: Implement Certificate REST endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 16:55'
+updated_date: '2025-11-27 16:56'
 labels:
   - openapi
   - backend
