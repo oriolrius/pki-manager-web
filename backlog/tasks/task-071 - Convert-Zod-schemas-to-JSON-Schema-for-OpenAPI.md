@@ -4,6 +4,7 @@ title: Convert Zod schemas to JSON Schema for OpenAPI
 status: To Do
 assignee: []
 created_date: '2025-11-27 15:35'
+updated_date: '2025-11-27 16:31'
 labels:
   - openapi
   - backend
@@ -28,4 +29,7 @@ Reference: doc-005 (OpenAPI Specification Design)
 - [ ] #2 backend/src/rest/schemas/openapi-schemas.ts created
 - [ ] #3 All request/response schemas converted to JSON Schema
 - [ ] #4 Schema references properly linked in OpenAPI spec
+
+- [ ] #5 All existing tests pass after schema conversion
+- [ ] #6 Test results captured in implementation notes showing all tests pass
 <!-- AC:END -->
