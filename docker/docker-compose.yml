@@ -1,7 +1,7 @@
 services:
   # Cosmian KMS
   kms:
-    image: ghcr.io/cosmian/kms:5.10.0
+    image: ghcr.io/cosmian/kms:5.12.0
     container_name: pki-kms
     restart: unless-stopped
     networks:
@@ -97,4 +97,4 @@ services:
 networks:
   pki-network:
     name: pki-network
-    external: true
+    external: false
