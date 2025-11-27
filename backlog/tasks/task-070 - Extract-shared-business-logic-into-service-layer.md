@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 16:07'
+updated_date: '2025-11-27 16:22'
 labels:
   - openapi
   - backend
@@ -95,4 +95,33 @@ Test Files  10 passed (10)
 ```
 
 All tests pass confirming backward compatibility maintained.
+
+## Latest Test Run (2025-11-27 17:21 UTC)
+
+```
+$ pnpm test
+
+> @pki-manager/backend@1.1.2 test /home/oriol/miimetiq3/pki-manager/backend
+> vitest run
+
+ RUN  v2.1.9 /home/oriol/miimetiq3/pki-manager/backend
+
+ ✓ src/lib/audit.test.ts (8 tests) 6ms
+ ✓ src/trpc/openapi.test.ts (17 tests) 5ms
+ ✓ src/trpc/procedures/audit.test.ts (10 tests) 25ms
+ ✓ src/server.test.ts (17 tests) 44ms
+ ✓ src/trpc/procedures/ca-create.test.ts (1 test) 315ms
+ ✓ src/server.crl-endpoint.test.ts (13 tests) 318ms
+ ✓ src/crypto/crypto.test.ts (30 tests | 1 skipped) 759ms
+ ✓ src/trpc/procedures/certificate-bulk.test.ts (8 tests) 476ms
+ ✓ src/trpc/procedures/ca.test.ts (21 tests) 4583ms
+ ✓ src/trpc/procedures/certificate.test.ts (20 tests) 9667ms
+
+ Test Files  10 passed (10)
+      Tests  144 passed | 1 skipped (145)
+   Start at  17:21:36
+   Duration  10.46s
+```
+
+All tests pass confirming service layer refactoring maintains backward compatibility.
 <!-- SECTION:NOTES:END -->
