@@ -1,10 +1,11 @@
 ---
 id: task-074
 title: Implement Bulk Operations REST endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 18:38'
+updated_date: '2025-11-27 18:39'
 labels:
   - openapi
   - backend
