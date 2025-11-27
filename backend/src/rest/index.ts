@@ -1,7 +1,8 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyError } from 'fastify';
 import { registerOpenAPI } from './openapi.js';
 import { healthRoutes } from './routes/health.js';
 import { caRoutes } from './routes/ca.routes.js';
+import { certificateRoutes } from './routes/certificate.routes.js';
 
 /**
  * Register all REST API routes and plugins
@@ -9,6 +10,7 @@ import { caRoutes } from './routes/ca.routes.js';
  * This plugin sets up:
  * - OpenAPI/Swagger documentation at /api/docs
  * - REST API routes under /api/v1 prefix
+ * - Custom error handler for consistent error responses
  */
 export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
   // Register OpenAPI/Swagger documentation
@@ -17,14 +19,54 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
   // Register REST API routes under /api/v1 prefix
   await fastify.register(
     async (api) => {
+      // Custom error handler to convert Fastify validation errors to our standard format
+      api.setErrorHandler((error: FastifyError, _request, reply) => {
+        // Handle validation errors (from Fastify schema validation)
+        if (error.validation) {
+          const details = error.validation.map((v) => ({
+            field: v.instancePath || v.params?.missingProperty || 'unknown',
+            message: v.message || 'Validation failed',
+          }));
+
+          return reply.status(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: error.message || 'Request validation failed',
+              details,
+            },
+          });
+        }
+
+        // Handle other known Fastify errors
+        if (error.statusCode && error.statusCode < 500) {
+          return reply.status(error.statusCode).send({
+            error: {
+              code: error.code || 'REQUEST_ERROR',
+              message: error.message,
+            },
+          });
+        }
+
+        // Handle internal server errors
+        api.log.error(error);
+        return reply.status(500).send({
+          error: {
+            code: 'INTERNAL_ERROR',
+            message: 'An unexpected error occurred',
+          },
+        });
+      });
+
       // Health check endpoint for the REST API
       await api.register(healthRoutes);
 
       // CA routes - Certificate Authority management
       await api.register(caRoutes, { prefix: '/cas' });
 
+      // Certificate routes - Certificate management
+      await api.register(certificateRoutes, { prefix: '/certificates' });
+
       // Future route registrations will go here:
-      // await api.register(certificateRoutes, { prefix: '/certificates' });
       // await api.register(bulkRoutes, { prefix: '/certificates/bulk' });
       // await api.register(crlRoutes, { prefix: '/crls' });
       // await api.register(searchRoutes);
