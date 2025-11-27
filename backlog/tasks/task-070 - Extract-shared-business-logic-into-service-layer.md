@@ -4,6 +4,7 @@ title: Extract shared business logic into service layer
 status: To Do
 assignee: []
 created_date: '2025-11-27 15:35'
+updated_date: '2025-11-27 15:59'
 labels:
   - openapi
   - backend
@@ -34,4 +35,6 @@ Reference: doc-005 (OpenAPI Specification Design)
 - [ ] #3 backend/src/services/crl.service.ts created with all CRL operations
 - [ ] #4 Existing tRPC procedures refactored to use new services
 - [ ] #5 All existing tests pass after refactoring
+
+- [ ] #6 Test results captured in implementation notes showing all tests pass
 <!-- AC:END -->
