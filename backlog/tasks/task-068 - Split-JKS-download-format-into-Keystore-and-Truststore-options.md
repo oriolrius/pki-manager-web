@@ -1,9 +1,10 @@
 ---
 id: task-068
 title: Split JKS download format into Keystore and Truststore options
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-27 12:29'
+updated_date: '2025-11-27 12:39'
 labels:
   - feature
   - certificates
@@ -44,9 +45,33 @@ Currently, the JKS download format creates a single keystore containing both cer
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 JKS format split into 'JKS Keystore' and 'JKS Truststore' options in download dropdown
-- [ ] #2 Keystore contains certificate(s) with private keys (PrivateKeyEntry)
-- [ ] #3 Truststore contains only CA certificates without private keys (TrustedCertEntry)
-- [ ] #4 Info popup after download explains the use case for each type
-- [ ] #5 Both single certificate and bulk download support both JKS variants
+- [x] #1 JKS format split into 'JKS Keystore' and 'JKS Truststore' options in download dropdown
+- [x] #2 Keystore contains certificate(s) with private keys (PrivateKeyEntry)
+- [x] #3 Truststore contains only CA certificates without private keys (TrustedCertEntry)
+- [x] #4 Info popup after download explains the use case for each type
+- [x] #5 Both single certificate and bulk download support both JKS variants
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Summary
+
+Split JKS download format into two distinct options:
+
+### JKS Keystore (`jks-keystore`)
+- Contains certificate + private key as PrivateKeyEntry
+- For server identity use cases (SSL/TLS server auth, client cert auth)
+- Requires password for export
+
+### JKS Truststore (`jks-truststore`)
+- Contains CA certificate only as TrustedCertEntry
+- For trust validation use cases (validating client certs, trusting private CA)
+- No private key required
+
+### Files Modified
+- `backend/src/trpc/schemas.ts` - Updated format enums
+- `backend/src/trpc/procedures/certificate.ts` - Separate handlers for each format
+- `frontend/src/routes/certificates.$id.tsx` - Single cert download UI with type-specific popups
+- `frontend/src/routes/certificates.tsx` - Bulk download UI with type-specific popups
+<!-- SECTION:NOTES:END -->
