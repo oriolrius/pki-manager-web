@@ -1,8 +1,9 @@
 ---
 id: task-071
 title: Convert Zod schemas to JSON Schema for OpenAPI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:35'
 updated_date: '2025-11-27 16:31'
 labels:
