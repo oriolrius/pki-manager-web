@@ -1,9 +1,11 @@
 ---
 id: task-072
 title: Implement CA REST endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:35'
+updated_date: '2025-11-27 16:40'
 labels:
   - openapi
   - backend
