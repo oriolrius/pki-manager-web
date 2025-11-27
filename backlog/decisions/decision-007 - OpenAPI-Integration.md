@@ -1,6 +1,6 @@
 ---
-id: doc-004
-title: 004 - OpenAPI Integration Documentation
+id: decision-007
+title: 007 - OpenAPI Integration Documentation
 type: other
 created_date: '2025-10-21 15:26'
 ---

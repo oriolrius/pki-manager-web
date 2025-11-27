@@ -1,6 +1,6 @@
 ---
-id: doc-005
-title: OpenAPI Specification Design for PKI Manager REST API
+id: decision-008
+title: 008 - OpenAPI Specification Design for PKI Manager REST API
 type: other
 created_date: '2025-11-27 15:34'
 ---
