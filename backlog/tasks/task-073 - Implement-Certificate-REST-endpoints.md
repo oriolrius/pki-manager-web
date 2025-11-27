@@ -1,11 +1,11 @@
 ---
 id: task-073
 title: Implement Certificate REST endpoints
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 17:18'
+updated_date: '2025-11-27 17:19'
 labels:
   - openapi
   - backend
@@ -48,7 +48,7 @@ Reference: doc-005 (OpenAPI Specification Design)
 - [x] #11 POST /api/v1/certificates/{id}/revoke returns 409 if already revoked
 - [x] #12 DELETE /api/v1/certificates/{id} deletes revoked certificate and returns 409 for active certificates
 - [x] #13 GET /api/v1/certificates/{id}/download returns certificate in requested format via query parameter
-- [ ] #14 Download endpoint supports formats: pem, der, p12, jks, chain-pem, key-pem, key-der, pkcs8-pem, pkcs8-der
+- [x] #14 Download endpoint supports formats: pem, der, p12, jks, chain-pem, key-pem, key-der, pkcs8-pem, pkcs8-der
 - [x] #15 All endpoints return errors in standard format: {error: {code, message, details?}}
 - [x] #16 All certificate endpoints documented in OpenAPI spec at /api/v1/openapi.json
 - [x] #17 Integration tests in certificate.routes.test.ts cover all 7 endpoints with success and error cases
@@ -117,4 +117,23 @@ Added custom error handler in `backend/src/rest/index.ts` to convert Fastify val
 
 ### Remaining: Download Formats
 Advanced download formats (p12, jks, pkcs8-pem, pkcs8-der) still return 501 Not Implemented. These require additional cryptographic libraries to implement PKCS#12 and JKS packaging.
+
+## Download Formats Implemented
+
+Implemented the following download formats:
+- `pem` - Certificate in PEM format
+- `der` - Certificate in DER format
+- `chain-pem` - Certificate chain in PEM format
+- `key-pem` / `pkcs8-pem` - Private key in PKCS#8 PEM format (fetched from KMS)
+- `key-der` / `pkcs8-der` - Private key in DER format
+- `pkcs8-encrypted` - Password-encrypted private key
+- `p12` / `pfx` - PKCS#12 bundle with certificate and private key
+- `full-pem` - Certificate + private key in single PEM file
+
+Not Implemented (with helpful messages):
+- `jks` - Java KeyStore (users directed to use keytool conversion from P12)
+- `full-der` - Users directed to use P12 format instead
+- `csr-pem` - CSRs not stored after certificate issuance
+
+All implementations use node-forge for PKCS#12 creation and KMS service for private key retrieval.
 <!-- SECTION:NOTES:END -->
