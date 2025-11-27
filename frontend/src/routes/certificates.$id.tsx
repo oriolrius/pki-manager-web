@@ -73,6 +73,17 @@ function CertificateDetail() {
   };
 
   const confirmDownload = async () => {
+    // Validate password for formats that require it (without private key, like JKS Truststore)
+    if (selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && !downloadPassword) {
+      alert('Password is required for this format');
+      return;
+    }
+
+    if (selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && downloadPassword.length < 8) {
+      alert('Password must be at least 8 characters long');
+      return;
+    }
+
     // Validate password only if encryption is enabled for formats with private keys
     if (selectedFormat?.hasPrivateKey && encryptPrivateKey && !downloadPassword) {
       alert('Password is required when private key encryption is enabled');
@@ -94,7 +105,7 @@ function CertificateDetail() {
       const result = await utils.certificate.download.fetch({
         id,
         format: downloadFormat as any,
-        password: (selectedFormat?.hasPrivateKey && encryptPrivateKey) ? downloadPassword : undefined,
+        password: (selectedFormat?.requiresPassword || (selectedFormat?.hasPrivateKey && encryptPrivateKey)) ? downloadPassword : undefined,
         encryptPrivateKey: selectedFormat?.hasPrivateKey ? encryptPrivateKey : undefined,
       });
 
@@ -332,6 +343,27 @@ function CertificateDetail() {
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Password field for formats that require password but don't have private key (e.g., JKS Truststore) */}
+                  {selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && (
+                    <div>
+                      <label htmlFor="password" className="block text-sm font-medium mb-2">
+                        Password <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        id="password"
+                        value={downloadPassword}
+                        onChange={(e) => setDownloadPassword(e.target.value)}
+                        className="w-full px-3 py-2 border rounded-md bg-background"
+                        placeholder="Minimum 8 characters"
+                        minLength={8}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This password will protect the keystore file
+                      </p>
                     </div>
                   )}
 
