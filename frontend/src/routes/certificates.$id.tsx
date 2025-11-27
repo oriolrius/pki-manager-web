@@ -37,7 +37,7 @@ const DOWNLOAD_FORMATS = [
   { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
-  { value: 'jks', label: 'JKS - Java KeyStore (converted from PKCS#12)', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks', label: 'JKS - Java KeyStore', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'all', label: 'All Formats - All formats in one ZIP', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
 ] as const;
 
@@ -54,6 +54,8 @@ function CertificateDetail() {
   const [downloadPassword, setDownloadPassword] = useState('');
   const [encryptPrivateKey, setEncryptPrivateKey] = useState(true);
   const [showPrivateKeyWarning, setShowPrivateKeyWarning] = useState(false);
+  const [showJksInfoPopup, setShowJksInfoPopup] = useState(false);
+  const [downloadedJksFilename, setDownloadedJksFilename] = useState('');
 
   const renewMutation = trpc.certificate.renew.useMutation();
   const revokeMutation = trpc.certificate.revoke.useMutation();
@@ -115,12 +117,22 @@ function CertificateDetail() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
+      // Show JKS info popup after download
+      const wasJksFormat = downloadFormat === 'jks';
+      const jksFilename = result.filename;
+
       // Reset dialog state
       setShowDownloadDialog(false);
       setDownloadFormat('pem');
       setDownloadPassword('');
       setEncryptPrivateKey(true);
       setShowPrivateKeyWarning(false);
+
+      // Show JKS info popup after state reset
+      if (wasJksFormat) {
+        setDownloadedJksFilename(jksFilename);
+        setShowJksInfoPopup(true);
+      }
     } catch (error: any) {
       alert(`Failed to download certificate: ${error.message}`);
     }
@@ -308,16 +320,6 @@ function CertificateDetail() {
                     </div>
                   )}
 
-                  {downloadFormat === 'jks' && (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
-                      <p className="text-xs text-amber-800 dark:text-amber-300">
-                        <strong>JKS Note:</strong> The file will be downloaded as PKCS#12 (.p12). Convert to JKS using:
-                        <code className="block mt-1 p-1 bg-black/10 dark:bg-white/10 rounded">
-                          keytool -importkeystore -srckeystore file.p12 -srcstoretype PKCS12 -destkeystore file.jks -deststoretype JKS
-                        </code>
-                      </p>
-                    </div>
-                  )}
 
                   {downloadFormat === 'all' && (
                     <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md">
@@ -350,6 +352,66 @@ function CertificateDetail() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* JKS Info Popup */}
+      {showJksInfoPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-lg w-full mx-4 shadow-lg">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-green-600">✓</span> Java KeyStore Downloaded
+            </h2>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Your JKS file <strong className="text-foreground">{downloadedJksFilename}</strong> has been downloaded successfully.
+              </p>
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+                  List Certificates in JKS
+                </h3>
+                <p className="text-sm text-blue-800 dark:text-blue-300 mb-2">
+                  To view the certificates stored in your JKS file, run:
+                </p>
+                <code className="block p-2 bg-black/10 dark:bg-white/10 rounded text-xs font-mono overflow-x-auto whitespace-pre">
+{`keytool -list -v -keystore ${downloadedJksFilename}`}
+                </code>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-2">
+                  You will be prompted for the keystore password.
+                </p>
+              </div>
+
+              <div className="p-3 bg-muted/50 rounded-md">
+                <h4 className="font-medium text-sm mb-2">Other Useful Commands:</h4>
+                <ul className="text-xs space-y-2 text-muted-foreground">
+                  <li>
+                    <strong>List aliases only:</strong>
+                    <code className="block mt-1 p-1 bg-black/5 dark:bg-white/5 rounded font-mono">
+                      keytool -list -keystore {downloadedJksFilename}
+                    </code>
+                  </li>
+                  <li>
+                    <strong>Export certificate to file:</strong>
+                    <code className="block mt-1 p-1 bg-black/5 dark:bg-white/5 rounded font-mono">
+                      keytool -exportcert -alias mykey -keystore {downloadedJksFilename} -file cert.cer
+                    </code>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => {
+                  setShowJksInfoPopup(false);
+                  setDownloadedJksFilename('');
+                }}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
+              >
+                Got it
+              </button>
+            </div>
           </div>
         </div>
       )}

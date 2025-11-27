@@ -94,8 +94,8 @@ FROM node:22-alpine AS backend
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init for proper signal handling and OpenJDK for keytool (JKS generation)
+RUN apk add --no-cache dumb-init openjdk17-jre-headless
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

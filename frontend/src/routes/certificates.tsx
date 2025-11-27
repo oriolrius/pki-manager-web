@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 
 export const Route = createFileRoute('/certificates')({
@@ -23,7 +23,7 @@ const DOWNLOAD_FORMATS = [
   { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
-  { value: 'jks', label: 'JKS - Java KeyStore (converted from PKCS#12)', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks', label: 'JKS - Java KeyStore', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'all', label: 'All Formats - All formats in one ZIP', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
 ] as const;
 
@@ -63,6 +63,29 @@ function Certificates() {
   const [bulkDownloadPassword, setBulkDownloadPassword] = useState('');
   const [bulkEncryptPrivateKey, setBulkEncryptPrivateKey] = useState(true);
   const [showBulkPrivateKeyWarning, setShowBulkPrivateKeyWarning] = useState(false);
+  const [showJksInfoPopup, setShowJksInfoPopup] = useState(false);
+  const [downloadedJksFilename, setDownloadedJksFilename] = useState('');
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<{ step: string; status: 'pending' | 'active' | 'done' }[]>([]);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string, commandId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCommand(commandId);
+      setTimeout(() => setCopiedCommand(null), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedCommand(commandId);
+      setTimeout(() => setCopiedCommand(null), 2000);
+    }
+  };
 
   const certificatesQuery = trpc.certificate.list.useQuery({
     limit: 50,
@@ -181,22 +204,73 @@ function Certificates() {
       return;
     }
 
+    const isJksFormat = bulkDownloadFormat === 'jks';
+    const certCount = selectedCertificates.size;
+
+    // Show progress dialog for JKS format
+    if (isJksFormat) {
+      setShowBulkDownloadDialog(false);
+      setShowBulkPrivateKeyWarning(false);
+      setProgressSteps([
+        { step: 'Creating Java KeyStore file', status: 'active' },
+        { step: 'Adding CA certificates as trusted entries', status: 'pending' },
+        { step: `Exporting ${certCount} certificate(s) with private keys from KMS`, status: 'pending' },
+        { step: 'Building keystore with keytool', status: 'pending' },
+        { step: 'Preparing download', status: 'pending' },
+      ]);
+      setShowProgressDialog(true);
+    }
+
     try {
+      // Simulate progress updates for JKS
+      if (isJksFormat) {
+        // Step 1 is already active
+        await new Promise(r => setTimeout(r, 300));
+        setProgressSteps(prev => prev.map((s, i) =>
+          i === 0 ? { ...s, status: 'done' } :
+          i === 1 ? { ...s, status: 'active' } : s
+        ));
+      }
+
       const result = await bulkDownload.refetch();
+
+      if (isJksFormat) {
+        // Mark remaining steps as done
+        setProgressSteps(prev => prev.map(s => ({ ...s, status: 'done' as const })));
+        await new Promise(r => setTimeout(r, 500));
+      }
+
       if (result.data) {
         const link = document.createElement('a');
         link.href = `data:${result.data.mimeType};base64,${result.data.data}`;
         link.download = result.data.filename;
         link.click();
-      }
 
-      // Reset dialog state
-      setShowBulkDownloadDialog(false);
-      setBulkDownloadFormat('pem');
-      setBulkDownloadPassword('');
-      setBulkEncryptPrivateKey(true);
-      setShowBulkPrivateKeyWarning(false);
+        // Store JKS filename for info popup
+        const jksFilename = result.data.filename;
+
+        // Reset dialog state
+        setShowProgressDialog(false);
+        setBulkDownloadFormat('pem');
+        setBulkDownloadPassword('');
+        setBulkEncryptPrivateKey(true);
+
+        // Show JKS info popup after download
+        if (isJksFormat) {
+          setDownloadedJksFilename(jksFilename);
+          setShowJksInfoPopup(true);
+        }
+      } else {
+        // Reset dialog state even if no result
+        setShowProgressDialog(false);
+        setShowBulkDownloadDialog(false);
+        setBulkDownloadFormat('pem');
+        setBulkDownloadPassword('');
+        setBulkEncryptPrivateKey(true);
+        setShowBulkPrivateKeyWarning(false);
+      }
     } catch (error: any) {
+      setShowProgressDialog(false);
       alert(`Failed to download certificates: ${error.message}`);
     }
   };
@@ -525,6 +599,148 @@ function Certificates() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* JKS Progress Dialog */}
+      {showProgressDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+              Generating Java KeyStore
+            </h2>
+            <div className="space-y-3">
+              {progressSteps.map((step, index) => (
+                <div key={index} className="flex items-center gap-3">
+                  {step.status === 'done' ? (
+                    <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+                  ) : step.status === 'active' ? (
+                    <div className="h-5 w-5 flex-shrink-0">
+                      <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-muted" />
+                  )}
+                  <span className={`text-sm ${step.status === 'pending' ? 'text-muted-foreground' : step.status === 'done' ? 'text-muted-foreground' : 'text-foreground font-medium'}`}>
+                    {step.step}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 pt-4 border-t">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{
+                    width: `${(progressSteps.filter(s => s.status === 'done').length / progressSteps.length) * 100}%`
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                {progressSteps.filter(s => s.status === 'done').length} of {progressSteps.length} steps completed
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* JKS Info Popup */}
+      {showJksInfoPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-lg w-full mx-4 shadow-lg">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-green-600">✓</span> Java KeyStore Downloaded
+            </h2>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Your JKS file <strong className="text-foreground">{downloadedJksFilename}</strong> has been downloaded successfully.
+              </p>
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+                  List Certificates in JKS
+                </h3>
+                <p className="text-sm text-blue-800 dark:text-blue-300 mb-2">
+                  To view the certificates stored in your JKS file, run:
+                </p>
+                <div className="relative group">
+                  <code className="block p-2 pr-10 bg-black/10 dark:bg-white/10 rounded text-xs font-mono overflow-x-auto whitespace-pre">
+{`keytool -list -v -keystore ${downloadedJksFilename}`}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(`keytool -list -v -keystore ${downloadedJksFilename}`, 'list-v')}
+                    className="absolute right-1 top-1 p-1.5 rounded bg-blue-200/50 dark:bg-blue-700/50 hover:bg-blue-300/70 dark:hover:bg-blue-600/70 transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    {copiedCommand === 'list-v' ? (
+                      <Check className="h-3.5 w-3.5 text-green-600" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5 text-blue-700 dark:text-blue-300" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-2">
+                  You will be prompted for the keystore password.
+                </p>
+              </div>
+
+              <div className="p-3 bg-muted/50 rounded-md">
+                <h4 className="font-medium text-sm mb-2">Other Useful Commands:</h4>
+                <ul className="text-xs space-y-3 text-muted-foreground">
+                  <li>
+                    <strong>List aliases only:</strong>
+                    <div className="relative group mt-1">
+                      <code className="block p-1.5 pr-10 bg-black/5 dark:bg-white/5 rounded font-mono">
+                        keytool -list -keystore {downloadedJksFilename}
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard(`keytool -list -keystore ${downloadedJksFilename}`, 'list-aliases')}
+                        className="absolute right-1 top-1 p-1 rounded bg-muted hover:bg-muted-foreground/20 transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        {copiedCommand === 'list-aliases' ? (
+                          <Check className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <Copy className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </button>
+                    </div>
+                  </li>
+                  <li>
+                    <strong>Export certificate to file:</strong>
+                    <div className="relative group mt-1">
+                      <code className="block p-1.5 pr-10 bg-black/5 dark:bg-white/5 rounded font-mono">
+                        keytool -exportcert -alias mykey -keystore {downloadedJksFilename} -file cert.cer
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard(`keytool -exportcert -alias mykey -keystore ${downloadedJksFilename} -file cert.cer`, 'export-cert')}
+                        className="absolute right-1 top-1 p-1 rounded bg-muted hover:bg-muted-foreground/20 transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        {copiedCommand === 'export-cert' ? (
+                          <Check className="h-3 w-3 text-green-600" />
+                        ) : (
+                          <Copy className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </button>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => {
+                  setShowJksInfoPopup(false);
+                  setDownloadedJksFilename('');
+                }}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
+              >
+                Got it
+              </button>
+            </div>
           </div>
         </div>
       )}
