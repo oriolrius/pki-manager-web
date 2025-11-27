@@ -1,10 +1,11 @@
 ---
 id: task-075
 title: Implement Search and Utility REST endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 19:03'
+updated_date: '2025-11-27 19:05'
 labels:
   - openapi
   - backend
