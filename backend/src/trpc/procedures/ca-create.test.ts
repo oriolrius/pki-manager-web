@@ -1,13 +1,26 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
 import { appRouter } from "../router.js";
 import { createContext } from "../context.js";
+import { db } from "../../db/client.js";
+import { certificateAuthorities } from "../../db/schema.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
+
+// Store created CA IDs for cleanup
+const createdCaIds: string[] = [];
 
 /**
  * Integration test for CA creation
  * This test replicates what happens when the user clicks "Generate Sample Data" and then "Create"
  */
 describe("CA Creation", () => {
+  afterAll(async () => {
+    // Clean up all CAs created during tests
+    for (const caId of createdCaIds) {
+      await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute().catch(() => {});
+    }
+  });
+
   it("should create a root CA with sample data", async () => {
     // Generate random sample data (same logic as frontend's generateRandomData function)
     const randomString = Math.random().toString(36).substring(2, 8);
@@ -71,6 +84,9 @@ describe("CA Creation", () => {
     expect(result.notAfter).toBeDefined();
     expect(result.serialNumber).toBeDefined();
     expect(result.status).toBe("active");
+
+    // Store CA ID for cleanup
+    createdCaIds.push(result.id);
 
     console.log("✅ CA created successfully!");
     console.log(`   ID: ${result.id}`);
