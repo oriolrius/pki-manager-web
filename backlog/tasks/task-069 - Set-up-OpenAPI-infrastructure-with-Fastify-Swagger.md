@@ -1,9 +1,11 @@
 ---
 id: task-069
 title: Set up OpenAPI infrastructure with Fastify Swagger
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-27 15:34'
+updated_date: '2025-11-27 15:46'
 labels:
   - openapi
   - backend
