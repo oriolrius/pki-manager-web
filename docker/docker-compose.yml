@@ -35,6 +35,7 @@ services:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=${BACKEND_PORT:-3000}
       - HOST=${BACKEND_HOST:-0.0.0.0}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
 
       # Frontend URL for CORS
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
@@ -75,6 +76,9 @@ services:
     restart: unless-stopped
     networks:
       - pki-network
+    environment:
+      # Runtime API URL - overrides build-time default via config.json
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
     ports:
       - "${FRONTEND_EXTERNAL_PORT:-8080}:8080"
     depends_on:
@@ -88,7 +92,7 @@ services:
       start_period: 10s
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    read_only: false
     tmpfs:
       - /var/cache/nginx:uid=1001,gid=1001
       - /var/run:uid=1001,gid=1001

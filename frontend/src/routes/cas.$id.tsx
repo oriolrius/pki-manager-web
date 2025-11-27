@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
+import { getApiUrl } from '@/lib/config';
 import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 
@@ -38,8 +39,8 @@ function CADetail() {
   const revokeMutation = trpc.ca.revoke.useMutation();
   const deleteMutation = trpc.ca.delete.useMutation();
 
-  // Get backend base URL from environment variable
-  const apiBaseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:52081/trpc').replace('/trpc', '');
+  // Get backend base URL from runtime config
+  const apiBaseUrl = getApiUrl().replace('/trpc', '');
 
   // Certificate download URLs for all formats
   const downloadUrls = {
