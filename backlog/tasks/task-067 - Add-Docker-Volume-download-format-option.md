@@ -1,11 +1,11 @@
 ---
 id: task-067
 title: Add "Docker Volume" download format option
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 12:01'
-updated_date: '2025-11-27 12:06'
+updated_date: '2025-11-27 12:13'
 labels:
   - frontend
   - backend
@@ -39,9 +39,33 @@ Add a new "docker-volume" format to the existing certificate download format dro
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 "Docker Volume" option appears in download format dropdown (both single and bulk)
-- [ ] #2 Exported .tar file contains certificate, private key, and full CA chain in proper directory structure
-- [ ] #3 Progress popup shows export status during tar creation
-- [ ] #4 Post-download info popup displays Docker volume import command with copy-to-clipboard
-- [ ] #5 Works for both single certificate and bulk certificate downloads
+- [x] #1 "Docker Volume" option appears in download format dropdown (both single and bulk)
+- [x] #2 Exported .tar file contains certificate, private key, and full CA chain in proper directory structure
+- [x] #3 Progress popup shows export status during tar creation
+- [x] #4 Post-download info popup displays Docker volume import command with copy-to-clipboard
+- [x] #5 Works for both single certificate and bulk certificate downloads
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Summary
+
+### Files Modified:
+
+**Backend:**
+- `backend/src/trpc/schemas.ts` - Added `docker-volume` format to Zod enums
+- `backend/src/trpc/procedures/certificate.ts` - Implemented docker-volume handlers for single and bulk download
+
+**Frontend:**
+- `frontend/src/routes/certificates.$id.tsx` - Added Docker Volume format option with progress and info popups
+- `frontend/src/routes/certificates.tsx` - Added Docker Volume format option with progress and info popups for bulk download
+
+### Features:
+- New "Docker Volume - TAR for Docker volume import" option in download format dropdown
+- Progress popup during TAR creation
+- Info popup after download with:
+  - TAR file structure explanation
+  - Docker volume import command (copy-able)
+  - Docker Compose usage example (copy-able)
+<!-- SECTION:NOTES:END -->
