@@ -4,6 +4,7 @@ title: Implement Certificate REST endpoints
 status: To Do
 assignee: []
 created_date: '2025-11-27 15:35'
+updated_date: '2025-11-27 16:55'
 labels:
   - openapi
   - backend
@@ -32,9 +33,23 @@ Reference: doc-005 (OpenAPI Specification Design)
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All 7 certificate endpoints implemented in backend/src/rest/routes/certificate.routes.ts
-- [ ] #2 Download endpoint supports all 14+ formats via query parameter
-- [ ] #3 Type-specific validations enforced (server, client, email, code_signing)
-- [ ] #4 OpenAPI schemas documented with all request/response types
-- [ ] #5 Proper error responses for validation failures
+- [ ] #1 GET /api/v1/certificates returns paginated list with pagination metadata (total, limit, offset, hasMore)
+- [ ] #2 GET /api/v1/certificates supports filtering by status (active/revoked/expired), type (server/client/email/code_signing), and caId
+- [ ] #3 GET /api/v1/certificates supports search parameter for subject DN text search
+- [ ] #4 POST /api/v1/certificates issues certificate with valid subject, type, caId and returns certificate details
+- [ ] #5 POST /api/v1/certificates validates required fields (subject.cn, subject.o, subject.c, type, caId)
+
+- [ ] #6 POST /api/v1/certificates enforces type-specific validations (server requires DNS SAN, client requires unique identifier)
+- [ ] #7 GET /api/v1/certificates/{id} returns certificate details or 404 for non-existent certificate
+- [ ] #8 POST /api/v1/certificates/{id}/renew creates new certificate maintaining subject and type
+- [ ] #9 POST /api/v1/certificates/{id}/renew returns 409 if certificate already revoked or expired
+- [ ] #10 POST /api/v1/certificates/{id}/revoke marks certificate revoked with reason and timestamp
+- [ ] #11 POST /api/v1/certificates/{id}/revoke returns 409 if already revoked
+- [ ] #12 DELETE /api/v1/certificates/{id} deletes revoked certificate and returns 409 for active certificates
+- [ ] #13 GET /api/v1/certificates/{id}/download returns certificate in requested format via query parameter
+- [ ] #14 Download endpoint supports formats: pem, der, p12, jks, chain-pem, key-pem, key-der, pkcs8-pem, pkcs8-der
+- [ ] #15 All endpoints return errors in standard format: {error: {code, message, details?}}
+- [ ] #16 All certificate endpoints documented in OpenAPI spec at /api/v1/openapi.json
+- [ ] #17 Integration tests in certificate.routes.test.ts cover all 7 endpoints with success and error cases
+- [ ] #18 Tests validate HTTP status codes: 200/201 success, 400 validation errors, 404 not found, 409 conflict
 <!-- AC:END -->
