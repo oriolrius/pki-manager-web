@@ -21,6 +21,8 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 describe('certificate.bulkIssue', () => {
   let caId: string;
   let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
+  // Track all created CAs for cleanup
+  const createdCaIds: string[] = [];
 
   beforeAll(async () => {
     // Create a test CA
@@ -55,12 +57,19 @@ describe('certificate.bulkIssue', () => {
       kmsCertificateId: 'test-kms-bulk-cert-mock',
       status: 'active',
     });
+    createdCaIds.push(caId);
   });
 
   afterAll(async () => {
-    // Clean up test data
+    // Clean up all created CAs
     const { eq } = await import('drizzle-orm');
-    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
+    for (const id of createdCaIds) {
+      try {
+        await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, id)).execute();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   });
 
   it('should fail with non-existent CA', async () => {
@@ -112,6 +121,8 @@ describe('certificate.bulkIssue', () => {
       kmsCertificateId: 'test-kms-inactive-cert-mock',
       status: 'revoked', // Inactive status
     });
+    // Track for cleanup in afterAll
+    createdCaIds.push(inactiveCaId);
 
     const context = await createContext({
       req: {} as FastifyRequest,
@@ -127,10 +138,6 @@ describe('certificate.bulkIssue', () => {
         csvData,
       })
     ).rejects.toThrow('CA is not active');
-
-    // Cleanup
-    const { eq } = await import('drizzle-orm');
-    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, inactiveCaId)).execute();
   });
 
   it('should validate CSV format (too few fields)', async () => {
