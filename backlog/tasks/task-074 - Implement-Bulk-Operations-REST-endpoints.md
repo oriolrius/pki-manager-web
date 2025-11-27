@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 18:47'
+updated_date: '2025-11-27 19:00'
 labels:
   - openapi
   - backend
@@ -88,14 +88,22 @@ Created bulk REST endpoints in `backend/src/rest/routes/bulk.routes.ts`:
 - CSV parsing with auto-detection of SAN types
 - Password validation for encrypted formats
 - OpenAPI documentation with tags
-- Standard error response format+I 
+- Standard error response format
 
-### Files Modified:
-- `backend/src/rest/routes/bulk.routes.ts` (new)
-- `backend/src/rest/routes/bulk.routes.test.ts` (new)
-- `backend/src/rest/index.ts` (updated to register routes)
+### Files Created/Modified:
+- `backend/src/rest/routes/bulk.routes.ts` (new - 850 lines)
+- `backend/src/rest/routes/bulk.routes.test.ts` (new - 22 tests)
+- `backend/src/rest/index.ts` (updated to register bulk routes)
+- `backend/src/rest/routes/ca.routes.test.ts` (added test cleanup)
+- `backend/src/rest/routes/certificate.routes.test.ts` (added test cleanup)
 
-### Tests:
-- 300 tests passing
-- Integration tests cover success/error cases for all endpoints
+### Test Cleanup Strategy:
+Added robust test cleanup to prevent database pollution:
+- **beforeAll**: Pattern-based cleanup removes leftover test data from previous interrupted runs
+- **afterAll**: ID-based cleanup removes only the current test's data (avoids parallel test interference)
+
+### Test Results:
+- 300 tests passing across 17 test files
+- Integration tests cover success/error cases for all 5 endpoints
+- Tests validate HTTP status codes, partial success handling, and error responses
 <!-- SECTION:NOTES:END -->
