@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 16:33'
+updated_date: '2025-11-27 16:52'
 labels:
   - openapi
   - backend
@@ -127,4 +127,22 @@ $ pnpm test
 ```
 
 All tests pass confirming schema conversion maintains backward compatibility.
+
+### Updated Test Results (2025-11-27 17:50 UTC)
+
+After adding CA REST endpoint tests:
+
+```
+$ pnpm test
+
+ Test Files  12 passed (12)
+      Tests  203 passed | 1 skipped (204)
+   Duration  16.33s
+```
+
+New test files added:
+- `src/rest/routes/ca.routes.test.ts` (29 tests) - Comprehensive tests for all 8 CA REST endpoints
+- `src/rest/openapi.test.ts` - OpenAPI 3.1.0 specification tests
+
+All tests pass confirming OpenAPI schema integration is working correctly.
 <!-- SECTION:NOTES:END -->
