@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:34'
-updated_date: '2025-11-27 15:50'
+updated_date: '2025-11-27 15:57'
 labels:
   - openapi
   - backend
@@ -66,4 +66,14 @@ Reference: doc-005 (OpenAPI Specification Design)
 - Swagger UI accessible at /api/docs (HTTP 200)
 - OpenAPI JSON available at /api/v1/openapi.json
 - Health endpoint returns expected response
+
+### Test Results
+```
+Test Files  10 passed (10)
+     Tests  144 passed | 1 skipped (145)
+  Start at  16:49:45
+  Duration  11.76s
+```
+
+All existing tests pass after the OpenAPI infrastructure changes.
 <!-- SECTION:NOTES:END -->
