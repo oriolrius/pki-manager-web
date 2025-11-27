@@ -4,3 +4,4 @@
 export * from './ca.service.js';
 export * from './certificate.service.js';
 export * from './crl.service.js';
+export * from './jks.service.js';
