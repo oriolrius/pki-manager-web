@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:34'
-updated_date: '2025-11-27 15:57'
+updated_date: '2025-11-27 15:58'
 labels:
   - openapi
   - backend
@@ -69,11 +69,27 @@ Reference: doc-005 (OpenAPI Specification Design)
 
 ### Test Results
 ```
-Test Files  10 passed (10)
-     Tests  144 passed | 1 skipped (145)
-  Start at  16:49:45
-  Duration  11.76s
-```
+$ pnpm test
 
-All existing tests pass after the OpenAPI infrastructure changes.
+> @pki-manager/backend@1.1.2 test /home/oriol/miimetiq3/pki-manager/backend
+> vitest run
+
+ RUN  v2.1.9 /home/oriol/miimetiq3/pki-manager/backend
+
+ ✓ src/lib/audit.test.ts (8 tests) 5ms
+ ✓ src/trpc/openapi.test.ts (17 tests) 10ms
+ ✓ src/trpc/procedures/audit.test.ts (10 tests) 25ms
+ ✓ src/server.test.ts (17 tests) 34ms
+ ✓ src/trpc/procedures/certificate-bulk.test.ts (8 tests) 269ms
+ ✓ src/crypto/crypto.test.ts (30 tests | 1 skipped) 658ms
+ ✓ src/trpc/procedures/ca-create.test.ts (1 test) 496ms
+ ✓ src/server.crl-endpoint.test.ts (13 tests) 567ms
+ ✓ src/trpc/procedures/ca.test.ts (21 tests) 4889ms
+ ✓ src/trpc/procedures/certificate.test.ts (20 tests) 9940ms
+
+ Test Files  10 passed (10)
+      Tests  144 passed | 1 skipped (145)
+   Start at  16:58:10
+   Duration  10.75s (transform 864ms, setup 0ms, collect 5.05s, tests 16.89s, environment 2ms, prepare 945ms)
+```
 <!-- SECTION:NOTES:END -->
