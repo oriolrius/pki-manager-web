@@ -135,6 +135,13 @@ describe('Certificate REST Endpoints', () => {
   }
 
   beforeAll(async () => {
+    // Clean up any leftover test data from previous interrupted runs
+    const { like } = await import('drizzle-orm');
+    await db.delete(certificates).where(like(certificates.subjectDn, '%Test%')).catch(() => {});
+    await db.delete(certificates).where(like(certificates.subjectDn, '%test-cert%')).catch(() => {});
+    await db.delete(certificateAuthorities).where(like(certificateAuthorities.subjectDn, '%Test CA%')).catch(() => {});
+    await db.delete(certificateAuthorities).where(like(certificateAuthorities.subjectDn, '%Test Organization%')).catch(() => {});
+
     // Create and configure test server
     server = Fastify({
       logger: false,

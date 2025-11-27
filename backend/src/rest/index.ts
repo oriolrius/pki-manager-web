@@ -3,6 +3,7 @@ import { registerOpenAPI } from './openapi.js';
 import { healthRoutes } from './routes/health.js';
 import { caRoutes } from './routes/ca.routes.js';
 import { certificateRoutes } from './routes/certificate.routes.js';
+import { bulkRoutes } from './routes/bulk.routes.js';
 
 /**
  * Register all REST API routes and plugins
@@ -66,8 +67,10 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
       // Certificate routes - Certificate management
       await api.register(certificateRoutes, { prefix: '/certificates' });
 
+      // Bulk operations routes - Certificate bulk operations
+      await api.register(bulkRoutes, { prefix: '/certificates/bulk' });
+
       // Future route registrations will go here:
-      // await api.register(bulkRoutes, { prefix: '/certificates/bulk' });
       // await api.register(crlRoutes, { prefix: '/crls' });
       // await api.register(searchRoutes);
       // await api.register(dashboardRoutes, { prefix: '/dashboard' });

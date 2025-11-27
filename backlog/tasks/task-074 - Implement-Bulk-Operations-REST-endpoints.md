@@ -88,7 +88,7 @@ Created bulk REST endpoints in `backend/src/rest/routes/bulk.routes.ts`:
 - CSV parsing with auto-detection of SAN types
 - Password validation for encrypted formats
 - OpenAPI documentation with tags
-- Standard error response format
+- Standard error response format+I 
 
 ### Files Modified:
 - `backend/src/rest/routes/bulk.routes.ts` (new)
