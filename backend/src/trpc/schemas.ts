@@ -171,7 +171,9 @@ export const downloadCertificateSchema = z.object({
     'pkcs12',   // PKCS#12 (certificate + chain + key, password protected)
     'pfx',      // Same as PKCS#12, different extension
     'p12',      // Same as PKCS#12, different extension
-    'jks',      // Java KeyStore (password protected)
+    'jks-keystore',   // Java KeyStore - certificate with private key (PrivateKeyEntry)
+    'jks-truststore', // Java TrustStore - CA certificates only (TrustedCertEntry)
+    'docker-volume', // TAR file for Docker volume import
     'all',      // All formats in one ZIP file
   ]).default('pem'),
   password: z.string().min(8).optional(), // Optional, used when encryptPrivateKey is true
@@ -179,13 +181,17 @@ export const downloadCertificateSchema = z.object({
   alias: z.string().optional(), // Alias for JKS keystore (defaults to certificate CN)
 }).refine((data) => {
   // If format requires key and encryption is enabled, password is required
-  const keyFormats = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+  const keyFormats = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks-keystore', 'docker-volume', 'all'];
   if (keyFormats.includes(data.format) && data.encryptPrivateKey && !data.password) {
+    return false;
+  }
+  // JKS truststore always requires a password (for keystore integrity)
+  if (data.format === 'jks-truststore' && !data.password) {
     return false;
   }
   return true;
 }, {
-  message: 'Password is required when private key encryption is enabled',
+  message: 'Password is required for this format',
   path: ['password'],
 });
 
@@ -229,20 +235,26 @@ export const bulkDownloadCertificatesSchema = z.object({
     'pkcs12',    // PKCS#12 (certificate + chain + key, password protected)
     'pfx',       // Same as PKCS#12, different extension
     'p12',       // Same as PKCS#12, different extension
-    'jks',       // Java KeyStore (converted from PKCS#12)
+    'jks-keystore',   // Java KeyStore - certificates with private keys (PrivateKeyEntry)
+    'jks-truststore', // Java TrustStore - CA certificates only (TrustedCertEntry)
+    'docker-volume', // TAR file for Docker volume import
     'all',       // All formats in one zip
   ]).default('pem'),
   password: z.string().min(8).optional(), // Optional, used when encryptPrivateKey is true
   encryptPrivateKey: z.boolean().default(true), // Whether to encrypt private key with password
 }).refine((data) => {
   // If format requires key and encryption is enabled, password is required
-  const keyFormats = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+  const keyFormats = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks-keystore', 'docker-volume', 'all'];
   if (keyFormats.includes(data.format) && data.encryptPrivateKey && !data.password) {
+    return false;
+  }
+  // JKS truststore always requires a password (for keystore integrity)
+  if (data.format === 'jks-truststore' && !data.password) {
     return false;
   }
   return true;
 }, {
-  message: 'Password is required when private key encryption is enabled',
+  message: 'Password is required for this format',
   path: ['password'],
 });
 

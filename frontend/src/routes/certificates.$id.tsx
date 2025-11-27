@@ -37,7 +37,9 @@ const DOWNLOAD_FORMATS = [
   { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
-  { value: 'jks', label: 'JKS - Java KeyStore', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks-keystore', label: 'JKS Keystore - Certificate + Private Key (for server identity)', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks-truststore', label: 'JKS Truststore - CA Certificate only (for trust validation)', requiresPassword: true, hasPrivateKey: false },
+  { value: 'docker-volume', label: 'Docker Volume - TAR for Docker volume import', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'all', label: 'All Formats - All formats in one ZIP', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
 ] as const;
 
@@ -56,6 +58,9 @@ function CertificateDetail() {
   const [showPrivateKeyWarning, setShowPrivateKeyWarning] = useState(false);
   const [showJksInfoPopup, setShowJksInfoPopup] = useState(false);
   const [downloadedJksFilename, setDownloadedJksFilename] = useState('');
+  const [downloadedJksType, setDownloadedJksType] = useState<'keystore' | 'truststore'>('keystore');
+  const [showDockerVolumeInfoPopup, setShowDockerVolumeInfoPopup] = useState(false);
+  const [downloadedDockerVolumeFilename, setDownloadedDockerVolumeFilename] = useState('');
 
   const renewMutation = trpc.certificate.renew.useMutation();
   const revokeMutation = trpc.certificate.revoke.useMutation();
@@ -93,8 +98,8 @@ function CertificateDetail() {
         encryptPrivateKey: selectedFormat?.hasPrivateKey ? encryptPrivateKey : undefined,
       });
 
-      // Decode base64 data for binary formats (including ZIP for 'all' and 'pem-key')
-      const isBinaryFormat = ['der', 'cer', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12', 'jks', 'pem-key', 'all'].includes(downloadFormat);
+      // Decode base64 data for binary formats (including ZIP for 'all' and 'pem-key', TAR for 'docker-volume')
+      const isBinaryFormat = ['der', 'cer', 'pkcs7', 'p7b', 'pkcs12', 'pfx', 'p12', 'jks-keystore', 'jks-truststore', 'pem-key', 'docker-volume', 'all'].includes(downloadFormat);
       let blob: Blob;
 
       if (isBinaryFormat) {
@@ -117,9 +122,11 @@ function CertificateDetail() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      // Show JKS info popup after download
-      const wasJksFormat = downloadFormat === 'jks';
-      const jksFilename = result.filename;
+      // Show format-specific info popup after download
+      const wasJksKeystoreFormat = downloadFormat === 'jks-keystore';
+      const wasJksTruststoreFormat = downloadFormat === 'jks-truststore';
+      const wasDockerVolumeFormat = downloadFormat === 'docker-volume';
+      const downloadedFilename = result.filename;
 
       // Reset dialog state
       setShowDownloadDialog(false);
@@ -128,10 +135,18 @@ function CertificateDetail() {
       setEncryptPrivateKey(true);
       setShowPrivateKeyWarning(false);
 
-      // Show JKS info popup after state reset
-      if (wasJksFormat) {
-        setDownloadedJksFilename(jksFilename);
+      // Show format-specific info popup after state reset
+      if (wasJksKeystoreFormat) {
+        setDownloadedJksFilename(downloadedFilename);
+        setDownloadedJksType('keystore');
         setShowJksInfoPopup(true);
+      } else if (wasJksTruststoreFormat) {
+        setDownloadedJksFilename(downloadedFilename);
+        setDownloadedJksType('truststore');
+        setShowJksInfoPopup(true);
+      } else if (wasDockerVolumeFormat) {
+        setDownloadedDockerVolumeFilename(downloadedFilename);
+        setShowDockerVolumeInfoPopup(true);
       }
     } catch (error: any) {
       alert(`Failed to download certificate: ${error.message}`);
@@ -361,25 +376,37 @@ function CertificateDetail() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card border rounded-lg p-6 max-w-lg w-full mx-4 shadow-lg">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <span className="text-green-600">✓</span> Java KeyStore Downloaded
+              <span className="text-green-600">✓</span> Java {downloadedJksType === 'keystore' ? 'KeyStore' : 'TrustStore'} Downloaded
             </h2>
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Your JKS file <strong className="text-foreground">{downloadedJksFilename}</strong> has been downloaded successfully.
               </p>
 
+              {/* Purpose explanation based on type */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                <h3 className="font-semibold text-amber-900 dark:text-amber-200 mb-1">
+                  {downloadedJksType === 'keystore' ? 'What is a KeyStore?' : 'What is a TrustStore?'}
+                </h3>
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  {downloadedJksType === 'keystore'
+                    ? 'A KeyStore contains your certificate with its private key (PrivateKeyEntry). Use it when your application needs to present this certificate as its identity, such as for SSL/TLS server authentication or client certificate authentication.'
+                    : 'A TrustStore contains the CA certificate as a trusted entry (TrustedCertEntry). Use it when your application needs to verify certificates signed by this CA, such as validating client certificates or trusting a private CA.'}
+                </p>
+              </div>
+
               <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
                 <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
-                  List Certificates in JKS
+                  List {downloadedJksType === 'keystore' ? 'Entries' : 'Trusted Certificates'} in JKS
                 </h3>
                 <p className="text-sm text-blue-800 dark:text-blue-300 mb-2">
-                  To view the certificates stored in your JKS file, run:
+                  To view the {downloadedJksType === 'keystore' ? 'certificate and key' : 'trusted CA certificate'} stored in your JKS file, run:
                 </p>
                 <code className="block p-2 bg-black/10 dark:bg-white/10 rounded text-xs font-mono overflow-x-auto whitespace-pre">
 {`keytool -list -v -keystore ${downloadedJksFilename}`}
                 </code>
                 <p className="text-xs text-blue-700 dark:text-blue-400 mt-2">
-                  You will be prompted for the keystore password.
+                  You will be prompted for the {downloadedJksType === 'keystore' ? 'keystore' : 'truststore'} password.
                 </p>
               </div>
 
@@ -392,12 +419,21 @@ function CertificateDetail() {
                       keytool -list -keystore {downloadedJksFilename}
                     </code>
                   </li>
-                  <li>
-                    <strong>Export certificate to file:</strong>
-                    <code className="block mt-1 p-1 bg-black/5 dark:bg-white/5 rounded font-mono">
-                      keytool -exportcert -alias mykey -keystore {downloadedJksFilename} -file cert.cer
-                    </code>
-                  </li>
+                  {downloadedJksType === 'keystore' ? (
+                    <li>
+                      <strong>Export certificate to file:</strong>
+                      <code className="block mt-1 p-1 bg-black/5 dark:bg-white/5 rounded font-mono">
+                        keytool -exportcert -alias mykey -keystore {downloadedJksFilename} -file cert.cer
+                      </code>
+                    </li>
+                  ) : (
+                    <li>
+                      <strong>Import into Java cacerts:</strong>
+                      <code className="block mt-1 p-1 bg-black/5 dark:bg-white/5 rounded font-mono">
+                        keytool -importkeystore -srckeystore {downloadedJksFilename} -destkeystore $JAVA_HOME/lib/security/cacerts
+                      </code>
+                    </li>
+                  )}
                 </ul>
               </div>
             </div>
@@ -406,6 +442,59 @@ function CertificateDetail() {
                 onClick={() => {
                   setShowJksInfoPopup(false);
                   setDownloadedJksFilename('');
+                }}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Docker Volume Info Popup */}
+      {showDockerVolumeInfoPopup && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-lg w-full mx-4 shadow-lg">
+            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-green-600">✓</span> Docker Volume TAR Downloaded
+            </h2>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Your Docker volume TAR file <strong className="text-foreground">{downloadedDockerVolumeFilename}</strong> has been downloaded successfully.
+              </p>
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+                  Import into Docker Volume
+                </h3>
+                <p className="text-sm text-blue-800 dark:text-blue-300 mb-2">
+                  To import the certificates into a Docker volume, run:
+                </p>
+                <code className="block p-2 bg-black/10 dark:bg-white/10 rounded text-xs font-mono overflow-x-auto whitespace-pre">
+{`docker run --rm -v my_volume:/data -v $(pwd):/backup busybox tar xvf /backup/${downloadedDockerVolumeFilename} -C /data`}
+                </code>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-2">
+                  Replace <code className="bg-black/5 dark:bg-white/5 px-1 rounded">my_volume</code> with your target Docker volume name.
+                </p>
+              </div>
+
+              <div className="p-3 bg-muted/50 rounded-md">
+                <h4 className="font-medium text-sm mb-2">TAR File Structure:</h4>
+                <code className="block p-2 bg-black/5 dark:bg-white/5 rounded text-xs font-mono">
+                  certs/<br />
+                  ├── {commonName}.pem     (certificate)<br />
+                  ├── {commonName}.key     (private key)<br />
+                  └── ca-chain.pem         (CA certificate)
+                </code>
+              </div>
+
+            </div>
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => {
+                  setShowDockerVolumeInfoPopup(false);
+                  setDownloadedDockerVolumeFilename('');
                 }}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
               >

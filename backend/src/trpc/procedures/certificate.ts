@@ -1445,7 +1445,7 @@ export const certificateRouter = router({
       const serialShort = certificate.serialNumber.substring(0, 8);
 
       // Formats that require a private key
-      const formatsRequiringKey = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+      const formatsRequiringKey = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks-keystore', 'docker-volume', 'all'];
       const requiresKey = formatsRequiringKey.includes(input.format);
 
       // Validate password only if encryption is enabled
@@ -1705,12 +1705,13 @@ export const certificateRouter = router({
             break;
           }
 
-          case 'jks': {
-            // JKS (Java KeyStore) format
+          case 'jks-keystore': {
+            // JKS Keystore format - contains certificate with private key (PrivateKeyEntry)
+            // Used when an application needs to present its own identity (e.g., server SSL, client authentication)
             if (!certificate.kmsKeyId) {
               throw new TRPCError({
                 code: 'BAD_REQUEST',
-                message: 'Certificate does not have a private key',
+                message: 'Certificate does not have a private key. JKS Keystore requires a private key.',
               });
             }
 
@@ -1722,11 +1723,11 @@ export const certificateRouter = router({
 
             const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
 
-            // Create PKCS#12 as intermediate format (certificate + private key, without CA chain)
+            // Create PKCS#12 as intermediate format (certificate + private key + CA chain)
             const password = input.encryptPrivateKey ? input.password! : '';
             const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
               forgePrivateKey,
-              [forgeCert],
+              [forgeCert, forgeCaCert],  // Include CA certificate in chain
               password,
               {
                 algorithm: input.encryptPrivateKey ? '3des' : undefined,
@@ -1744,21 +1745,19 @@ export const certificateRouter = router({
             const os = await import('os');
             const path = await import('path');
 
-            const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-'));
+            const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-keystore-'));
             const p12Path = path.join(tempDir, 'temp.p12');
             const jksPath = path.join(tempDir, 'keystore.jks');
-            const caCertPath = path.join(tempDir, 'ca.pem');
 
             try {
               await fs.writeFile(p12Path, p12Buffer);
-              await fs.writeFile(caCertPath, caCertificatePem);
 
               // JKS requires a password (minimum 6 characters)
               // If no password provided, use a default one
               const jksPassword = password || 'changeit';
               const srcPassword = password || '';
 
-              // First, import the certificate with its private key from PKCS#12
+              // Import the certificate with its private key from PKCS#12
               const keytoolCmd = `keytool -importkeystore -srckeystore "${p12Path}" -srcstoretype PKCS12 -srcstorepass "${srcPassword}" -destkeystore "${jksPath}" -deststoretype JKS -deststorepass "${jksPassword}" -noprompt 2>&1`;
 
               try {
@@ -1771,27 +1770,15 @@ export const certificateRouter = router({
                 });
               }
 
-              // Import CA certificate as trusted certificate entry
-              const caAlias = `ca-${ca.subjectDn.replace(/[^a-zA-Z0-9]/g, '-').substring(0, 30)}`;
-              const importCaCmd = `keytool -importcert -alias "${caAlias}" -file "${caCertPath}" -keystore "${jksPath}" -storepass "${jksPassword}" -noprompt 2>&1`;
-
-              try {
-                await execAsync(importCaCmd);
-                logger.info({ caId: ca.id, alias: caAlias }, 'CA certificate imported as trusted entry');
-              } catch (caCertError: any) {
-                logger.warn({ error: caCertError.message, stderr: caCertError.stderr }, 'Failed to import CA certificate (may already exist)');
-                // Continue even if CA import fails - the certificate itself is already in the JKS
-              }
-
               // Read the JKS file
               const jksBuffer = await fs.readFile(jksPath);
               data = jksBuffer.toString('base64');
               mimeType = 'application/x-java-keystore';
-              filename = `${commonName}-${serialShort}.jks`;
+              filename = `${commonName}-${serialShort}-keystore.jks`;
 
               logger.info(
-                { certId: input.id },
-                'JKS keystore generated successfully with CA trusted entry'
+                { certId: input.id, caId: ca.id },
+                'JKS Keystore generated successfully with certificate, private key, and CA chain'
               );
             } finally {
               // Clean up temp files
@@ -1801,6 +1788,138 @@ export const certificateRouter = router({
                 // Ignore cleanup errors
               }
             }
+            break;
+          }
+
+          case 'jks-truststore': {
+            // JKS Truststore format - contains ONLY CA certificate (TrustedCertEntry)
+            // Used when an application needs to verify certificates signed by this CA
+            const { promisify } = await import('util');
+            const { exec } = await import('child_process');
+            const execAsync = promisify(exec);
+            const fs = await import('fs/promises');
+            const os = await import('os');
+            const path = await import('path');
+
+            const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-truststore-'));
+            const jksPath = path.join(tempDir, 'truststore.jks');
+            const caCertPath = path.join(tempDir, 'ca.pem');
+
+            try {
+              await fs.writeFile(caCertPath, caCertificatePem);
+
+              // JKS requires a password (minimum 6 characters)
+              const jksPassword = input.password || 'changeit';
+
+              // Extract CA CN for alias
+              const caCnMatch = ca.subjectDn.match(/CN=([^,]+)/);
+              const caCn = caCnMatch ? caCnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca';
+              const caAlias = `ca-${caCn}`.toLowerCase();
+
+              // Import CA certificate as trusted certificate entry
+              const importCaCmd = `keytool -importcert -alias "${caAlias}" -file "${caCertPath}" -keystore "${jksPath}" -storepass "${jksPassword}" -noprompt 2>&1`;
+
+              try {
+                await execAsync(importCaCmd);
+                logger.info({ caId: ca.id, alias: caAlias }, 'CA certificate imported as trusted entry');
+              } catch (keytoolError: any) {
+                logger.error({ error: keytoolError.message, stderr: keytoolError.stderr }, 'keytool import failed');
+                throw new TRPCError({
+                  code: 'INTERNAL_SERVER_ERROR',
+                  message: 'Failed to create JKS truststore. Ensure Java keytool is available on the server.',
+                });
+              }
+
+              // Read the JKS file
+              const jksBuffer = await fs.readFile(jksPath);
+              data = jksBuffer.toString('base64');
+              mimeType = 'application/x-java-keystore';
+              filename = `${commonName}-${serialShort}-truststore.jks`;
+
+              logger.info(
+                { certId: input.id, caId: ca.id },
+                'JKS Truststore generated successfully with CA certificate'
+              );
+            } finally {
+              // Clean up temp files
+              try {
+                await fs.rm(tempDir, { recursive: true, force: true });
+              } catch {
+                // Ignore cleanup errors
+              }
+            }
+            break;
+          }
+
+          case 'docker-volume': {
+            // Docker Volume format - TAR file with certificate, private key, and CA chain
+            if (!certificate.kmsKeyId) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'Certificate does not have a private key',
+              });
+            }
+
+            // Fetch private key from KMS
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+
+            // Create TAR file using tar-stream
+            const { pack } = await import('tar-stream');
+            const { PassThrough } = await import('stream');
+            const { promisify } = await import('util');
+            const streamToBuffer = async (stream: any): Promise<Buffer> => {
+              const chunks: Buffer[] = [];
+              for await (const chunk of stream) {
+                chunks.push(chunk);
+              }
+              return Buffer.concat(chunks);
+            };
+
+            const tarPack = pack();
+            const outputStream = new PassThrough();
+            tarPack.pipe(outputStream);
+
+            // Prepare private key (encrypted or unencrypted)
+            let keyContent: string;
+            if (input.encryptPrivateKey && input.password) {
+              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+              keyContent = forge.default.pki.encryptRsaPrivateKey(
+                forgePrivateKey,
+                input.password,
+                { algorithm: 'aes256' }
+              );
+            } else {
+              keyContent = privateKeyPem;
+            }
+
+            // Add certificate file: certs/{cn}.pem
+            const certPath = `certs/${commonName}.pem`;
+            tarPack.entry({ name: certPath }, certificatePem);
+
+            // Add private key file: certs/{cn}.key
+            const keyPath = `certs/${commonName}.key`;
+            tarPack.entry({ name: keyPath }, keyContent);
+
+            // Add CA chain file: certs/ca-chain.pem
+            const caChainPath = 'certs/ca-chain.pem';
+            tarPack.entry({ name: caChainPath }, caCertificatePem);
+
+            // Finalize TAR
+            tarPack.finalize();
+
+            // Convert stream to buffer
+            const tarBuffer = await streamToBuffer(outputStream);
+            data = tarBuffer.toString('base64');
+            mimeType = 'application/x-tar';
+            filename = `${commonName}-${serialShort}-docker-volume.tar`;
+
+            logger.info(
+              { certId: input.id },
+              'Docker volume TAR generated successfully'
+            );
             break;
           }
 
@@ -2800,7 +2919,7 @@ export const certificateRouter = router({
       const zip = new JSZip.default();
 
       // Validate password only if encryption is enabled
-      const formatsRequiringKey = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks', 'all'];
+      const formatsRequiringKey = ['pem-key', 'pkcs12', 'pfx', 'p12', 'jks-keystore', 'docker-volume', 'all'];
       const requiresKey = formatsRequiringKey.includes(input.format);
 
       if (requiresKey && input.encryptPrivateKey && !input.password) {
@@ -2894,7 +3013,7 @@ export const certificateRouter = router({
           case 'pkcs12':
           case 'pfx':
           case 'p12':
-          case 'jks': {
+          case 'jks-keystore': {
             if (!certificate.kmsKeyId) {
               throw new TRPCError({
                 code: 'BAD_REQUEST',
@@ -2921,7 +3040,7 @@ export const certificateRouter = router({
             const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
             return {
               content: Buffer.from(p12Der, 'binary').toString('base64'),
-              extension: format === 'pkcs12' || format === 'jks' ? 'p12' : format,
+              extension: format === 'pkcs12' || format === 'jks-keystore' ? 'p12' : format,
             };
           }
 
@@ -2933,8 +3052,8 @@ export const certificateRouter = router({
         }
       };
 
-      // Special handling for JKS format - create a single keystore with all certificates
-      if (input.format === 'jks') {
+      // Special handling for JKS Keystore format - create a single keystore with all certificates and their private keys
+      if (input.format === 'jks-keystore') {
         const { promisify } = await import('util');
         const { exec } = await import('child_process');
         const execAsync = promisify(exec);
@@ -2942,7 +3061,7 @@ export const certificateRouter = router({
         const os = await import('os');
         const path = await import('path');
 
-        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-bulk-'));
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-keystore-bulk-'));
 
         try {
           // JKS requires a password (minimum 6 characters)
@@ -2952,7 +3071,7 @@ export const certificateRouter = router({
           const jksPath = path.join(tempDir, 'keystore.jks');
           let certCount = 0;
 
-          // First, collect all unique CA certificates and add them as trusted entries
+          // Collect all unique CA certificates for chain inclusion
           const caMap = new Map<string, { ca: any; pem: string }>();
 
           for (const { certificate, ca } of certResults) {
@@ -2970,29 +3089,7 @@ export const certificateRouter = router({
             }
           }
 
-          // Import CA certificates as trusted entries
-          for (const [caId, { ca, pem }] of caMap) {
-            try {
-              // Extract CN for CA alias
-              const cnMatch = ca.subjectDn.match(/CN=([^,]+)/);
-              const caCn = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca';
-              const caAlias = `ca-${caCn}`.toLowerCase();
-
-              // Write CA cert to temp file
-              const caCertPath = path.join(tempDir, `${caAlias}.pem`);
-              await fs.writeFile(caCertPath, pem);
-
-              // Import CA as trusted certificate
-              const importCaCmd = `keytool -importcert -alias "${caAlias}" -file "${caCertPath}" -keystore "${jksPath}" -storepass "${jksPassword}" -noprompt 2>&1`;
-
-              await execAsync(importCaCmd);
-              logger.info({ caId, caAlias }, 'CA certificate added to JKS keystore as trusted entry');
-            } catch (error: any) {
-              logger.warn({ caId, error: error.message }, 'Failed to add CA certificate to JKS (may already exist)');
-            }
-          }
-
-          // Now import each certificate with its private key
+          // Import each certificate with its private key (PrivateKeyEntry)
           for (const { certificate, ca } of certResults) {
             if (!ca) {
               logger.warn({ certId: certificate.id }, 'Certificate has no associated CA, skipping');
@@ -3056,12 +3153,12 @@ export const certificateRouter = router({
               try {
                 await execAsync(keytoolCmd);
                 certCount++;
-                logger.info({ certId: certificate.id, alias }, 'Certificate added to JKS keystore');
+                logger.info({ certId: certificate.id, alias }, 'Certificate added to JKS Keystore');
               } catch (keytoolError: any) {
-                logger.error({ error: keytoolError.message, certId: certificate.id }, 'Failed to add certificate to JKS');
+                logger.error({ error: keytoolError.message, certId: certificate.id }, 'Failed to add certificate to JKS Keystore');
               }
             } catch (error) {
-              logger.error({ error, certId: certificate.id }, 'Failed to process certificate for JKS bulk download');
+              logger.error({ error, certId: certificate.id }, 'Failed to process certificate for JKS Keystore bulk download');
             }
           }
 
@@ -3085,19 +3182,19 @@ export const certificateRouter = router({
             status: 'success',
             details: JSON.stringify({
               totalCertificates: certCount,
-              format: 'jks',
+              format: 'jks-keystore',
             }),
             ipAddress: ctx.req.ip,
           } as any);
 
           logger.info(
-            { totalCertificates: certCount, format: 'jks' },
-            'JKS bulk certificate download completed'
+            { totalCertificates: certCount, format: 'jks-keystore' },
+            'JKS Keystore bulk certificate download completed'
           );
 
           return {
             data: jksData,
-            filename: `certificates-${new Date().toISOString().split('T')[0]}.jks`,
+            filename: `certificates-${new Date().toISOString().split('T')[0]}-keystore.jks`,
             mimeType: 'application/x-java-keystore',
           };
         } finally {
@@ -3110,7 +3207,245 @@ export const certificateRouter = router({
         }
       }
 
-      // Process each certificate for non-JKS formats
+      // Special handling for JKS Truststore format - create a truststore with ONLY unique CA certificates
+      if (input.format === 'jks-truststore') {
+        const { promisify } = await import('util');
+        const { exec } = await import('child_process');
+        const execAsync = promisify(exec);
+        const fs = await import('fs/promises');
+        const os = await import('os');
+        const path = await import('path');
+
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-truststore-bulk-'));
+
+        try {
+          // JKS requires a password (minimum 6 characters)
+          const jksPassword = input.password || 'changeit';
+
+          const jksPath = path.join(tempDir, 'truststore.jks');
+          let caCount = 0;
+
+          // Collect all unique CA certificates
+          const caMap = new Map<string, { ca: any; pem: string }>();
+
+          for (const { ca } of certResults) {
+            if (!ca) continue;
+            if (!caMap.has(ca.id)) {
+              try {
+                const caCertificatePem = await kmsService.getCertificate(
+                  ca.kmsCertificateId,
+                  ca.id
+                );
+                caMap.set(ca.id, { ca, pem: caCertificatePem });
+              } catch (error) {
+                logger.warn({ caId: ca.id }, 'Failed to fetch CA certificate');
+              }
+            }
+          }
+
+          // Import CA certificates as trusted entries (TrustedCertEntry)
+          for (const [caId, { ca, pem }] of caMap) {
+            try {
+              // Extract CN for CA alias
+              const cnMatch = ca.subjectDn.match(/CN=([^,]+)/);
+              const caCn = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca';
+              const caAlias = `ca-${caCn}`.toLowerCase();
+
+              // Write CA cert to temp file
+              const caCertPath = path.join(tempDir, `${caAlias}.pem`);
+              await fs.writeFile(caCertPath, pem);
+
+              // Import CA as trusted certificate entry
+              const importCaCmd = `keytool -importcert -alias "${caAlias}" -file "${caCertPath}" -keystore "${jksPath}" -storepass "${jksPassword}" -noprompt 2>&1`;
+
+              await execAsync(importCaCmd);
+              caCount++;
+              logger.info({ caId, caAlias }, 'CA certificate added to JKS Truststore as trusted entry');
+            } catch (error: any) {
+              logger.warn({ caId, error: error.message }, 'Failed to add CA certificate to JKS Truststore (may already exist)');
+            }
+          }
+
+          if (caCount === 0) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'No CA certificates could be added to the truststore',
+            });
+          }
+
+          // Read the JKS file
+          const jksBuffer = await fs.readFile(jksPath);
+          const jksData = jksBuffer.toString('base64');
+
+          // Create audit log entry
+          await ctx.db.insert(auditLog).values({
+            id: randomUUID(),
+            operation: 'certificate.bulkDownload',
+            entityType: 'bulk_operation',
+            entityId: 'bulk-download',
+            status: 'success',
+            details: JSON.stringify({
+              totalCAs: caCount,
+              format: 'jks-truststore',
+            }),
+            ipAddress: ctx.req.ip,
+          } as any);
+
+          logger.info(
+            { totalCAs: caCount, format: 'jks-truststore' },
+            'JKS Truststore bulk download completed'
+          );
+
+          return {
+            data: jksData,
+            filename: `certificates-${new Date().toISOString().split('T')[0]}-truststore.jks`,
+            mimeType: 'application/x-java-keystore',
+          };
+        } finally {
+          // Clean up temp files
+          try {
+            await fs.rm(tempDir, { recursive: true, force: true });
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+      }
+
+      // Special handling for docker-volume format - create a single TAR with all certificates
+      if (input.format === 'docker-volume') {
+        const { pack } = await import('tar-stream');
+        const { PassThrough } = await import('stream');
+        const streamToBuffer = async (stream: any): Promise<Buffer> => {
+          const chunks: Buffer[] = [];
+          for await (const chunk of stream) {
+            chunks.push(chunk);
+          }
+          return Buffer.concat(chunks);
+        };
+
+        const tarPack = pack();
+        const outputStream = new PassThrough();
+        tarPack.pipe(outputStream);
+
+        let certCount = 0;
+
+        // First, collect all unique CA certificates
+        const caMap = new Map<string, { ca: any; pem: string }>();
+        for (const { certificate, ca } of certResults) {
+          if (!ca) continue;
+          if (!caMap.has(ca.id)) {
+            try {
+              const caCertificatePem = await kmsService.getCertificate(
+                ca.kmsCertificateId,
+                ca.id
+              );
+              caMap.set(ca.id, { ca, pem: caCertificatePem });
+            } catch (error) {
+              logger.warn({ caId: ca.id }, 'Failed to fetch CA certificate');
+            }
+          }
+        }
+
+        // Add CA chain file - concatenate all CA certs
+        const caCertsPem = Array.from(caMap.values()).map(v => v.pem).join('\n');
+        tarPack.entry({ name: 'certs/ca-chain.pem' }, caCertsPem);
+
+        // Process each certificate
+        for (const { certificate, ca } of certResults) {
+          if (!ca) {
+            logger.warn({ certId: certificate.id }, 'Certificate has no associated CA, skipping');
+            continue;
+          }
+
+          if (!certificate.kmsKeyId) {
+            logger.warn({ certId: certificate.id }, 'Certificate has no private key, skipping');
+            continue;
+          }
+
+          try {
+            // Extract CN for filename
+            const cnMatch = certificate.subjectDn.match(/CN=([^,]+)/);
+            const commonName = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'certificate';
+            const serialShort = certificate.serialNumber.substring(0, 8);
+            const certName = `${commonName}-${serialShort}`;
+
+            // Get certificate and private key
+            const certificatePem = await kmsService.getCertificate(
+              certificate.kmsCertificateId,
+              certificate.id
+            );
+            const privateKeyPem = await kmsService.getPrivateKey(
+              certificate.kmsKeyId,
+              certificate.id
+            );
+
+            // Prepare private key (encrypted or unencrypted)
+            let keyContent: string;
+            if (input.encryptPrivateKey && input.password) {
+              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
+              keyContent = forge.default.pki.encryptRsaPrivateKey(
+                forgePrivateKey,
+                input.password,
+                { algorithm: 'aes256' }
+              );
+            } else {
+              keyContent = privateKeyPem;
+            }
+
+            // Add certificate file
+            tarPack.entry({ name: `certs/${certName}.pem` }, certificatePem);
+
+            // Add private key file
+            tarPack.entry({ name: `certs/${certName}.key` }, keyContent);
+
+            certCount++;
+            logger.info({ certId: certificate.id, certName }, 'Certificate added to docker volume TAR');
+          } catch (error) {
+            logger.error({ error, certId: certificate.id }, 'Failed to process certificate for docker-volume');
+          }
+        }
+
+        if (certCount === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'No certificates with private keys could be added to the TAR file',
+          });
+        }
+
+        // Finalize TAR
+        tarPack.finalize();
+
+        // Convert stream to buffer
+        const tarBuffer = await streamToBuffer(outputStream);
+        const tarData = tarBuffer.toString('base64');
+
+        // Create audit log entry
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.bulkDownload',
+          entityType: 'bulk_operation',
+          entityId: 'bulk-download',
+          status: 'success',
+          details: JSON.stringify({
+            totalCertificates: certCount,
+            format: 'docker-volume',
+          }),
+          ipAddress: ctx.req.ip,
+        } as any);
+
+        logger.info(
+          { totalCertificates: certCount, format: 'docker-volume' },
+          'Docker volume bulk certificate download completed'
+        );
+
+        return {
+          data: tarData,
+          filename: `certificates-${new Date().toISOString().split('T')[0]}-docker-volume.tar`,
+          mimeType: 'application/x-tar',
+        };
+      }
+
+      // Process each certificate for non-JKS/non-docker-volume formats
       for (const { certificate, ca } of certResults) {
         if (!ca) {
           logger.warn({ certId: certificate.id }, 'Certificate has no associated CA, skipping');
