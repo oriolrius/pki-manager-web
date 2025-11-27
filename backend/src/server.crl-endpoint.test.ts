@@ -49,6 +49,7 @@ describe('CRL HTTP Endpoint', () => {
       id: testCaId,
       subjectDn: 'CN=Test CA for HTTP,O=Test Org,C=US',
       serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-2048',
       notBefore: caCert.validity.notBefore,
       notAfter: caCert.validity.notAfter,
       kmsKeyId: 'test-kms-key-http',
@@ -188,6 +189,10 @@ MjIwMDAwMDBaFw0yNDEwMjkwMDAwMDBaoA4wDDAKBgNVHRQEAwIBATANBgkqhkiG
 
   afterAll(async () => {
     await server.close();
+    // Clean up test data
+    const { eq } = await import('drizzle-orm');
+    await db.delete(crls).where(eq(crls.caId, testCaId)).execute();
+    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, testCaId)).execute();
   });
 
   describe('CRL PEM Format (.crl)', () => {
@@ -317,6 +322,7 @@ MjIwMDAwMDBaFw0yNDEwMjkwMDAwMDBaoA4wDDAKBgNVHRQEAwIBATANBgkqhkiG
         id: noCrlCaId,
         subjectDn: 'CN=CA Without CRL,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-kms-key-no-crl',
@@ -334,6 +340,10 @@ MjIwMDAwMDBaFw0yNDEwMjkwMDAwMDBaoA4wDDAKBgNVHRQEAwIBATANBgkqhkiG
       expect(response.statusCode).toBe(404);
       const body = JSON.parse(response.body);
       expect(body.error).toContain('No CRL available');
+
+      // Clean up the CA created within this test
+      const { eq } = await import('drizzle-orm');
+      await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, noCrlCaId)).execute();
     });
 
     it('should return 400 for invalid format', async () => {

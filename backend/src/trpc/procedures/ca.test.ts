@@ -47,6 +47,7 @@ describe('ca.list', () => {
       id: ca1Id,
       subjectDn: 'CN=Alpha CA,O=Test Org,C=US',
       serialNumber: caCert1.serialNumber,
+      keyAlgorithm: 'RSA-2048',
       notBefore: caCert1.validity.notBefore,
       notAfter: caCert1.validity.notAfter,
       kmsKeyId: 'test-ca-key-1',
@@ -72,6 +73,7 @@ describe('ca.list', () => {
       id: ca2Id,
       subjectDn: 'CN=Beta CA,O=Another Org,C=US',
       serialNumber: caCert2.serialNumber,
+      keyAlgorithm: 'RSA-4096',
       notBefore: caCert2.validity.notBefore,
       notAfter: caCert2.validity.notAfter,
       kmsKeyId: 'test-ca-key-2',
@@ -97,6 +99,7 @@ describe('ca.list', () => {
       id: ca3Id,
       subjectDn: 'CN=Gamma CA,O=Test Org,C=US',
       serialNumber: caCert3.serialNumber,
+      keyAlgorithm: 'RSA-2048',
       notBefore: caCert3.validity.notBefore,
       notAfter: caCert3.validity.notAfter,
       kmsKeyId: 'test-ca-key-3',
@@ -253,6 +256,7 @@ describe('ca.revoke', () => {
       id: caId,
       subjectDn: 'CN=Revoke Test CA,O=Test Org,C=US',
       serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-2048',
       notBefore: caCert.validity.notBefore,
       notAfter: caCert.validity.notAfter,
       kmsKeyId: 'test-ca-key',
@@ -325,6 +329,7 @@ describe('ca.delete', () => {
       id: revokedCaId,
       subjectDn: 'CN=Delete Test CA,O=Test Org,C=US',
       serialNumber: caCert1.serialNumber,
+      keyAlgorithm: 'RSA-2048',
       notBefore: caCert1.validity.notBefore,
       notAfter: caCert1.validity.notAfter,
       kmsKeyId: 'test-ca-key-1',
@@ -353,6 +358,7 @@ describe('ca.delete', () => {
       id: activeCaId,
       subjectDn: 'CN=Active CA,O=Test Org,C=US',
       serialNumber: caCert2.serialNumber,
+      keyAlgorithm: 'RSA-2048',
       notBefore: caCert2.validity.notBefore,
       notAfter: caCert2.validity.notAfter,
       kmsKeyId: 'test-ca-key-2',
@@ -449,6 +455,7 @@ describe('ca.revoke - comprehensive tests', () => {
         id: caId,
         subjectDn: 'CN=Cascade Test CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-cascade-ca-key',
@@ -588,6 +595,7 @@ describe('ca.revoke - comprehensive tests', () => {
         id: caId,
         subjectDn: 'CN=CRL Test CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-crl-ca-key',
@@ -669,6 +677,7 @@ describe('ca.revoke - comprehensive tests', () => {
           id: caId,
           subjectDn: `CN=Reason ${reason} CA,O=Test Org,C=US`,
           serialNumber: caCert.serialNumber,
+          keyAlgorithm: 'RSA-2048',
           notBefore: caCert.validity.notBefore,
           notAfter: caCert.validity.notAfter,
           kmsKeyId: `test-reason-${reason}-key`,
@@ -745,6 +754,7 @@ describe('ca.revoke - comprehensive tests', () => {
         id: caId,
         subjectDn: 'CN=Audit Test CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-audit-ca-key',
@@ -811,6 +821,7 @@ describe('ca.revoke - comprehensive tests', () => {
         id: emptyCaId,
         subjectDn: 'CN=Empty CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-empty-ca-key',
@@ -868,6 +879,7 @@ describe('ca.delete - comprehensive tests', () => {
         id: expiredCaId,
         subjectDn: 'CN=Expired CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000), // 1 year ago
         notAfter: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago (expired)
         kmsKeyId: 'test-expired-ca-key',
@@ -926,6 +938,7 @@ describe('ca.delete - comprehensive tests', () => {
         id: caId,
         subjectDn: 'CN=Active Certs CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-active-certs-ca-key',
@@ -1006,6 +1019,7 @@ describe('ca.delete - comprehensive tests', () => {
         id: caId,
         subjectDn: 'CN=CRL Cleanup CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-crl-cleanup-ca-key',
@@ -1086,6 +1100,7 @@ describe('ca.delete - comprehensive tests', () => {
         id: caId,
         subjectDn: 'CN=Delete Audit CA,O=Test Org,C=US',
         serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,
         notAfter: caCert.validity.notAfter,
         kmsKeyId: 'test-delete-audit-ca-key',
@@ -1151,6 +1166,7 @@ describe('ca.delete - comprehensive tests', () => {
         id: caWithKeyDestructionId,
         subjectDn: 'CN=Destroy Key CA,O=Test Org,C=US',
         serialNumber: caCert1.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert1.validity.notBefore,
         notAfter: caCert1.validity.notAfter,
         kmsKeyId: 'test-destroy-key-ca-key',
@@ -1179,6 +1195,7 @@ describe('ca.delete - comprehensive tests', () => {
         id: caWithoutKeyDestructionId,
         subjectDn: 'CN=Preserve Key CA,O=Test Org,C=US',
         serialNumber: caCert2.serialNumber,
+        keyAlgorithm: 'RSA-2048',
         notBefore: caCert2.validity.notBefore,
         notAfter: caCert2.validity.notAfter,
         kmsKeyId: 'test-preserve-key-ca-key',
@@ -1190,7 +1207,8 @@ describe('ca.delete - comprehensive tests', () => {
     });
 
     afterAll(async () => {
-      // Cleanup
+      // Clean up caWithKeyDestructionId (test for destroyKey=true not yet implemented)
+      await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caWithKeyDestructionId)).execute().catch(() => {});
     });
 
     it('should report keyDestroyed=false when destroyKey=false', async () => {
