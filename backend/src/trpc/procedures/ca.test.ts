@@ -1230,4 +1230,150 @@ describe('ca.delete - comprehensive tests', () => {
     // Note: Testing destroyKey=true would require KMS integration
     // This is tested in integration tests with real KMS
   });
+
+  describe('forceDelete parameter', () => {
+    let activeCaId: string;
+
+    beforeAll(async () => {
+      // Create an ACTIVE CA (not revoked, not expired) to test forceDelete bypass
+      activeCaId = randomUUID();
+      const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+      const caKeyPair = {
+        publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+        privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+      };
+
+      const caCert = generateCertificate({
+        subject: { CN: 'Force Delete Test CA', O: 'Test Org', C: 'US' },
+        publicKey: caKeyPair.publicKeyPem,
+        signingKey: caKeyPair.privateKeyPem,
+        selfSigned: true,
+      });
+
+      await db.insert(certificateAuthorities).values({
+        id: activeCaId,
+        subjectDn: 'CN=Force Delete Test CA,O=Test Org,C=US',
+        serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
+        notBefore: caCert.validity.notBefore,
+        notAfter: caCert.validity.notAfter,
+        kmsKeyId: 'test-force-delete-ca-key',
+        kmsCertificateId: 'test-force-delete-kms-cert',
+        status: 'active', // Active CA - normally can't be deleted
+      });
+    });
+
+    afterAll(async () => {
+      // Clean up if test didn't delete it
+      await db.delete(auditLog).where(and(eq(auditLog.entityType, 'ca'), eq(auditLog.entityId, activeCaId))).execute().catch(() => {});
+      await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, activeCaId)).execute().catch(() => {});
+    });
+
+    it('should allow deletion of active CA with forceDelete=true', async () => {
+      const context = await createContext({
+        req: {} as FastifyRequest,
+        res: {} as FastifyReply,
+      });
+      const caller = appRouter.createCaller(context);
+
+      // First verify normal delete would fail
+      await expect(
+        caller.ca.delete({
+          id: activeCaId,
+          destroyKey: false,
+          forceDelete: false,
+        })
+      ).rejects.toThrow('CA must be revoked or expired before deletion');
+
+      // Now use forceDelete to bypass validation
+      const result = await caller.ca.delete({
+        id: activeCaId,
+        destroyKey: false,
+        forceDelete: true,
+      });
+
+      expect(result.success).toBe(true);
+
+      // Verify CA was deleted
+      const dbResult = await db.select().from(certificateAuthorities).where(eq(certificateAuthorities.id, activeCaId));
+      expect(dbResult).toHaveLength(0);
+    });
+  });
+
+  describe('KMS inconsistency handling (CONFLICT error)', () => {
+    let orphanedCaId: string;
+
+    beforeAll(async () => {
+      // Create a CA record with an invalid KMS certificate ID (simulates orphaned record)
+      orphanedCaId = randomUUID();
+      const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+      const caKeyPair = {
+        publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+        privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+      };
+
+      const caCert = generateCertificate({
+        subject: { CN: 'Orphaned CA', O: 'Test Org', C: 'US' },
+        publicKey: caKeyPair.publicKeyPem,
+        signingKey: caKeyPair.privateKeyPem,
+        selfSigned: true,
+      });
+
+      await db.insert(certificateAuthorities).values({
+        id: orphanedCaId,
+        subjectDn: 'CN=Orphaned CA,O=Test Org,C=US',
+        serialNumber: caCert.serialNumber,
+        keyAlgorithm: 'RSA-2048',
+        notBefore: caCert.validity.notBefore,
+        notAfter: caCert.validity.notAfter,
+        kmsKeyId: 'non-existent-kms-key-id',
+        kmsCertificateId: 'non-existent-kms-cert-id', // This doesn't exist in KMS
+        status: 'active',
+      });
+    });
+
+    afterAll(async () => {
+      await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, orphanedCaId)).execute().catch(() => {});
+    });
+
+    it('should return CONFLICT error when CA exists in DB but not in KMS', async () => {
+      const context = await createContext({
+        req: {} as FastifyRequest,
+        res: {} as FastifyReply,
+      });
+      const caller = appRouter.createCaller(context);
+
+      // The getById call should fail with CONFLICT (409) because KMS certificate doesn't exist
+      try {
+        await caller.ca.getById({ id: orphanedCaId });
+        // If we get here, the KMS mock might be returning data - verify the error path
+        expect.fail('Expected CONFLICT error but call succeeded');
+      } catch (error: any) {
+        // tRPC wraps errors - check for CONFLICT code
+        expect(error.code).toBe('CONFLICT');
+        expect(error.message).toContain('not found in KMS');
+      }
+    });
+
+    it('should allow force deletion of orphaned CA record', async () => {
+      const context = await createContext({
+        req: {} as FastifyRequest,
+        res: {} as FastifyReply,
+      });
+      const caller = appRouter.createCaller(context);
+
+      // Even though getById fails, forceDelete should work
+      const result = await caller.ca.delete({
+        id: orphanedCaId,
+        destroyKey: false,
+        forceDelete: true, // Bypass revocation check for orphaned record
+      });
+
+      expect(result.success).toBe(true);
+
+      // Verify CA was deleted
+      const dbResult = await db.select().from(certificateAuthorities).where(eq(certificateAuthorities.id, orphanedCaId));
+      expect(dbResult).toHaveLength(0);
+    });
+  });
 });

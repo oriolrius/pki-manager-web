@@ -1038,3 +1038,213 @@ describe('certificate.issue - Email Protection Certificates', () => {
     ).rejects.toThrow('All email addresses must be from the same domain');
   });
 });
+
+describe('certificate.delete - forceDelete parameter', () => {
+  let caId: string;
+  let activeCertId: string;
+  let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
+
+  beforeAll(async () => {
+    // Create a test CA
+    caId = randomUUID();
+    const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    caKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+    };
+
+    const caCert = generateCertificate({
+      subject: { CN: 'Force Delete Test CA', O: 'Test Organization', C: 'US' },
+      publicKey: caKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+      selfSigned: true,
+    });
+
+    await db.insert(certificateAuthorities).values({
+      id: caId,
+      subjectDn: 'CN=Force Delete Test CA,O=Test Organization,C=US',
+      serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-2048',
+      notBefore: caCert.validity.notBefore,
+      notAfter: caCert.validity.notAfter,
+      kmsKeyId: 'test-ca-key',
+      kmsCertificateId: "test-kms-cert-mock",
+      status: 'active',
+    });
+
+    // Create an active certificate
+    activeCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: { CN: 'force-delete.example.com', O: 'Test Organization', C: 'US' },
+      issuer: { CN: 'Force Delete Test CA', O: 'Test Organization', C: 'US' },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: activeCertId,
+      caId,
+      subjectDn: 'CN=force-delete.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      kmsCertificateId: "test-kms-cert-mock",
+      kmsKeyId: 'test-force-delete-cert-key',
+      status: 'active', // Active certificate - normally can't be deleted
+    });
+  });
+
+  afterAll(async () => {
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.caId, caId)).execute().catch(() => {});
+    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
+  });
+
+  it('should allow deletion of active certificate with forceDelete=true', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // First verify normal delete would fail
+    await expect(
+      caller.certificate.delete({
+        id: activeCertId,
+        destroyKey: false,
+        forceDelete: false,
+      })
+    ).rejects.toThrow('Certificate must be revoked or expired for more than 90 days before deletion');
+
+    // Now use forceDelete to bypass validation
+    const result = await caller.certificate.delete({
+      id: activeCertId,
+      destroyKey: false,
+      forceDelete: true,
+    });
+
+    expect(result.deleted).toBe(true);
+
+    // Verify certificate was deleted
+    const { eq } = await import('drizzle-orm');
+    const dbResult = await db.select().from(certificates).where(eq(certificates.id, activeCertId));
+    expect(dbResult).toHaveLength(0);
+  });
+});
+
+describe('certificate - KMS inconsistency handling (CONFLICT error)', () => {
+  let caId: string;
+  let orphanedCertId: string;
+  let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
+
+  beforeAll(async () => {
+    // Create a test CA
+    caId = randomUUID();
+    const caKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    caKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(caKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
+    };
+
+    const caCert = generateCertificate({
+      subject: { CN: 'KMS Test CA', O: 'Test Organization', C: 'US' },
+      publicKey: caKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+      selfSigned: true,
+    });
+
+    await db.insert(certificateAuthorities).values({
+      id: caId,
+      subjectDn: 'CN=KMS Test CA,O=Test Organization,C=US',
+      serialNumber: caCert.serialNumber,
+      keyAlgorithm: 'RSA-2048',
+      notBefore: caCert.validity.notBefore,
+      notAfter: caCert.validity.notAfter,
+      kmsKeyId: 'test-ca-key',
+      kmsCertificateId: "test-kms-cert-mock",
+      status: 'active',
+    });
+
+    // Create a certificate record with an invalid KMS certificate ID (simulates orphaned record)
+    orphanedCertId = randomUUID();
+    const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const certKeyPair = {
+      publicKeyPem: forge.pki.publicKeyToPem(certKeypair.publicKey),
+      privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
+    };
+
+    const cert = generateCertificate({
+      subject: { CN: 'orphaned.example.com', O: 'Test Organization', C: 'US' },
+      issuer: { CN: 'KMS Test CA', O: 'Test Organization', C: 'US' },
+      publicKey: certKeyPair.publicKeyPem,
+      signingKey: caKeyPair.privateKeyPem,
+    });
+
+    await db.insert(certificates).values({
+      id: orphanedCertId,
+      caId,
+      subjectDn: 'CN=orphaned.example.com,O=Test Organization,C=US',
+      serialNumber: cert.serialNumber,
+      certificateType: 'server',
+      notBefore: cert.validity.notBefore,
+      notAfter: cert.validity.notAfter,
+      kmsCertificateId: 'non-existent-kms-cert-id', // This doesn't exist in KMS
+      kmsKeyId: 'non-existent-kms-key-id',
+      status: 'active',
+    });
+  });
+
+  afterAll(async () => {
+    const { eq } = await import('drizzle-orm');
+    await db.delete(certificates).where(eq(certificates.id, orphanedCertId)).execute().catch(() => {});
+    await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
+  });
+
+  it('should return CONFLICT error when certificate exists in DB but not in KMS', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // The getById call should fail with CONFLICT (409) because KMS certificate doesn't exist
+    try {
+      await caller.certificate.getById({ id: orphanedCertId });
+      // If we get here, the KMS mock might be returning data - verify the error path
+      expect.fail('Expected CONFLICT error but call succeeded');
+    } catch (error: any) {
+      // tRPC wraps errors - check for CONFLICT code
+      expect(error.code).toBe('CONFLICT');
+      expect(error.message).toContain('not found in KMS');
+    }
+  });
+
+  it('should allow force deletion of orphaned certificate record', async () => {
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+    const caller = appRouter.createCaller(context);
+
+    // Even though getById fails, forceDelete should work
+    const result = await caller.certificate.delete({
+      id: orphanedCertId,
+      destroyKey: false,
+      forceDelete: true, // Bypass revocation check for orphaned record
+    });
+
+    expect(result.deleted).toBe(true);
+
+    // Verify certificate was deleted
+    const { eq } = await import('drizzle-orm');
+    const dbResult = await db.select().from(certificates).where(eq(certificates.id, orphanedCertId));
+    expect(dbResult).toHaveLength(0);
+  });
+});

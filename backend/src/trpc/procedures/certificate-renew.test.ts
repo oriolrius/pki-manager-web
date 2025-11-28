@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { appRouter } from "../router.js";
 import { createContext } from "../context.js";
 import { db } from "../../db/client.js";
@@ -43,11 +43,12 @@ describe("Certificate Renew - KMS Integration", () => {
     const caller = appRouter.createCaller(context);
 
     // Create a CA for issuing certificates
+    // NOTE: Use unique naming pattern that won't be matched by other tests' LIKE cleanup patterns
     const caResult = await caller.ca.create({
       subject: {
-        commonName: `Renew Test CA ${randomString.toUpperCase()}`,
-        organization: "Renewal Test Org",
-        organizationalUnit: "PKI Testing",
+        commonName: `RenewTestSuite-CA-${randomString.toUpperCase()}`,
+        organization: "RenewTestSuite Org",
+        organizationalUnit: "PKI RenewTests",
         country: "US",
         state: "New York",
         locality: "New York City",
@@ -83,14 +84,21 @@ describe("Certificate Renew - KMS Integration", () => {
   });
 
   afterAll(async () => {
-    // Clean up all certificates created during tests
+    // IMPORTANT: Delete certificates first to avoid FOREIGN KEY constraint failures
+    // Delete all certificates that reference our test CAs
+    for (const caId of createdCaIds) {
+      await db.delete(certificates).where(eq(certificates.caId, caId)).execute().catch(() => {});
+    }
+    // Also delete by explicit ID list
     for (const certId of createdCertIds) {
       await db.delete(certificates).where(eq(certificates.id, certId)).execute().catch(() => {});
     }
-    // Clean up all CAs created during tests
+    // Now it's safe to delete the CAs
     for (const caId of createdCaIds) {
       await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute().catch(() => {});
     }
+    // Clean up any remaining CAs from this test suite (in case of partial failures)
+    await db.delete(certificateAuthorities).where(like(certificateAuthorities.subjectDn, '%RenewTestSuite%')).catch(() => {});
     console.log("✅ Test cleanup complete");
   });
 
