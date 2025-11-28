@@ -75,6 +75,20 @@ function Certificates() {
   const [progressTitle, setProgressTitle] = useState('');
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
+  // Bulk operation progress state
+  const [bulkOperationProgress, setBulkOperationProgress] = useState<{
+    isOpen: boolean;
+    operation: 'revoke' | 'renew' | 'delete';
+    title: string;
+    items: Array<{
+      id: string;
+      label: string;
+      status: 'pending' | 'processing' | 'success' | 'error';
+      error?: string;
+    }>;
+    isComplete: boolean;
+  } | null>(null);
+
   const copyToClipboard = async (text: string, commandId: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -91,6 +105,24 @@ function Certificates() {
       setCopiedCommand(commandId);
       setTimeout(() => setCopiedCommand(null), 2000);
     }
+  };
+
+  // Helper function to extract CN from subjectDn
+  const extractCN = (subjectDn: string): string => {
+    const match = subjectDn.match(/CN=([^,]+)/);
+    return match?.[1] || subjectDn;
+  };
+
+  // Helper to build progress items from selected certificates
+  const buildProgressItems = (certIds: string[], certificates: typeof filteredCertificates) => {
+    return certIds.map(id => {
+      const cert = certificates.find(c => c.id === id);
+      return {
+        id,
+        label: cert ? extractCN(cert.subjectDn) : id.slice(0, 8),
+        status: 'pending' as const,
+      };
+    });
   };
 
   const certificatesQuery = trpc.certificate.list.useQuery({
@@ -116,21 +148,81 @@ function Certificates() {
   // Bulk operation mutations
   const utils = trpc.useUtils();
   const bulkRevoke = trpc.certificate.bulkRevoke.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Update progress with results
+      setBulkOperationProgress(prev => prev ? {
+        ...prev,
+        isComplete: true,
+        items: prev.items.map(item => {
+          const result = data.results.find(r => r.certificateId === item.id);
+          return {
+            ...item,
+            status: result?.success ? 'success' : 'error',
+            error: result?.error,
+          };
+        }),
+      } : null);
       utils.certificate.list.invalidate();
       setSelectedCertificates(new Set());
+    },
+    onError: (error) => {
+      setBulkOperationProgress(prev => prev ? {
+        ...prev,
+        isComplete: true,
+        items: prev.items.map(i => ({ ...i, status: 'error' as const, error: error.message })),
+      } : null);
     },
   });
   const bulkRenew = trpc.certificate.bulkRenew.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Update progress with results
+      setBulkOperationProgress(prev => prev ? {
+        ...prev,
+        isComplete: true,
+        items: prev.items.map(item => {
+          const result = data.results.find(r => r.originalCertificateId === item.id);
+          return {
+            ...item,
+            status: result?.success ? 'success' : 'error',
+            error: result?.error,
+          };
+        }),
+      } : null);
       utils.certificate.list.invalidate();
       setSelectedCertificates(new Set());
     },
+    onError: (error) => {
+      setBulkOperationProgress(prev => prev ? {
+        ...prev,
+        isComplete: true,
+        items: prev.items.map(i => ({ ...i, status: 'error' as const, error: error.message })),
+      } : null);
+    },
   });
   const bulkDelete = trpc.certificate.bulkDelete.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Update progress with results
+      setBulkOperationProgress(prev => prev ? {
+        ...prev,
+        isComplete: true,
+        items: prev.items.map(item => {
+          const result = data.results.find(r => r.certificateId === item.id);
+          return {
+            ...item,
+            status: result?.success ? 'success' : 'error',
+            error: result?.error,
+          };
+        }),
+      } : null);
       utils.certificate.list.invalidate();
       setSelectedCertificates(new Set());
+    },
+    onError: (error) => {
+      setBulkOperationProgress(prev => prev ? {
+        ...prev,
+        isComplete: true,
+        items: prev.items.map(i => ({ ...i, status: 'error' as const, error: error.message })),
+      } : null);
     },
   });
   const bulkDownload = trpc.certificate.bulkDownload.useQuery(
@@ -148,11 +240,21 @@ function Certificates() {
     setConfirmAction({
       type: 'revoke',
       callback: () => {
+        setShowConfirmDialog(false);
+        // Initialize progress with all items as "processing" (batch mode)
+        const certIds = Array.from(selectedCertificates);
+        const items = buildProgressItems(certIds, filteredCertificates);
+        setBulkOperationProgress({
+          isOpen: true,
+          operation: 'revoke',
+          title: 'Revoking Certificates',
+          items: items.map(i => ({ ...i, status: 'processing' })),
+          isComplete: false,
+        });
         bulkRevoke.mutate({
-          certificateIds: Array.from(selectedCertificates),
+          certificateIds: certIds,
           reason: 'unspecified',
         });
-        setShowConfirmDialog(false);
       },
     });
     setShowConfirmDialog(true);
@@ -162,11 +264,22 @@ function Certificates() {
     setConfirmAction({
       type: 'renew',
       callback: () => {
-        bulkRenew.mutate({
-          certificateIds: Array.from(selectedCertificates),
-          generateNewKey: true,
-        });
         setShowConfirmDialog(false);
+        // Initialize progress with all items as "processing" (batch mode)
+        const certIds = Array.from(selectedCertificates);
+        const items = buildProgressItems(certIds, filteredCertificates);
+        setBulkOperationProgress({
+          isOpen: true,
+          operation: 'renew',
+          title: 'Renewing Certificates',
+          items: items.map(i => ({ ...i, status: 'processing' })),
+          isComplete: false,
+        });
+        bulkRenew.mutate({
+          certificateIds: certIds,
+          generateNewKey: true,
+          revokeOriginal: true,
+        });
       },
     });
     setShowConfirmDialog(true);
@@ -176,11 +289,21 @@ function Certificates() {
     setConfirmAction({
       type: 'delete',
       callback: () => {
+        setShowConfirmDialog(false);
+        // Initialize progress with all items as "processing" (batch mode)
+        const certIds = Array.from(selectedCertificates);
+        const items = buildProgressItems(certIds, filteredCertificates);
+        setBulkOperationProgress({
+          isOpen: true,
+          operation: 'delete',
+          title: 'Deleting Certificates',
+          items: items.map(i => ({ ...i, status: 'processing' })),
+          isComplete: false,
+        });
         bulkDelete.mutate({
-          certificateIds: Array.from(selectedCertificates),
+          certificateIds: certIds,
           destroyKey: true,
         });
-        setShowConfirmDialog(false);
       },
     });
     setShowConfirmDialog(true);
@@ -725,6 +848,107 @@ function Certificates() {
                 {progressSteps.filter(s => s.status === 'done').length} of {progressSteps.length} steps completed
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Operation Progress Dialog */}
+      {bulkOperationProgress?.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card border rounded-lg p-6 max-w-lg w-full mx-4 shadow-lg max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              {!bulkOperationProgress.isComplete && (
+                <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+              )}
+              {bulkOperationProgress.isComplete && (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              )}
+              <h3 className="text-lg font-semibold">{bulkOperationProgress.title}</h3>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mb-4">
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{
+                    width: `${(bulkOperationProgress.items.filter(i =>
+                      i.status === 'success' || i.status === 'error'
+                    ).length / bulkOperationProgress.items.length) * 100}%`,
+                  }}
+                />
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {bulkOperationProgress.items.filter(i => i.status === 'success' || i.status === 'error').length} of {bulkOperationProgress.items.length} completed
+              </p>
+            </div>
+
+            {/* Items List */}
+            <div className="flex-1 overflow-y-auto space-y-2 mb-4 min-h-0">
+              {bulkOperationProgress.items.map((item) => (
+                <div
+                  key={item.id}
+                  className={`flex items-start gap-3 p-2 rounded-lg ${
+                    item.status === 'success' ? 'bg-green-50 dark:bg-green-900/10' :
+                    item.status === 'error' ? 'bg-red-50 dark:bg-red-900/10' :
+                    item.status === 'processing' ? 'bg-blue-50 dark:bg-blue-900/10' :
+                    'bg-muted/50'
+                  }`}
+                >
+                  {/* Status Icon */}
+                  <div className="mt-0.5">
+                    {item.status === 'success' && (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    )}
+                    {item.status === 'error' && (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    )}
+                    {item.status === 'processing' && (
+                      <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {item.status === 'pending' && (
+                      <div className="h-4 w-4 border-2 border-muted-foreground/30 rounded-full" />
+                    )}
+                  </div>
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm truncate ${
+                      item.status === 'processing' ? 'font-medium' : ''
+                    }`}>
+                      {item.label}
+                    </p>
+                    {item.error && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                        {item.error}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Summary & Actions */}
+            {bulkOperationProgress.isComplete && (
+              <div className="border-t pt-4">
+                <div className="flex justify-between text-sm mb-4">
+                  <span className="text-green-600 dark:text-green-400">
+                    {bulkOperationProgress.items.filter(i => i.status === 'success').length} succeeded
+                  </span>
+                  {bulkOperationProgress.items.some(i => i.status === 'error') && (
+                    <span className="text-red-600 dark:text-red-400">
+                      {bulkOperationProgress.items.filter(i => i.status === 'error').length} failed
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setBulkOperationProgress(null)}
+                  className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                >
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
