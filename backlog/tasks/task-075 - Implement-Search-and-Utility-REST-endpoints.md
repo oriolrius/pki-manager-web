@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-27 15:35'
-updated_date: '2025-11-27 19:33'
+updated_date: '2025-11-28 04:36'
 labels:
   - openapi
   - backend
@@ -103,4 +103,45 @@ Created `utility.routes.ts` with 6 REST endpoints wrapping existing tRPC procedu
 ### Test Results
 - All 333 tests pass
 - Tests cover: search results, domain filtering, dashboard stats, expiring items, audit filtering, CSV report generation, error formats, OpenAPI documentation
+
+## Test Output
+
+```
+✓ src/rest/routes/utility.routes.test.ts (31 tests) 5847ms
+   ✓ Utility REST Endpoints > GET /api/v1/search - Global Search > should return grouped results with cas, certificates, and domains arrays
+   ✓ Utility REST Endpoints > GET /api/v1/search - Global Search > should accept query parameter (min 1 char)
+   ✓ Utility REST Endpoints > GET /api/v1/search - Global Search > should accept optional limit parameter (1-50, default 10)
+   ✓ Utility REST Endpoints > GET /api/v1/search - Global Search > should return results with id, type, title, subtitle, status, metadata
+   ✓ Utility REST Endpoints > GET /api/v1/search - Global Search > should return 400 for missing query parameter
+   ✓ Utility REST Endpoints > GET /api/v1/domains - Domain Listing > should return paginated list with items and pagination
+   ✓ Utility REST Endpoints > GET /api/v1/domains - Domain Listing > should support search parameter for domain filtering
+   ✓ Utility REST Endpoints > GET /api/v1/domains - Domain Listing > should support caId parameter to filter by CA
+   ✓ Utility REST Endpoints > GET /api/v1/domains - Domain Listing > should include domain stats in each result
+   ✓ Utility REST Endpoints > GET /api/v1/domains - Domain Listing > should support pagination with limit and offset
+   ✓ Utility REST Endpoints > GET /api/v1/dashboard/stats - Dashboard Statistics > should return CA and certificate counts
+   ✓ Utility REST Endpoints > GET /api/v1/dashboard/stats - Dashboard Statistics > should return real-time counts from database
+   ✓ Utility REST Endpoints > GET /api/v1/dashboard/expiring - Expiring Items > should return array of expiring items
+   ✓ Utility REST Endpoints > GET /api/v1/dashboard/expiring - Expiring Items > should accept optional limit parameter (1-20, default 5)
+   ✓ Utility REST Endpoints > GET /api/v1/dashboard/expiring - Expiring Items > should return items with id, type, cn, san, notAfter, daysRemaining
+   ✓ Utility REST Endpoints > GET /api/v1/dashboard/expiring - Expiring Items > should sort items by notAfter ascending (soonest first)
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should return paginated audit entries with items and totalCount
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should filter by operation parameter
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should filter by entityType parameter
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should filter by entityId parameter
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should filter by status parameter
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should filter by date range (startDate, endDate)
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should return entries in descending timestamp order
+   ✓ Utility REST Endpoints > GET /api/v1/audit - Audit Log > should include all required audit entry fields
+   ✓ Utility REST Endpoints > POST /api/v1/reports - Generate Reports > should accept certificate_inventory reportType
+   ✓ Utility REST Endpoints > POST /api/v1/reports - Generate Reports > should accept revocation reportType
+   ✓ Utility REST Endpoints > POST /api/v1/reports - Generate Reports > should accept ca_operations reportType
+   ✓ Utility REST Endpoints > POST /api/v1/reports - Generate Reports > should return 501 for pdf format
+   ✓ Utility REST Endpoints > POST /api/v1/reports - Generate Reports > should include report metadata in response
+   ✓ Utility REST Endpoints > OpenAPI Documentation > should include all utility endpoints in OpenAPI spec
+   ✓ Utility REST Endpoints > OpenAPI Documentation > should include Search, Domains, Dashboard, Audit tags
+
+Test Files  18 passed (18)
+     Tests  333 passed | 1 skipped (334)
+  Duration  28.70s
+```
 <!-- SECTION:NOTES:END -->
