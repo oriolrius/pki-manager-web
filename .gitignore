@@ -16,3 +16,13 @@ frontend/.env
 backend/.env
 frontend/build/
 pki/
+
+# Claude Code local files
+.claude/scripts/
+.claude/settings.local.json.bak
+
+# Playwright MCP
+.playwright-mcp/
+
+# Database files
+*.db
