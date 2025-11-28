@@ -24,16 +24,11 @@ jobs:
 
     services:
       # Cosmian KMS service for integration tests
+      # Note: No health check - we'll manually wait for KMS to be ready
       kms:
         image: ghcr.io/cosmian/kms:latest
         ports:
           - 42998:9998
-        options: >-
-          --health-cmd "wget -q -O- http://localhost:9998/version || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 60s
 
     steps:
       - name: Checkout repository
