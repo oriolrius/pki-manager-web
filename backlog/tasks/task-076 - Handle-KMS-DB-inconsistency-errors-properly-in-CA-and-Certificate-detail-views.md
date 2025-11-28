@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-28 05:18'
-updated_date: '2025-11-28 05:22'
+updated_date: '2025-11-28 05:57'
 labels:
   - backend
   - frontend
@@ -184,4 +184,56 @@ KMS inconsistency detection verified in test logs:
     certId: "7a73d003-8a05-4741-a252-d685cd796d99"
     kmsCertificateId: "test-kms-cert-mock"
 ```
+
+## Additional Improvements (Follow-up Session)
+
+### Force Delete Feature
+
+Added `forceDelete` parameter to allow deleting orphaned records without requiring revocation:
+
+**Backend Schema (`backend/src/trpc/schemas.ts`)**
+- Added `forceDelete: z.boolean().default(false)` to `deleteCaSchema` and `deleteCertificateSchema`
+
+**Backend CA Service (`backend/src/services/ca.service.ts`)**
+- Added `forceDelete` to `DeleteCAParams` interface
+- Modified delete method to skip revocation/expiration validation when `forceDelete: true`
+
+**Backend CA Procedure (`backend/src/trpc/procedures/ca.ts`)**
+- Pass `forceDelete: input.forceDelete` to service layer
+
+**Backend Certificate Procedure (`backend/src/trpc/procedures/certificate.ts`)**
+- Added conditional check to skip validation when `input.forceDelete` is true
+- Added `forceDelete` to audit log details
+
+### In-App Dialogs
+
+Replaced all browser `confirm()` and `alert()` popups with styled in-app dialogs:
+
+**CA Detail Page (`frontend/src/routes/cas.$id.tsx`)**
+- Added `showForceDeleteDialog`, `showSuccessDialog`, `successMessage`, `forceDeleteError` state
+- Force delete confirmation dialog with warning and CA ID display
+- Success dialog with green checkmark, navigates to /cas on close
+- Error display within confirmation dialog
+
+**Certificate Detail Page (`frontend/src/routes/certificates.$id.tsx`)**
+- Same changes as CA page
+- Success dialog navigates to /certificates
+
+### Error Detection Fix
+
+Fixed error type detection order in both detail pages:
+```typescript
+// IMPORTANT: Check CONFLICT first, before NOT_FOUND, because error message may contain "not found"
+const isKmsInconsistency = query.error.data?.code === 'CONFLICT';
+const isNotFound = !isKmsInconsistency && (
+  query.error.data?.code === 'NOT_FOUND' ||
+  query.error.message.toLowerCase().includes('not found')
+);
+```
+
+### UI Improvements
+
+- Changed error display from warning symbol to "409" status code
+- Updated title from "Data Inconsistency Detected" to "CA/Certificate Not Found in KMS"
+- All dialogs match existing app styling (same as revoke dialog)
 <!-- SECTION:NOTES:END -->
