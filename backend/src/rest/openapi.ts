@@ -66,6 +66,10 @@ No rate limiting is currently enforced. This may change in future versions.
         description: 'Global search across CAs, certificates, and domains',
       },
       {
+        name: 'Domains',
+        description: 'Domain listing with certificate statistics',
+      },
+      {
         name: 'Dashboard',
         description: 'Dashboard statistics and expiring items',
       },
