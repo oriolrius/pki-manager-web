@@ -1,10 +1,11 @@
 ---
 id: task-078
 title: Add OpenAPI Documentation Page with Navigation
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-28 09:40'
-updated_date: '2025-11-28 09:43'
+updated_date: '2025-11-28 09:46'
 labels:
   - frontend
   - openapi
