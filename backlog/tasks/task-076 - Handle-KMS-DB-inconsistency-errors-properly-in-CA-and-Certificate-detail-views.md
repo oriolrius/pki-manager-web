@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-28 05:18'
-updated_date: '2025-11-28 05:21'
+updated_date: '2025-11-28 05:22'
 labels:
   - backend
   - frontend
@@ -163,4 +163,25 @@ Existing tests pass. The KMS inconsistency scenario requires manual testing with
 ### Test Results
 - All 333 backend tests pass
 - KMS inconsistency detection verified in test logs
+
+### Test Output
+
+```
+ ✓ src/rest/routes/certificate.routes.test.ts (36 tests) 27002ms
+ ✓ src/rest/routes/ca.routes.test.ts
+ ✓ src/rest/routes/utility.routes.test.ts
+ ... (all test files)
+
+ Test Files  18 passed (18)
+      Tests  333 passed | 1 skipped (334)
+   Start at  06:20:59
+   Duration  28.23s
+```
+
+KMS inconsistency detection verified in test logs:
+```
+[05:21:25 UTC] WARN: Certificate exists in database but certificate not found in KMS - data inconsistency detected
+    certId: "7a73d003-8a05-4741-a252-d685cd796d99"
+    kmsCertificateId: "test-kms-cert-mock"
+```
 <!-- SECTION:NOTES:END -->
