@@ -35,13 +35,17 @@ export default defineConfig({
       ],
     },
 
-    // Pool options for better isolation
+    // Pool options - use single fork to avoid database race conditions
+    // Tests within a file can still run in parallel if they don't share state
     pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: false,
+        singleFork: true,
       },
     },
+
+    // Run test files sequentially to avoid database conflicts between files
+    fileParallelism: false,
 
     // Sequence options - run tests in parallel by default
     sequence: {
