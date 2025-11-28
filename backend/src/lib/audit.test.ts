@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createAuditLog, auditSuccess, auditFailure } from './audit.js';
-import type { LibSQLDatabase } from 'drizzle-orm/libsql';
+import { createAuditLog, auditSuccess, auditFailure, type AuditLogOptions } from './audit.js';
 
-// Mock the database
+// Mock the database with the type expected by AuditLogOptions
 const mockDb = {
   insert: vi.fn().mockReturnThis(),
   values: vi.fn().mockReturnThis(),
-} as unknown as LibSQLDatabase<any>;
+} as unknown as AuditLogOptions['db'];
 
 describe('Audit Logging', () => {
   beforeEach(() => {
@@ -53,7 +52,7 @@ describe('Audit Logging', () => {
     it('should handle failures gracefully', async () => {
       const failingDb = {
         insert: vi.fn().mockRejectedValue(new Error('Database error')),
-      } as unknown as LibSQLDatabase<any>;
+      } as unknown as AuditLogOptions['db'];
 
       const options = {
         db: failingDb,

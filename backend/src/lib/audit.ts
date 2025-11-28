@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { auditLog, type NewAuditLogEntry } from '../db/schema.js';
+import { auditLog } from '../db/schema.js';
 import { logger } from './logger.js';
 
 export type AuditOperation =

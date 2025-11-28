@@ -30,7 +30,6 @@ import {
   // CRL utilities
   generateCRL,
   parseCRL,
-  isCertificateRevoked,
   verifyCRL,
   CRLReason,
   // Types

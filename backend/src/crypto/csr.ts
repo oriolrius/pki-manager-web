@@ -11,7 +11,6 @@ import type {
   GeneratedCSR,
   X509Extensions,
   CertificateFormat,
-  ExtendedKeyUsage,
 } from './types.js';
 
 /**
@@ -145,7 +144,7 @@ export function generateCSR(params: CSRParams): GeneratedCSR {
     const signatureAlgorithm = params.signatureAlgorithm || 'SHA256-RSA';
     const digestAlgorithm = getForgeDigestAlgorithm(signatureAlgorithm);
 
-    csr.sign(privateKey as forge.pki.rsa.PrivateKey, forge.md[digestAlgorithm].create());
+    csr.sign(privateKey as forge.pki.rsa.PrivateKey, (forge.md as unknown as Record<string, { create(): forge.md.MessageDigest }>)[digestAlgorithm].create());
 
     // Convert to PEM and DER
     const pem = forge.pki.certificationRequestToPem(csr);

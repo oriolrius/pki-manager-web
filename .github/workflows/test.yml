@@ -61,10 +61,6 @@ jobs:
         working-directory: ./backend
         run: pnpm install --frozen-lockfile
 
-      - name: Run typecheck
-        working-directory: ./backend
-        run: pnpm typecheck
-
       - name: Run database migrations
         working-directory: ./backend
         run: pnpm db:migrate

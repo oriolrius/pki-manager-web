@@ -4,14 +4,14 @@
 
 import forge from 'node-forge';
 import { logger } from '../lib/logger.js';
-import { dnToForgeAttributes, forgeAttributesToDn, formatDN, validateDN } from './dn.js';
+import { dnToForgeAttributes, formatDN, validateDN } from './dn.js';
 import { pemToForgeKey, getForgeDigestAlgorithm } from './keys.js';
-import type { CRLParams, GeneratedCRL, CRLEntry, CRLReason, CertificateFormat } from './types.js';
+import type { CRLParams, GeneratedCRL, CRLReason, CertificateFormat } from './types.js';
 
 /**
  * Convert CRLReason enum to KMIP revocation reason code
  */
-function getCRLReasonExtension(reason: CRLReason): any {
+function _getCRLReasonExtension(reason: CRLReason): any {
   return {
     id: '2.5.29.21', // CRL Reason Code OID
     critical: false,
@@ -109,7 +109,7 @@ export function generateCRL(params: CRLParams): GeneratedCRL {
     const signatureAlgorithm = params.signatureAlgorithm || 'SHA256-RSA';
     const digestAlgorithm = getForgeDigestAlgorithm(signatureAlgorithm);
 
-    const md = forge.md[digestAlgorithm].create();
+    const md = (forge.md as unknown as Record<string, { create(): forge.md.MessageDigest }>)[digestAlgorithm].create();
     md.update(forge.asn1.toDer(tbsCertList).getBytes());
     const signature = (privateKey as forge.pki.rsa.PrivateKey).sign(md);
 
@@ -250,7 +250,7 @@ export function isCertificateRevoked(crlPem: string, serialNumber: string): bool
  *
  * Note: Simplified implementation. Full verification requires ASN.1 signature validation.
  */
-export function verifyCRL(crlPem: string, issuerPublicKeyPem: string): boolean {
+export function verifyCRL(crlPem: string, _issuerPublicKeyPem: string): boolean {
   try {
     // Parse the CRL
     parseCRL(crlPem);

@@ -5,7 +5,6 @@ import type {
   KMIPElement,
   KeyPairIds,
   CertificateInfo,
-  KMIPError,
 } from "./types.js";
 
 export interface KMSClientConfig {

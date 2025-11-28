@@ -139,44 +139,45 @@ No rate limiting is currently enforced. This may change in future versions.
         },
 
         // === Schemas generated from Zod via zod-to-json-schema ===
+        // Note: Using 'as any' because JsonSchema7Type doesn't perfectly match OpenAPI SchemaObject
 
         // Common/Enum schemas
-        SubjectDN: openApiSchemas.SubjectDN,
-        CertificateStatus: openApiSchemas.CertificateStatus,
-        CertificateType: openApiSchemas.CertificateType,
-        KeyAlgorithm: openApiSchemas.KeyAlgorithm,
-        RevocationReason: openApiSchemas.RevocationReason,
+        SubjectDN: openApiSchemas.SubjectDN as any,
+        CertificateStatus: openApiSchemas.CertificateStatus as any,
+        CertificateType: openApiSchemas.CertificateType as any,
+        KeyAlgorithm: openApiSchemas.KeyAlgorithm as any,
+        RevocationReason: openApiSchemas.RevocationReason as any,
 
         // CA Request schemas
-        CreateCaRequest: openApiSchemas.CreateCaRequest,
-        ListCasRequest: openApiSchemas.ListCasRequest,
-        RevokeCaRequest: openApiSchemas.RevokeCaRequest,
-        DeleteCaRequest: openApiSchemas.DeleteCaRequest,
+        CreateCaRequest: openApiSchemas.CreateCaRequest as any,
+        ListCasRequest: openApiSchemas.ListCasRequest as any,
+        RevokeCaRequest: openApiSchemas.RevokeCaRequest as any,
+        DeleteCaRequest: openApiSchemas.DeleteCaRequest as any,
 
         // Certificate Request schemas
-        CreateCertificateRequest: openApiSchemas.CreateCertificateRequest,
-        ListCertificatesRequest: openApiSchemas.ListCertificatesRequest,
-        RenewCertificateRequest: openApiSchemas.RenewCertificateRequest,
-        RevokeCertificateRequest: openApiSchemas.RevokeCertificateRequest,
-        DeleteCertificateRequest: openApiSchemas.DeleteCertificateRequest,
-        DownloadCertificateRequest: openApiSchemas.DownloadCertificateRequest,
-        CertificateDetail: openApiSchemas.CertificateDetail,
+        CreateCertificateRequest: openApiSchemas.CreateCertificateRequest as any,
+        ListCertificatesRequest: openApiSchemas.ListCertificatesRequest as any,
+        RenewCertificateRequest: openApiSchemas.RenewCertificateRequest as any,
+        RevokeCertificateRequest: openApiSchemas.RevokeCertificateRequest as any,
+        DeleteCertificateRequest: openApiSchemas.DeleteCertificateRequest as any,
+        DownloadCertificateRequest: openApiSchemas.DownloadCertificateRequest as any,
+        CertificateDetail: openApiSchemas.CertificateDetail as any,
 
         // Bulk Operation schemas
-        BulkCreateCertificatesRequest: openApiSchemas.BulkCreateCertificatesRequest,
-        BulkRevokeCertificatesRequest: openApiSchemas.BulkRevokeCertificatesRequest,
-        BulkRenewCertificatesRequest: openApiSchemas.BulkRenewCertificatesRequest,
-        BulkDeleteCertificatesRequest: openApiSchemas.BulkDeleteCertificatesRequest,
-        BulkDownloadCertificatesRequest: openApiSchemas.BulkDownloadCertificatesRequest,
+        BulkCreateCertificatesRequest: openApiSchemas.BulkCreateCertificatesRequest as any,
+        BulkRevokeCertificatesRequest: openApiSchemas.BulkRevokeCertificatesRequest as any,
+        BulkRenewCertificatesRequest: openApiSchemas.BulkRenewCertificatesRequest as any,
+        BulkDeleteCertificatesRequest: openApiSchemas.BulkDeleteCertificatesRequest as any,
+        BulkDownloadCertificatesRequest: openApiSchemas.BulkDownloadCertificatesRequest as any,
 
         // CRL schemas
-        GenerateCrlRequest: openApiSchemas.GenerateCrlRequest,
-        GetCrlRequest: openApiSchemas.GetCrlRequest,
-        ListCrlsRequest: openApiSchemas.ListCrlsRequest,
+        GenerateCrlRequest: openApiSchemas.GenerateCrlRequest as any,
+        GetCrlRequest: openApiSchemas.GetCrlRequest as any,
+        ListCrlsRequest: openApiSchemas.ListCrlsRequest as any,
 
         // Audit schemas
-        ListAuditLogRequest: openApiSchemas.ListAuditLogRequest,
-        GenerateReportRequest: openApiSchemas.GenerateReportRequest,
+        ListAuditLogRequest: openApiSchemas.ListAuditLogRequest as any,
+        GenerateReportRequest: openApiSchemas.GenerateReportRequest as any,
       },
       responses: {
         BadRequest: {

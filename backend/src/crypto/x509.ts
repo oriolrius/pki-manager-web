@@ -15,14 +15,12 @@ import {
   generateSerialNumber,
   serialNumberToForge,
   getForgeDigestAlgorithm,
-  parseSignatureAlgorithm,
 } from './keys.js';
 import type {
   CertificateParams,
   GeneratedCertificate,
   X509Extensions,
   SubjectAlternativeNames,
-  KeyUsage,
   ExtendedKeyUsage,
   CertificateFormat,
 } from './types.js';
@@ -69,7 +67,8 @@ function addExtensions(cert: forge.pki.Certificate, extensions?: X509Extensions)
 
   // Extended Key Usage
   if (extensions.extendedKeyUsage && extensions.extendedKeyUsage.length > 0) {
-    const ekuMap: Record<ExtendedKeyUsage, string> = {
+    // EKU OID mapping (kept for future reference)
+    const _ekuMap: Record<ExtendedKeyUsage, string> = {
       serverAuth: '1.3.6.1.5.5.7.3.1',
       clientAuth: '1.3.6.1.5.5.7.3.2',
       codeSigning: '1.3.6.1.5.5.7.3.3',
@@ -252,7 +251,7 @@ export function generateCertificate(params: CertificateParams): GeneratedCertifi
     const signatureAlgorithm = params.signatureAlgorithm || 'SHA256-RSA';
     const digestAlgorithm = getForgeDigestAlgorithm(signatureAlgorithm);
 
-    cert.sign(privateKey as forge.pki.rsa.PrivateKey, forge.md[digestAlgorithm].create());
+    cert.sign(privateKey as forge.pki.rsa.PrivateKey, (forge.md as unknown as Record<string, { create(): forge.md.MessageDigest }>)[digestAlgorithm].create());
 
     // Convert to PEM and DER
     const pem = forge.pki.certificateToPem(cert);
@@ -401,13 +400,13 @@ export function verifyCertificateSignature(
   try {
     const cert = forge.pki.certificateFromPem(certificatePem);
 
-    let publicKey: forge.pki.PublicKey;
+    let verifyPublicKey: forge.pki.PublicKey;
 
     if (issuerPublicKeyPem) {
-      publicKey = pemToForgeKey(issuerPublicKeyPem, 'public') as forge.pki.PublicKey;
+      verifyPublicKey = pemToForgeKey(issuerPublicKeyPem, 'public') as forge.pki.PublicKey;
     } else {
       // Use the certificate's own public key for self-signed certs
-      publicKey = cert.publicKey as forge.pki.rsa.PublicKey;
+      verifyPublicKey = cert.publicKey as forge.pki.rsa.PublicKey;
     }
 
     const caStore = forge.pki.createCaStore();
