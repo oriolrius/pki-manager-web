@@ -7,7 +7,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-28 08:52'
-updated_date: '2025-11-28 09:02'
+updated_date: '2025-11-28 09:18'
 labels:
   - frontend
   - ux
@@ -453,4 +453,21 @@ Added real-time progress feedback UI for bulk certificate operations (revoke, re
 - Uses batch mode: all items show "processing" status during operation, then update to success/error based on backend results
 - Backend already returns per-item results with success/error information
 - No backend changes required
+
+## Implementation Summary
+
+- Added bulk operation progress dialog with real-time status updates
+- Each item shows CN extracted from subjectDn, status (pending/processing/success/error), and error messages
+- Progress bar updates as items complete
+- Summary shows success/failure counts
+- Dialog can only be dismissed after completion
+- Added `revokeOriginal: true` to bulk renew to follow PKI best practices (revoke old certificate when renewing)
+- Created 17 unit tests for helper functions and state transitions
+
+### Files Modified
+- `frontend/src/routes/certificates.tsx` - Main implementation
+- `frontend/package.json` - Added test scripts and dependencies
+- `frontend/vitest.config.ts` - New vitest configuration
+- `frontend/src/test/setup.ts` - Test setup
+- `frontend/src/routes/bulk-operation-progress.test.ts` - 17 unit tests
 <!-- SECTION:NOTES:END -->
