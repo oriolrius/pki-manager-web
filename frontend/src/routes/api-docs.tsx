@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
 import SwaggerUI from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
+import { getApiUrl } from '../lib/config';
 
 export const Route = createFileRoute('/api-docs')({
   component: ApiDocsPage,
@@ -13,9 +14,9 @@ function ApiDocsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // VITE_API_URL points to tRPC endpoint (e.g., http://host:port/trpc)
+    // getApiUrl() returns the tRPC endpoint (e.g., http://host:port/trpc)
     // Strip /trpc suffix to get base URL for REST endpoints
-    const trpcUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/trpc';
+    const trpcUrl = getApiUrl();
     const baseUrl = trpcUrl.replace(/\/trpc$/, '');
     fetch(`${baseUrl}/api/v1/openapi.json`)
       .then((res) => {

@@ -11,6 +11,11 @@ vi.mock('swagger-ui-react', () => ({
 // Mock the CSS import
 vi.mock('swagger-ui-react/swagger-ui.css', () => ({}));
 
+// Mock the config module
+vi.mock('../lib/config', () => ({
+  getApiUrl: () => 'http://localhost:3000/trpc',
+}));
+
 // We need to dynamically import the component after mocking
 const renderApiDocsPage = async () => {
   const { Route } = await import('./api-docs');
