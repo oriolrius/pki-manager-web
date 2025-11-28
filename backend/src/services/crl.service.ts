@@ -6,6 +6,7 @@ import { parseCertificate } from '../crypto/x509.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import type { CRLEntry } from '../crypto/types.js';
+import type { ServiceContext } from './types.js';
 
 // Types for CRL Service inputs and outputs
 export interface GenerateCRLParams {
@@ -70,10 +71,8 @@ export interface ListCRLsResult {
   offset: number;
 }
 
-export interface ServiceContext {
-  db: any;
-  ipAddress?: string | null;
-}
+// Re-export ServiceContext for consumers that import from this module
+export type { ServiceContext };
 
 /**
  * CRL Service - Business logic for Certificate Revocation List operations

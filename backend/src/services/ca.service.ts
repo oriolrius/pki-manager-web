@@ -7,6 +7,7 @@ import { formatDN } from '../crypto/dn.js';
 import { parseCertificate } from '../crypto/x509.js';
 import { logger } from '../lib/logger.js';
 import type { DistinguishedName } from '../crypto/types.js';
+import type { ServiceContext } from './types.js';
 
 // Types for CA Service inputs and outputs
 export interface ListCAsParams {
@@ -108,10 +109,8 @@ export interface DeleteCAResult {
   crlsDeleted: number;
 }
 
-export interface ServiceContext {
-  db: any;
-  ipAddress?: string | null;
-}
+// Re-export ServiceContext for consumers that import from this module
+export type { ServiceContext };
 
 /**
  * CA Service - Business logic for Certificate Authority operations

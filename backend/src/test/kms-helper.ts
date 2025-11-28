@@ -3,15 +3,22 @@
  *
  * Provides utilities for tests that require KMS integration.
  * - Checks KMS availability before running integration tests
- * - Allows tests to skip gracefully when KMS is not available
+ * - Automatically starts KMS via docker compose if not available
+ * - Allows tests to skip gracefully when KMS cannot be started
  * - Caches the KMS availability check for performance
  */
+
+import { execSync } from 'child_process';
+import { existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 let kmsAvailabilityCache: boolean | null = null;
 let kmsCheckPromise: Promise<boolean> | null = null;
 
 /**
  * Check if KMS is available by making a health check request.
+ * If KMS is not available, attempts to start it via docker compose.
  * Results are cached to avoid repeated network calls.
  */
 export async function isKmsAvailable(): Promise<boolean> {
@@ -26,11 +33,25 @@ export async function isKmsAvailable(): Promise<boolean> {
   }
 
   // Start a new check
-  kmsCheckPromise = checkKmsHealth();
+  kmsCheckPromise = checkAndStartKms();
   kmsAvailabilityCache = await kmsCheckPromise;
   kmsCheckPromise = null;
 
   return kmsAvailabilityCache;
+}
+
+/**
+ * Check if KMS is available, and if not, try to start it
+ */
+async function checkAndStartKms(): Promise<boolean> {
+  // First, check if KMS is already running
+  const isHealthy = await checkKmsHealth();
+  if (isHealthy) {
+    return true;
+  }
+
+  // KMS is not running, try to start it
+  return tryStartKms();
 }
 
 /**
@@ -51,6 +72,73 @@ async function checkKmsHealth(): Promise<boolean> {
     clearTimeout(timeoutId);
     return response.ok;
   } catch {
+    return false;
+  }
+}
+
+/**
+ * Find the KMS docker-compose directory
+ */
+function findKmsDockerComposeDir(): string | null {
+  // Get the directory of this file
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+
+  // Navigate from backend/src/test to pki-manager/kms (3 levels up to backend, then to kms)
+  const kmsDir = resolve(__dirname, '..', '..', '..', 'kms');
+  const dockerComposePath = resolve(kmsDir, 'docker-compose.yml');
+
+  if (existsSync(dockerComposePath)) {
+    return kmsDir;
+  }
+
+  return null;
+}
+
+/**
+ * Try to start KMS via docker compose
+ * @returns true if KMS was started successfully, false otherwise
+ */
+async function tryStartKms(): Promise<boolean> {
+  const kmsDir = findKmsDockerComposeDir();
+
+  if (!kmsDir) {
+    console.log('  ⚠️  KMS docker-compose.yml not found');
+    return false;
+  }
+
+  console.log('  🚀 KMS not running, attempting to start via docker compose...');
+
+  try {
+    // Start docker compose
+    execSync('docker compose up -d', {
+      cwd: kmsDir,
+      stdio: 'pipe',
+      timeout: 60000, // 60 second timeout
+    });
+
+    console.log('  ⏳ Waiting for KMS to become healthy...');
+
+    // Wait for KMS to become healthy (max 90 seconds)
+    // Note: KMS docker-compose has start_period: 40s + interval: 30s, so we need ~70s minimum
+    const maxWaitTime = 90000;
+    const checkInterval = 2000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const isHealthy = await checkKmsHealth();
+      if (isHealthy) {
+        console.log('  ✅ KMS started successfully');
+        return true;
+      }
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+
+    console.log('  ⚠️  KMS started but health check timed out');
+    return false;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`  ⚠️  Failed to start KMS: ${message}`);
     return false;
   }
 }

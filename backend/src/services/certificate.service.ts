@@ -11,6 +11,7 @@ import {
   validateCertificateValidity,
 } from '../crypto/validation.js';
 import { logger } from '../lib/logger.js';
+import type { ServiceContext } from './types.js';
 
 // Types for Certificate Service inputs and outputs
 export interface ListCertificatesParams {
@@ -160,10 +161,8 @@ export interface DownloadCertificateResult {
   filename: string;
 }
 
-export interface ServiceContext {
-  db: any;
-  ipAddress?: string | null;
-}
+// Re-export ServiceContext for consumers that import from this module
+export type { ServiceContext };
 
 /**
  * Certificate Service - Business logic for Certificate operations
