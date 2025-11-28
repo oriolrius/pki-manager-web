@@ -1,9 +1,10 @@
 ---
 id: task-076
 title: Handle KMS/DB inconsistency errors properly in CA and Certificate detail views
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-11-28 05:18'
+updated_date: '2025-11-28 05:18'
 labels:
   - backend
   - frontend
@@ -78,3 +79,53 @@ Data inconsistency between the application database and KMS can occur when:
 - [ ] #7 Backend logs warning when KMS inconsistency detected with CA ID and KMS certificate ID
 - [ ] #8 Tests clean up any CAs/certificates they create during test execution
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+## Implementation Plan
+
+### Phase 1: Backend Error Handling
+
+1. Add `CAKmsInconsistencyError` class to `backend/src/services/ca.service.ts`:
+   ```typescript
+   export class CAKmsInconsistencyError extends Error {
+     constructor(public caId: string, public kmsError: string) {
+       super(`CA ${caId} exists in database but certificate not found in KMS: ${kmsError}`);
+       this.name = 'CAKmsInconsistencyError';\n     }\n   }\n   ```\n\n2. Wrap KMS call in `getById` method with try-catch:\n   ```typescript\n   let certificatePem: string;\n   try {\n     certificatePem = await kmsService.getCertificate(\n       caRecord.kmsCertificateId,\n       caRecord.id\n     );\n   } catch (kmsError) {\n     logger.warn(\n       { caId: id, kmsCertificateId: caRecord.kmsCertificateId, error: kmsError },\n       'CA exists in database but certificate not found in KMS - data inconsistency detected'\n     );\n     throw new CAKmsInconsistencyError(\n       id,\n       kmsError instanceof Error ? kmsError.message : String(kmsError)\n     );\n   }\n   ```\n\n3. Update `mapServiceError` in `backend/src/trpc/procedures/ca.ts`:\n   ```typescript\n   if (error instanceof CAKmsInconsistencyError) {\n     throw new TRPCError({\n       code: 'CONFLICT',\n       message: error.message,\n     });\n   }\n   ```\n\n### Phase 2: Frontend Error Handling\n\n4. Update `frontend/src/routes/cas.$id.tsx`:\n   - Change error detection from `INTERNAL_SERVER_ERROR` to `CONFLICT`\n   - Display "Data Inconsistency Detected" UI\n   - Show "Remove from Database" button\n\n5. Update `frontend/src/routes/certificates.$id.tsx`:\n   - Same changes as CA detail page\n\n### Phase 3: Testing\n\n6. Run existing tests to ensure no regressions\n7. Verify manually with an orphaned CA record
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Notes
+
+### Changes Made
+
+#### Backend Service (`ca.service.ts`)
+- Added `CAKmsInconsistencyError` class at line 759-764
+- Wrapped KMS call with try-catch at lines 234-250
+- Added warning log with CA ID and KMS certificate ID
+
+#### Backend tRPC (`ca.ts`)
+- Imported `CAKmsInconsistencyError`
+- Added error mapping to `CONFLICT` code (HTTP 409) at lines 28-34
+
+#### Frontend CA Detail (`cas.$id.tsx`)
+- Changed `isKmsError` to `isKmsInconsistency` checking for `CONFLICT` code
+- Shows clear message explaining DB/KMS inconsistency
+- "Remove from Database" button calls delete mutation
+
+#### Frontend Certificate Detail (`certificates.$id.tsx`)
+- Same changes as CA detail page
+
+### Why HTTP 409 CONFLICT?
+
+- HTTP 500 = unexpected server error (wrong for known situation)
+- HTTP 409 = conflict in resource state (correct - DB vs KMS mismatch)
+- Allows frontend to handle specifically and offer resolution
+
+### Test Output
+
+Existing tests pass. The KMS inconsistency scenario requires manual testing with an orphaned DB record.
+<!-- SECTION:NOTES:END -->
