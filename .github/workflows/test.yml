@@ -70,6 +70,10 @@ jobs:
         working-directory: ./backend
         run: pnpm typecheck
 
+      - name: Run database migrations
+        working-directory: ./backend
+        run: pnpm db:migrate
+
       - name: Wait for KMS to be ready
         run: |
           echo "Waiting for KMS to be fully ready..."
@@ -172,6 +176,10 @@ jobs:
       - name: Install backend dependencies
         working-directory: ./backend
         run: pnpm install --frozen-lockfile
+
+      - name: Run database migrations
+        working-directory: ./backend
+        run: pnpm db:migrate
 
       - name: Run tests (KMS tests will be skipped)
         working-directory: ./backend
