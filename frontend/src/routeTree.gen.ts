@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as CertificatesRouteImport } from './routes/certificates'
 import { Route as CasRouteImport } from './routes/cas'
+import { Route as ApiDocsRouteImport } from './routes/api-docs'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CertificatesNewRouteImport } from './routes/certificates.new'
 import { Route as CertificatesBulkRouteImport } from './routes/certificates.bulk'
@@ -26,6 +27,11 @@ const CertificatesRoute = CertificatesRouteImport.update({
 const CasRoute = CasRouteImport.update({
   id: '/cas',
   path: '/cas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocsRoute = ApiDocsRouteImport.update({
+  id: '/api-docs',
+  path: '/api-docs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -61,6 +67,7 @@ const CasIdRoute = CasIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api-docs': typeof ApiDocsRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
   '/cas/$id': typeof CasIdRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api-docs': typeof ApiDocsRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
   '/cas/$id': typeof CasIdRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api-docs': typeof ApiDocsRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
   '/cas/$id': typeof CasIdRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api-docs'
     | '/cas'
     | '/certificates'
     | '/cas/$id'
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api-docs'
     | '/cas'
     | '/certificates'
     | '/cas/$id'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api-docs'
     | '/cas'
     | '/certificates'
     | '/cas/$id'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiDocsRoute: typeof ApiDocsRoute
   CasRoute: typeof CasRouteWithChildren
   CertificatesRoute: typeof CertificatesRouteWithChildren
 }
@@ -143,6 +156,13 @@ declare module '@tanstack/react-router' {
       path: '/cas'
       fullPath: '/cas'
       preLoaderRoute: typeof CasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api-docs': {
+      id: '/api-docs'
+      path: '/api-docs'
+      fullPath: '/api-docs'
+      preLoaderRoute: typeof ApiDocsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -220,6 +240,7 @@ const CertificatesRouteWithChildren = CertificatesRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiDocsRoute: ApiDocsRoute,
   CasRoute: CasRouteWithChildren,
   CertificatesRoute: CertificatesRouteWithChildren,
 }

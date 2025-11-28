@@ -2,7 +2,7 @@ import { createRootRoute, Outlet, Link } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/router-devtools';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChartLine, faShield, faCertificate, faLayerGroup } from '@fortawesome/free-solid-svg-icons';
+import { faChartLine, faShield, faCertificate, faLayerGroup, faBook } from '@fortawesome/free-solid-svg-icons';
 import packageJson from '../../../package.json';
 
 export const Route = createRootRoute({
@@ -61,6 +61,16 @@ function RootComponent() {
                 >
                   <FontAwesomeIcon icon={faLayerGroup} className="h-4 w-4" />
                   Bulk
+                </Link>
+                <Link
+                  to="/api-docs"
+                  className="px-3 py-2 text-sm font-medium rounded-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors flex items-center gap-2"
+                  activeProps={{
+                    className: 'px-3 py-2 text-sm font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/15 transition-colors flex items-center gap-2'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faBook} className="h-4 w-4" />
+                  API Docs
                 </Link>
               </div>
             </div>
