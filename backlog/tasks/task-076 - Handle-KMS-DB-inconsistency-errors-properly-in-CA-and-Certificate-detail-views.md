@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-28 05:18'
-updated_date: '2025-11-28 05:57'
+updated_date: '2025-11-28 06:08'
 labels:
   - backend
   - frontend
@@ -236,4 +236,25 @@ const isNotFound = !isKmsInconsistency && (
 - Changed error display from warning symbol to "409" status code
 - Updated title from "Data Inconsistency Detected" to "CA/Certificate Not Found in KMS"
 - All dialogs match existing app styling (same as revoke dialog)
+
+## Final Test Output (All Tests Passing)
+
+```
+ Test Files  18 passed (18)
+      Tests  339 passed | 1 skipped (340)
+   Start at  07:07:59
+   Duration  28.85s
+```
+
+### Test Fix Applied
+
+Fixed test isolation issue in `certificate-renew.test.ts` where tests were failing due to other test files' `afterAll` cleanup patterns using `LIKE '%Test CA%'` inadvertently deleting this test's CA.
+
+**Solution:**
+- Renamed test CA from `Renew Test CA ${random}` to `RenewTestSuite-CA-${random}` to avoid matching the broad LIKE patterns used by other test files for cleanup
+- Added `like` import from drizzle-orm for cleanup
+- Added fallback cleanup for `%RenewTestSuite%` pattern in afterAll
+
+**Files modified:**
+- `backend/src/trpc/procedures/certificate-renew.test.ts` - Test isolation fix
 <!-- SECTION:NOTES:END -->
