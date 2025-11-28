@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
 ################################################################################
-# Base Stage - Common dependencies
+# Base Stage - Common dependencies for pnpm-based builds
 ################################################################################
 FROM node:22-alpine AS base
 
-# Install pnpm globally
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install specific pnpm version for reproducibility
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # Set working directory
 WORKDIR /app
@@ -56,35 +56,44 @@ WORKDIR /app/backend
 RUN pnpm build
 
 ################################################################################
-# Build Frontend
+# Build Frontend - Use npm for simpler dependency resolution
 ################################################################################
-FROM base AS build-frontend
+FROM node:22-alpine AS build-frontend
+
+# Update npm to latest
+RUN npm install -g npm@latest
+
+WORKDIR /app
 
 # Accept build arguments for frontend configuration
 ARG VITE_API_URL=http://localhost:3000/trpc
 
-# Copy root package files
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-
-# Copy package files for both backend and frontend
-COPY backend/package.json ./backend/
-COPY frontend/package.json ./frontend/
-
-# Install all dependencies
-RUN pnpm install --frozen-lockfile
+# Copy root package.json (needed for version import in frontend)
+COPY package.json ./
 
 # Copy backend source (needed for tRPC types)
+COPY backend/package.json ./backend/
 COPY backend/src/ ./backend/src/
 
-# Copy frontend source
-COPY frontend/ ./frontend/
+# Copy frontend source files (excluding node_modules via .dockerignore)
+COPY frontend/package.json frontend/package-lock.json* ./frontend/
+COPY frontend/src/ ./frontend/src/
+COPY frontend/public/ ./frontend/public/
+COPY frontend/index.html ./frontend/
+COPY frontend/vite.config.ts ./frontend/
+COPY frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json ./frontend/
+COPY frontend/tailwind.config.js* frontend/postcss.config.js* ./frontend/
+COPY frontend/eslint.config.js* ./frontend/
+
+# Install frontend dependencies using npm (simpler flat node_modules)
+WORKDIR /app/frontend
+RUN npm install
 
 # Set environment variable for Vite build
 ENV VITE_API_URL=${VITE_API_URL}
 
-# Build frontend
-WORKDIR /app/frontend
-RUN pnpm build:docker
+# Build frontend using npm
+RUN npm run build:docker
 
 ################################################################################
 # Production Backend Stage
@@ -92,7 +101,7 @@ RUN pnpm build:docker
 FROM node:22-alpine AS backend
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
 
 # Install dumb-init for proper signal handling and OpenJDK for keytool (JKS generation)
 RUN apk add --no-cache dumb-init openjdk17-jre-headless
