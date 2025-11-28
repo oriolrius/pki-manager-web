@@ -76,6 +76,9 @@ export const revokeCaSchema = z.object({
 export const deleteCaSchema = z.object({
   id: idSchema,
   destroyKey: z.boolean().default(true),
+  // forceDelete allows deleting orphaned records (e.g., when KMS data is missing)
+  // When true, skips revocation/expiration checks
+  forceDelete: z.boolean().default(false),
 });
 
 // Certificate schemas
@@ -155,6 +158,9 @@ export const deleteCertificateSchema = z.object({
   id: idSchema,
   destroyKey: z.boolean().default(true),
   removeFromCrl: z.boolean().default(false),
+  // forceDelete allows deleting orphaned records (e.g., when KMS data is missing)
+  // When true, skips revocation/expiration checks
+  forceDelete: z.boolean().default(false),
 });
 
 export const downloadCertificateSchema = z.object({

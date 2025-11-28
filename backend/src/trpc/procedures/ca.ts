@@ -28,9 +28,17 @@ function mapServiceError(error: unknown): never {
   if (error instanceof CAKmsInconsistencyError) {
     // Data inconsistency between DB and KMS - use CONFLICT (HTTP 409)
     // This is a known/manageable situation, not a server error
+    // Include metadata to help frontend display useful information
     throw new TRPCError({
       code: 'CONFLICT',
       message: error.message,
+      cause: {
+        type: 'KMS_INCONSISTENCY',
+        caId: error.caId,
+        kmsCertificateId: error.metadata?.kmsCertificateId,
+        subjectDn: error.metadata?.subjectDn,
+        serialNumber: error.metadata?.serialNumber,
+      },
     });
   }
   if (error instanceof CAAlreadyRevokedError) {
@@ -154,6 +162,7 @@ export const caRouter = router({
           {
             id: input.id,
             destroyKey: input.destroyKey,
+            forceDelete: input.forceDelete,
           }
         );
       } catch (error) {

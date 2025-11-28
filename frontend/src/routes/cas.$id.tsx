@@ -28,9 +28,23 @@ const REVOCATION_REASONS = [
 function CADetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const caQuery = trpc.ca.getById.useQuery({ id });
+  // Disable retries for CONFLICT errors (KMS inconsistency) - they won't resolve with retries
+  const caQuery = trpc.ca.getById.useQuery({ id }, {
+    retry: (failureCount, error) => {
+      // Don't retry CONFLICT errors - they indicate data inconsistency, not transient failures
+      if (error.data?.code === 'CONFLICT' || error.data?.code === 'NOT_FOUND') {
+        return false;
+      }
+      // For other errors, retry up to 3 times (default behavior)
+      return failureCount < 3;
+    },
+  });
   const utils = trpc.useUtils();
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
+  const [showForceDeleteDialog, setShowForceDeleteDialog] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
   const [selectedReason, setSelectedReason] = useState<string>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -114,55 +128,126 @@ function CADetail() {
   }
 
   if (caQuery.isError) {
-    const isNotFound = caQuery.error.data?.code === 'NOT_FOUND' ||
-                       caQuery.error.message.toLowerCase().includes('not found');
     // KMS inconsistency is now properly returned as CONFLICT (HTTP 409) from the backend
+    // IMPORTANT: Check CONFLICT first, before NOT_FOUND, because error message may contain "not found"
     const isKmsInconsistency = caQuery.error.data?.code === 'CONFLICT';
+    const isNotFound = !isKmsInconsistency && (
+      caQuery.error.data?.code === 'NOT_FOUND' ||
+      caQuery.error.message.toLowerCase().includes('not found')
+    );
 
-    if (isNotFound) {
-      return (
-        <div className="text-center py-12 space-y-4">
-          <div className="text-6xl">404</div>
-          <h2 className="text-xl font-semibold">Certificate Authority Not Found</h2>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            The CA you're looking for doesn't exist or may have been deleted.
-          </p>
-          <button
-            onClick={() => navigate({ to: '/cas' })}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Certificate Authorities
-          </button>
-        </div>
-      );
-    }
-
-    // KMS/Database inconsistency error - CA exists in DB but certificate not in KMS
     if (isKmsInconsistency) {
+      // Extract metadata from error cause (sent by backend)
+      const errorCause = caQuery.error.data?.cause as {
+        type?: string;
+        caId?: string;
+        kmsCertificateId?: string;
+        subjectDn?: string;
+        serialNumber?: string;
+      } | undefined;
+
       const handleForceDelete = () => {
-        if (confirm('This will permanently remove the CA record from the database. The certificate data in KMS (if any) will not be affected. Are you sure?')) {
-          deleteMutation.mutate(
-            { id },
-            {
-              onSuccess: () => {
-                utils.ca.list.invalidate();
-                alert('CA record removed from database successfully');
-                navigate({ to: '/cas' });
-              },
-              onError: (error) => {
-                alert(`Failed to remove CA: ${error.message}`);
-              },
-            }
-          );
-        }
+        setShowForceDeleteDialog(true);
+      };
+
+      const confirmForceDelete = () => {
+        setForceDeleteError(null);
+        deleteMutation.mutate(
+          { id, forceDelete: true },
+          {
+            onSuccess: () => {
+              utils.ca.list.invalidate();
+              setShowForceDeleteDialog(false);
+              setSuccessMessage('CA record removed from database successfully');
+              setShowSuccessDialog(true);
+            },
+            onError: (error) => {
+              setForceDeleteError(error.message);
+            },
+          }
+        );
       };
 
       return (
         <div className="max-w-2xl mx-auto py-12 space-y-6">
+          {/* Success Dialog */}
+          {showSuccessDialog && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-shrink-0 w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-bold text-green-700 dark:text-green-400">Success</h2>
+                </div>
+                <p className="text-sm text-muted-foreground mb-6">
+                  {successMessage}
+                </p>
+                <button
+                  onClick={() => {
+                    setShowSuccessDialog(false);
+                    navigate({ to: '/cas' });
+                  }}
+                  className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
+                >
+                  Go to Certificate Authorities
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Force Delete Confirmation Dialog */}
+          {showForceDeleteDialog && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+                <h2 className="text-xl font-bold mb-4 text-destructive">Remove CA from Database</h2>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    This will permanently remove the CA record from the database.
+                    The certificate data in KMS (if any) will not be affected.
+                  </p>
+                  <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md p-3">
+                    <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                      Warning: This action cannot be undone.
+                    </p>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">CA ID:</span>
+                    <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded">{id}</code>
+                  </div>
+                  {forceDeleteError && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+                      <p className="text-sm text-red-800 dark:text-red-300">
+                        <strong>Error:</strong> {forceDeleteError}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowForceDeleteDialog(false)}
+                    disabled={deleteMutation.isPending}
+                    className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmForceDelete}
+                    disabled={deleteMutation.isPending}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium shadow-sm disabled:opacity-50"
+                  >
+                    {deleteMutation.isPending ? 'Removing...' : 'Remove from Database'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="text-center space-y-2">
-            <div className="text-5xl text-orange-500">&#9888;</div>
-            <h2 className="text-xl font-semibold text-destructive">Data Inconsistency Detected</h2>
+            <div className="text-5xl text-orange-500">409</div>
+            <h2 className="text-xl font-semibold text-destructive">CA Not Found in KMS</h2>
           </div>
 
           <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 space-y-3">
@@ -181,12 +266,37 @@ function CADetail() {
             </ul>
           </div>
 
-          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium">CA ID:</p>
-            <code className="text-xs bg-muted px-2 py-1 rounded block overflow-x-auto">{id}</code>
-            <p className="text-sm text-muted-foreground mt-2">
-              Error: {caQuery.error.message}
-            </p>
+          <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+            <h3 className="text-sm font-semibold">Record Details (from Database)</h3>
+            <div className="grid grid-cols-1 gap-2 text-sm">
+              <div>
+                <span className="text-muted-foreground">CA ID:</span>
+                <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded">{id}</code>
+              </div>
+              {errorCause?.subjectDn && (
+                <div>
+                  <span className="text-muted-foreground">Subject DN:</span>
+                  <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded break-all">{errorCause.subjectDn}</code>
+                </div>
+              )}
+              {errorCause?.serialNumber && (
+                <div>
+                  <span className="text-muted-foreground">Serial Number:</span>
+                  <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded">{errorCause.serialNumber}</code>
+                </div>
+              )}
+              {errorCause?.kmsCertificateId && (
+                <div>
+                  <span className="text-muted-foreground">KMS Certificate ID:</span>
+                  <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded break-all">{errorCause.kmsCertificateId}</code>
+                </div>
+              )}
+            </div>
+            <div className="pt-2 border-t border-muted">
+              <p className="text-xs text-muted-foreground">
+                <strong>KMS Error:</strong> {caQuery.error.message}
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -212,6 +322,25 @@ function CADetail() {
               {deleteMutation.isPending ? 'Removing...' : 'Remove from Database'}
             </button>
           </div>
+        </div>
+      );
+    }
+
+    if (isNotFound) {
+      return (
+        <div className="text-center py-12 space-y-4">
+          <div className="text-6xl">404</div>
+          <h2 className="text-xl font-semibold">Certificate Authority Not Found</h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            The CA you're looking for doesn't exist or may have been deleted.
+          </p>
+          <button
+            onClick={() => navigate({ to: '/cas' })}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Certificate Authorities
+          </button>
         </div>
       );
     }

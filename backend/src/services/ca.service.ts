@@ -97,6 +97,8 @@ export interface RevokeCAResult {
 export interface DeleteCAParams {
   id: string;
   destroyKey?: boolean;
+  // forceDelete skips revocation/expiration checks, used for orphaned records
+  forceDelete?: boolean;
 }
 
 export interface DeleteCAResult {
@@ -245,7 +247,12 @@ export class CAService {
       );
       throw new CAKmsInconsistencyError(
         id,
-        kmsError instanceof Error ? kmsError.message : String(kmsError)
+        kmsError instanceof Error ? kmsError.message : String(kmsError),
+        {
+          kmsCertificateId: caRecord.kmsCertificateId,
+          subjectDn: caRecord.subjectDn,
+          serialNumber: caRecord.serialNumber,
+        }
       );
     }
 
@@ -631,11 +638,12 @@ export class CAService {
     const caRecord = ca[0];
     const now = new Date();
 
-    // Validate CA is revoked or expired
+    // Validate CA is revoked or expired (unless forceDelete is true)
+    // forceDelete allows removing orphaned DB records when KMS data is missing
     const isExpired = now > caRecord.notAfter;
     const isRevoked = caRecord.status === 'revoked';
 
-    if (!isRevoked && !isExpired) {
+    if (!params.forceDelete && !isRevoked && !isExpired) {
       throw new CANotRevokableError(params.id);
     }
 
@@ -770,7 +778,15 @@ export class CAOperationError extends Error {
 }
 
 export class CAKmsInconsistencyError extends Error {
-  constructor(public caId: string, public kmsError: string) {
+  constructor(
+    public caId: string,
+    public kmsError: string,
+    public metadata?: {
+      kmsCertificateId?: string;
+      subjectDn?: string;
+      serialNumber?: string;
+    }
+  ) {
     super(`CA ${caId} exists in database but certificate not found in KMS: ${kmsError}`);
     this.name = 'CAKmsInconsistencyError';
   }

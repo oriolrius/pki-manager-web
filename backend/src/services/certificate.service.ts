@@ -136,6 +136,8 @@ export interface DeleteCertificateParams {
   id: string;
   destroyKey?: boolean;
   removeFromCrl?: boolean;
+  // forceDelete skips revocation/expiration checks, used for orphaned records
+  forceDelete?: boolean;
 }
 
 export interface DeleteCertificateResult {
@@ -354,7 +356,12 @@ export class CertificateService {
       );
       throw new CertificateKmsInconsistencyError(
         id,
-        kmsError instanceof Error ? kmsError.message : String(kmsError)
+        kmsError instanceof Error ? kmsError.message : String(kmsError),
+        {
+          kmsCertificateId: certificate.kmsCertificateId,
+          subjectDn: certificate.subjectDn,
+          serialNumber: certificate.serialNumber,
+        }
       );
     }
 
@@ -1118,11 +1125,12 @@ export class CertificateService {
     const now = new Date();
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    // Validation: Certificate must be revoked or expired > 90 days
+    // Validation: Certificate must be revoked or expired > 90 days (unless forceDelete is true)
+    // forceDelete allows removing orphaned DB records when KMS data is missing
     const isRevoked = cert.status === 'revoked';
     const isExpiredOverNinetyDays = cert.notAfter < ninetyDaysAgo;
 
-    if (!isRevoked && !isExpiredOverNinetyDays) {
+    if (!params.forceDelete && !isRevoked && !isExpiredOverNinetyDays) {
       throw new CertificateNotDeletableError(params.id);
     }
 
@@ -1294,7 +1302,15 @@ export class CertificateOperationError extends Error {
 }
 
 export class CertificateKmsInconsistencyError extends Error {
-  constructor(public certId: string, public kmsError: string) {
+  constructor(
+    public certId: string,
+    public kmsError: string,
+    public metadata?: {
+      kmsCertificateId?: string;
+      subjectDn?: string;
+      serialNumber?: string;
+    }
+  ) {
     super(`Certificate ${certId} exists in database but certificate not found in KMS: ${kmsError}`);
     this.name = 'CertificateKmsInconsistencyError';
   }

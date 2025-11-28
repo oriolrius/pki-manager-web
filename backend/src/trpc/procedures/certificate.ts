@@ -385,6 +385,13 @@ export const certificateRouter = router({
         throw new TRPCError({
           code: 'CONFLICT',
           message: `Certificate ${input.id} exists in database but certificate not found in KMS: ${kmsError instanceof Error ? kmsError.message : String(kmsError)}`,
+          cause: {
+            type: 'KMS_INCONSISTENCY',
+            certId: input.id,
+            kmsCertificateId: certificate.kmsCertificateId,
+            subjectDn: certificate.subjectDn,
+            serialNumber: certificate.serialNumber,
+          },
         });
       }
 
@@ -1311,17 +1318,20 @@ export const certificateRouter = router({
       const cert = certResult[0];
 
       // Validation: Certificate must be revoked or expired > 90 days
-      const now = new Date();
-      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      // Skip validation when forceDelete is true (e.g., for orphaned records with missing KMS data)
+      if (!input.forceDelete) {
+        const now = new Date();
+        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-      const isRevoked = cert.status === 'revoked';
-      const isExpiredOverNinetyDays = cert.notAfter < ninetyDaysAgo;
+        const isRevoked = cert.status === 'revoked';
+        const isExpiredOverNinetyDays = cert.notAfter < ninetyDaysAgo;
 
-      if (!isRevoked && !isExpiredOverNinetyDays) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Certificate must be revoked or expired for more than 90 days before deletion',
-        });
+        if (!isRevoked && !isExpiredOverNinetyDays) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Certificate must be revoked or expired for more than 90 days before deletion',
+          });
+        }
       }
 
       try {
@@ -1339,6 +1349,7 @@ export const certificateRouter = router({
             status: cert.status,
             destroyKey: input.destroyKey,
             removeFromCrl: input.removeFromCrl,
+            forceDelete: input.forceDelete,
             revocationDate: cert.revocationDate?.toISOString(),
             revocationReason: cert.revocationReason,
           }),
