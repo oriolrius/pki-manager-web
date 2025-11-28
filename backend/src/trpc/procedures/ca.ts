@@ -14,6 +14,7 @@ import {
   CANotRevokableError,
   CAHasActiveCertificatesError,
   CAOperationError,
+  CAKmsInconsistencyError,
 } from '../../services/ca.service.js';
 
 // Helper to map service errors to tRPC errors
@@ -21,6 +22,14 @@ function mapServiceError(error: unknown): never {
   if (error instanceof CANotFoundError) {
     throw new TRPCError({
       code: 'NOT_FOUND',
+      message: error.message,
+    });
+  }
+  if (error instanceof CAKmsInconsistencyError) {
+    // Data inconsistency between DB and KMS - use CONFLICT (HTTP 409)
+    // This is a known/manageable situation, not a server error
+    throw new TRPCError({
+      code: 'CONFLICT',
       message: error.message,
     });
   }

@@ -228,9 +228,121 @@ function CertificateDetail() {
   }
 
   if (certQuery.isError) {
+    const isNotFound = certQuery.error.data?.code === 'NOT_FOUND' ||
+                       certQuery.error.message.toLowerCase().includes('not found');
+    // KMS inconsistency is now properly returned as CONFLICT (HTTP 409) from the backend
+    const isKmsInconsistency = certQuery.error.data?.code === 'CONFLICT';
+
+    if (isNotFound) {
+      return (
+        <div className="text-center py-12 space-y-4">
+          <div className="text-6xl">404</div>
+          <h2 className="text-xl font-semibold">Certificate Not Found</h2>
+          <p className="text-muted-foreground max-w-md mx-auto">
+            The certificate you're looking for doesn't exist or may have been deleted.
+          </p>
+          <button
+            onClick={() => navigate({ to: '/certificates' })}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
+          >
+            <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
+            Back to Certificates
+          </button>
+        </div>
+      );
+    }
+
+    // KMS/Database inconsistency error - Certificate exists in DB but not in KMS
+    if (isKmsInconsistency) {
+      const handleForceDelete = () => {
+        if (confirm('This will permanently remove the certificate record from the database. The certificate data in KMS (if any) will not be affected. Are you sure?')) {
+          deleteMutation.mutate(
+            { id },
+            {
+              onSuccess: () => {
+                utils.certificate.list.invalidate();
+                alert('Certificate record removed from database successfully');
+                navigate({ to: '/certificates' });
+              },
+              onError: (error) => {
+                alert(`Failed to remove certificate: ${error.message}`);
+              },
+            }
+          );
+        }
+      };
+
+      return (
+        <div className="max-w-2xl mx-auto py-12 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="text-5xl text-orange-500">&#9888;</div>
+            <h2 className="text-xl font-semibold text-destructive">Data Inconsistency Detected</h2>
+          </div>
+
+          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 space-y-3">
+            <p className="text-sm">
+              <strong>Problem:</strong> This certificate exists in the application database but could not
+              be retrieved from the Key Management System (KMS).
+            </p>
+            <p className="text-sm text-muted-foreground">
+              This can happen when:
+            </p>
+            <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+              <li>The certificate was deleted directly from the KMS</li>
+              <li>The KMS database was restored from a backup without the certificate</li>
+              <li>There was a partial failure during certificate issuance</li>
+              <li>The KMS is temporarily unavailable</li>
+            </ul>
+          </div>
+
+          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+            <p className="text-sm font-medium">Certificate ID:</p>
+            <code className="text-xs bg-muted px-2 py-1 rounded block overflow-x-auto">{id}</code>
+            <p className="text-sm text-muted-foreground mt-2">
+              Error: {certQuery.error.message}
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => navigate({ to: '/certificates' })}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 border rounded-md hover:bg-muted font-medium"
+            >
+              <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
+              Back to Certificates
+            </button>
+            <button
+              onClick={() => certQuery.refetch()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
+            >
+              Retry
+            </button>
+            <button
+              onClick={handleForceDelete}
+              disabled={deleteMutation.isPending}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium disabled:opacity-50"
+            >
+              <FontAwesomeIcon icon={faTrash} className="h-4 w-4" />
+              {deleteMutation.isPending ? 'Removing...' : 'Remove from Database'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="text-center py-8 text-destructive">
-        Error loading certificate: {certQuery.error.message}
+      <div className="text-center py-12 space-y-4">
+        <div className="text-destructive text-lg font-semibold">Error Loading Certificate</div>
+        <p className="text-muted-foreground max-w-md mx-auto">
+          {certQuery.error.message}
+        </p>
+        <button
+          onClick={() => navigate({ to: '/certificates' })}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
+        >
+          <FontAwesomeIcon icon={faArrowLeft} className="h-4 w-4" />
+          Back to Certificates
+        </button>
       </div>
     );
   }

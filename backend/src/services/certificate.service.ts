@@ -340,10 +340,23 @@ export class CertificateService {
 
     // Fetch certificate from KMS
     const kmsService = getKMSService();
-    const certificatePem = await kmsService.getCertificate(
-      certificate.kmsCertificateId,
-      certificate.id
-    );
+    let certificatePem: string;
+    try {
+      certificatePem = await kmsService.getCertificate(
+        certificate.kmsCertificateId,
+        certificate.id
+      );
+    } catch (kmsError) {
+      // Certificate exists in DB but not found in KMS - data inconsistency
+      logger.warn(
+        { certId: id, kmsCertificateId: certificate.kmsCertificateId, error: kmsError },
+        'Certificate exists in database but certificate not found in KMS - data inconsistency detected'
+      );
+      throw new CertificateKmsInconsistencyError(
+        id,
+        kmsError instanceof Error ? kmsError.message : String(kmsError)
+      );
+    }
 
     // Parse certificate to extract details
     const parsed = parseCertificate(certificatePem, 'PEM');
@@ -1277,6 +1290,13 @@ export class CertificateOperationError extends Error {
   constructor(public operation: string, public cause: unknown) {
     super(`Failed to ${operation} certificate: ${cause instanceof Error ? cause.message : String(cause)}`);
     this.name = 'CertificateOperationError';
+  }
+}
+
+export class CertificateKmsInconsistencyError extends Error {
+  constructor(public certId: string, public kmsError: string) {
+    super(`Certificate ${certId} exists in database but certificate not found in KMS: ${kmsError}`);
+    this.name = 'CertificateKmsInconsistencyError';
   }
 }
 

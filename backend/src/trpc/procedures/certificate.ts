@@ -368,11 +368,25 @@ export const certificateRouter = router({
 
       // Fetch certificate from KMS
       const { getKMSService } = await import('../../kms/service.js');
+      const { logger } = await import('../../lib/logger.js');
       const kmsService = getKMSService();
-      const certificatePem = await kmsService.getCertificate(
-        certificate.kmsCertificateId,
-        certificate.id
-      );
+      let certificatePem: string;
+      try {
+        certificatePem = await kmsService.getCertificate(
+          certificate.kmsCertificateId,
+          certificate.id
+        );
+      } catch (kmsError) {
+        // Certificate exists in DB but not found in KMS - data inconsistency
+        logger.warn(
+          { certId: input.id, kmsCertificateId: certificate.kmsCertificateId, error: kmsError },
+          'Certificate exists in database but certificate not found in KMS - data inconsistency detected'
+        );
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: `Certificate ${input.id} exists in database but certificate not found in KMS: ${kmsError instanceof Error ? kmsError.message : String(kmsError)}`,
+        });
+      }
 
       // Parse certificate to extract details
       const parsed = parseCertificate(certificatePem, 'PEM');
