@@ -29,11 +29,11 @@ jobs:
         ports:
           - 42998:9998
         options: >-
-          --health-cmd "curl -f http://localhost:9998/version || exit 1"
+          --health-cmd "wget -q -O- http://localhost:9998/version || exit 1"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
-          --health-start-period 30s
+          --health-retries 10
+          --health-start-period 60s
 
     steps:
       - name: Checkout repository
@@ -78,15 +78,16 @@ jobs:
         run: |
           echo "Waiting for KMS to be fully ready..."
           for i in {1..30}; do
-            if curl -s http://localhost:42998/version > /dev/null 2>&1; then
+            if curl -sf http://localhost:42998/version > /dev/null 2>&1; then
               echo "KMS is ready!"
-              break
+              curl -s http://localhost:42998/version
+              exit 0
             fi
             echo "Attempt $i: KMS not ready yet, waiting..."
             sleep 2
           done
-          # Final check
-          curl -s http://localhost:42998/version || (echo "KMS failed to start" && exit 1)
+          echo "KMS failed to start"
+          exit 1
 
       - name: Run tests
         working-directory: ./backend
