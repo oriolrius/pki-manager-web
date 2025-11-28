@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-28 05:18'
-updated_date: '2025-11-28 06:08'
+updated_date: '2025-11-28 06:11'
 labels:
   - backend
   - frontend
@@ -257,4 +257,48 @@ Fixed test isolation issue in `certificate-renew.test.ts` where tests were faili
 
 **Files modified:**
 - `backend/src/trpc/procedures/certificate-renew.test.ts` - Test isolation fix
+
+## Verbose Test Output (Part 1)
+
+```
+✓ src/rest/openapi.test.ts (30 tests) 142ms
+✓ src/lib/audit.test.ts (8 tests) 14ms
+✓ src/trpc/openapi.test.ts (17 tests) 8ms
+✓ src/trpc/procedures/audit.test.ts (10 tests) 64ms
+✓ src/server.test.ts (17 tests) 49ms
+✓ src/trpc/procedures/certificate-bulk.test.ts (8 tests) 279ms
+✓ src/crypto/crypto.test.ts (30 tests | 1 skipped) 913ms
+✓ src/server.crl-endpoint.test.ts (13 tests) 516ms
+✓ src/trpc/procedures/ca-create.test.ts (1 test) 558ms
+✓ src/rest/routes/certificate-download.test.ts (23 tests) 3638ms
+✓ src/rest/routes/bulk.routes.test.ts (22 tests) 4196ms
+✓ src/trpc/procedures/certificate-issue.test.ts (10 tests) 4681ms
+✓ src/rest/routes/utility.routes.test.ts (33 tests) 5383ms
+✓ src/trpc/procedures/certificate-renew.test.ts (6 tests) 6104ms
+✓ src/trpc/procedures/ca.test.ts (24 tests) 9016ms
+✓ src/trpc/procedures/certificate.test.ts (23 tests) 10485ms
+✓ src/rest/routes/ca.routes.test.ts (29 tests) 15650ms
+✓ src/rest/routes/certificate.routes.test.ts (36 tests) 26323ms
+
+Test Files  18 passed (18)
+     Tests  339 passed | 1 skipped (340)
+  Duration  27.59s
+```
+
+## Verbose Test Output (Part 2) - Key Tests
+
+**KMS Inconsistency Tests:**
+- ✓ ca.test.ts > KMS inconsistency handling > should return CONFLICT error when CA exists in DB but not in KMS (3036ms)
+- ✓ certificate.test.ts > KMS inconsistency handling > should return CONFLICT error when certificate exists in DB but not in KMS (3010ms)
+
+**Certificate Renew Tests (all passing):**
+- ✓ should renew a certificate with new key generation (685ms)
+- ✓ should renew a certificate with key reuse (young cert) (1103ms)
+- ✓ should renew a certificate with updated subject info (1133ms)
+- ✓ should renew and revoke the original certificate (841ms)
+- ✓ should reject renewal of revoked certificate (333ms)
+
+**Force Delete Tests:**
+- ✓ ca.test.ts > forceDelete parameter > should allow deletion of active CA with forceDelete=true
+- ✓ certificate.test.ts > forceDelete parameter > should allow deletion of active certificate with forceDelete=true
 <!-- SECTION:NOTES:END -->
