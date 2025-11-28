@@ -3,7 +3,7 @@ id: task-077
 title: >-
   Add progress feedback UI for bulk certificate operations (revoke, renew,
   delete)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-11-28 08:52'
@@ -416,3 +416,41 @@ describe('Bulk Operation Progress', () => {
 ### No Backend Changes Required
 The existing bulk endpoints already return per-item results with success/error info.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Summary
+
+Added real-time progress feedback UI for bulk certificate operations (revoke, renew, delete).
+
+### Changes Made
+
+**frontend/src/routes/certificates.tsx:**
+- Added `bulkOperationProgress` state to track progress of bulk operations
+- Added `extractCN()` helper function to extract Common Name from subject DN
+- Added `buildProgressItems()` helper to create initial progress items from selected certificates
+- Updated `bulkRevoke`, `bulkRenew`, `bulkDelete` mutations with `onSuccess` and `onError` handlers to update progress state
+- Updated `handleBulkRevoke`, `handleBulkRenew`, `handleBulkDelete` handlers to initialize progress dialog
+- Added Bulk Operation Progress Dialog component with:
+  - Header showing operation title with spinning/success icon
+  - Progress bar showing completion percentage
+  - Scrollable list of items with per-item status icons (pending/processing/success/error)
+  - Error messages displayed below failed items
+  - Summary section showing success/failure counts
+  - Close button disabled until operation completes
+
+**frontend/src/routes/bulk-operation-progress.test.ts:**
+- 17 unit tests covering helper functions and state transitions
+- Tests for `extractCN()`, `buildProgressItems()`, progress state transitions, and summary calculations
+
+**frontend/vitest.config.ts, src/test/setup.ts, package.json:**
+- Set up vitest testing framework for frontend
+- Added test and test:watch scripts
+
+### Technical Notes
+
+- Uses batch mode: all items show "processing" status during operation, then update to success/error based on backend results
+- Backend already returns per-item results with success/error information
+- No backend changes required
+<!-- SECTION:NOTES:END -->
