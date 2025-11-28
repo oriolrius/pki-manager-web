@@ -25,6 +25,7 @@ import { appRouter } from '../../trpc/router.js';
 import { createContext } from '../../trpc/context.js';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
+import { isKmsAvailable } from '../../test/kms-helper.js';
 import { eq } from 'drizzle-orm';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 
@@ -34,14 +35,22 @@ const createdCertIds: string[] = [];
 
 /**
  * Integration tests for Certificate Download with real KMS
+ * Tests will be SKIPPED if KMS is not available.
  */
 describe('Certificate Download - KMS Integration', () => {
   let server: FastifyInstance;
   let testCaId: string;
   let testCertId: string;
+  let kmsAvailable: boolean;
 
-  // Create server, CA, and certificate before all tests
+  // Check KMS availability and create server, CA, and certificate before all tests
   beforeAll(async () => {
+    kmsAvailable = await isKmsAvailable();
+    if (!kmsAvailable) {
+      console.log('  ⚠️  Skipping certificate download tests - KMS not available');
+      return;
+    }
+
     // Create and configure test server
     server = Fastify({
       logger: false,
@@ -107,8 +116,10 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   afterAll(async () => {
-    // Clean up server
-    await server.close();
+    // Clean up server if it was created
+    if (server) {
+      await server.close();
+    }
 
     // Clean up all certificates created during tests
     for (const certId of createdCertIds) {
@@ -118,11 +129,18 @@ describe('Certificate Download - KMS Integration', () => {
     for (const caId of createdCaIds) {
       await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute().catch(() => {});
     }
-    console.log('✅ Test cleanup complete');
+    if (createdCaIds.length > 0 || createdCertIds.length > 0) {
+      console.log('✅ Test cleanup complete');
+    }
   });
 
   describe('Certificate Format Downloads', () => {
-    it('should download certificate in PEM format', async () => {
+    it('should download certificate in PEM format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pem`,
@@ -142,7 +160,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ PEM format download works');
     });
 
-    it('should download certificate in DER format', async () => {
+    it('should download certificate in DER format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=der`,
@@ -161,7 +184,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ DER format download works');
     });
 
-    it('should download certificate chain in PEM format', async () => {
+    it('should download certificate chain in PEM format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=chain-pem`,
@@ -178,7 +206,12 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('Private Key Format Downloads', () => {
-    it('should download private key in PEM format (key-pem)', async () => {
+    it('should download private key in PEM format (key-pem)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=key-pem`,
@@ -198,7 +231,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ key-pem format download works');
     });
 
-    it('should download private key in PKCS8 PEM format', async () => {
+    it('should download private key in PKCS8 PEM format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pkcs8-pem`,
@@ -216,7 +254,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ pkcs8-pem format download works');
     });
 
-    it('should download private key in DER format (key-der)', async () => {
+    it('should download private key in DER format (key-der)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=key-der`,
@@ -235,7 +278,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ key-der format download works');
     });
 
-    it('should download private key in PKCS8 DER format', async () => {
+    it('should download private key in PKCS8 DER format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pkcs8-der`,
@@ -253,7 +301,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ pkcs8-der format download works');
     });
 
-    it('should download encrypted private key with password (pkcs8-encrypted)', async () => {
+    it('should download encrypted private key with password (pkcs8-encrypted)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pkcs8-encrypted&password=testpassword123`,
@@ -276,7 +329,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ pkcs8-encrypted format download works');
     });
 
-    it('should require password for pkcs8-encrypted format', async () => {
+    it('should require password for pkcs8-encrypted format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pkcs8-encrypted`,
@@ -291,7 +349,12 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('PKCS#12 Bundle Downloads', () => {
-    it('should download PKCS#12 bundle (p12)', async () => {
+    it('should download PKCS#12 bundle (p12)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=p12&password=testpassword123`,
@@ -320,7 +383,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ p12 format download works');
     });
 
-    it('should download PKCS#12 bundle (pfx alias)', async () => {
+    it('should download PKCS#12 bundle (pfx alias)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pfx&password=testpassword123`,
@@ -334,7 +402,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ pfx format download works (alias for p12)');
     });
 
-    it('should require password for p12 format', async () => {
+    it('should require password for p12 format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=p12`,
@@ -347,7 +420,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ p12 correctly requires password');
     });
 
-    it('should require password for pfx format', async () => {
+    it('should require password for pfx format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=pfx`,
@@ -362,7 +440,12 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('Full PEM Downloads', () => {
-    it('should download full PEM (certificate + key)', async () => {
+    it('should download full PEM (certificate + key)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=full-pem`,
@@ -386,7 +469,12 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('JKS Format', () => {
-    it('should download JKS keystore format with certificate and private key', async () => {
+    it('should download JKS keystore format with certificate and private key', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=jks-keystore&password=testpassword123`,
@@ -409,7 +497,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ JKS keystore download works');
     });
 
-    it('should download JKS keystore format without password (uses default changeit)', async () => {
+    it('should download JKS keystore format without password (uses default changeit)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=jks-keystore`,
@@ -423,7 +516,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ JKS keystore with default password works');
     });
 
-    it('should download JKS truststore format with CA certificate only', async () => {
+    it('should download JKS truststore format with CA certificate only', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=jks-truststore&password=testpassword123`,
@@ -449,7 +547,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ JKS truststore download works');
     });
 
-    it('should download JKS truststore format without password (uses default changeit)', async () => {
+    it('should download JKS truststore format without password (uses default changeit)', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=jks-truststore`,
@@ -465,7 +568,12 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('Non-implemented Formats', () => {
-    it('should return 400 for full-der format with P12 suggestion', async () => {
+    it('should return 400 for full-der format with P12 suggestion', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=full-der`,
@@ -479,7 +587,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ full-der returns 400 with P12 suggestion');
     });
 
-    it('should return 400 for CSR format with explanation', async () => {
+    it('should return 400 for CSR format with explanation', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=csr-pem`,
@@ -494,7 +607,12 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('Error Handling', () => {
-    it('should return 404 for non-existent certificate', async () => {
+    it('should return 404 for non-existent certificate', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: '/api/v1/certificates/00000000-0000-0000-0000-000000000000/download?format=pem',
@@ -507,7 +625,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ 404 for non-existent certificate');
     });
 
-    it('should return 400 for invalid format', async () => {
+    it('should return 400 for invalid format', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=invalid`,
@@ -518,7 +641,12 @@ describe('Certificate Download - KMS Integration', () => {
       console.log('✅ 400 for invalid format');
     });
 
-    it('should return 400 when format is missing', async () => {
+    it('should return 400 when format is missing', async (ctx) => {
+      if (!kmsAvailable) {
+        ctx.skip();
+        return;
+      }
+
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download`,

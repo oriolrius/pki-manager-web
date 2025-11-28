@@ -42,7 +42,7 @@ describe('CA REST Endpoints', () => {
       privateKeyPem: forge.pki.privateKeyToPem(caKeypair.privateKey),
     };
 
-    const subject = options.subject || `CN=Test CA ${caId.slice(0, 8)},O=Test Organization,C=US`;
+    const subject = options.subject || `CN=CaRoutesTest CA ${caId.slice(0, 8)},O=CaRoutesTestOrg,C=US`;
     const subjectParts = subject.split(',').reduce((acc, part) => {
       const [key, value] = part.trim().split('=');
       acc[key] = value;
@@ -88,7 +88,7 @@ describe('CA REST Endpoints', () => {
       privateKeyPem: forge.pki.privateKeyToPem(certKeypair.privateKey),
     };
 
-    const subject = `CN=test-cert-${certId.slice(0, 8)}.example.com,O=Test Organization,C=US`;
+    const subject = `CN=caroutes-cert-${certId.slice(0, 8)}.example.com,O=CaRoutesTestOrg,C=US`;
     const subjectParts = subject.split(',').reduce((acc, part) => {
       const [key, value] = part.trim().split('=');
       acc[key] = value;
@@ -147,11 +147,10 @@ describe('CA REST Endpoints', () => {
 
   beforeAll(async () => {
     // Clean up any leftover test data from previous interrupted runs
+    // Use unique prefixes to avoid interfering with other parallel tests
     const { like } = await import('drizzle-orm');
-    await db.delete(certificates).where(like(certificates.subjectDn, '%Test%')).catch(() => {});
-    await db.delete(certificates).where(like(certificates.subjectDn, '%test-cert%')).catch(() => {});
-    await db.delete(certificateAuthorities).where(like(certificateAuthorities.subjectDn, '%Test CA%')).catch(() => {});
-    await db.delete(certificateAuthorities).where(like(certificateAuthorities.subjectDn, '%Test Organization%')).catch(() => {});
+    await db.delete(certificates).where(like(certificates.subjectDn, '%caroutes-cert%')).catch(() => {});
+    await db.delete(certificateAuthorities).where(like(certificateAuthorities.subjectDn, '%CaRoutesTest%')).catch(() => {});
 
     // Create and configure test server
     server = Fastify({

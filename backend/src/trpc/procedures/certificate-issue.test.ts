@@ -3,6 +3,7 @@
  *
  * Tests for certificate.issue endpoint with real KMS integration.
  * These tests require KMS to be running (docker compose up in kms/ directory).
+ * Tests will be SKIPPED if KMS is not available.
  *
  * Tests validate:
  * 1. Certificate issuance with KMS key generation and signing
@@ -18,6 +19,7 @@ import { appRouter } from "../router.js";
 import { createContext } from "../context.js";
 import { db } from "../../db/client.js";
 import { certificateAuthorities, certificates } from "../../db/schema.js";
+import { isKmsAvailable } from "../../test/kms-helper.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 // Store created entity IDs for cleanup
@@ -29,9 +31,16 @@ const createdCertIds: string[] = [];
  */
 describe("Certificate Issue - KMS Integration", () => {
   let testCaId: string;
+  let kmsAvailable: boolean;
 
-  // Create a real CA in KMS before all tests
+  // Check KMS availability and create a real CA in KMS before all tests
   beforeAll(async () => {
+    kmsAvailable = await isKmsAvailable();
+    if (!kmsAvailable) {
+      console.log("  ⚠️  Skipping KMS integration tests - KMS not available");
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
 
     const context = await createContext({
@@ -69,10 +78,17 @@ describe("Certificate Issue - KMS Integration", () => {
     for (const caId of createdCaIds) {
       await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute().catch(() => {});
     }
-    console.log("✅ Test cleanup complete");
+    if (createdCaIds.length > 0 || createdCertIds.length > 0) {
+      console.log("✅ Test cleanup complete");
+    }
   });
 
-  it("should issue a server certificate with DNS SANs", async () => {
+  it("should issue a server certificate with DNS SANs", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
     const context = await createContext({
       req: {} as FastifyRequest,
@@ -118,7 +134,12 @@ describe("Certificate Issue - KMS Integration", () => {
     console.log(`✅ Server certificate issued: ${result.id}`);
   });
 
-  it("should issue a client certificate with email CN", async () => {
+  it("should issue a client certificate with email CN", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
     const email = `user-${randomString}@example.com`;
 
@@ -152,7 +173,12 @@ describe("Certificate Issue - KMS Integration", () => {
     console.log(`✅ Client certificate issued: ${result.id}`);
   });
 
-  it("should issue an email protection certificate", async () => {
+  it("should issue an email protection certificate", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
     const email = `secure-${randomString}@example.com`;
 
@@ -185,7 +211,12 @@ describe("Certificate Issue - KMS Integration", () => {
     console.log(`✅ Email protection certificate issued: ${result.id}`);
   });
 
-  it("should issue a code signing certificate with RSA-4096", async () => {
+  it("should issue a code signing certificate with RSA-4096", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
 
     const context = await createContext({
@@ -217,7 +248,12 @@ describe("Certificate Issue - KMS Integration", () => {
     console.log(`✅ Code signing certificate issued: ${result.id}`);
   });
 
-  it("should reject server certificate with invalid domain CN", async () => {
+  it("should reject server certificate with invalid domain CN", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -239,7 +275,12 @@ describe("Certificate Issue - KMS Integration", () => {
     ).rejects.toThrow("Invalid common name");
   });
 
-  it("should reject server certificate with validity > 825 days", async () => {
+  it("should reject server certificate with validity > 825 days", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -261,7 +302,12 @@ describe("Certificate Issue - KMS Integration", () => {
     ).rejects.toThrow("validity");
   });
 
-  it("should reject code signing certificate with RSA-2048", async () => {
+  it("should reject code signing certificate with RSA-2048", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -283,7 +329,12 @@ describe("Certificate Issue - KMS Integration", () => {
     ).rejects.toThrow("Code signing certificates require RSA-3072, RSA-4096, or ECDSA-P256 minimum");
   });
 
-  it("should reject email certificate without email SANs", async () => {
+  it("should reject email certificate without email SANs", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -306,7 +357,12 @@ describe("Certificate Issue - KMS Integration", () => {
     ).rejects.toThrow("Email protection certificates require at least one email address in SANs");
   });
 
-  it("should reject email certificate with mixed domains", async () => {
+  it("should reject email certificate with mixed domains", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -329,7 +385,12 @@ describe("Certificate Issue - KMS Integration", () => {
     ).rejects.toThrow("All email addresses must be from the same domain");
   });
 
-  it("should reject certificate for non-existent CA", async () => {
+  it("should reject certificate for non-existent CA", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,

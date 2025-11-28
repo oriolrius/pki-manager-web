@@ -667,7 +667,7 @@ describe('ca.revoke - comprehensive tests', () => {
         };
 
         const caCert = generateCertificate({
-          subject: { CN: `Reason ${reason} CA`, O: 'Test Org', C: 'US' },
+          subject: { CN: `Reason ${reason} CA`, O: 'RevocationReasonsTestOrg', C: 'US' },
           publicKey: caKeyPair.publicKeyPem,
           signingKey: caKeyPair.privateKeyPem,
           selfSigned: true,
@@ -675,7 +675,7 @@ describe('ca.revoke - comprehensive tests', () => {
 
         await db.insert(certificateAuthorities).values({
           id: caId,
-          subjectDn: `CN=Reason ${reason} CA,O=Test Org,C=US`,
+          subjectDn: `CN=Reason ${reason} CA,O=RevocationReasonsTestOrg,C=US`,
           serialNumber: caCert.serialNumber,
           keyAlgorithm: 'RSA-2048',
           notBefore: caCert.validity.notBefore,
@@ -1313,7 +1313,7 @@ describe('ca.delete - comprehensive tests', () => {
       };
 
       const caCert = generateCertificate({
-        subject: { CN: 'Orphaned CA', O: 'Test Org', C: 'US' },
+        subject: { CN: 'Orphaned CA', O: 'OrphanedCATestOrg', C: 'US' },
         publicKey: caKeyPair.publicKeyPem,
         signingKey: caKeyPair.privateKeyPem,
         selfSigned: true,
@@ -1321,7 +1321,7 @@ describe('ca.delete - comprehensive tests', () => {
 
       await db.insert(certificateAuthorities).values({
         id: orphanedCaId,
-        subjectDn: 'CN=Orphaned CA,O=Test Org,C=US',
+        subjectDn: 'CN=Orphaned CA,O=OrphanedCATestOrg,C=US',
         serialNumber: caCert.serialNumber,
         keyAlgorithm: 'RSA-2048',
         notBefore: caCert.validity.notBefore,

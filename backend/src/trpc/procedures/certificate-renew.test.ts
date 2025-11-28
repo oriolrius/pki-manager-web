@@ -18,6 +18,7 @@ import { appRouter } from "../router.js";
 import { createContext } from "../context.js";
 import { db } from "../../db/client.js";
 import { certificateAuthorities, certificates } from "../../db/schema.js";
+import { isKmsAvailable } from "../../test/kms-helper.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 // Store created entity IDs for cleanup
@@ -26,14 +27,22 @@ const createdCertIds: string[] = [];
 
 /**
  * Integration tests for Certificate Renewal with real KMS
+ * Tests will be SKIPPED if KMS is not available.
  */
 describe("Certificate Renew - KMS Integration", () => {
   let testCaId: string;
   let issuedCertId: string;
   let issuedCertSubject: string;
+  let kmsAvailable: boolean;
 
-  // Create a real CA and certificate in KMS before all tests
+  // Check KMS availability and create a real CA and certificate in KMS before all tests
   beforeAll(async () => {
+    kmsAvailable = await isKmsAvailable();
+    if (!kmsAvailable) {
+      console.log("  ⚠️  Skipping certificate renewal tests - KMS not available");
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
 
     const context = await createContext({
@@ -102,7 +111,12 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log("✅ Test cleanup complete");
   });
 
-  it("should renew a certificate with new key generation", async () => {
+  it("should renew a certificate with new key generation", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -142,7 +156,12 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log(`✅ Certificate renewed with new key: ${result.id}`);
   });
 
-  it("should renew a certificate with key reuse (young cert)", async () => {
+  it("should renew a certificate with key reuse (young cert)", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     // First issue a new cert that's young enough for key reuse (< 90 days)
     const randomString = Math.random().toString(36).substring(2, 8);
     const context = await createContext({
@@ -191,7 +210,12 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log(`✅ Certificate renewed with key reuse: ${result.id}`);
   });
 
-  it("should renew a certificate with updated subject info", async () => {
+  it("should renew a certificate with updated subject info", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
     const context = await createContext({
       req: {} as FastifyRequest,
@@ -241,7 +265,12 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log(`✅ Certificate renewed with updated info: ${result.id}`);
   });
 
-  it("should renew and revoke the original certificate", async () => {
+  it("should renew and revoke the original certificate", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
     const context = await createContext({
       req: {} as FastifyRequest,
@@ -289,7 +318,12 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log(`✅ Certificate renewed and original revoked: ${result.id}`);
   });
 
-  it("should reject renewal of non-existent certificate", async () => {
+  it("should reject renewal of non-existent certificate", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const context = await createContext({
       req: {} as FastifyRequest,
       res: {} as FastifyReply,
@@ -304,7 +338,12 @@ describe("Certificate Renew - KMS Integration", () => {
     ).rejects.toThrow("not found");
   });
 
-  it("should reject renewal of revoked certificate", async () => {
+  it("should reject renewal of revoked certificate", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
     const randomString = Math.random().toString(36).substring(2, 8);
     const context = await createContext({
       req: {} as FastifyRequest,

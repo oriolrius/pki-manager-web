@@ -1,9 +1,10 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq } from "drizzle-orm";
 import { appRouter } from "../router.js";
 import { createContext } from "../context.js";
 import { db } from "../../db/client.js";
 import { certificateAuthorities } from "../../db/schema.js";
+import { isKmsAvailable } from "../../test/kms-helper.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 // Store created CA IDs for cleanup
@@ -12,8 +13,18 @@ const createdCaIds: string[] = [];
 /**
  * Integration test for CA creation
  * This test replicates what happens when the user clicks "Generate Sample Data" and then "Create"
+ * Tests will be SKIPPED if KMS is not available.
  */
 describe("CA Creation", () => {
+  let kmsAvailable: boolean;
+
+  beforeAll(async () => {
+    kmsAvailable = await isKmsAvailable();
+    if (!kmsAvailable) {
+      console.log("  ⚠️  Skipping CA creation tests - KMS not available");
+    }
+  });
+
   afterAll(async () => {
     // Clean up all CAs created during tests
     for (const caId of createdCaIds) {
@@ -21,7 +32,11 @@ describe("CA Creation", () => {
     }
   });
 
-  it("should create a root CA with sample data", async () => {
+  it("should create a root CA with sample data", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
     // Generate random sample data (same logic as frontend's generateRandomData function)
     const randomString = Math.random().toString(36).substring(2, 8);
     const orgs = [
