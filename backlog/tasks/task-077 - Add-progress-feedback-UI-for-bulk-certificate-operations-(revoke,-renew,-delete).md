@@ -3,10 +3,11 @@ id: task-077
 title: >-
   Add progress feedback UI for bulk certificate operations (revoke, renew,
   delete)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2025-11-28 08:52'
-updated_date: '2025-11-28 08:55'
+updated_date: '2025-11-28 09:02'
 labels:
   - frontend
   - ux
@@ -46,16 +47,16 @@ The download progress dialog in `frontend/src/routes/certificates.tsx` (lines 68
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Progress dialog appears when user initiates bulk revoke/renew/delete operations
-- [ ] #2 Each certificate in the bulk operation is shown as a list item with its CN or serial number
-- [ ] #3 Items show real-time status: pending (gray), processing (spinning), success (green checkmark), error (red X with message)
-- [ ] #4 Overall progress bar updates as items complete
-- [ ] #5 Summary section shows total success/failure counts when operation completes
-- [ ] #6 Dialog can be dismissed only after operation completes (to prevent accidental navigation)
-- [ ] #7 Error messages for failed items are descriptive and actionable
-- [ ] #8 Tests validate progress state transitions for each operation type
-- [ ] #9 Tests verify correct rendering of success/error states per item
-- [ ] #10 Tests confirm cleanup of test data after test completion
+- [x] #1 Progress dialog appears when user initiates bulk revoke/renew/delete operations
+- [x] #2 Each certificate in the bulk operation is shown as a list item with its CN or serial number
+- [x] #3 Items show real-time status: pending (gray), processing (spinning), success (green checkmark), error (red X with message)
+- [x] #4 Overall progress bar updates as items complete
+- [x] #5 Summary section shows total success/failure counts when operation completes
+- [x] #6 Dialog can be dismissed only after operation completes (to prevent accidental navigation)
+- [x] #7 Error messages for failed items are descriptive and actionable
+- [x] #8 Tests validate progress state transitions for each operation type
+- [x] #9 Tests verify correct rendering of success/error states per item
+- [x] #10 Tests confirm cleanup of test data after test completion
 <!-- AC:END -->
 
 ## Implementation Plan
