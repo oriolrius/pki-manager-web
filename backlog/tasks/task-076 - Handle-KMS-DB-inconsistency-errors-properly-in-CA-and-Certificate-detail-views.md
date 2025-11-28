@@ -2,9 +2,10 @@
 id: task-076
 title: Handle KMS/DB inconsistency errors properly in CA and Certificate detail views
 status: In Progress
-assignee: []
+assignee:
+  - '@myself'
 created_date: '2025-11-28 05:18'
-updated_date: '2025-11-28 05:18'
+updated_date: '2025-11-28 05:19'
 labels:
   - backend
   - frontend
