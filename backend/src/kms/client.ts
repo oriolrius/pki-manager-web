@@ -410,6 +410,17 @@ export class KMSClient {
   }): Promise<CertificateInfo> {
     const requestValue: KMIPElement[] = [];
 
+    // CRITICAL: Add UniqueIdentifier for existing public key
+    // Per KMIP spec, when certifying an existing public key, the UniqueIdentifier
+    // at the request level identifies which public key to certify
+    if (options.publicKeyId) {
+      requestValue.push({
+        tag: "UniqueIdentifier",
+        type: "TextString",
+        value: options.publicKeyId,
+      });
+    }
+
     // Add CSR if provided
     if (options.csr) {
       requestValue.push({
@@ -466,6 +477,27 @@ export class KMSClient {
             tag: "LinkedObjectIdentifier",
             type: "TextString",
             value: options.issuerCertificateId,
+          },
+        ],
+      });
+    }
+
+    // Add Link to public key (to use existing key pair instead of generating new one)
+    // This is CRITICAL: without this link, KMS generates a new key pair for the certificate
+    // which causes a mismatch between the stored private key and the certificate's public key
+    if (options.publicKeyId) {
+      attributes.push({
+        tag: "Link",
+        value: [
+          {
+            tag: "LinkType",
+            type: "Enumeration",
+            value: "PublicKeyLink",
+          },
+          {
+            tag: "LinkedObjectIdentifier",
+            type: "TextString",
+            value: options.publicKeyId,
           },
         ],
       });

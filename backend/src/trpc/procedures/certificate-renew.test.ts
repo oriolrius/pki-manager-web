@@ -156,7 +156,7 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log(`✅ Certificate renewed with new key: ${result.id}`);
   });
 
-  it("should renew a certificate with key reuse (young cert)", async (ctx) => {
+  it("should renew a certificate (generateNewKey=false still generates new key)", async (ctx) => {
     if (!kmsAvailable) {
       ctx.skip();
       return;
@@ -186,10 +186,11 @@ describe("Certificate Renew - KMS Integration", () => {
 
     createdCertIds.push(freshCert.id);
 
-    // Now renew with key reuse
+    // Now renew - note: key reuse is not supported, a new key will be generated
+    // even when generateNewKey: false is specified
     const result = await caller.certificate.renew({
       id: freshCert.id,
-      generateNewKey: false, // Reuse existing key
+      generateNewKey: false, // Ignored - new key is always generated
       validityDays: 365,
     });
 
@@ -202,12 +203,12 @@ describe("Certificate Renew - KMS Integration", () => {
     // Store for cleanup
     createdCertIds.push(result.id);
 
-    // Verify that kmsKeyId is null (reused key, not stored again)
+    // Verify that kmsKeyId is set (new key is always generated due to key reuse not being supported)
     const dbCert = await db.select().from(certificates).where(eq(certificates.id, result.id));
     expect(dbCert).toHaveLength(1);
-    expect(dbCert[0].kmsKeyId).toBeNull(); // Key was reused, not regenerated
+    expect(dbCert[0].kmsKeyId).not.toBeNull(); // New key is always generated
 
-    console.log(`✅ Certificate renewed with key reuse: ${result.id}`);
+    console.log(`✅ Certificate renewed (new key generated): ${result.id}`);
   });
 
   it("should renew a certificate with updated subject info", async (ctx) => {

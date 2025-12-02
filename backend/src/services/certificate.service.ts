@@ -850,31 +850,25 @@ export class CertificateService {
       const validityDays = params.validityDays ||
         Math.ceil((originalCert.notAfter.getTime() - originalCert.notBefore.getTime()) / (1000 * 60 * 60 * 24));
 
-      let kmsKeyId: string;
-      let publicKeyId: string;
-
-      if (params.generateNewKey) {
-        logger.info({ newCertId, originalCertId: params.id }, 'Creating new key pair for certificate renewal');
-
-        const keyPair = await kmsService.createKeyPair({
-          sizeInBits: 2048,
-          tags: [],
-          purpose: 'certificate',
-          entityId: newCertId,
-        });
-
-        kmsKeyId = keyPair.privateKeyId;
-        publicKeyId = keyPair.publicKeyId;
-      } else {
-        logger.info({ newCertId, originalCertId: params.id }, 'Reusing existing key pair for certificate renewal');
-
-        if (!originalCert.kmsKeyId) {
-          throw new CertificateNoKeyError(params.id);
-        }
-
-        kmsKeyId = originalCert.kmsKeyId;
-        publicKeyId = kmsKeyId.replace('-private', '-public');
+      // Always generate a new key pair for renewal
+      // Key reuse is not supported because we don't store the public key ID separately,
+      // and deriving it from the private key ID is unreliable
+      if (!params.generateNewKey) {
+        logger.warn({ newCertId, originalCertId: params.id },
+          'Key reuse requested but not supported - generating new key pair instead');
       }
+
+      logger.info({ newCertId, originalCertId: params.id }, 'Creating new key pair for certificate renewal');
+
+      const keyPair = await kmsService.createKeyPair({
+        sizeInBits: 2048,
+        tags: [],
+        purpose: 'certificate',
+        entityId: newCertId,
+      });
+
+      const kmsKeyId = keyPair.privateKeyId;
+      const publicKeyId = keyPair.publicKeyId;
 
       const subjectName = formatDN(subjectDN);
       logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS');
@@ -907,7 +901,7 @@ export class CertificateService {
         notBefore: certMetadata.validity.notBefore,
         notAfter: certMetadata.validity.notAfter,
         kmsCertificateId: certInfo.certificateId,
-        kmsKeyId: params.generateNewKey ? kmsKeyId : null,
+        kmsKeyId: kmsKeyId, // Always store since we always generate new keys
         status: 'active',
         sanDns: sanDns ? JSON.stringify(sanDns) : null,
         sanIp: sanIp ? JSON.stringify(sanIp) : null,

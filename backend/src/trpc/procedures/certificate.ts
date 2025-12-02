@@ -1001,42 +1001,27 @@ export const certificateRouter = router({
         const validityDays = input.validityDays ||
           Math.ceil((originalCert.notAfter.getTime() - originalCert.notBefore.getTime()) / (1000 * 60 * 60 * 24));
 
-        let kmsKeyId: string;
-        let publicKeyId: string;
-
-        if (input.generateNewKey) {
-          // Generate new key pair in KMS
-          logger.info({ newCertId, originalCertId: input.id }, 'Creating new key pair for certificate renewal');
-
-          // Determine key size from original certificate
-          // For simplicity, defaulting to RSA-2048. In production, you'd extract this from the original cert
-          const keyPair = await kmsService.createKeyPair({
-            sizeInBits: 2048,
-            tags: [],
-            purpose: 'certificate',
-            entityId: newCertId,
-          });
-
-          kmsKeyId = keyPair.privateKeyId;
-          publicKeyId = keyPair.publicKeyId;
-        } else {
-          // Reuse existing key pair
-          logger.info({ newCertId, originalCertId: input.id }, 'Reusing existing key pair for certificate renewal');
-
-          if (!originalCert.kmsKeyId) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: 'Original certificate has no associated KMS key to reuse',
-            });
-          }
-
-          kmsKeyId = originalCert.kmsKeyId;
-
-          // Get the public key ID from KMS
-          // Note: This assumes the KMS service has a method to get public key from private key
-          // In production, you might need to store the public key ID alongside the private key ID
-          publicKeyId = kmsKeyId.replace('-private', '-public'); // Simplified assumption
+        // Always generate a new key pair for renewal
+        // Key reuse is not supported because we don't store the public key ID separately,
+        // and deriving it from the private key ID is unreliable
+        if (!input.generateNewKey) {
+          logger.warn({ newCertId, originalCertId: input.id },
+            'Key reuse requested but not supported - generating new key pair instead');
         }
+
+        logger.info({ newCertId, originalCertId: input.id }, 'Creating new key pair for certificate renewal');
+
+        // Determine key size from original certificate
+        // For simplicity, defaulting to RSA-2048. In production, you'd extract this from the original cert
+        const keyPair = await kmsService.createKeyPair({
+          sizeInBits: 2048,
+          tags: [],
+          purpose: 'certificate',
+          entityId: newCertId,
+        });
+
+        const kmsKeyId = keyPair.privateKeyId;
+        const publicKeyId = keyPair.publicKeyId;
 
         const subjectName = formatDN(subjectDN);
         logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS');
@@ -1069,7 +1054,7 @@ export const certificateRouter = router({
           notBefore: certMetadata.validity.notBefore,
           notAfter: certMetadata.validity.notAfter,
           kmsCertificateId: certInfo.certificateId,
-          kmsKeyId: input.generateNewKey ? kmsKeyId : null,
+          kmsKeyId: kmsKeyId, // Always store since we always generate new keys
           status: 'active',
           sanDns: sanDns ? JSON.stringify(sanDns) : null,
           sanIp: sanIp ? JSON.stringify(sanIp) : null,
@@ -2594,7 +2579,7 @@ export const certificateRouter = router({
             notBefore: certMetadata.validity.notBefore,
             notAfter: certMetadata.validity.notAfter,
             kmsCertificateId: certInfo.certificateId,
-            kmsKeyId: input.generateNewKey ? kmsKeyId : null,
+            kmsKeyId: kmsKeyId, // Always store since we always generate new keys
             status: 'active',
             sanDns: sanDns ? JSON.stringify(sanDns) : null,
             sanIp: sanIp ? JSON.stringify(sanIp) : null,

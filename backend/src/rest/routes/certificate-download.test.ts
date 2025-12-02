@@ -349,7 +349,7 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('PKCS#12 Bundle Downloads', () => {
-    it('should download PKCS#12 bundle (p12)', async (ctx) => {
+    it('should download PKCS#12 bundle (p12) with matching certificate and key', async (ctx) => {
       if (!kmsAvailable) {
         ctx.skip();
         return;
@@ -380,7 +380,19 @@ describe('Certificate Download - KMS Integration', () => {
       expect(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]).toBeDefined();
       expect(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]!.length).toBeGreaterThan(0);
 
-      console.log('✅ p12 format download works');
+      // CRITICAL: Verify that certificate and private key modulus match
+      // This validates the fix for GitHub issue #1: key mismatch in P12/JKS downloads
+      const cert = certBags[forge.pki.oids.certBag]![0].cert!;
+      const privateKey = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]![0].key as forge.pki.rsa.PrivateKey;
+
+      // Get modulus from certificate's public key and from private key
+      const certModulus = (cert.publicKey as forge.pki.rsa.PublicKey).n.toString(16);
+      const keyModulus = privateKey.n.toString(16);
+
+      // The modulus must match - this is the core validation that the key pair is correct
+      expect(certModulus).toBe(keyModulus);
+
+      console.log('✅ p12 format download works with matching certificate and key modulus');
     });
 
     it('should download PKCS#12 bundle (pfx alias)', async (ctx) => {
