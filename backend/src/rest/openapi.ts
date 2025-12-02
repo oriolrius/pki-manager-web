@@ -15,6 +15,14 @@ export const swaggerOptions: FastifyDynamicSwaggerOptions = {
 This API provides RESTful endpoints for managing Certificate Authorities (CAs),
 certificates, Certificate Revocation Lists (CRLs), and related operations.
 
+## OpenAPI Specification
+
+The OpenAPI 3.1 specification is available at:
+- **JSON**: \`/api/v1/openapi.json\`
+- **YAML**: \`/api/v1/openapi.yaml\`
+
+Use these URLs to integrate with third-party tools, code generators, or API clients.
+
 ## Features
 - Certificate Authority management (create, revoke, delete)
 - Certificate lifecycle management (issue, renew, revoke, download)
