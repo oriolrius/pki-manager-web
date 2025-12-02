@@ -379,12 +379,23 @@ export class CAService {
         'Creating self-signed root certificate with key pair in KMS',
       );
 
+      // X.509 extensions for CA certificates per RFC 5280:
+      // - basicConstraints: CA:TRUE (required, critical) - identifies this as a CA certificate
+      // - keyUsage: keyCertSign, crlSign (required, critical) - allows signing certificates and CRLs
+      // - subjectKeyIdentifier: hash - helps identify certificates issued by this CA
+      const caExtensions = `[ v3_ca ]
+basicConstraints=critical,CA:TRUE
+keyUsage=critical,keyCertSign,crlSign
+subjectKeyIdentifier=hash
+`;
+
       const certInfo = await kmsService.signCertificate({
         subjectName: subjectName,
         daysValid: validityDays,
         tags: params.tags || [],
         entityId: caId,
         keyAlgorithm: params.keyAlgorithm,
+        x509Extensions: caExtensions,
       });
 
       // Convert certificate data from hex to PEM

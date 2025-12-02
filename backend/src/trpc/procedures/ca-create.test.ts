@@ -108,4 +108,56 @@ describe("CA Creation", () => {
     console.log(`   Subject: ${result.subject}`);
     console.log(`   Serial: ${result.serialNumber}`);
   });
+
+  it("should create a CA with proper X.509 extensions (basicConstraints CA:TRUE, keyUsage)", async (ctx) => {
+    if (!kmsAvailable) {
+      ctx.skip();
+      return;
+    }
+
+    const randomString = Math.random().toString(36).substring(2, 8);
+
+    // Create a tRPC context with database
+    const context = await createContext({
+      req: {} as FastifyRequest,
+      res: {} as FastifyReply,
+    });
+
+    // Create a tRPC caller
+    const caller = appRouter.createCaller(context);
+
+    // Create a CA
+    const createResult = await caller.ca.create({
+      subject: {
+        commonName: `X509 Extensions Test CA ${randomString}`,
+        organization: "Test Org",
+        country: "US",
+      },
+      keyAlgorithm: "RSA-4096",
+      validityYears: 10,
+    });
+
+    createdCaIds.push(createResult.id);
+
+    // Fetch the CA details which include certificate and extensions
+    const caDetails = await caller.ca.getById({ id: createResult.id });
+
+    // Verify basicConstraints extension is present with CA:TRUE
+    // Per RFC 5280, CA certificates MUST have basicConstraints with cA=true
+    expect(caDetails.extensions).toBeDefined();
+    expect(caDetails.extensions?.basicConstraints).toBeDefined();
+    expect(caDetails.extensions?.basicConstraints?.cA).toBe(true);
+
+    // Verify keyUsage extension includes keyCertSign and cRLSign
+    // Per RFC 5280, if keyUsage is present for CA certificates, keyCertSign SHOULD be set
+    expect(caDetails.extensions?.keyUsage).toBeDefined();
+    const keyUsage = caDetails.extensions?.keyUsage;
+    expect(keyUsage?.keyCertSign).toBe(true);
+    expect(keyUsage?.cRLSign).toBe(true);
+
+    console.log("✅ CA created with proper X.509 extensions!");
+    console.log(`   basicConstraints.cA: ${caDetails.extensions?.basicConstraints?.cA}`);
+    console.log(`   keyUsage.keyCertSign: ${keyUsage?.keyCertSign}`);
+    console.log(`   keyUsage.cRLSign: ${keyUsage?.cRLSign}`);
+  });
 });

@@ -407,6 +407,7 @@ export class KMSClient {
     tags?: string[];
     keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
     keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
+    x509Extensions?: string; // X.509 extensions in OpenSSL v3_ca format
   }): Promise<CertificateInfo> {
     const requestValue: KMIPElement[] = [];
 
@@ -776,6 +777,31 @@ export class KMSClient {
             tag: "AttributeValue",
             type: "TextString",
             value: JSON.stringify(options.tags),
+          },
+        ],
+      });
+    }
+
+    // Add X.509 extensions as vendor attribute (for CA certificates, etc.)
+    if (options.x509Extensions) {
+      const extensionsHex = Buffer.from(options.x509Extensions, 'utf-8').toString('hex');
+      attributes.push({
+        tag: "Attribute",
+        value: [
+          {
+            tag: "VendorIdentification",
+            type: "TextString",
+            value: "cosmian",
+          },
+          {
+            tag: "AttributeName",
+            type: "TextString",
+            value: "x509-extension",
+          },
+          {
+            tag: "AttributeValue",
+            type: "ByteString",
+            value: extensionsHex,
           },
         ],
       });

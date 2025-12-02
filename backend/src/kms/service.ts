@@ -257,6 +257,7 @@ export class KMSService {
     entityId?: string;
     keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
     keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
+    x509Extensions?: string; // X.509 extensions in OpenSSL v3_ca format
   }): Promise<CertificateInfo> {
     const operationId = randomUUID();
     try {
@@ -271,6 +272,7 @@ export class KMSService {
         tags: options.tags,
         keySizeInBits: options.keySizeInBits,
         keyAlgorithm: options.keyAlgorithm,
+        x509Extensions: options.x509Extensions,
       });
 
       await this.logAudit(
