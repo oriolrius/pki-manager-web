@@ -52,6 +52,8 @@ export interface CADetails {
   issuedCertificateCount: number;
   revocationDate?: string;
   revocationReason?: string | null;
+  kmsCertificateId?: string;
+  kmsKeyId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -348,6 +350,8 @@ export class CAService {
       issuedCertificateCount: Number(certCount[0]?.count || 0),
       revocationDate: caRecord.revocationDate?.toISOString(),
       revocationReason: caRecord.revocationReason,
+      kmsCertificateId: caRecord.kmsCertificateId,
+      kmsKeyId: caRecord.kmsKeyId,
       createdAt: caRecord.createdAt.toISOString(),
       updatedAt: caRecord.updatedAt.toISOString(),
     };

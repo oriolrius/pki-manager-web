@@ -1,5 +1,7 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
+import forge from 'node-forge';
 import { db } from '../../db/client.js';
+import { getKMSService } from '../../kms/service.js';
 import {
   getCAService,
   CANotFoundError,
@@ -18,6 +20,11 @@ import {
 import {
   getCertificateService,
 } from '../../services/certificate.service.js';
+import {
+  generateJKSKeystore,
+  generateJKSTruststore,
+  JKSKeytoolError,
+} from '../../services/jks.service.js';
 
 // Request/Response types
 interface ListCAsQuery {
@@ -71,6 +78,11 @@ interface ListCRLsQuery {
 
 interface GenerateCRLBody {
   nextUpdateDays?: number;
+}
+
+interface DownloadCAQuery {
+  format: string;
+  password?: string;
 }
 
 // Inline error response schemas (to avoid $ref resolution issues in tests)
@@ -794,6 +806,233 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
 
       reply.code(201);
       return result;
+    } catch (error) {
+      return handleServiceError(error, reply);
+    }
+  });
+
+  // GET /cas/:id/download - Download CA certificate in various formats
+  fastify.get<{ Params: CAIdParams; Querystring: DownloadCAQuery }>('/:id/download', {
+    schema: {
+      description: `Download CA certificate in various formats.
+
+**Certificate Formats (public certificate only):**
+- \`pem\` - PEM text format (Base64-encoded with headers)
+- \`crt\` - CRT text certificate (same as PEM)
+- \`der\` - DER binary compact format
+- \`cer\` - CER Windows-compatible format (same as DER)
+
+**Truststore Formats (public certificate only, for trust validation):**
+- \`p12-truststore\` - PKCS#12 truststore containing only the CA certificate
+- \`jks-truststore\` - Java KeyStore truststore containing only the CA certificate
+
+**Keystore Formats (certificate + private key, for CA signing operations):**
+- \`p12-keystore\` - PKCS#12 keystore with CA certificate and private key
+- \`jks-keystore\` - Java KeyStore with CA certificate and private key
+
+**Security Note:** Keystore formats expose the CA's private key. Only use these for CA operations that require signing capability (e.g., offline CA scenarios).`,
+      tags: ['Certificate Authorities'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        required: ['format'],
+        properties: {
+          format: {
+            type: 'string',
+            enum: [
+              'pem',
+              'crt',
+              'der',
+              'cer',
+              'p12-truststore',
+              'p12-keystore',
+              'jks-truststore',
+              'jks-keystore',
+            ],
+            description: 'Download format',
+          },
+          password: {
+            type: 'string',
+            description: 'Password for P12 and JKS formats. Required for keystore formats, optional for truststore formats (defaults to "changeit" if not provided)',
+          },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            data: { type: 'string', description: 'Base64-encoded certificate data' },
+            mimeType: { type: 'string' },
+            filename: { type: 'string' },
+          },
+        },
+        400: errorResponseSchema,
+        404: errorResponseSchema,
+        500: errorResponseSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { format, password } = request.query;
+    const caId = request.params.id;
+
+    // Validate password requirement for keystore formats (contains private key)
+    const keystoreFormats = ['p12-keystore', 'jks-keystore'];
+    if (keystoreFormats.includes(format) && !password) {
+      return sendError(reply, 400, 'PASSWORD_REQUIRED', `Password is required for ${format} format to protect the private key`);
+    }
+
+    try {
+      // Get CA details
+      const ca = await caService.getById({ db, ipAddress: request.ip }, caId);
+      const kmsService = getKMSService();
+
+      // Extract CN for filename
+      const cnMatch = ca.subjectDn.match(/CN=([^,]+)/);
+      const commonName = cnMatch ? cnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca-certificate';
+      const serialShort = ca.serialNumber.slice(-8);
+
+      // Get certificate PEM from KMS
+      const certificatePem = await kmsService.getCertificate(ca.kmsCertificateId!, ca.id);
+
+      let data: string;
+      let mimeType: string;
+      let filename: string;
+
+      switch (format) {
+        case 'pem':
+        case 'crt':
+          mimeType = 'application/x-pem-file';
+          filename = `${commonName}.${format}`;
+          data = Buffer.from(certificatePem).toString('base64');
+          break;
+
+        case 'der':
+        case 'cer':
+          mimeType = 'application/x-x509-ca-cert';
+          filename = `${commonName}.${format}`;
+          // Convert PEM to DER
+          const base64Content = certificatePem
+            .replace(/-----BEGIN CERTIFICATE-----/g, '')
+            .replace(/-----END CERTIFICATE-----/g, '')
+            .replace(/\s/g, '');
+          data = base64Content;
+          break;
+
+        case 'p12-truststore': {
+          // PKCS#12 truststore: CA certificate only (no private key)
+          const forgeCert = forge.pki.certificateFromPem(certificatePem);
+          const truststorePassword = password || 'changeit';
+
+          // Create PKCS#12 with only certificate (null for private key)
+          const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
+            null, // No private key
+            [forgeCert],
+            truststorePassword,
+            {
+              algorithm: '3des',
+              friendlyName: commonName,
+            }
+          );
+
+          const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+          mimeType = 'application/x-pkcs12';
+          filename = `${commonName}-${serialShort}-truststore.p12`;
+          data = forge.util.encode64(p12Der);
+          break;
+        }
+
+        case 'p12-keystore': {
+          // PKCS#12 keystore: CA certificate + private key
+          if (!ca.kmsKeyId) {
+            return sendError(reply, 404, 'KEY_NOT_FOUND', 'CA has no associated private key in KMS');
+          }
+
+          const privateKeyPem = await kmsService.getPrivateKey(ca.kmsKeyId, ca.id);
+          const forgeCert = forge.pki.certificateFromPem(certificatePem);
+          const forgePrivateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+
+          // Create PKCS#12 with certificate and private key
+          const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
+            forgePrivateKey,
+            [forgeCert],
+            password!,
+            {
+              algorithm: '3des',
+              friendlyName: commonName,
+            }
+          );
+
+          const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+          mimeType = 'application/x-pkcs12';
+          filename = `${commonName}-${serialShort}-keystore.p12`;
+          data = forge.util.encode64(p12Der);
+          break;
+        }
+
+        case 'jks-truststore': {
+          // JKS Truststore: CA certificate only (for trust validation)
+          try {
+            const jksResult = await generateJKSTruststore({
+              caCertificatePem: certificatePem,
+              caSubjectDn: ca.subjectDn,
+              password,
+              commonName,
+              serialShort,
+            });
+
+            return jksResult;
+          } catch (jksError) {
+            if (jksError instanceof JKSKeytoolError) {
+              return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
+            }
+            throw jksError;
+          }
+        }
+
+        case 'jks-keystore': {
+          // JKS Keystore: CA certificate + private key (for CA signing operations)
+          if (!ca.kmsKeyId) {
+            return sendError(reply, 404, 'KEY_NOT_FOUND', 'CA has no associated private key in KMS. JKS Keystore requires a private key.');
+          }
+
+          try {
+            const privateKeyPem = await kmsService.getPrivateKey(ca.kmsKeyId, ca.id);
+
+            // For CA keystore, CA is self-signed so CA cert is itself
+            const jksResult = await generateJKSKeystore({
+              certificatePem,
+              privateKeyPem,
+              caCertificatePem: certificatePem, // Self-signed CA
+              password,
+              alias: commonName,
+              commonName,
+              serialShort,
+            });
+
+            return jksResult;
+          } catch (jksError) {
+            if (jksError instanceof JKSKeytoolError) {
+              return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
+            }
+            throw jksError;
+          }
+        }
+
+        default:
+          return sendError(reply, 400, 'INVALID_FORMAT', `Unsupported format: ${format}`);
+      }
+
+      return {
+        data,
+        mimeType,
+        filename,
+      };
     } catch (error) {
       return handleServiceError(error, reply);
     }

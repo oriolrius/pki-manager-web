@@ -48,7 +48,8 @@ function CADetail() {
   const [selectedReason, setSelectedReason] = useState<string>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
-  const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer'>('pem');
+  const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer' | 'p12-truststore' | 'p12-keystore' | 'jks-truststore' | 'jks-keystore'>('pem');
+  const [downloadPassword, setDownloadPassword] = useState('');
 
   const revokeMutation = trpc.ca.revoke.useMutation();
   const deleteMutation = trpc.ca.delete.useMutation();
@@ -56,15 +57,41 @@ function CADetail() {
   // Get backend base URL from runtime config
   const apiBaseUrl = getApiUrl().replace('/trpc', '');
 
-  // Certificate download URLs for all formats
-  const downloadUrls = {
-    pem: `${apiBaseUrl}/cas/${id}.pem`,
-    crt: `${apiBaseUrl}/cas/${id}.crt`,
-    der: `${apiBaseUrl}/cas/${id}.der`,
-    cer: `${apiBaseUrl}/cas/${id}.cer`,
+  // Helper to check if format needs password
+  const formatNeedsPassword = (format: string) => {
+    return ['p12-truststore', 'p12-keystore', 'jks-truststore', 'jks-keystore'].includes(format);
   };
 
-  const downloadUrl = downloadUrls[selectedFormat];
+  // Helper to check if format requires password (keystore formats)
+  const formatRequiresPassword = (format: string) => {
+    return ['p12-keystore', 'jks-keystore'].includes(format);
+  };
+
+  // Build download URL with password parameter if needed
+  const getDownloadUrl = (format: string, includePassword = false) => {
+    const baseUrl = `${apiBaseUrl}/api/v1/cas/${id}/download?format=${format}`;
+    if (includePassword && formatNeedsPassword(format) && downloadPassword) {
+      return `${baseUrl}&password=${encodeURIComponent(downloadPassword)}`;
+    }
+    return baseUrl;
+  };
+
+  // Certificate download URLs for all formats (without password for display)
+  const downloadUrls = {
+    // Certificate formats
+    pem: getDownloadUrl('pem'),
+    crt: getDownloadUrl('crt'),
+    der: getDownloadUrl('der'),
+    cer: getDownloadUrl('cer'),
+    // Truststore formats
+    'p12-truststore': getDownloadUrl('p12-truststore'),
+    'jks-truststore': getDownloadUrl('jks-truststore'),
+    // Keystore formats
+    'p12-keystore': getDownloadUrl('p12-keystore'),
+    'jks-keystore': getDownloadUrl('jks-keystore'),
+  };
+
+  const downloadUrl = getDownloadUrl(selectedFormat, true);
 
   const handleRevoke = () => {
     setShowRevokeDialog(true);
@@ -450,21 +477,42 @@ function CADetail() {
           Back to Certificate Authorities
         </button>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           <select
             value={selectedFormat}
             onChange={(e) => setSelectedFormat(e.target.value as any)}
             className="px-3 py-1.5 text-sm border rounded-md bg-background"
           >
-            <option value="pem">PEM - Text format</option>
-            <option value="crt">CRT - Text certificate</option>
-            <option value="der">DER - Binary compact</option>
-            <option value="cer">CER - Windows compatible</option>
+            <optgroup label="Certificate (public only)">
+              <option value="pem">PEM - Text format</option>
+              <option value="crt">CRT - Text certificate</option>
+              <option value="der">DER - Binary compact</option>
+              <option value="cer">CER - Windows compatible</option>
+            </optgroup>
+            <optgroup label="Truststore (public only)">
+              <option value="p12-truststore">P12 - PKCS#12 Truststore</option>
+              <option value="jks-truststore">JKS - Java Truststore</option>
+            </optgroup>
+            <optgroup label="Keystore (with private key)">
+              <option value="p12-keystore">P12 - PKCS#12 Keystore</option>
+              <option value="jks-keystore">JKS - Java Keystore</option>
+            </optgroup>
           </select>
+
+          {formatNeedsPassword(selectedFormat) && (
+            <input
+              type="password"
+              placeholder={formatRequiresPassword(selectedFormat) ? "Password (required)" : "Password (optional)"}
+              value={downloadPassword}
+              onChange={(e) => setDownloadPassword(e.target.value)}
+              className="px-3 py-1.5 text-sm border rounded-md bg-background w-36"
+            />
+          )}
 
           <button
             onClick={handleCopyPermalink}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
+            disabled={formatRequiresPassword(selectedFormat) && !downloadPassword}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
           >
             {linkCopied ? (
               <>
@@ -603,43 +651,88 @@ function CADetail() {
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
             <Database className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
-              <h3 className="text-sm font-semibold mb-2">Storage Location</h3>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                {/* Left column: Certificate Download URLs */}
+              <h3 className="text-sm font-semibold mb-2">Storage & Download URLs</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                {/* Certificate formats (public only) */}
                 <div>
-                  <span className="text-muted-foreground text-xs block mb-1">Certificate Download URLs:</span>
-                  <div className="space-y-1">
-                    {Object.entries(downloadUrls).map(([format, url]) => (
+                  <span className="text-muted-foreground text-xs block mb-1 font-semibold">📜 Certificate Formats (public only):</span>
+                  <div className="space-y-0.5 ml-2">
+                    {(['pem', 'crt', 'der', 'cer'] as const).map((format) => (
                       <div key={format} className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-muted-foreground uppercase w-8">
                           {format}:
                         </span>
                         <a
-                          href={url}
+                          href={downloadUrls[format]}
                           className="font-mono text-xs text-primary hover:underline break-all flex-1"
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          {url}
+                          {downloadUrls[format]}
                         </a>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Right column: KMS Provider */}
+                {/* Truststore formats */}
                 <div>
-                  <span className="text-muted-foreground text-xs">KMS Provider:</span>
-                  <p className="font-mono">Cosmian KMS</p>
-                  {ca.kmsKeyId && (
-                    <div className="mt-3">
-                      <span className="text-muted-foreground text-xs">KMS Key ID:</span>
-                      <p className="font-mono text-xs break-all">{ca.kmsKeyId}</p>
-                    </div>
-                  )}
+                  <span className="text-muted-foreground text-xs block mb-1 font-semibold">🔐 Truststore Formats (public only):</span>
+                  <div className="space-y-0.5 ml-2">
+                    {(['p12-truststore', 'jks-truststore'] as const).map((format) => (
+                      <div key={format} className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground w-24">
+                          {format === 'p12-truststore' ? 'P12 Trust:' : 'JKS Trust:'}
+                        </span>
+                        <a
+                          href={downloadUrls[format]}
+                          className="font-mono text-xs text-primary hover:underline break-all flex-1"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {downloadUrls[format]}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Bottom row: Created and Last Modified */}
+                {/* Keystore formats (with private key) */}
+                <div>
+                  <span className="text-muted-foreground text-xs block mb-1 font-semibold">🔑 Keystore Formats (with private key):</span>
+                  <div className="space-y-0.5 ml-2">
+                    {(['p12-keystore', 'jks-keystore'] as const).map((format) => (
+                      <div key={format} className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground w-24">
+                          {format === 'p12-keystore' ? 'P12 Key:' : 'JKS Key:'}
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground break-all flex-1">
+                          {downloadUrls[format]}&password=***
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-orange-600 dark:text-orange-400 mt-1 ml-2">
+                    ⚠️ Keystore formats expose the private key
+                  </p>
+                </div>
+
+                {/* KMS Provider */}
+                <div>
+                  <span className="text-muted-foreground text-xs block mb-1 font-semibold">☁️ KMS Storage:</span>
+                  <div className="ml-2">
+                    <span className="text-muted-foreground text-xs">Provider:</span>
+                    <p className="font-mono text-sm">Cosmian KMS</p>
+                    {ca.kmsKeyId && (
+                      <div className="mt-2">
+                        <span className="text-muted-foreground text-xs">KMS Key ID:</span>
+                        <p className="font-mono text-xs break-all">{ca.kmsKeyId}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Created and Last Modified */}
                 <div>
                   <span className="text-muted-foreground text-xs">Created:</span>
                   <p>{new Date(ca.createdAt).toLocaleString()}</p>
