@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2025-12-04 11:32'
-updated_date: '2025-12-04 11:44'
+updated_date: '2025-12-04 11:45'
 labels:
   - backend
   - frontend
@@ -102,8 +102,10 @@ Document the new CA download endpoint with:
 - [ ] #4 REST API endpoint GET /api/v1/cas/{id}/download accepts format query parameter with all 8 formats
 - [ ] #5 Truststore formats (p12-truststore, jks-truststore) contain only the public certificate, no private key
 - [ ] #6 Keystore formats (p12-keystore, jks-keystore) contain both certificate and private key from KMS
-- [ ] #7 OpenAPI specification documents the CA download endpoint with all formats, parameters, and security notes
-- [ ] #8 Downloaded JKS-truststore file can be used to verify certificates in Java applications
+- [ ] #7 P12 and JKS downloads work with optional password parameter
+- [ ] #8 OpenAPI specification documents the CA download endpoint with all formats, parameters, and security notes
 
-- [ ] #9 Downloaded JKS-keystore file can be used for CA signing operations in Java applications
+- [ ] #9 Downloaded JKS-truststore file can be used to verify certificates in Java applications
+
+- [ ] #10 Downloaded JKS-keystore file can be used for CA signing operations in Java applications
 <!-- AC:END -->
