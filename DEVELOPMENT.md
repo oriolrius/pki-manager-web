@@ -212,6 +212,21 @@ pki-manager/
 
 This project uses [Backlog.md](https://backlog.md) CLI for task management. Tasks track planned work, implementation plans, and acceptance criteria.
 
+### Installation
+
+Backlog.md is installed globally (not as a project dependency):
+
+```bash
+# Install
+npm install -g backlog.md
+
+# Upgrade
+npm update -g backlog.md
+
+# Verify
+backlog --version
+```
+
 ### When to Create Tasks
 
 **Create a task** when work requires planning or decision-making:
