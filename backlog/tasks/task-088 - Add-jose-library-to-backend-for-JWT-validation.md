@@ -1,7 +1,7 @@
 ---
 id: TASK-088
 title: Add jose library to backend for JWT validation
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
