@@ -43,3 +43,24 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 5. Added test: allow admin user to access admin procedure
 6. Verified all 11 tests pass against local Keycloak
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Changes
+
+Enhanced `backend/src/trpc/middleware/auth.test.ts` with new test suite:
+
+### Admin Role Middleware Integration Tests
+- Added `simulateAdminProcedure` helper to test auth + admin role middleware chain
+- Test: non-admin user receives FORBIDDEN error when accessing admin procedure
+- Test: admin user can successfully access admin procedure
+
+### Test Coverage
+- JWT validation against Keycloak JWKS
+- Protected procedure rejects missing/invalid tokens
+- Protected procedure accepts valid tokens
+- Admin procedure requires admin role (FORBIDDEN for non-admins)
+- Role extraction from realm_access.roles
+- All tests run against local Keycloak instance (skip if unavailable)
+<!-- SECTION:NOTES:END -->
