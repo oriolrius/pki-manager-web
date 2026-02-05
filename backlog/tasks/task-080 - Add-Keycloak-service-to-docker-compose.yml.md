@@ -20,19 +20,13 @@ Create a standalone keycloak/ folder following the same pattern as kms/ folder. 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Keycloak service uses port 8081 (KEYCLOAK_EXTERNAL_PORT env var) to avoid conflict with frontend on 8080
-- [ ] #2 Service uses pki-network and follows existing patterns (restart policy, security_opt, healthcheck)
-- [ ] #3 Realm JSON auto-imports on startup using --import-realm flag
-- [ ] #4 Volume mount exists for realm configuration at docker/keycloak/dev-realm.json
-- [ ] #5 Service uses KC_BOOTSTRAP_ADMIN_USERNAME and KC_BOOTSTRAP_ADMIN_PASSWORD environment variables
-- [ ] #6 Keycloak starts in dev mode (start-dev) for local development
-- [ ] #7 Folder structure: keycloak/docker-compose.yml, keycloak/.env, keycloak/dev-realm.json, keycloak/data/, keycloak/README.md
-- [ ] #8 Container name follows convention: pki-manager-keycloak
-- [ ] #9 Port mapping: 52997:8080 (external:internal) following project port range convention
-- [ ] #10 Network: pki-manager-network (same as kms)
-- [ ] #11 Volume mounts: ./data for persistent storage, ./dev-realm.json for realm config (read-only)
-- [ ] #12 Healthcheck configured using /health/ready endpoint
-- [ ] #13 restart: unless-stopped policy
-- [ ] #14 Uses --import-realm flag to auto-import dev-realm.json on startup
-- [ ] #15 Environment variables: KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD, KC_HEALTH_ENABLED=true
+- [ ] #1 Folder structure: keycloak/docker-compose.yml, keycloak/.env, keycloak/dev-realm.json, keycloak/data/, keycloak/README.md
+- [ ] #2 Container name follows convention: pki-manager-keycloak
+- [ ] #3 Port mapping: 52997:8080 (external:internal) following project port range convention
+- [ ] #4 Network: pki-manager-network (same as kms)
+- [ ] #5 Volume mounts: ./data for persistent storage, ./dev-realm.json for realm config (read-only)
+- [ ] #6 Healthcheck configured using /health/ready endpoint
+- [ ] #7 restart: unless-stopped policy
+- [ ] #8 Uses --import-realm flag to auto-import dev-realm.json on startup
+- [ ] #9 Environment variables: KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD, KC_HEALTH_ENABLED=true
 <!-- AC:END -->
