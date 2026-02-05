@@ -6,11 +6,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { initTRPC, TRPCError } from '@trpc/server';
 import {
   authMiddlewareHandler,
-  createAuthMiddleware,
-  createRoleMiddleware,
   type AuthenticatedContext,
 } from './auth.js';
 import {
@@ -30,6 +27,7 @@ function createMockContext(authHeader?: string): Context {
     } as any,
     res: {} as any,
     db: {} as any,
+    user: undefined,
   };
 }
 
