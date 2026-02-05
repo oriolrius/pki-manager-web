@@ -1,10 +1,11 @@
 ---
 id: TASK-091
 title: Add protected and admin procedure types to tRPC
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 15:04'
 labels:
   - oidc
   - backend
