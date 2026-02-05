@@ -4,7 +4,7 @@ title: Add OIDC callback route to frontend
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:37'
 labels:
   - oidc
   - frontend
@@ -16,7 +16,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create /callback route to handle OIDC authorization code exchange after provider redirects back. Should redirect user to original destination after successful auth. Reference: decision-009.
+Create /callback route to handle OIDC authorization code exchange after provider redirects back. Should redirect user to original destination after successful auth.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
