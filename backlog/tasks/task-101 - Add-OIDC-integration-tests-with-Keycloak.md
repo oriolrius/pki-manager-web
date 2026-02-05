@@ -4,11 +4,14 @@ title: Add OIDC integration tests with Keycloak
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:31'
 labels:
   - oidc
   - backend
   - testing
-dependencies: []
+dependencies:
+  - TASK-091
+  - TASK-099
 ---
 
 ## Description
