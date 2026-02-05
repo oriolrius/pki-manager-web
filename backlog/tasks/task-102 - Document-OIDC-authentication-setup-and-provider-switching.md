@@ -1,10 +1,11 @@
 ---
 id: TASK-102
 title: Document OIDC authentication setup and provider switching
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:38'
+updated_date: '2026-02-05 15:45'
 labels:
   - oidc
   - documentation
