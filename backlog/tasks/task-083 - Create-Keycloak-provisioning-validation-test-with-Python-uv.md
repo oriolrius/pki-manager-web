@@ -1,10 +1,11 @@
 ---
 id: TASK-083
 title: Create Keycloak provisioning validation test with Python uv
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 12:00'
-updated_date: '2026-02-05 12:25'
+updated_date: '2026-02-05 12:26'
 labels:
   - keycloak
   - testing
