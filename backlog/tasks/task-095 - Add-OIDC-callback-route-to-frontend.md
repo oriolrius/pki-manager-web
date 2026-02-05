@@ -1,10 +1,11 @@
 ---
 id: TASK-095
 title: Add OIDC callback route to frontend
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 15:26'
 labels:
   - oidc
   - frontend
