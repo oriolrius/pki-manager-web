@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:38'
+updated_date: '2026-02-05 14:39'
 labels:
   - oidc
   - backend
@@ -23,7 +23,15 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 jose library is added to backend/package.json
-- [ ] #2 pnpm install completes without errors
-- [ ] #3 jose can be imported in TypeScript files
+- [x] #1 jose library is added to backend/package.json
+- [x] #2 pnpm install completes without errors
+- [x] #3 jose can be imported in TypeScript files
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- Installed jose ^6.1.3 via pnpm
+- Verified imports work: createRemoteJWKSet, jwtVerify, JWTPayload
+- Ready for TASK-089 (OIDC configuration module)
+<!-- SECTION:NOTES:END -->
