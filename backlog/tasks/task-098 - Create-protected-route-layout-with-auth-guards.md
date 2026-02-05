@@ -4,11 +4,13 @@ title: Create protected route layout with auth guards
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:31'
 labels:
   - oidc
   - frontend
   - routing
-dependencies: []
+dependencies:
+  - TASK-094
 ---
 
 ## Description
