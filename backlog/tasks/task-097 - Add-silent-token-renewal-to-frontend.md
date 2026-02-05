@@ -4,7 +4,7 @@ title: Add silent token renewal to frontend
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:31'
+updated_date: '2026-02-05 14:37'
 labels:
   - oidc
   - frontend
@@ -15,7 +15,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Configure automatic silent token renewal using hidden iframe. Creates silent-renew.html and configures oidc-client-ts for automatic refresh. Reference: decision-009.
+Configure automatic silent token renewal using hidden iframe. Creates silent-renew.html and configures oidc-client-ts for automatic refresh.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
