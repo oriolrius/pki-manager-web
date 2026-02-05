@@ -1,11 +1,11 @@
 ---
 id: TASK-094
 title: Create frontend AuthProvider with OIDC configuration
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 15:24'
+updated_date: '2026-02-05 15:26'
 labels:
   - oidc
   - frontend
@@ -24,9 +24,21 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 AuthProvider component created in frontend/src/lib/auth/
-- [ ] #2 OIDC configuration reads from VITE_OIDC_AUTHORITY and VITE_OIDC_CLIENT_ID
-- [ ] #3 Supports runtime configuration via /config.json
-- [ ] #4 AuthProvider wraps the app in __root.tsx
-- [ ] #5 useAuth hook is re-exported for easy access
+- [x] #1 AuthProvider component created in frontend/src/lib/auth/
+- [x] #2 OIDC configuration reads from VITE_OIDC_AUTHORITY and VITE_OIDC_CLIENT_ID
+- [x] #3 Supports runtime configuration via /config.json
+- [x] #4 AuthProvider wraps the app in __root.tsx
+- [x] #5 useAuth hook is re-exported for easy access
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Created OIDC AuthProvider:
+
+- config.ts: Loads OIDC settings from env vars with runtime config override
+- AuthProvider.tsx: Wraps app with react-oidc-context
+- index.ts: Re-exports useAuth hook and utilities
+- Updated __root.tsx to wrap app with AuthProvider
+- Created frontend/.env.example with OIDC configuration
+<!-- SECTION:NOTES:END -->
