@@ -1,11 +1,11 @@
 ---
 id: TASK-080
 title: Create Keycloak development environment folder
-status: Done
+status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-02-05 11:59'
-updated_date: '2026-02-05 12:08'
+updated_date: '2026-02-05 12:10'
 labels:
   - keycloak
   - docker
@@ -16,7 +16,7 @@ dependencies: []
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create a standalone keycloak/ folder following the same pattern as kms/ folder. This provides a self-contained Keycloak development environment with its own docker-compose.yml, configuration, and documentation.
+Create a standalone keycloak/ directory at project root (following the kms/ pattern) with Docker Compose configuration for running Keycloak identity server in development.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -24,12 +24,12 @@ Create a standalone keycloak/ folder following the same pattern as kms/ folder. 
 - [x] #1 Folder structure: keycloak/docker-compose.yml, keycloak/.env, keycloak/dev-realm.json, keycloak/data/, keycloak/README.md
 - [x] #2 Container name follows convention: pki-manager-keycloak
 - [x] #3 Port mapping: 52997:8080 (external:internal) following project port range convention
-- [x] #4 Network: pki-manager-network (same as kms)
-- [x] #5 Volume mounts: ./data for persistent storage, ./dev-realm.json for realm config (read-only)
-- [x] #6 Healthcheck configured using /health/ready endpoint
-- [ ] #7 restart: unless-stopped policy
-- [ ] #8 Uses --import-realm flag to auto-import dev-realm.json on startup
-- [ ] #9 Environment variables: KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD, KC_HEALTH_ENABLED=true
+- [x] #4 Volume mounts: ./data for persistent storage, ./dev-realm.json for realm config (read-only)
+- [x] #5 Healthcheck configured using /health/ready endpoint
+- [ ] #6 restart: unless-stopped policy
+- [ ] #7 Uses --import-realm flag to auto-import dev-realm.json on startup
+- [ ] #8 Environment variables: KC_BOOTSTRAP_ADMIN_USERNAME, KC_BOOTSTRAP_ADMIN_PASSWORD, KC_HEALTH_ENABLED=true
+- [ ] #9 Volume mount for realm configuration at keycloak/dev-realm.json
 <!-- AC:END -->
 
 ## Implementation Plan
