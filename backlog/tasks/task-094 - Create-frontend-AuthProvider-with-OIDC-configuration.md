@@ -4,7 +4,7 @@ title: Create frontend AuthProvider with OIDC configuration
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:37'
 labels:
   - oidc
   - frontend
@@ -16,7 +16,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create AuthProvider component that wraps the app with react-oidc-context. Configuration should be loaded from environment variables or runtime config. Reference: decision-009.
+Create AuthProvider component that wraps the app with react-oidc-context. Configuration should be loaded from environment variables or runtime config.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
