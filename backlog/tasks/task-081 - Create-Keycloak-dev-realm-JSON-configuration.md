@@ -1,10 +1,11 @@
 ---
 id: TASK-081
 title: Create Keycloak dev realm JSON configuration
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 12:00'
-updated_date: '2026-02-05 12:04'
+updated_date: '2026-02-05 12:13'
 labels:
   - keycloak
   - configuration
