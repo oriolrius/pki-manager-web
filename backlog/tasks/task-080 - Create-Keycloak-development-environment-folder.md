@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 11:59'
-updated_date: '2026-02-05 12:11'
+updated_date: '2026-02-05 12:12'
 labels:
   - keycloak
   - docker
@@ -21,7 +21,7 @@ Create a standalone keycloak/ directory at project root (following the kms/ patt
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Keycloak service uses port 8081 (KEYCLOAK_PORT env var) to avoid conflict with frontend on 8080
+- [x] #1 Keycloak service uses port 42997 (KEYCLOAK_PORT env var)
 - [x] #2 Service uses pki-manager-network and follows existing kms/ patterns (restart policy, healthcheck)
 - [x] #3 Realm JSON auto-imports on startup using --import-realm flag
 - [x] #4 Volume mount for realm configuration at keycloak/dev-realm.json
