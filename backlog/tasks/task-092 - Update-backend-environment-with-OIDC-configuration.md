@@ -1,10 +1,11 @@
 ---
 id: TASK-092
 title: Update backend environment with OIDC configuration
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 15:22'
 labels:
   - oidc
   - backend
