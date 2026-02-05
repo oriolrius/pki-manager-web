@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 15:45'
+updated_date: '2026-02-05 15:47'
 labels:
   - oidc
   - documentation
@@ -24,9 +24,9 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 README updated with authentication overview
-- [ ] #2 Environment variables documented for backend and frontend
-- [ ] #3 Provider switching guide with examples for Auth0, Okta, Azure AD
-- [ ] #4 Development workflow with Keycloak documented
-- [ ] #5 Troubleshooting section for common auth issues
+- [x] #1 README updated with authentication overview
+- [x] #2 Environment variables documented for backend and frontend
+- [x] #3 Provider switching guide with examples for Auth0, Okta, Azure AD
+- [x] #4 Development workflow with Keycloak documented
+- [x] #5 Troubleshooting section for common auth issues
 <!-- AC:END -->
