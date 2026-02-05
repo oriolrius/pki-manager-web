@@ -4,7 +4,7 @@ title: Document OIDC authentication setup and provider switching
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:31'
+updated_date: '2026-02-05 14:38'
 labels:
   - oidc
   - documentation
@@ -16,7 +16,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Update project documentation to explain OIDC authentication setup, how to configure different providers, and development workflow with Keycloak. Reference: decision-009.
+Update project documentation to explain OIDC authentication setup, how to configure different providers, and development workflow with Keycloak.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
