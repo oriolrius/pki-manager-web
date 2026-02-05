@@ -4,10 +4,12 @@ title: Create Keycloak dev realm JSON configuration
 status: To Do
 assignee: []
 created_date: '2026-02-05 11:53'
+updated_date: '2026-02-05 11:54'
 labels:
   - keycloak
   - configuration
-dependencies: []
+dependencies:
+  - TASK-001
 ---
 
 ## Description
