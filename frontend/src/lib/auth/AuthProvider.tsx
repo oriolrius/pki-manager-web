@@ -92,9 +92,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return <>{children}</>;
   }
 
+  /**
+   * Handle sign-in callback - clean up URL after redirect
+   * This removes the authorization code from the URL to prevent issues
+   * with page refresh and browser history.
+   */
+  const onSigninCallback = () => {
+    // Remove OIDC callback parameters from URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  };
+
   // Wrap with OIDC provider
   return (
-    <OIDCAuthProvider {...settings}>
+    <OIDCAuthProvider
+      {...settings}
+      onSigninCallback={onSigninCallback}
+    >
       {children}
     </OIDCAuthProvider>
   );
