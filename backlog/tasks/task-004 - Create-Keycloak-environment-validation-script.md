@@ -4,11 +4,14 @@ title: Create Keycloak environment validation script
 status: To Do
 assignee: []
 created_date: '2026-02-05 11:53'
+updated_date: '2026-02-05 11:54'
 labels:
   - keycloak
   - testing
   - scripts
-dependencies: []
+dependencies:
+  - TASK-001
+  - TASK-002
 ---
 
 ## Description
