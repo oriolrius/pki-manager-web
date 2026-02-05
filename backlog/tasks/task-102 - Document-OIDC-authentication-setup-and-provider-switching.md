@@ -1,7 +1,7 @@
 ---
 id: TASK-102
 title: Document OIDC authentication setup and provider switching
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:30'
