@@ -16,6 +16,7 @@ PKI Manager provides complete control over your Private Key Infrastructure witho
 - **Multi-Type Certificates**: Server (TLS/SSL), Client Auth, S/MIME Email, Code Signing
 - **Secure Key Management**: Integration with Cosmian KMS for secure key storage
 - **Bulk Operations**: CSV-based bulk certificate creation and batch operations
+- **OIDC Authentication**: Provider-agnostic auth supporting Keycloak, Auth0, Okta, Azure AD
 - **Modern UI**: React 19 with light/dark theme support and responsive design
 - **Type-Safe**: End-to-end TypeScript with tRPC for API type safety
 
@@ -170,6 +171,14 @@ Efficient batch certificate creation and management.
 - ✅ Revocation tracking with detailed reasons
 - ✅ Secure key pair generation (RSA, ECDSA)
 
+### Authentication
+- ✅ OpenID Connect (OIDC) authentication
+- ✅ Provider-agnostic (Keycloak, Auth0, Okta, Azure AD)
+- ✅ Authorization Code Flow with PKCE
+- ✅ Role-based access control (admin/user roles)
+- ✅ JWT validation via JWKS
+- ✅ Silent token renewal
+
 ### User Experience
 - ✅ Modern, responsive UI with card-based layout
 - ✅ Light/Dark theme with system detection
@@ -221,11 +230,15 @@ pki-manager/
 # 1. Start Cosmian KMS
 cd kms && docker compose up -d
 
-# 2. Install dependencies
+# 2. Start Keycloak (for authentication)
+cd keycloak && docker compose up -d
+
+# 3. Install dependencies
 pnpm install
 
-# 3. Configure and run
+# 4. Configure and run
 cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 cd backend && pnpm db:migrate
 pnpm dev  # from root
 ```
@@ -233,8 +246,11 @@ pnpm dev  # from root
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:3000
 - **Cosmian KMS**: http://localhost:42998
+- **Keycloak**: http://localhost:42997 (admin/admin)
 
-For detailed setup instructions, see [DEVELOPMENT.md](DEVELOPMENT.md).
+**Test Users**: Login with `admin`/`admin` or `user`/`user`
+
+For detailed setup, see [DEVELOPMENT.md](DEVELOPMENT.md) and [Authentication Guide](backlog/docs/doc-004%20-%20OIDC-Authentication-Setup-Guide.md).
 
 ## Common Use Cases
 
@@ -306,6 +322,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## Additional Resources
 
 - [Development Guide](DEVELOPMENT.md) - Setup, scripts, and development workflow
+- [Authentication Guide](backlog/docs/doc-004%20-%20OIDC-Authentication-Setup-Guide.md) - OIDC setup and provider configuration
+- [Keycloak Setup](keycloak/README.md) - Local Keycloak development environment
 - [Features Documentation](FEATURES.md) - Detailed feature documentation
 - [Cosmian KMS Documentation](https://docs.cosmian.com/)
 - [X.509 Certificate Standard (RFC 5280)](https://datatracker.ietf.org/doc/html/rfc5280)

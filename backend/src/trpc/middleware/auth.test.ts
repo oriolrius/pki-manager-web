@@ -322,3 +322,104 @@ describe('Role Middleware Integration Tests (requires Keycloak)', () => {
     expect(authenticatedCtx!.user.roles).toContain('admin');
   });
 });
+
+describe('Admin Role Middleware Integration Tests (requires Keycloak)', () => {
+  let userToken: string;
+  let adminToken: string;
+  let keycloakAvailable = false;
+
+  beforeAll(async () => {
+    // Reset config from previous tests
+    resetOIDCConfig();
+
+    // Check if Keycloak is available
+    try {
+      const response = await fetch(
+        `${KEYCLOAK_ISSUER}/.well-known/openid-configuration`
+      );
+      keycloakAvailable = response.ok;
+    } catch {
+      keycloakAvailable = false;
+    }
+
+    if (!keycloakAvailable) {
+      console.log('Skipping Keycloak integration tests - Keycloak not available');
+      return;
+    }
+
+    // Set env vars and initialize OIDC
+    process.env.OIDC_ISSUER = KEYCLOAK_ISSUER;
+    process.env.OIDC_AUDIENCE = CLIENT_ID;
+    process.env.OIDC_ROLES_CLAIM = 'realm_access.roles';
+
+    await initializeOIDC();
+
+    // Get tokens
+    userToken = await getAccessToken(TEST_USER.username, TEST_USER.password);
+    adminToken = await getAccessToken(TEST_ADMIN.username, TEST_ADMIN.password);
+  });
+
+  afterAll(() => {
+    delete process.env.OIDC_ISSUER;
+    delete process.env.OIDC_AUDIENCE;
+    delete process.env.OIDC_ROLES_CLAIM;
+    resetOIDCConfig();
+  });
+
+  /**
+   * Helper to simulate admin role check middleware behavior
+   * This replicates the logic from init.ts adminRoleMiddleware
+   */
+  async function simulateAdminProcedure(ctx: Context): Promise<any> {
+    // First apply auth middleware
+    let authenticatedCtx: AuthenticatedContext | undefined;
+    await authMiddlewareHandler({
+      ctx,
+      next: (opts: any) => {
+        authenticatedCtx = opts?.ctx;
+        return Promise.resolve();
+      },
+    });
+
+    if (!authenticatedCtx) {
+      throw new Error('Authentication failed');
+    }
+
+    // Then check admin role (simulating adminRoleMiddleware)
+    if (!authenticatedCtx.user.roles.includes('admin')) {
+      const { TRPCError } = await import('@trpc/server');
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'Admin role required',
+      });
+    }
+
+    return { user: authenticatedCtx.user };
+  }
+
+  it('should reject user without admin role with FORBIDDEN', async () => {
+    if (!keycloakAvailable) return;
+
+    const ctx = createMockContext(`Bearer ${userToken}`);
+
+    await expect(simulateAdminProcedure(ctx)).rejects.toThrow('Admin role required');
+
+    // Verify it's a FORBIDDEN error
+    try {
+      await simulateAdminProcedure(ctx);
+    } catch (error: any) {
+      expect(error.code).toBe('FORBIDDEN');
+    }
+  });
+
+  it('should allow admin user to access admin procedure', async () => {
+    if (!keycloakAvailable) return;
+
+    const ctx = createMockContext(`Bearer ${adminToken}`);
+
+    const result = await simulateAdminProcedure(ctx);
+
+    expect(result.user).toBeDefined();
+    expect(result.user.roles).toContain('admin');
+  });
+});
