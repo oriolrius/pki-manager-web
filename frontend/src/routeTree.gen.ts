@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as CertificatesRouteImport } from './routes/certificates'
 import { Route as CasRouteImport } from './routes/cas'
+import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as ApiDocsRouteImport } from './routes/api-docs'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CertificatesNewRouteImport } from './routes/certificates.new'
 import { Route as CertificatesBulkRouteImport } from './routes/certificates.bulk'
@@ -29,9 +31,18 @@ const CasRoute = CasRouteImport.update({
   path: '/cas',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CallbackRoute = CallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDocsRoute = ApiDocsRouteImport.update({
   id: '/api-docs',
   path: '/api-docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -68,6 +79,7 @@ const CasIdRoute = CasIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api-docs': typeof ApiDocsRoute
+  '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
   '/cas/$id': typeof CasIdRoute
@@ -79,6 +91,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api-docs': typeof ApiDocsRoute
+  '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
   '/cas/$id': typeof CasIdRoute
@@ -90,7 +103,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRoute
   '/api-docs': typeof ApiDocsRoute
+  '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
   '/cas/$id': typeof CasIdRoute
@@ -104,6 +119,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api-docs'
+    | '/callback'
     | '/cas'
     | '/certificates'
     | '/cas/$id'
@@ -115,6 +131,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api-docs'
+    | '/callback'
     | '/cas'
     | '/certificates'
     | '/cas/$id'
@@ -125,7 +142,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/_authenticated'
     | '/api-docs'
+    | '/callback'
     | '/cas'
     | '/certificates'
     | '/cas/$id'
@@ -137,7 +156,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRoute: typeof AuthenticatedRoute
   ApiDocsRoute: typeof ApiDocsRoute
+  CallbackRoute: typeof CallbackRoute
   CasRoute: typeof CasRouteWithChildren
   CertificatesRoute: typeof CertificatesRouteWithChildren
 }
@@ -158,11 +179,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/callback': {
+      id: '/callback'
+      path: '/callback'
+      fullPath: '/callback'
+      preLoaderRoute: typeof CallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api-docs': {
       id: '/api-docs'
       path: '/api-docs'
       fullPath: '/api-docs'
       preLoaderRoute: typeof ApiDocsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: ''
+      preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -240,7 +275,9 @@ const CertificatesRouteWithChildren = CertificatesRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRoute: AuthenticatedRoute,
   ApiDocsRoute: ApiDocsRoute,
+  CallbackRoute: CallbackRoute,
   CasRoute: CasRouteWithChildren,
   CertificatesRoute: CertificatesRouteWithChildren,
 }
