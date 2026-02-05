@@ -4,11 +4,13 @@ title: Add OIDC callback route to frontend
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:29'
+updated_date: '2026-02-05 14:30'
 labels:
   - oidc
   - frontend
   - routing
-dependencies: []
+dependencies:
+  - TASK-094
 ---
 
 ## Description
