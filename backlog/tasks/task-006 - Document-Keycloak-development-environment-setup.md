@@ -4,10 +4,13 @@ title: Document Keycloak development environment setup
 status: To Do
 assignee: []
 created_date: '2026-02-05 11:53'
+updated_date: '2026-02-05 11:54'
 labels:
   - keycloak
   - documentation
-dependencies: []
+dependencies:
+  - TASK-001
+  - TASK-002
 ---
 
 ## Description
