@@ -194,11 +194,124 @@ pki-manager/
 │   └── data/                       # KMS SQLite data (gitignored)
 ├── docker/
 │   └── docker-compose.yml          # Full stack for production
+├── backlog/
+│   ├── tasks/                      # Active task files
+│   ├── docs/                       # Project documentation
+│   ├── decisions/                  # Architecture decision records
+│   ├── drafts/                     # Work-in-progress tasks
+│   ├── completed/                  # Finished tasks
+│   ├── archive/                    # Archived tasks
+│   └── config.yml                  # Backlog configuration
 ├── tests/
 │   └── screenshots.spec.ts         # Playwright screenshot tests
 ├── assets/                         # Screenshots for documentation
 └── playwright.config.ts            # Playwright configuration
 ```
+
+## Task Management with Backlog.md
+
+This project uses [Backlog.md](https://backlog.md) CLI for task management. Tasks track planned work, implementation plans, and acceptance criteria.
+
+### When to Create Tasks
+
+**Create a task** when work requires planning or decision-making:
+- Bug fixes that need investigation
+- New features requiring design decisions
+- Refactoring with architectural implications
+
+**Skip tasks** for trivial changes:
+- Typo fixes
+- Version bumps
+- Obvious one-line fixes
+
+### Backlog Structure
+
+```
+backlog/
+├── tasks/        # Active tasks (To Do, In Progress)
+├── docs/         # Project documentation and specs
+├── decisions/    # Architecture Decision Records (ADRs)
+├── drafts/       # Work-in-progress task drafts
+├── completed/    # Finished tasks (Done status)
+└── archive/      # Archived/cancelled tasks
+```
+
+### Core Commands
+
+```bash
+# View tasks
+backlog task list                    # List all active tasks
+backlog task list --status "To Do"   # Filter by status
+backlog task <id>                    # View task details
+backlog search "keyword"             # Search tasks
+
+# Create task
+backlog task create "Title" -d "Description" --ac "Acceptance criterion"
+
+# Task lifecycle
+backlog task edit <id> -s "In Progress" -a @myself   # Start work
+backlog task edit <id> --plan $'1. Step one\n2. Step two'  # Add plan
+backlog task edit <id> --check-ac 1                  # Mark AC complete
+backlog task edit <id> --notes "Summary of changes"  # Add PR notes
+backlog task edit <id> -s Done                       # Complete task
+
+# Documents
+backlog doc list                     # List documents
+backlog doc <id>                     # View document
+```
+
+### Task Workflow
+
+1. **Search first**: Check for existing tasks before creating new ones
+2. **Create task**: Define title, description, and acceptance criteria
+3. **Start work**: Set status to "In Progress" and assign yourself
+4. **Plan**: Add implementation plan before coding
+5. **Execute**: Check off acceptance criteria as you complete them
+6. **Document**: Add implementation notes (used for PR description)
+7. **Complete**: Set status to "Done"
+
+### Acceptance Criteria Guidelines
+
+Acceptance criteria must be **outcome-oriented** and **testable**:
+
+| Good (Outcome) | Bad (Implementation) |
+|----------------|---------------------|
+| "User can download certificate as PFX" | "Add downloadPfx() function" |
+| "API returns 404 for invalid CA ID" | "Check if CA exists in handler" |
+| "Dashboard shows expiring certificates" | "Query certificates table" |
+
+### Command Reference
+
+| Action | Command |
+|--------|---------|
+| List tasks | `backlog task list` |
+| View task | `backlog task <id>` |
+| Create task | `backlog task create "Title"` |
+| Edit status | `backlog task edit <id> -s "In Progress"` |
+| Add description | `backlog task edit <id> -d "Description"` |
+| Add AC | `backlog task edit <id> --ac "Criterion"` |
+| Check AC | `backlog task edit <id> --check-ac 1` |
+| Add plan | `backlog task edit <id> --plan "Plan text"` |
+| Add notes | `backlog task edit <id> --notes "Notes"` |
+| Append notes | `backlog task edit <id> --append-notes "More notes"` |
+| Assign | `backlog task edit <id> -a @username` |
+| Add labels | `backlog task edit <id> -l label1,label2` |
+| Archive | `backlog task archive <id>` |
+
+### Multi-line Input
+
+Use ANSI-C quoting for multi-line content:
+
+```bash
+backlog task edit <id> --plan $'1. First step\n2. Second step\n3. Third step'
+```
+
+### Tips
+
+- Use `--plain` flag for machine-readable output
+- Multiple `--ac` flags add multiple acceptance criteria
+- Multiple `--check-ac` flags check multiple criteria at once
+- Tasks auto-commit to git when `auto_commit: true` in config
 
 ## Development Workflow
 
