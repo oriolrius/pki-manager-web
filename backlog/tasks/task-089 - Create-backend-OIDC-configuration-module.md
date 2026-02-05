@@ -1,10 +1,11 @@
 ---
 id: TASK-089
 title: Create backend OIDC configuration module
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 14:51'
 labels:
   - oidc
   - backend
