@@ -1,6 +1,6 @@
 ---
 id: decision-006
-title: External Service Certificate Integration via Shared Volume Pattern
+title: 006 - External Service Certificate Integration via Shared Volume Pattern
 date: '2025-10-30 15:22'
 status: proposed
 ---
