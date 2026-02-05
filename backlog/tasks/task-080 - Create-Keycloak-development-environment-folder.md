@@ -21,13 +21,15 @@ Create a standalone keycloak/ directory at project root (following the kms/ patt
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Keycloak service uses port 8081 (KEYCLOAK_PORT env var) to avoid conflict with frontend on 8080
-- [ ] #2 Service uses pki-manager-network and follows existing kms/ patterns (restart policy, healthcheck)
-- [ ] #3 Realm JSON auto-imports on startup using --import-realm flag
-- [ ] #4 Volume mount for realm configuration at keycloak/dev-realm.json
-- [ ] #5 Service uses KC_BOOTSTRAP_ADMIN_USERNAME and KC_BOOTSTRAP_ADMIN_PASSWORD environment variables
-- [ ] #6 Keycloak starts in dev mode (start-dev) for local development
+- [x] #1 Keycloak service uses port 8081 (KEYCLOAK_PORT env var) to avoid conflict with frontend on 8080
+- [x] #2 Service uses pki-manager-network and follows existing kms/ patterns (restart policy, healthcheck)
+- [x] #3 Realm JSON auto-imports on startup using --import-realm flag
+- [x] #4 Volume mount for realm configuration at keycloak/dev-realm.json
+- [x] #5 Service uses KC_BOOTSTRAP_ADMIN_USERNAME and KC_BOOTSTRAP_ADMIN_PASSWORD environment variables
+- [x] #6 Keycloak starts in dev mode (start-dev) for local development
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
