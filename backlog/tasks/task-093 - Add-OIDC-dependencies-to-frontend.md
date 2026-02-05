@@ -4,6 +4,7 @@ title: Add OIDC dependencies to frontend
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:29'
+updated_date: '2026-02-05 14:37'
 labels:
   - oidc
   - frontend
@@ -14,7 +15,9 @@ dependencies: []
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Install oidc-client-ts and react-oidc-context libraries for provider-agnostic OIDC authentication in the React frontend. Reference: decision-009.
+Install oidc-client-ts and react-oidc-context libraries for provider-agnostic OIDC authentication in the React frontend.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
