@@ -4,11 +4,13 @@ title: Create frontend AuthProvider with OIDC configuration
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:29'
+updated_date: '2026-02-05 14:30'
 labels:
   - oidc
   - frontend
   - react
-dependencies: []
+dependencies:
+  - TASK-093
 ---
 
 ## Description
