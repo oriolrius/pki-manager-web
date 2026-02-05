@@ -4,7 +4,7 @@ title: Create UserMenu component with login/logout buttons
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:37'
 labels:
   - oidc
   - frontend
@@ -16,7 +16,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create UserMenu component that shows login button when unauthenticated, and user info with logout/account links when authenticated. Uses provider redirects, no custom UI. Reference: decision-009.
+Create UserMenu component that shows login button when unauthenticated, and user info with logout/account links when authenticated. Uses provider redirects, no custom UI.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
