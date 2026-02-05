@@ -1,7 +1,7 @@
 ---
 id: TASK-101
 title: Add OIDC integration tests with Keycloak
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:30'
