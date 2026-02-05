@@ -4,12 +4,14 @@ title: Create unit tests for JWT validation utility
 status: To Do
 assignee: []
 created_date: '2026-02-05 11:54'
+updated_date: '2026-02-05 11:54'
 labels:
   - keycloak
   - backend
   - testing
   - vitest
-dependencies: []
+dependencies:
+  - TASK-007
 ---
 
 ## Description
