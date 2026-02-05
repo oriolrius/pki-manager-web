@@ -1,11 +1,11 @@
 ---
 id: TASK-091
 title: Add protected and admin procedure types to tRPC
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 15:04'
+updated_date: '2026-02-05 15:10'
 labels:
   - oidc
   - backend
@@ -24,10 +24,10 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 protectedProcedure requires valid JWT token
-- [ ] #2 adminProcedure requires admin role in addition to valid token
-- [ ] #3 Context type includes optional user with sub, email, name, roles
-- [ ] #4 Procedures are exported from trpc/init.ts
+- [x] #1 protectedProcedure requires valid JWT token
+- [x] #2 adminProcedure requires admin role in addition to valid token
+- [x] #3 Context type includes optional user with sub, email, name, roles
+- [x] #4 Procedures are exported from trpc/init.ts
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -38,3 +38,14 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 3. Add adminProcedure that requires admin role
 4. Export both procedures from init.ts
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added protected and admin procedure types to tRPC:
+
+- Created `ContextUser` interface in context.ts with sub, email?, name?, roles
+- Added `protectedProcedure` that validates JWT token via authMiddleware
+- Added `adminProcedure` that extends protectedProcedure with admin role check
+- Both procedures exported from trpc/init.ts with JSDoc examples
+<!-- SECTION:NOTES:END -->
