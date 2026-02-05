@@ -30,4 +30,7 @@ Create a Python test using uv that validates the Keycloak development environmen
 - [ ] #5 Test validates access token contains expected claims (iss, aud, exp, sub)
 - [ ] #6 Run with: uv run keycloak/test_keycloak.py
 - [ ] #7 Clear error messages when Keycloak is not running or misconfigured
+- [ ] #8 Test file located at keycloak/test_keycloak.py
+- [ ] #9 Uses uv inline script dependencies (# /// script)
+- [ ] #10 Test verifies Keycloak health endpoint responds (http://localhost:42997/health/ready)
 <!-- AC:END -->
