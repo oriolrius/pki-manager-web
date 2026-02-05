@@ -1,0 +1,30 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.2
+    container_name: pki-manager-keycloak
+    restart: unless-stopped
+    ports:
+      - "${KEYCLOAK_PORT:-42997}:8080"
+      - "${KEYCLOAK_MGMT_PORT:-42999}:9000"
+    volumes:
+      - ./data:/opt/keycloak/data
+      - ./pki-dev-realm.json:/opt/keycloak/data/import/pki-dev-realm.json:ro
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
+      - KC_HEALTH_ENABLED=true
+      - KC_METRICS_ENABLED=false
+      - KC_HTTP_PORT=8080
+    command: start-dev --import-realm
+    networks:
+      - pki-manager-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e 'GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3;grep -q '200 OK' <&3"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  pki-manager-network:
+    driver: bridge
