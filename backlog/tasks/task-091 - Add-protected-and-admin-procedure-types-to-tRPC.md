@@ -29,3 +29,12 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 - [ ] #3 Context type includes optional user with sub, email, name, roles
 - [ ] #4 Procedures are exported from trpc/init.ts
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Update context.ts to include optional user type
+2. Update init.ts to add protectedProcedure using auth middleware
+3. Add adminProcedure that requires admin role
+4. Export both procedures from init.ts
+<!-- SECTION:PLAN:END -->
