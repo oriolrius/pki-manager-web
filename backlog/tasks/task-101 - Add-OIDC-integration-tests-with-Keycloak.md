@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 15:44'
+updated_date: '2026-02-05 15:45'
 labels:
   - oidc
   - backend
@@ -32,3 +32,14 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 - [x] #5 Test verifies role extraction from realm_access.roles
 - [x] #6 Tests run against local Keycloak instance
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reviewed existing auth.test.ts middleware tests
+2. Added Admin Role Middleware Integration Tests describe block
+3. Added simulateAdminProcedure helper that chains auth + admin role check
+4. Added test: reject user without admin role with FORBIDDEN
+5. Added test: allow admin user to access admin procedure
+6. Verified all 11 tests pass against local Keycloak
+<!-- SECTION:PLAN:END -->
