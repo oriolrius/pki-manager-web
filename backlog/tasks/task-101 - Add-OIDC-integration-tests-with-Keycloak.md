@@ -4,7 +4,7 @@ title: Add OIDC integration tests with Keycloak
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:31'
+updated_date: '2026-02-05 14:38'
 labels:
   - oidc
   - backend
@@ -17,7 +17,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create integration tests that verify the full authentication flow using the Keycloak development environment. Tests should cover login, token validation, protected endpoints, and logout. Reference: decision-009.
+Create integration tests that verify the full authentication flow using the Keycloak development environment. Tests should cover login, token validation, protected endpoints, and logout.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
