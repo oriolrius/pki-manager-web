@@ -4,7 +4,7 @@ title: Inject Bearer token in tRPC client
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:31'
+updated_date: '2026-02-05 14:37'
 labels:
   - oidc
   - frontend
@@ -16,7 +16,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Modify tRPC client configuration to include Authorization header with Bearer token from OIDC context. Token should be injected in all requests. Reference: decision-009.
+Modify tRPC client configuration to include Authorization header with Bearer token from OIDC context. Token should be injected in all requests.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
