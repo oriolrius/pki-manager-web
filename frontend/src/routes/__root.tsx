@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChartLine, faShield, faCertificate, faLayerGroup, faBook } from '@fortawesome/free-solid-svg-icons';
 import packageJson from '../../../package.json';
 import { AuthProvider } from '@/lib/auth';
+import { UserMenu } from '@/components/UserMenu';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -76,7 +77,10 @@ function RootComponent() {
                 </Link>
               </div>
             </div>
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <UserMenu />
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </nav>
