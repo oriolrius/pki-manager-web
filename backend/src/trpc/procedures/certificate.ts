@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure, adminProcedure } from '../init.js';
 import {
   listCertificatesSchema,
   getCertificateSchema,
@@ -23,7 +23,7 @@ import {
 } from '../../services/jks.service.js';
 
 export const certificateRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .meta({
       openapi: {
         method: 'GET',
@@ -217,7 +217,7 @@ export const certificateRouter = router({
       };
     }),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .meta({
       openapi: {
         method: 'GET',
@@ -548,7 +548,7 @@ export const certificateRouter = router({
       };
     }),
 
-  issue: publicProcedure
+  issue: protectedProcedure
     .input(createCertificateSchema)
     .mutation(async ({ ctx, input }) => {
       const { TRPCError } = await import('@trpc/server');
@@ -606,14 +606,15 @@ export const certificateRouter = router({
             });
           }
 
-          // Validate CN for email or username format
+          // Validate CN for email, username, or hostname format (hostname for mTLS)
           const cn = input.subject.commonName;
           const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cn);
           const isUsername = /^[a-zA-Z0-9_-]+$/.test(cn);
-          if (!isEmail && !isUsername) {
+          const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(cn);
+          if (!isEmail && !isUsername && !isHostname) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: 'Client certificate CN must be a valid email address or username',
+              message: 'Client certificate CN must be a valid email address, username, or hostname',
             });
           }
 
@@ -881,7 +882,7 @@ export const certificateRouter = router({
       }
     }),
 
-  renew: publicProcedure
+  renew: protectedProcedure
     .input(renewCertificateSchema)
     .mutation(async ({ ctx, input }) => {
       const { TRPCError } = await import('@trpc/server');
@@ -1142,7 +1143,7 @@ export const certificateRouter = router({
       }
     }),
 
-  revoke: publicProcedure
+  revoke: adminProcedure
     .input(revokeCertificateSchema)
     .mutation(async ({ ctx, input }) => {
       const { TRPCError } = await import('@trpc/server');
@@ -1276,7 +1277,7 @@ export const certificateRouter = router({
       }
     }),
 
-  delete: publicProcedure
+  delete: adminProcedure
     .input(deleteCertificateSchema)
     .mutation(async ({ ctx, input }) => {
       const { TRPCError } = await import('@trpc/server');
@@ -1404,7 +1405,7 @@ export const certificateRouter = router({
       }
     }),
 
-  download: publicProcedure
+  download: protectedProcedure
     .input(downloadCertificateSchema)
     .query(async ({ ctx, input }) => {
       const { TRPCError } = await import('@trpc/server');
@@ -1934,7 +1935,7 @@ export const certificateRouter = router({
       }
     }),
 
-  bulkIssue: publicProcedure
+  bulkIssue: protectedProcedure
     .input(bulkCreateCertificatesSchema)
     .output(
       z.object({
@@ -2111,8 +2112,9 @@ export const certificateRouter = router({
 
               const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commonName);
               const isUsername = /^[a-zA-Z0-9._-]+$/.test(commonName);
-              if (!isEmail && !isUsername) {
-                throw new Error('Client certificate CN must be a valid email address or username');
+              const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(commonName);
+              if (!isEmail && !isUsername && !isHostname) {
+                throw new Error('Client certificate CN must be a valid email address, username, or hostname');
               }
               break;
 
@@ -2270,7 +2272,7 @@ export const certificateRouter = router({
       };
     }),
 
-  bulkRevoke: publicProcedure
+  bulkRevoke: adminProcedure
     .input(bulkRevokeCertificatesSchema)
     .output(
       z.object({
@@ -2407,7 +2409,7 @@ export const certificateRouter = router({
       };
     }),
 
-  bulkRenew: publicProcedure
+  bulkRenew: protectedProcedure
     .input(bulkRenewCertificatesSchema)
     .output(
       z.object({
@@ -2676,7 +2678,7 @@ export const certificateRouter = router({
       };
     }),
 
-  bulkDelete: publicProcedure
+  bulkDelete: adminProcedure
     .input(bulkDeleteCertificatesSchema)
     .output(
       z.object({
@@ -2827,7 +2829,7 @@ export const certificateRouter = router({
       };
     }),
 
-  bulkDownload: publicProcedure
+  bulkDownload: protectedProcedure
     .input(bulkDownloadCertificatesSchema)
     .output(
       z.object({

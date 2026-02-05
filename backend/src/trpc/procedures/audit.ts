@@ -1,4 +1,4 @@
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure } from '../init.js';
 import { listAuditLogSchema, generateReportSchema } from '../schemas.js';
 import { auditLog, certificates, certificateAuthorities } from '../../db/schema.js';
 import { eq, and, gte, lte, like, sql, desc } from 'drizzle-orm';
@@ -6,7 +6,7 @@ import { createAuditLog } from '../../lib/audit.js';
 import { createHash } from 'crypto';
 
 export const auditRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(listAuditLogSchema)
     .query(async ({ ctx, input }) => {
       const params = input || {
@@ -108,7 +108,7 @@ export const auditRouter = router({
       };
     }),
 
-  generateReport: publicProcedure
+  generateReport: protectedProcedure
     .input(generateReportSchema)
     .mutation(async ({ ctx, input }) => {
       const { reportType, format, caId, startDate, endDate } = input;

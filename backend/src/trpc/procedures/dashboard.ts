@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure } from '../init.js';
 import { eq, sql, asc, gte, and } from 'drizzle-orm';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
 
@@ -40,7 +40,7 @@ function formatCertificateType(type: 'server' | 'client' | 'code_signing' | 'ema
 }
 
 export const dashboardRouter = router({
-  stats: publicProcedure
+  stats: protectedProcedure
     .output(
       z.object({
         totalCAs: z.number(),
@@ -90,7 +90,7 @@ export const dashboardRouter = router({
       };
     }),
 
-  expiringSoon: publicProcedure
+  expiringSoon: protectedProcedure
     .input(
       z.object({
         limit: z.number().min(1).max(20).default(5),

@@ -1,4 +1,4 @@
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure } from '../init.js';
 import {
   generateCrlSchema,
   getCrlSchema,
@@ -44,7 +44,7 @@ function mapServiceError(error: unknown): never {
 }
 
 export const crlRouter = router({
-  generate: publicProcedure
+  generate: protectedProcedure
     .input(generateCrlSchema)
     .mutation(async ({ ctx, input }) => {
       const crlService = getCRLService();
@@ -62,7 +62,7 @@ export const crlRouter = router({
       }
     }),
 
-  getLatest: publicProcedure
+  getLatest: protectedProcedure
     .input(getCrlSchema)
     .query(async ({ ctx, input }) => {
       const crlService = getCRLService();
@@ -80,7 +80,7 @@ export const crlRouter = router({
       }
     }),
 
-  list: publicProcedure
+  list: protectedProcedure
     .input(listCrlsSchema)
     .query(async ({ ctx, input }) => {
       const crlService = getCRLService();

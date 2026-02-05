@@ -1,4 +1,4 @@
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure } from '../init.js';
 import { z } from 'zod';
 import { certificates, certificateAuthorities } from '../../db/schema.js';
 import { eq, like, sql, desc } from 'drizzle-orm';
@@ -65,7 +65,7 @@ function getBaseDomain(domain: string): string {
 }
 
 export const domainRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(listDomainsSchema)
     .query(async ({ ctx, input }) => {
       const params = input || {

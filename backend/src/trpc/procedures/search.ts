@@ -1,4 +1,4 @@
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure } from '../init.js';
 import { z } from 'zod';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
 import { like, or, sql } from 'drizzle-orm';
@@ -10,7 +10,7 @@ const globalSearchSchema = z.object({
 });
 
 export const searchRouter = router({
-  global: publicProcedure
+  global: protectedProcedure
     .input(globalSearchSchema)
     .query(async ({ ctx, input }) => {
       const { query, limit } = input;

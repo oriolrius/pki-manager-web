@@ -855,7 +855,7 @@ describe('certificate.issue - Client Certificates', () => {
         },
         validityDays: 365,
       })
-    ).rejects.toThrow('Client certificate CN must be a valid email address or username');
+    ).rejects.toThrow('Client certificate CN must be a valid email address, username, or hostname');
   });
 
   it('should validate email SANs for client certificates', async () => {

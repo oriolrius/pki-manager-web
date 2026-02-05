@@ -1,4 +1,4 @@
-import { router, publicProcedure } from '../init.js';
+import { router, protectedProcedure, adminProcedure } from '../init.js';
 import {
   listCasSchema,
   getCaSchema,
@@ -70,7 +70,7 @@ function mapServiceError(error: unknown): never {
 }
 
 export const caRouter = router({
-  list: publicProcedure.input(listCasSchema).query(async ({ ctx, input }) => {
+  list: protectedProcedure.input(listCasSchema).query(async ({ ctx, input }) => {
     const caService = getCAService();
     const params = input || {
       sortBy: 'issuedDate' as const,
@@ -92,7 +92,7 @@ export const caRouter = router({
     );
   }),
 
-  getById: publicProcedure.input(getCaSchema).query(async ({ ctx, input }) => {
+  getById: protectedProcedure.input(getCaSchema).query(async ({ ctx, input }) => {
     const caService = getCAService();
 
     try {
@@ -105,7 +105,7 @@ export const caRouter = router({
     }
   }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(createCaSchema)
     .mutation(async ({ ctx, input }) => {
       const caService = getCAService();
@@ -132,7 +132,7 @@ export const caRouter = router({
       }
     }),
 
-  revoke: publicProcedure
+  revoke: adminProcedure
     .input(revokeCaSchema)
     .mutation(async ({ ctx, input }) => {
       const caService = getCAService();
@@ -151,7 +151,7 @@ export const caRouter = router({
       }
     }),
 
-  delete: publicProcedure
+  delete: adminProcedure
     .input(deleteCaSchema)
     .mutation(async ({ ctx, input }) => {
       const caService = getCAService();
