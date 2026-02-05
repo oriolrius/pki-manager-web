@@ -46,23 +46,23 @@
     {
       "clientId": "pki-web",
       "name": "PKI Web Application",
-      "description": "Confidential client for web application authentication",
+      "description": "Public client for SPA web application authentication",
       "enabled": true,
-      "publicClient": false,
+      "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "pki-web-secret",
       "rootUrl": "http://localhost:5173",
       "baseUrl": "/",
       "redirectUris": [
         "http://localhost:5173/*",
-        "http://localhost:8080/*"
+        "http://localhost:8080/*",
+        "http://wsl.ymbihq.local:52080/*"
       ],
       "webOrigins": [
         "http://localhost:5173",
-        "http://localhost:8080"
+        "http://localhost:8080",
+        "http://wsl.ymbihq.local:52080"
       ],
       "defaultClientScopes": [
         "web-origins",

@@ -10,7 +10,7 @@
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import { useAuth, isOIDCEnabled } from '@/lib/auth';
+import { useAuth, isOIDCEnabled, hasValidManualTokens, getStorageKey } from '@/lib/auth';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser,
@@ -20,6 +20,31 @@ import {
   faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
 import { useState, useRef, useEffect } from 'react';
+
+/**
+ * Gets user info from manually stored tokens
+ */
+function getManualUserInfo(): { name?: string; email?: string } | null {
+  try {
+    const storageKey = getStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) return null;
+
+    const data = JSON.parse(stored);
+    if (!data.id_token) return null;
+
+    // Decode JWT payload (id_token contains user claims)
+    const payload = data.id_token.split('.')[1];
+    const decoded = JSON.parse(atob(payload));
+
+    return {
+      name: decoded.name || decoded.preferred_username,
+      email: decoded.email,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Gets the account management URL for the OIDC provider
@@ -38,10 +63,20 @@ export function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Check for manual tokens
+  const [hasManualTokens, setHasManualTokens] = useState(() => hasValidManualTokens());
+  const [manualUserInfo, setManualUserInfo] = useState(() => getManualUserInfo());
+
   // If OIDC is not enabled, don't render anything
   if (!isOIDCEnabled()) {
     return null;
   }
+
+  // Re-check manual tokens when auth state changes
+  useEffect(() => {
+    setHasManualTokens(hasValidManualTokens());
+    setManualUserInfo(getManualUserInfo());
+  }, [auth.isAuthenticated]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -59,13 +94,41 @@ export function UserMenu() {
   const handleLogin = () => {
     // Store current path for redirect after login
     sessionStorage.setItem('returnUrl', window.location.pathname);
-    auth.signinRedirect();
+
+    // Use manual redirect (signinRedirect doesn't work reliably in non-HTTPS)
+    const authority = import.meta.env.VITE_OIDC_AUTHORITY;
+    const clientId = import.meta.env.VITE_OIDC_CLIENT_ID;
+    const redirectUri = encodeURIComponent(window.location.origin + '/callback');
+    const scope = encodeURIComponent(import.meta.env.VITE_OIDC_SCOPE || 'openid profile email');
+    const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const state = randomString();
+    const nonce = randomString();
+
+    sessionStorage.setItem('oidc_state', state);
+    sessionStorage.setItem('oidc_nonce', nonce);
+
+    const url = `${authority}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&nonce=${nonce}`;
+    window.location.href = url;
   };
 
-  // Handle logout - redirect to OIDC provider logout
+  // Handle logout - clear tokens and redirect to OIDC provider logout
   const handleLogout = () => {
-    auth.signoutRedirect();
+    // Clear manual tokens
+    const storageKey = getStorageKey();
+    localStorage.removeItem(storageKey);
+    sessionStorage.removeItem('oidc_state');
+    sessionStorage.removeItem('oidc_nonce');
+    sessionStorage.removeItem('returnUrl');
+
+    // Redirect to Keycloak logout
+    const authority = import.meta.env.VITE_OIDC_AUTHORITY;
+    const redirectUri = encodeURIComponent(window.location.origin);
+    const logoutUrl = `${authority}/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=${import.meta.env.VITE_OIDC_CLIENT_ID}`;
+    window.location.href = logoutUrl;
   };
+
+  // Consider authenticated if library says so OR we have valid manual tokens
+  const isAuthenticated = auth.isAuthenticated || hasManualTokens;
 
   // Loading state
   if (auth.isLoading) {
@@ -77,7 +140,7 @@ export function UserMenu() {
   }
 
   // Not authenticated - show login button
-  if (!auth.isAuthenticated) {
+  if (!isAuthenticated) {
     return (
       <button
         onClick={handleLogin}
@@ -90,9 +153,10 @@ export function UserMenu() {
   }
 
   // Authenticated - show user menu
+  // Use library user info if available, otherwise use manual token info
   const user = auth.user;
-  const displayName = user?.profile?.name || user?.profile?.preferred_username || user?.profile?.email || 'User';
-  const email = user?.profile?.email;
+  const displayName = user?.profile?.name || user?.profile?.preferred_username || user?.profile?.email || manualUserInfo?.name || 'User';
+  const email = user?.profile?.email || manualUserInfo?.email;
   const accountUrl = getAccountUrl();
 
   return (

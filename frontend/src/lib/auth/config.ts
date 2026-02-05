@@ -59,6 +59,40 @@ export function isOIDCEnabled(): boolean {
 }
 
 /**
+ * Gets the storage key for manual token storage
+ */
+export function getStorageKey(): string {
+  const authority = import.meta.env.VITE_OIDC_AUTHORITY;
+  const clientId = import.meta.env.VITE_OIDC_CLIENT_ID;
+  return `oidc.user:${authority}:${clientId}`;
+}
+
+/**
+ * Checks if we have valid manually stored tokens
+ * Returns true if tokens exist and are not expired
+ */
+export function hasValidManualTokens(): boolean {
+  try {
+    const storageKey = getStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) return false;
+
+    const data = JSON.parse(stored);
+    if (!data.access_token) return false;
+
+    // Check expiration (with 30 second buffer)
+    if (data.expires_at) {
+      const now = Math.floor(Date.now() / 1000);
+      if (data.expires_at < now + 30) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Gets the OIDC authority URL
  * Priority: runtime config > environment variable
  */

@@ -7,6 +7,7 @@ import { registerRestApi } from './rest/index.js';
 import { db } from './db/client.js';
 import { certificateAuthorities, crls } from './db/schema.js';
 import { eq, desc } from 'drizzle-orm';
+import { initializeOIDC } from './lib/oidc.js';
 
 const server = Fastify({
   logger: {
@@ -207,6 +208,9 @@ server.get('/crl/:caId.:format', async (req, reply) => {
 // Start server
 const start = async () => {
   try {
+    // Initialize OIDC configuration (validates env vars and fetches JWKS if enabled)
+    await initializeOIDC();
+
     const port = parseInt(process.env.PORT || '3000', 10);
     const host = process.env.HOST || '0.0.0.0';
 

@@ -4,7 +4,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChartLine, faShield, faCertificate, faLayerGroup, faBook } from '@fortawesome/free-solid-svg-icons';
 import packageJson from '../../../package.json';
-import { AuthProvider } from '@/lib/auth';
+import { AuthProvider, AuthGuard } from '@/lib/auth';
 import { UserMenu } from '@/components/UserMenu';
 
 export const Route = createRootRoute({
@@ -14,6 +14,7 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <AuthProvider>
+      <AuthGuard>
     <div className="min-h-screen bg-background">
       <nav className="border-b bg-card shadow-sm">
         <div className="container mx-auto px-6 py-3">
@@ -89,6 +90,7 @@ function RootComponent() {
       </main>
       {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}
     </div>
+      </AuthGuard>
     </AuthProvider>
   );
 }

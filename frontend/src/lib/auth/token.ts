@@ -8,7 +8,7 @@
  */
 
 import { UserManager, type User } from 'oidc-client-ts';
-import { buildOIDCSettings, isOIDCEnabled } from './config';
+import { buildOIDCSettings, isOIDCEnabled, getStorageKey } from './config';
 
 // Cached UserManager instance
 let userManager: UserManager | null = null;
@@ -46,12 +46,44 @@ export async function getUser(): Promise<User | null> {
 }
 
 /**
+ * Gets access token from manual storage
+ * Used when tokens were exchanged via manual token flow
+ */
+function getManualAccessToken(): string | null {
+  try {
+    const storageKey = getStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) return null;
+
+    const data = JSON.parse(stored);
+    if (!data.access_token) return null;
+
+    // Check expiration (with 30 second buffer)
+    if (data.expires_at) {
+      const now = Math.floor(Date.now() / 1000);
+      if (data.expires_at < now + 30) return null;
+    }
+
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Gets the current access token
  * Returns null if not authenticated or OIDC is disabled
+ * Checks both library storage and manual token storage
  */
 export async function getAccessToken(): Promise<string | null> {
+  // First try the library's UserManager
   const user = await getUser();
-  return user?.access_token ?? null;
+  if (user?.access_token) {
+    return user.access_token;
+  }
+
+  // Fall back to manually stored token
+  return getManualAccessToken();
 }
 
 /**

@@ -10,8 +10,11 @@
 // Re-export AuthProvider component
 export { AuthProvider } from './AuthProvider';
 
+// Re-export AuthGuard component
+export { AuthGuard } from './AuthGuard';
+
 // Re-export configuration utilities
-export { isOIDCEnabled, getAuthority, getClientId, getScope } from './config';
+export { isOIDCEnabled, getAuthority, getClientId, getScope, hasValidManualTokens, getStorageKey } from './config';
 
 // Re-export token utilities for tRPC client
 export { getAccessToken, getUser } from './token';
