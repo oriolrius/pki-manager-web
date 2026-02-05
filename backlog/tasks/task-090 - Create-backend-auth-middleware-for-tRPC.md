@@ -4,11 +4,13 @@ title: Create backend auth middleware for tRPC
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:29'
+updated_date: '2026-02-05 14:30'
 labels:
   - oidc
   - backend
   - trpc
-dependencies: []
+dependencies:
+  - TASK-089
 ---
 
 ## Description
