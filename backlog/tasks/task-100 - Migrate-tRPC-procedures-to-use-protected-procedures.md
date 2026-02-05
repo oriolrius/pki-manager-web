@@ -1,10 +1,11 @@
 ---
 id: TASK-100
 title: Migrate tRPC procedures to use protected procedures
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:38'
+updated_date: '2026-02-05 15:33'
 labels:
   - oidc
   - backend
