@@ -1,10 +1,11 @@
 ---
 id: TASK-098
 title: Create protected route layout with auth guards
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 15:29'
 labels:
   - oidc
   - frontend
