@@ -4,10 +4,13 @@ title: Document OIDC authentication setup and provider switching
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:31'
 labels:
   - oidc
   - documentation
-dependencies: []
+dependencies:
+  - TASK-100
+  - TASK-098
 ---
 
 ## Description
