@@ -1,11 +1,11 @@
 ---
 id: TASK-100
 title: Migrate tRPC procedures to use protected procedures
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 15:33'
+updated_date: '2026-02-05 15:40'
 labels:
   - oidc
   - backend
@@ -24,10 +24,10 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CA management procedures use protectedProcedure
-- [ ] #2 Certificate procedures use protectedProcedure
-- [ ] #3 Audit log procedures use protectedProcedure
-- [ ] #4 Health endpoint remains publicProcedure
-- [ ] #5 Destructive operations (revoke, delete) use adminProcedure
-- [ ] #6 User info is available in procedure context
+- [x] #1 CA management procedures use protectedProcedure
+- [x] #2 Certificate procedures use protectedProcedure
+- [x] #3 Audit log procedures use protectedProcedure
+- [x] #4 Health endpoint remains publicProcedure
+- [x] #5 Destructive operations (revoke, delete) use adminProcedure
+- [x] #6 User info is available in procedure context
 <!-- AC:END -->
