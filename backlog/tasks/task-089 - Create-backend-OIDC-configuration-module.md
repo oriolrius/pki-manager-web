@@ -1,7 +1,7 @@
 ---
 id: TASK-089
 title: Create backend OIDC configuration module
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
