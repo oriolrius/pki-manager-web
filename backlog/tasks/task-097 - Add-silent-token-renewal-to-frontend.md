@@ -4,10 +4,12 @@ title: Add silent token renewal to frontend
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:31'
 labels:
   - oidc
   - frontend
-dependencies: []
+dependencies:
+  - TASK-094
 ---
 
 ## Description
