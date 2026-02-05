@@ -1,11 +1,11 @@
 ---
 id: task-065
 title: Create production Docker stack with GitHub CI/CD
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2025-10-24 14:04'
-updated_date: '2025-10-24 16:04'
+updated_date: '2026-02-05 11:43'
 labels: []
 dependencies: []
 ---
@@ -19,9 +19,9 @@ Set up production-ready Docker infrastructure with Dockerfile, docker-compose, a
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Multi-stage Dockerfile builds successfully and produces minimal production image (non-root user, security hardening)
-- [ ] #2 Docker Compose stack runs locally with PKI Manager and Cosmian KMS (proper networking, volume persistence, secrets)
+- [x] #2 Docker Compose stack runs locally with PKI Manager and Cosmian KMS (proper networking, volume persistence, secrets)
 - [x] #3 Environment configuration uses .env files with sensible production defaults as fallbacks when .env is not present
-- [ ] #4 Local stack validated: all services healthy, application accessible, KMS integration working
+- [x] #4 Local stack validated: all services healthy, application accessible, KMS integration working
 - [x] #5 GitHub Actions workflow builds Docker images and publishes to ghcr.io on main branch and releases
 - [x] #6 Images exclusively published to ghcr.io (authentication configured, no other registries)
 - [x] #7 Production configuration includes health checks, restart policies, resource limits, and structured logging
@@ -131,4 +131,17 @@ docker compose build
 - `frontend/package.json`: Added `build:docker` script
 - `frontend/tsconfig.build.json`: Created relaxed config (not used, using vite only)
 - `backend/`: Fixed 109 TypeScript errors across multiple files
+
+## Final Validation (2026-02-05)
+
+Docker stack validated successfully:
+
+- **Services**: All 3 containers running (pki-kms, pki-backend, pki-frontend)
+- **Health checks**: All services report healthy
+- **Backend**: http://localhost:56081/health returns `{"status":"ok"}`
+- **Frontend**: http://localhost:56080/health returns `OK`
+- **tRPC API**: Dashboard stats working (1 CA, 12 certificates)
+- **KMS integration**: CA list API returns data successfully
+
+All acceptance criteria verified and complete.
 <!-- SECTION:NOTES:END -->
