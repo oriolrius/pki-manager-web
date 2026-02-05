@@ -1,10 +1,11 @@
 ---
 id: TASK-090
 title: Create backend auth middleware for tRPC
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 14:54'
 labels:
   - oidc
   - backend
