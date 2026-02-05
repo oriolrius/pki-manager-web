@@ -13,6 +13,9 @@ export { AuthProvider } from './AuthProvider';
 // Re-export configuration utilities
 export { isOIDCEnabled, getAuthority, getClientId, getScope } from './config';
 
+// Re-export token utilities for tRPC client
+export { getAccessToken, getUser } from './token';
+
 // Re-export useAuth hook from react-oidc-context
 export { useAuth } from 'react-oidc-context';
 
