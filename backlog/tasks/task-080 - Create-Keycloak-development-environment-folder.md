@@ -1,11 +1,11 @@
 ---
 id: TASK-080
 title: Create Keycloak development environment folder
-status: Done
+status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-02-05 11:59'
-updated_date: '2026-02-05 12:15'
+updated_date: '2026-02-05 12:16'
 labels:
   - keycloak
   - docker
