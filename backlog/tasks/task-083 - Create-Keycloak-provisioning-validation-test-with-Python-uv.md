@@ -4,7 +4,7 @@ title: Create Keycloak provisioning validation test with Python uv
 status: To Do
 assignee: []
 created_date: '2026-02-05 12:00'
-updated_date: '2026-02-05 12:23'
+updated_date: '2026-02-05 12:25'
 labels:
   - keycloak
   - testing
@@ -33,4 +33,6 @@ Create a Python test using uv that validates the Keycloak development environmen
 - [ ] #8 Test file located at keycloak/test_keycloak.py
 - [ ] #9 Uses uv inline script dependencies (# /// script)
 - [ ] #10 Test verifies Keycloak health endpoint responds (http://localhost:42997/health/ready)
+- [ ] #11 Test reads configuration from keycloak/.env (KEYCLOAK_PORT, admin credentials, client secrets)
+- [ ] #12 Test first checks if Keycloak is running; skips remaining tests with clear message if not available
 <!-- AC:END -->
