@@ -1,0 +1,26 @@
+---
+id: TASK-099
+title: Inject Bearer token in tRPC client
+status: To Do
+assignee: []
+created_date: '2026-02-05 14:30'
+labels:
+  - oidc
+  - frontend
+  - trpc
+dependencies: []
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Modify tRPC client configuration to include Authorization header with Bearer token from OIDC context. Token should be injected in all requests. Reference: decision-009.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 tRPC httpBatchLink includes Authorization header
+- [ ] #2 Bearer token is retrieved from auth context
+- [ ] #3 Requests without token still work for public endpoints
+- [ ] #4 Token is refreshed automatically via silent renewal
+<!-- AC:END -->
