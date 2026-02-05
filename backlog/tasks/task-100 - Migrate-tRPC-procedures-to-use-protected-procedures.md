@@ -4,11 +4,13 @@ title: Migrate tRPC procedures to use protected procedures
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:31'
 labels:
   - oidc
   - backend
   - trpc
-dependencies: []
+dependencies:
+  - TASK-091
 ---
 
 ## Description
