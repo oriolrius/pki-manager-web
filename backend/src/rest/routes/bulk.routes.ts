@@ -334,8 +334,9 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
             const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commonName);
             const isUsername = /^[a-zA-Z0-9._-]+$/.test(commonName);
-            if (!isEmail && !isUsername) {
-              throw new Error('Client certificate CN must be a valid email address or username');
+            const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(commonName);
+            if (!isEmail && !isUsername && !isHostname) {
+              throw new Error('Client certificate CN must be a valid email address, username, or hostname');
             }
             break;
           }

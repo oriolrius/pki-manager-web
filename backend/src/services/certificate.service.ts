@@ -549,8 +549,9 @@ export class CertificateService {
         const cn = params.subject.commonName;
         const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cn);
         const isUsername = /^[a-zA-Z0-9_-]+$/.test(cn);
-        if (!isEmail && !isUsername) {
-          throw new CertificateValidationError('Client certificate CN must be a valid email address or username');
+        const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(cn);
+        if (!isEmail && !isUsername && !isHostname) {
+          throw new CertificateValidationError('Client certificate CN must be a valid email address, username, or hostname');
         }
 
         if (params.sanEmail && params.sanEmail.length > 0) {
