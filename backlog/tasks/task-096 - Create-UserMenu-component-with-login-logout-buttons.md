@@ -4,11 +4,13 @@ title: Create UserMenu component with login/logout buttons
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
+updated_date: '2026-02-05 14:30'
 labels:
   - oidc
   - frontend
   - ui
-dependencies: []
+dependencies:
+  - TASK-094
 ---
 
 ## Description
