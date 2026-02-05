@@ -90,7 +90,7 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["admin"]
+      "realmRoles": ["admin", "default-roles-pki-dev"]
     },
     {
       "username": "user",
@@ -106,7 +106,7 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["user"]
+      "realmRoles": ["user", "default-roles-pki-dev"]
     }
   ],
   "scopeMappings": [
