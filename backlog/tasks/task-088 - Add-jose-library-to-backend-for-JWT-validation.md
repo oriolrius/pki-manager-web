@@ -1,10 +1,11 @@
 ---
 id: TASK-088
 title: Add jose library to backend for JWT validation
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 14:38'
 labels:
   - oidc
   - backend
