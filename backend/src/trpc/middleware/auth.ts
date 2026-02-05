@@ -88,24 +88,24 @@ async function validateToken(token: string): Promise<AuthUser> {
     const tokenAudience = payload.aud;
     const tokenAzp = payload.azp as string | undefined;
 
-    // Check if audience matches (aud can be string or array)
+    // Check if audience matches any of the allowed audiences (aud can be string or array)
     let audienceValid = false;
     if (tokenAudience) {
       if (Array.isArray(tokenAudience)) {
-        audienceValid = tokenAudience.includes(config.audience);
+        audienceValid = tokenAudience.some((aud) => config.audiences.includes(aud));
       } else {
-        audienceValid = tokenAudience === config.audience;
+        audienceValid = config.audiences.includes(tokenAudience);
       }
     }
 
     // Fall back to checking azp (authorized party) - common in Keycloak
     if (!audienceValid && tokenAzp) {
-      audienceValid = tokenAzp === config.audience;
+      audienceValid = config.audiences.includes(tokenAzp);
     }
 
     if (!audienceValid) {
       logger.debug(
-        { aud: tokenAudience, azp: tokenAzp, expected: config.audience },
+        { aud: tokenAudience, azp: tokenAzp, expected: config.audiences },
         'Token audience/azp mismatch'
       );
       throw new TRPCError({

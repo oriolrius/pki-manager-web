@@ -125,9 +125,26 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
 
     expect(config.enabled).toBe(true);
     expect(config.issuer).toBe(KEYCLOAK_ISSUER);
-    expect(config.audience).toBe(KEYCLOAK_AUDIENCE);
+    expect(config.audiences).toContain(KEYCLOAK_AUDIENCE);
     expect(config.rolesClaimPath).toBe('realm_access.roles');
     expect(config.jwksUri).toContain('/protocol/openid-connect/certs');
+  });
+
+  it('should support multiple audiences (comma-separated)', async () => {
+    process.env.OIDC_ISSUER = KEYCLOAK_ISSUER;
+    process.env.OIDC_AUDIENCE = 'pki-web, pki-service';
+
+    let config;
+    try {
+      config = await initializeOIDC();
+    } catch (error) {
+      console.log('Skipping Keycloak integration test - Keycloak not available');
+      return;
+    }
+
+    expect(config.audiences).toHaveLength(2);
+    expect(config.audiences).toContain('pki-web');
+    expect(config.audiences).toContain('pki-service');
   });
 
   it('should use custom roles claim path', async () => {

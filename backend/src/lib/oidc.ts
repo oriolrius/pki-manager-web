@@ -17,8 +17,8 @@ export interface OIDCConfig {
   /** OIDC Issuer URL (e.g., http://localhost:42997/realms/pki-dev) */
   issuer: string;
 
-  /** Expected audience claim (typically the client_id) */
-  audience: string;
+  /** Expected audience claims (client_ids that are allowed to access the API) */
+  audiences: string[];
 
   /** Path to roles claim in JWT payload (e.g., "realm_access.roles" for Keycloak) */
   rolesClaimPath: string;
@@ -73,6 +73,17 @@ function validateEnvironment(): { isEnabled: boolean; errors: string[] } {
 }
 
 /**
+ * Parses the OIDC_AUDIENCE environment variable into an array of audiences
+ * Supports comma-separated values: "pki-web,pki-service"
+ */
+function parseAudiences(audienceEnv: string): string[] {
+  return audienceEnv
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => a.length > 0);
+}
+
+/**
  * Fetches OIDC discovery document from the issuer
  */
 async function fetchDiscoveryDocument(issuer: string): Promise<OIDCDiscoveryDocument> {
@@ -123,7 +134,7 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
     logger.info('OIDC authentication is disabled (OIDC_ISSUER not set)');
     cachedConfig = {
       issuer: '',
-      audience: '',
+      audiences: [],
       rolesClaimPath: '',
       jwksUri: '',
       enabled: false,
@@ -132,10 +143,10 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
   }
 
   const issuer = process.env.OIDC_ISSUER!;
-  const audience = process.env.OIDC_AUDIENCE!;
+  const audiences = parseAudiences(process.env.OIDC_AUDIENCE!);
   const rolesClaimPath = process.env.OIDC_ROLES_CLAIM || 'realm_access.roles';
 
-  logger.info({ issuer, audience, rolesClaimPath }, 'Initializing OIDC configuration');
+  logger.info({ issuer, audiences, rolesClaimPath }, 'Initializing OIDC configuration');
 
   // Fetch discovery document to get JWKS URI
   const discovery = await fetchDiscoveryDocument(issuer);
@@ -150,7 +161,7 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
 
   cachedConfig = {
     issuer: discovery.issuer,
-    audience,
+    audiences,
     rolesClaimPath,
     jwksUri: discovery.jwks_uri,
     enabled: true,
