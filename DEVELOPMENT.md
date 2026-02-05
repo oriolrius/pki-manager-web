@@ -321,12 +321,56 @@ Use ANSI-C quoting for multi-line content:
 backlog task edit <id> --plan $'1. First step\n2. Second step\n3. Third step'
 ```
 
+### Web Interface
+
+Backlog includes a browser-based UI for visual task management:
+
+```bash
+# Start web interface (opens browser automatically)
+backlog browser
+
+# Custom port
+backlog browser --port 8080
+
+# Don't auto-open browser
+backlog browser --no-open
+```
+
+Default port is 6430 (configurable in `backlog/config.yml`).
+
+### Terminal Board View
+
+View tasks as a Kanban board in the terminal:
+
+```bash
+# Horizontal layout (default)
+backlog board
+
+# Vertical layout
+backlog board --vertical
+
+# Group by milestone
+backlog board --milestones
+
+# Export board to markdown
+backlog board export board.md
+```
+
+### Project Overview
+
+Display project statistics and metrics:
+
+```bash
+backlog overview
+```
+
 ### Tips
 
 - Use `--plain` flag for machine-readable output
 - Multiple `--ac` flags add multiple acceptance criteria
 - Multiple `--check-ac` flags check multiple criteria at once
 - Tasks auto-commit to git when `auto_commit: true` in config
+- Press `Ctrl+C` to stop the web interface
 
 ## Development Workflow
 
