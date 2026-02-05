@@ -1,10 +1,11 @@
 ---
 id: TASK-097
 title: Add silent token renewal to frontend
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:37'
+updated_date: '2026-02-05 15:28'
 labels:
   - oidc
   - frontend
