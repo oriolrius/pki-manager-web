@@ -4,7 +4,7 @@ title: Migrate tRPC procedures to use protected procedures
 status: To Do
 assignee: []
 created_date: '2026-02-05 14:30'
-updated_date: '2026-02-05 14:31'
+updated_date: '2026-02-05 14:38'
 labels:
   - oidc
   - backend
@@ -16,7 +16,9 @@ dependencies:
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Update existing tRPC procedures to use protectedProcedure or adminProcedure instead of publicProcedure where appropriate. Keep health and public endpoints as publicProcedure. Reference: decision-009.
+Update existing tRPC procedures to use protectedProcedure or adminProcedure instead of publicProcedure where appropriate. Keep health and public endpoints as publicProcedure.
+
+Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Implementation.md)
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
