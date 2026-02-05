@@ -1,11 +1,11 @@
 ---
 id: TASK-095
 title: Add OIDC callback route to frontend
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
-updated_date: '2026-02-05 15:26'
+updated_date: '2026-02-05 15:27'
 labels:
   - oidc
   - frontend
@@ -24,9 +24,21 @@ Reference: [decision-009](../decisions/decision-009%20-%20OIDC-Authentication-Im
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Callback route created at frontend/src/routes/callback.tsx
-- [ ] #2 Route handles OIDC redirect with authorization code
-- [ ] #3 Successful auth redirects to stored returnUrl or home
-- [ ] #4 Auth errors are displayed to user
-- [ ] #5 Loading state shown during token exchange
+- [x] #1 Callback route created at frontend/src/routes/callback.tsx
+- [x] #2 Route handles OIDC redirect with authorization code
+- [x] #3 Successful auth redirects to stored returnUrl or home
+- [x] #4 Auth errors are displayed to user
+- [x] #5 Loading state shown during token exchange
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Created /callback route:
+
+- Handles OIDC redirect with authorization code
+- Shows loading spinner during token exchange
+- Redirects to stored returnUrl or home on success
+- Displays error message with return button on failure
+- Shows success checkmark before redirect
+<!-- SECTION:NOTES:END -->
