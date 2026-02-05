@@ -1,7 +1,7 @@
 ---
 id: TASK-090
 title: Create backend auth middleware for tRPC
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-05 14:29'
