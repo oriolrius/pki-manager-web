@@ -3,7 +3,7 @@ id: TASK-001
 title: Add Keycloak service to docker-compose.yml
 status: To Do
 assignee: []
-created_date: '2026-02-05 11:53'
+created_date: '2026-02-05 11:57'
 labels:
   - keycloak
   - docker
