@@ -53,12 +53,10 @@ export async function authMiddlewareHandler({
   ctx: Context;
   next: (opts?: { ctx: AuthenticatedContext }) => Promise<any>;
 }): Promise<any> {
-  // Check if OIDC is enabled
+  // Skip auth if OIDC is not enabled
   if (!isOIDCEnabled()) {
-    throw new TRPCError({
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Authentication is not configured',
-    });
+    logger.debug('OIDC disabled, skipping tRPC authentication');
+    return next();
   }
 
   try {

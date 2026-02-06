@@ -81,19 +81,20 @@ describe('Auth Middleware Unit Tests', () => {
     resetOIDCConfig();
   });
 
-  it('should throw INTERNAL_SERVER_ERROR when OIDC is not enabled', async () => {
+  it('should skip authentication and call next when OIDC is not enabled', async () => {
     // Initialize with OIDC disabled
     await initializeOIDC();
     expect(isOIDCEnabled()).toBe(false);
 
     const ctx = createMockContext('Bearer some-token');
 
-    await expect(
-      authMiddlewareHandler({
-        ctx,
-        next: () => Promise.resolve({ ok: true }),
-      })
-    ).rejects.toThrow('Authentication is not configured');
+    // When OIDC is disabled, auth middleware should skip validation and call next()
+    const result = await authMiddlewareHandler({
+      ctx,
+      next: () => Promise.resolve({ ok: true }),
+    });
+
+    expect(result).toEqual({ ok: true });
   });
 });
 

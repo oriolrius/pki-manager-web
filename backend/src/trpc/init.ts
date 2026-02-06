@@ -2,6 +2,7 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import type { OpenApiMeta } from 'trpc-swagger';
 import type { Context, AuthenticatedContext } from './context.js';
 import { createAuthMiddleware } from './middleware/auth.js';
+import { isOIDCEnabled } from '../lib/oidc.js';
 
 const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
   errorFormatter({ shape, error }) {
@@ -61,6 +62,11 @@ export const protectedProcedure = t.procedure.use(authMiddleware);
  * Admin role middleware - requires 'admin' role
  */
 const adminRoleMiddleware = t.middleware(async ({ ctx, next }) => {
+  // Skip role check if OIDC is disabled
+  if (!isOIDCEnabled()) {
+    return next();
+  }
+
   // Type assertion since this middleware runs after authMiddleware
   const authenticatedCtx = ctx as AuthenticatedContext;
 

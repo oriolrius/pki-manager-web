@@ -38,26 +38,29 @@ export const authPreHandler: preHandlerHookHandler = async (
   try {
     const user = await validateAuthHeader(request.headers.authorization);
     request.user = user;
+    return;
   } catch (error) {
     if (error instanceof JWTValidationError) {
       logger.debug({ code: error.code, message: error.message }, 'REST API auth failed');
 
-      return reply.status(401).send({
+      reply.status(401).send({
         error: {
           code: 'UNAUTHORIZED',
           message: error.message,
         },
       });
+      return;
     }
 
     // Unexpected error
     logger.error({ error }, 'Unexpected error during REST API authentication');
-    return reply.status(401).send({
+    reply.status(401).send({
       error: {
         code: 'UNAUTHORIZED',
         message: 'Authentication failed',
       },
     });
+    return;
   }
 };
 
