@@ -21,7 +21,7 @@ GitHub CI workflows (Test and Docker Build) are failing because pnpm-lock.yaml i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 pnpm-lock.yaml is updated with all frontend dependencies
+- [x] #1 pnpm-lock.yaml is updated with all frontend dependencies
 - [ ] #2 Test workflow passes in CI
 - [ ] #3 Docker Build workflow passes in CI
 <!-- AC:END -->
