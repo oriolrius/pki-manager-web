@@ -21,9 +21,9 @@ GitHub CI workflows (Test and Docker Build) were failing due to: 1. Outdated pnp
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 pnpm-lock.yaml is updated with all frontend dependencies
-- [ ] #2 TypeScript build passes without errors
-- [ ] #3 Tests pass when OIDC is disabled
+- [x] #1 pnpm-lock.yaml is updated with all frontend dependencies
+- [x] #2 TypeScript build passes without errors
+- [x] #3 Tests pass when OIDC is disabled
 - [ ] #4 CI workflows pass
 <!-- AC:END -->
 
