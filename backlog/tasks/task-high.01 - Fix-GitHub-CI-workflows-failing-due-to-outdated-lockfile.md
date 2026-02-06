@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-02-06 09:53'
-updated_date: '2026-02-06 09:53'
+updated_date: '2026-02-06 09:55'
 labels:
   - ci
   - bug
@@ -35,3 +35,9 @@ GitHub CI workflows (Test and Docker Build) are failing because pnpm-lock.yaml i
 4. Push to trigger CI workflows
 5. Verify workflows pass
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed lockfile issue. Discovered second issue: TypeScript errors in auth.ts (TS7030: Not all code paths return a value on lines 28 and 35).
+<!-- SECTION:NOTES:END -->
