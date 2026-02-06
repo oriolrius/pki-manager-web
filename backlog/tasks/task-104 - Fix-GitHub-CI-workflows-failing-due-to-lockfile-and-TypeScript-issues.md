@@ -10,7 +10,6 @@ labels:
   - ci
   - bug
 dependencies: []
-parent_task_id: TASK-HIGH
 ---
 
 ## Description
