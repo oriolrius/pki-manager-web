@@ -1,9 +1,11 @@
 ---
 id: TASK-HIGH.01
 title: Fix GitHub CI workflows failing due to outdated lockfile
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-06 09:53'
+updated_date: '2026-02-06 09:53'
 labels:
   - ci
   - bug
@@ -23,3 +25,13 @@ GitHub CI workflows (Test and Docker Build) are failing because pnpm-lock.yaml i
 - [ ] #2 Test workflow passes in CI
 - [ ] #3 Docker Build workflow passes in CI
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Run pnpm install in root to regenerate lockfile with all dependencies
+2. Verify the lockfile includes oidc-client-ts and react-oidc-context
+3. Commit the updated lockfile
+4. Push to trigger CI workflows
+5. Verify workflows pass
+<!-- SECTION:PLAN:END -->
