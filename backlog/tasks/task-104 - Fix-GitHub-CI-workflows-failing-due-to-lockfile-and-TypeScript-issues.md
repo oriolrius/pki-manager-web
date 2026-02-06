@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-06 10:05'
-updated_date: '2026-02-06 10:14'
+updated_date: '2026-02-06 12:10'
 labels:
   - ci
   - bug
@@ -56,4 +56,8 @@ Fixed the following issues:
 Commits:
 - fix(ci): update pnpm-lock.yaml with OIDC dependencies
 - fix(auth): fix TypeScript errors and auth behavior when OIDC disabled
+
+**Release:** v1.5.1
+- GitHub Release: https://github.com/oriolrius/pki-manager-web/releases/tag/v1.5.1
+- All CI workflows passing (Test, Docker Build for main and tag)
 <!-- SECTION:NOTES:END -->
