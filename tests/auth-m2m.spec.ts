@@ -197,8 +197,8 @@ test.describe('OpenAPI & Documentation Access', () => {
 });
 
 test.describe('REST API with M2M Token', () => {
-  // Note: REST API endpoints may or may not require auth depending on configuration
-  // These tests verify that M2M tokens work when auth is required
+  // REST API endpoints require authentication (same as tRPC)
+  // These tests verify that M2M tokens work for REST API access
 
   test('should access REST API /api/v1/cas with M2M token', async () => {
     const token = await getM2MToken();
@@ -226,5 +226,44 @@ test.describe('REST API with M2M Token', () => {
     expect(response.ok).toBe(true);
     const data = await response.json();
     expect(data.items).toBeDefined();
+  });
+
+  test('should reject REST API /api/v1/cas without token', async () => {
+    const response = await fetch(`${BACKEND_URL}/api/v1/cas`);
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error).toBeDefined();
+    expect(data.error.code).toBe('UNAUTHORIZED');
+  });
+
+  test('should reject REST API /api/v1/certificates without token', async () => {
+    const response = await fetch(`${BACKEND_URL}/api/v1/certificates`);
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error).toBeDefined();
+    expect(data.error.code).toBe('UNAUTHORIZED');
+  });
+
+  test('should reject REST API with invalid token', async () => {
+    const response = await fetch(`${BACKEND_URL}/api/v1/cas`, {
+      headers: {
+        Authorization: 'Bearer invalid-token-here',
+      },
+    });
+
+    expect(response.status).toBe(401);
+    const data = await response.json();
+    expect(data.error).toBeDefined();
+    expect(data.error.code).toBe('UNAUTHORIZED');
+  });
+
+  test('REST API /api/v1/health should be accessible without auth', async () => {
+    const response = await fetch(`${BACKEND_URL}/api/v1/health`);
+
+    expect(response.ok).toBe(true);
+    const data = await response.json();
+    expect(data.status).toBe('ok');
   });
 });

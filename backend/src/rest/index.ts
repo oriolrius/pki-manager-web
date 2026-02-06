@@ -5,6 +5,7 @@ import { caRoutes } from './routes/ca.routes.js';
 import { certificateRoutes } from './routes/certificate.routes.js';
 import { bulkRoutes } from './routes/bulk.routes.js';
 import { utilityRoutes } from './routes/utility.routes.js';
+import { createAuthPreHandler } from './middleware/auth.js';
 
 /**
  * Register all REST API routes and plugins
@@ -21,6 +22,15 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
   // Register REST API routes under /api/v1 prefix
   await fastify.register(
     async (api) => {
+      // Create auth preHandler that skips authentication for public endpoints
+      const authHandler = createAuthPreHandler([
+        '/api/v1/health',        // Health check
+        '/api/v1/openapi.json',  // OpenAPI spec (handled separately, but listed for clarity)
+      ]);
+
+      // Register auth preHandler for all routes in this context
+      api.addHook('preHandler', authHandler);
+
       // Custom error handler to convert Fastify validation errors to our standard format
       api.setErrorHandler((error: FastifyError, _request, reply) => {
         // Handle validation errors (from Fastify schema validation)

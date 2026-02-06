@@ -32,8 +32,37 @@ Use these URLs to integrate with third-party tools, code generators, or API clie
 - Global search across all entities
 
 ## Authentication
-Currently, the API does not require authentication. Future versions will support
-API key and OAuth2/OIDC authentication.
+
+Most API endpoints require authentication via OAuth2/OIDC Bearer tokens.
+
+### Obtaining a Token
+
+**For users (web application):** Authentication is handled automatically via the web UI using Authorization Code flow with PKCE.
+
+**For machine-to-machine (M2M) access:** Use the Client Credentials flow:
+
+\`\`\`bash
+curl -X POST "http://keycloak:8080/realms/pki-dev/protocol/openid-connect/token" \\
+  -d "grant_type=client_credentials" \\
+  -d "client_id=pki-service" \\
+  -d "client_secret=YOUR_SECRET"
+\`\`\`
+
+### Using the Token
+
+Include the token in the Authorization header:
+
+\`\`\`
+Authorization: Bearer <access_token>
+\`\`\`
+
+### Public Endpoints (No Auth Required)
+
+- \`GET /health\` - Health check
+- \`GET /api/docs\` - This documentation
+- \`GET /api/v1/openapi.json\` - OpenAPI specification
+- \`GET /cas/:caId.pem\` - CA certificate download
+- \`GET /crl/:caId.crl\` - CRL download
 
 ## Rate Limiting
 No rate limiting is currently enforced. This may change in future versions.
@@ -86,7 +115,18 @@ No rate limiting is currently enforced. This may change in future versions.
         description: 'Audit log queries and report generation',
       },
     ],
+    security: [
+      { bearerAuth: [] },
+    ],
     components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'JWT token obtained from OIDC provider (Keycloak, Auth0, Okta, etc.)',
+        },
+      },
       schemas: {
         // Common error response (manual - not from Zod)
         Error: {
