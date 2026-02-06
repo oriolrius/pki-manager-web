@@ -1,9 +1,11 @@
 ---
 id: task-002
 title: Add OIDC authentication to REST API endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-06 07:53'
+updated_date: '2026-02-06 07:53'
 labels:
   - backend
   - security
