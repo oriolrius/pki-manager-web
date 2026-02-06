@@ -3,6 +3,7 @@ id: doc-005
 title: API Authentication Guide
 type: other
 created_date: '2026-02-06 07:37'
+updated_date: '2026-02-06 07:59'
 ---
 # API Authentication Guide
 
@@ -19,31 +20,33 @@ The PKI Manager backend supports two authentication methods:
 
 ## Endpoint Protection
 
-### tRPC Endpoints (`/trpc/*`)
+### Protected Endpoints (Authentication Required)
 
-All tRPC endpoints **require authentication**. Requests without a valid token receive `401 Unauthorized`.
+Both tRPC and REST API endpoints require a valid JWT Bearer token:
+
+| API | Path | Authentication |
+|-----|------|----------------|
+| tRPC | `/trpc/*` | ✅ Required |
+| REST | `/api/v1/*` | ✅ Required |
 
 ```bash
-# Without token - FAILS
+# Without token - FAILS (401 Unauthorized)
 curl http://localhost:52081/trpc/ca.list
-# Returns: {"error":{"code":"UNAUTHORIZED","message":"Missing or invalid Authorization header"}}
+curl http://localhost:52081/api/v1/cas
 
 # With token - WORKS
 curl -H "Authorization: Bearer $TOKEN" http://localhost:52081/trpc/ca.list
-# Returns: {"result":{"data":[...]}}
+curl -H "Authorization: Bearer $TOKEN" http://localhost:52081/api/v1/cas
 ```
 
-### REST API Endpoints (`/api/v1/*`)
-
-REST API endpoints are documented via OpenAPI/Swagger at `/api/docs`.
-
-### Public Endpoints
+### Public Endpoints (No Authentication)
 
 The following endpoints do **not** require authentication:
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /health` | Health check |
+| `GET /api/v1/health` | REST API health check |
 | `GET /api/docs` | Swagger UI documentation |
 | `GET /api/v1/openapi.json` | OpenAPI specification |
 | `GET /cas/:caId.pem` | Download CA certificate (public) |
@@ -135,9 +138,13 @@ fi
 
 echo "Token obtained successfully"
 
-# List Certificate Authorities
-echo -e "\n--- Certificate Authorities ---"
+# List Certificate Authorities (tRPC)
+echo -e "\n--- Certificate Authorities (tRPC) ---"
 curl -s -H "Authorization: Bearer $TOKEN" "$BACKEND_URL/trpc/ca.list" | jq '.result.data'
+
+# List Certificate Authorities (REST)
+echo -e "\n--- Certificate Authorities (REST) ---"
+curl -s -H "Authorization: Bearer $TOKEN" "$BACKEND_URL/api/v1/cas" | jq '.items'
 
 # List Certificates
 echo -e "\n--- Certificates ---"
