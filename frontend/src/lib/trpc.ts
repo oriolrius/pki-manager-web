@@ -16,9 +16,12 @@ async function getHeaders(): Promise<Record<string, string>> {
     const token = await getAccessToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
+      console.debug('[tRPC] Authorization header set');
+    } else {
+      console.debug('[tRPC] No token available, request will be unauthenticated');
     }
-  } catch {
-    // Ignore errors - continue without auth header
+  } catch (error) {
+    console.warn('[tRPC] Error getting access token:', error);
   }
 
   return headers;

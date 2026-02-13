@@ -105,7 +105,7 @@ export const caRouter = router({
     }
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(createCaSchema)
     .mutation(async ({ ctx, input }) => {
       const caService = getCAService();

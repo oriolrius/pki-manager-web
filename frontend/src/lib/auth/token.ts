@@ -53,20 +53,32 @@ export async function getUser(): Promise<User | null> {
 async function getManualAccessToken(): Promise<string | null> {
   try {
     const storageKey = await getStorageKeyAsync();
+    console.debug('[Auth] Looking for token with key:', storageKey);
     const stored = localStorage.getItem(storageKey);
-    if (!stored) return null;
+    if (!stored) {
+      console.debug('[Auth] No token found in localStorage');
+      return null;
+    }
 
     const data = JSON.parse(stored);
-    if (!data.access_token) return null;
+    if (!data.access_token) {
+      console.debug('[Auth] Token data found but no access_token field');
+      return null;
+    }
 
     // Check expiration (with 30 second buffer)
     if (data.expires_at) {
       const now = Math.floor(Date.now() / 1000);
-      if (data.expires_at < now + 30) return null;
+      if (data.expires_at < now + 30) {
+        console.debug('[Auth] Token expired or expiring soon');
+        return null;
+      }
     }
 
+    console.debug('[Auth] Valid token found in localStorage');
     return data.access_token;
-  } catch {
+  } catch (error) {
+    console.warn('[Auth] Error retrieving manual access token:', error);
     return null;
   }
 }
