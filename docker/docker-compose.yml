@@ -46,6 +46,14 @@ services:
       # Cosmian KMS Configuration
       - KMS_URL=${KMS_URL:-http://kms:9998}
       - KMS_API_KEY=${KMS_API_KEY:-}
+
+      # CRL Distribution Point
+      - CRL_DISTRIBUTION_URL=${CRL_DISTRIBUTION_URL:-http://localhost:3000/crl}
+
+      # OIDC Authentication (optional - leave OIDC_ISSUER unset to disable)
+      - OIDC_ISSUER=${OIDC_ISSUER:-}
+      - OIDC_AUDIENCE=${OIDC_AUDIENCE:-}
+      - OIDC_ROLES_CLAIM=${OIDC_ROLES_CLAIM:-realm_access.roles}
     ports:
       - "${BACKEND_EXTERNAL_PORT:-3000}:3000"
     depends_on:

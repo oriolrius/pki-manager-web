@@ -136,7 +136,24 @@ docker-compose ps
 docker-compose logs
 ```
 
-### Step 4: Configure Reverse Proxy (Optional)
+### Step 4: Run Database Migrations
+
+**Important**: On first deployment, you must run database migrations to create the required tables:
+
+```bash
+docker exec pki-backend node /app/backend/dist/db/migrate.js
+```
+
+Expected output:
+```
+Running migrations...
+Migrations folder: /app/backend/dist/db/migrations
+Migrations completed successfully!
+```
+
+> **Note**: The production container only includes compiled JavaScript. The standard `pnpm db:migrate` command won't work. Always use the direct `node` command above.
+
+### Step 5: Configure Reverse Proxy (Optional)
 
 Example Nginx configuration for production:
 
@@ -191,7 +208,114 @@ See [.env.example](.env.example) for full list. Key variables:
 | `DATABASE_PATH` | `/app/backend/data/pki.db` | Database file path (in container) |
 | `KMS_URL` | `http://kms:9998` | KMS service URL |
 | `KMS_API_KEY` | _(empty)_ | Optional KMS authentication |
+| `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |
 | `VITE_API_URL` | `http://localhost:3000/trpc` | API URL for frontend |
+
+### OIDC Authentication Configuration
+
+PKI Manager supports OpenID Connect (OIDC) authentication with any compliant provider (Keycloak, Auth0, Okta, Azure AD, etc.). Authentication is **optional** - leave OIDC variables unset to run without authentication.
+
+#### Backend OIDC Variables
+
+Add these to your `.env` file:
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `OIDC_ISSUER` | `https://keycloak.example.com/realms/pki` | OIDC provider base URL |
+| `OIDC_AUDIENCE` | `pki-web,pki-service` | Expected audience claim(s), comma-separated |
+| `OIDC_ROLES_CLAIM` | `realm_access.roles` | JWT path to roles (provider-specific) |
+
+**Provider-specific issuer URLs:**
+- **Keycloak**: `https://keycloak.example.com/realms/your-realm`
+- **Auth0**: `https://your-tenant.auth0.com`
+- **Okta**: `https://your-org.okta.com`
+- **Azure AD**: `https://login.microsoftonline.com/{tenant-id}/v2.0`
+
+**Provider-specific roles claim paths:**
+- **Keycloak**: `realm_access.roles`
+- **Auth0**: `permissions` or custom namespace
+- **Okta**: `groups`
+- **Azure AD**: `roles`
+
+#### Frontend OIDC Variables
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `VITE_OIDC_AUTHORITY` | `https://keycloak.example.com/realms/pki` | Same as backend `OIDC_ISSUER` |
+| `VITE_OIDC_CLIENT_ID` | `pki-web` | Public OIDC client ID (PKCE-enabled) |
+| `VITE_OIDC_SCOPE` | `openid profile email` | OAuth2 scopes (optional, defaults shown) |
+
+> **Important for Docker**: Frontend OIDC variables are **build-time only**. You must either:
+> 1. Rebuild the image with `--build-arg VITE_OIDC_AUTHORITY=...` (requires Dockerfile modification), or
+> 2. Use runtime config by mounting a custom `config.json` (see below)
+
+#### Runtime OIDC Configuration (Docker)
+
+For production Docker deployments, mount a custom `config.json` to configure OIDC without rebuilding:
+
+```bash
+# Create config.json with OIDC settings
+cat > /opt/stacks/pki-manager/config.json << 'EOF'
+{
+  "apiUrl": "https://api.pki.example.com/trpc",
+  "oidc": {
+    "authority": "https://keycloak.example.com/realms/pki",
+    "clientId": "pki-web",
+    "scope": "openid profile email"
+  }
+}
+EOF
+```
+
+Add the volume mount to `docker-compose.yml`:
+
+```yaml
+services:
+  frontend:
+    volumes:
+      - ./config.json:/usr/share/nginx/html/config.json:ro
+```
+
+#### Keycloak Setup Example
+
+1. **Create a Realm** (e.g., `pki`)
+
+2. **Create a Client** for the SPA:
+   - Client ID: `pki-web`
+   - Client Type: `public`
+   - Valid redirect URIs: `https://pki.example.com/*`
+   - Web origins: `https://pki.example.com`
+   - Enable: Standard flow, Direct access grants
+
+3. **Create a Client** for M2M (optional):
+   - Client ID: `pki-service`
+   - Client Type: `confidential`
+   - Enable: Service accounts
+
+4. **Configure `.env`**:
+
+```bash
+# Backend
+OIDC_ISSUER=https://keycloak.example.com/realms/pki
+OIDC_AUDIENCE=pki-web,pki-service
+OIDC_ROLES_CLAIM=realm_access.roles
+
+# Frontend (build-time or runtime)
+VITE_OIDC_AUTHORITY=https://keycloak.example.com/realms/pki
+VITE_OIDC_CLIENT_ID=pki-web
+```
+
+#### Disabling Authentication
+
+To run without authentication, simply leave the OIDC variables unset or empty:
+
+```bash
+# Backend - no OIDC_ISSUER = all endpoints public
+# OIDC_ISSUER=
+
+# Frontend - no VITE_OIDC_AUTHORITY = no login required
+# VITE_OIDC_AUTHORITY=
+```
 
 ### Secrets Management
 
@@ -333,9 +457,11 @@ KMS_EXTERNAL_PORT=9999
 ### Production Configuration
 
 **Security Checklist**:
+- [ ] Run database migrations: `docker exec pki-backend node /app/backend/dist/db/migrate.js`
 - [ ] Set `NODE_ENV=production`
 - [ ] Configure `FRONTEND_URL` with production domain
 - [ ] Set strong `KMS_API_KEY`
+- [ ] Configure OIDC authentication (see [OIDC Configuration](#oidc-authentication-configuration))
 - [ ] Use HTTPS with reverse proxy
 - [ ] Configure firewall rules
 - [ ] Set up backup strategy for volumes
