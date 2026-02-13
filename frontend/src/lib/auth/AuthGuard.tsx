@@ -9,7 +9,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { isOIDCEnabled, hasValidManualTokens } from './config';
+import { isOIDCEnabledAsync, hasValidManualTokens, getAuthority, getClientId, getScope } from './config';
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -52,6 +52,7 @@ function AuthGuardInner({ children }: AuthGuardProps) {
   const auth = useAuth();
   // Check for manually stored tokens (from our custom callback handler)
   const [hasManualTokens, setHasManualTokens] = useState(() => hasValidManualTokens());
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Check if we're on the callback route (don't redirect during OIDC callback)
   const isCallbackRoute = window.location.pathname === '/callback';
@@ -66,30 +67,32 @@ function AuthGuardInner({ children }: AuthGuardProps) {
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!isCallbackRoute && !auth.isLoading && !isAuthenticated && !auth.activeNavigator) {
+    if (!isCallbackRoute && !auth.isLoading && !isAuthenticated && !auth.activeNavigator && !isRedirecting) {
+      setIsRedirecting(true);
+
       // Store current path for redirect after login
       sessionStorage.setItem('returnUrl', window.location.pathname + window.location.search);
       console.log('[AuthGuard] User not authenticated, redirecting to login...');
 
-      // Direct redirect to OIDC provider (signinRedirect doesn't work reliably)
-      const authority = import.meta.env.VITE_OIDC_AUTHORITY;
-      const clientId = import.meta.env.VITE_OIDC_CLIENT_ID;
-      const redirectUri = encodeURIComponent(window.location.origin + '/callback');
-      const scope = encodeURIComponent(import.meta.env.VITE_OIDC_SCOPE || 'openid profile email');
-      // Generate random state and nonce (works in non-HTTPS contexts)
-      const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
-      const state = randomString();
-      const nonce = randomString();
+      // Fetch OIDC config asynchronously (supports runtime config.json)
+      Promise.all([getAuthority(), getClientId(), getScope()]).then(([authority, clientId, scope]) => {
+        const redirectUri = encodeURIComponent(window.location.origin + '/callback');
+        const encodedScope = encodeURIComponent(scope);
+        // Generate random state and nonce (works in non-HTTPS contexts)
+        const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const state = randomString();
+        const nonce = randomString();
 
-      // Store state for validation
-      sessionStorage.setItem('oidc_state', state);
-      sessionStorage.setItem('oidc_nonce', nonce);
+        // Store state for validation
+        sessionStorage.setItem('oidc_state', state);
+        sessionStorage.setItem('oidc_nonce', nonce);
 
-      const url = `${authority}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&nonce=${nonce}`;
-      console.log('[AuthGuard] Redirecting to:', url);
-      window.location.href = url;
+        const url = `${authority}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodedScope}&state=${state}&nonce=${nonce}`;
+        console.log('[AuthGuard] Redirecting to:', url);
+        window.location.href = url;
+      });
     }
-  }, [isCallbackRoute, auth.isLoading, isAuthenticated, auth.activeNavigator]);
+  }, [isCallbackRoute, auth.isLoading, isAuthenticated, auth.activeNavigator, isRedirecting]);
 
   // Allow callback route to render without auth check
   if (isCallbackRoute) {
@@ -118,8 +121,19 @@ function AuthGuardInner({ children }: AuthGuardProps) {
  * - If not authenticated, redirects to OIDC login
  */
 export function AuthGuard({ children }: AuthGuardProps) {
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isOIDCEnabledAsync().then(setOidcEnabled);
+  }, []);
+
+  // Still checking if OIDC is enabled
+  if (oidcEnabled === null) {
+    return <AuthLoading />;
+  }
+
   // If OIDC is not enabled, render children without auth check
-  if (!isOIDCEnabled()) {
+  if (!oidcEnabled) {
     return <>{children}</>;
   }
 

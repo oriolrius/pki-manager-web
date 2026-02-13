@@ -10,8 +10,8 @@
  */
 
 import { createFileRoute, Outlet, useNavigate } from '@tanstack/react-router';
-import { useAuth, isOIDCEnabled } from '@/lib/auth';
-import { useEffect } from 'react';
+import { useAuth, isOIDCEnabledAsync } from '@/lib/auth';
+import { useEffect, useState } from 'react';
 
 export const Route = createFileRoute('/_authenticated')({
   component: AuthenticatedLayout,
@@ -20,9 +20,27 @@ export const Route = createFileRoute('/_authenticated')({
 function AuthenticatedLayout() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+
+  // Check if OIDC is enabled (supports runtime config)
+  useEffect(() => {
+    isOIDCEnabledAsync().then(setOidcEnabled);
+  }, []);
+
+  // Still checking if OIDC is enabled
+  if (oidcEnabled === null) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Loading...</h1>
+        </div>
+      </div>
+    );
+  }
 
   // If OIDC is not enabled, render children without auth check
-  if (!isOIDCEnabled()) {
+  if (!oidcEnabled) {
     return <Outlet />;
   }
 

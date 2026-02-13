@@ -10,7 +10,7 @@
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import { useAuth, isOIDCEnabled, hasValidManualTokens, getStorageKey } from '@/lib/auth';
+import { useAuth, isOIDCEnabledAsync, hasValidManualTokens, getStorageKey, getAuthority, getClientId, getScope } from '@/lib/auth';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser,
@@ -46,31 +46,33 @@ function getManualUserInfo(): { name?: string; email?: string } | null {
   }
 }
 
-/**
- * Gets the account management URL for the OIDC provider
- */
-function getAccountUrl(): string | null {
-  const authority = import.meta.env.VITE_OIDC_AUTHORITY;
-  if (!authority) return null;
-
-  // For Keycloak, account page is at /account
-  // Other providers may have different URLs
-  return `${authority}/account`;
-}
-
 export function UserMenu() {
   const auth = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+  const [oidcConfig, setOidcConfig] = useState<{ authority: string; clientId: string; scope: string } | null>(null);
 
   // Check for manual tokens
   const [hasManualTokens, setHasManualTokens] = useState(() => hasValidManualTokens());
   const [manualUserInfo, setManualUserInfo] = useState(() => getManualUserInfo());
 
-  // If OIDC is not enabled, don't render anything
-  if (!isOIDCEnabled()) {
-    return null;
-  }
+  // Check if OIDC is enabled and load config (supports runtime config)
+  useEffect(() => {
+    async function loadOIDCConfig() {
+      const enabled = await isOIDCEnabledAsync();
+      setOidcEnabled(enabled);
+      if (enabled) {
+        const [authority, clientId, scope] = await Promise.all([
+          getAuthority(),
+          getClientId(),
+          getScope(),
+        ]);
+        setOidcConfig({ authority, clientId, scope });
+      }
+    }
+    loadOIDCConfig();
+  }, []);
 
   // Re-check manual tokens when auth state changes
   useEffect(() => {
@@ -90,16 +92,28 @@ export function UserMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // If OIDC is not enabled, don't render anything
+  if (oidcEnabled === false) {
+    return null;
+  }
+
+  // Still loading OIDC config
+  if (oidcEnabled === null || !oidcConfig) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+      </div>
+    );
+  }
+
   // Handle login - redirect to OIDC provider
   const handleLogin = () => {
     // Store current path for redirect after login
     sessionStorage.setItem('returnUrl', window.location.pathname);
 
     // Use manual redirect (signinRedirect doesn't work reliably in non-HTTPS)
-    const authority = import.meta.env.VITE_OIDC_AUTHORITY;
-    const clientId = import.meta.env.VITE_OIDC_CLIENT_ID;
     const redirectUri = encodeURIComponent(window.location.origin + '/callback');
-    const scope = encodeURIComponent(import.meta.env.VITE_OIDC_SCOPE || 'openid profile email');
+    const encodedScope = encodeURIComponent(oidcConfig.scope);
     const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
     const state = randomString();
     const nonce = randomString();
@@ -107,7 +121,7 @@ export function UserMenu() {
     sessionStorage.setItem('oidc_state', state);
     sessionStorage.setItem('oidc_nonce', nonce);
 
-    const url = `${authority}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}&nonce=${nonce}`;
+    const url = `${oidcConfig.authority}/protocol/openid-connect/auth?client_id=${oidcConfig.clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodedScope}&state=${state}&nonce=${nonce}`;
     window.location.href = url;
   };
 
@@ -121,10 +135,16 @@ export function UserMenu() {
     sessionStorage.removeItem('returnUrl');
 
     // Redirect to Keycloak logout
-    const authority = import.meta.env.VITE_OIDC_AUTHORITY;
     const redirectUri = encodeURIComponent(window.location.origin);
-    const logoutUrl = `${authority}/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=${import.meta.env.VITE_OIDC_CLIENT_ID}`;
+    const logoutUrl = `${oidcConfig.authority}/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=${oidcConfig.clientId}`;
     window.location.href = logoutUrl;
+  };
+
+  // Gets the account management URL for the OIDC provider
+  const getAccountUrl = (): string | null => {
+    if (!oidcConfig.authority) return null;
+    // For Keycloak, account page is at /account
+    return `${oidcConfig.authority}/account`;
   };
 
   // Consider authenticated if library says so OR we have valid manual tokens

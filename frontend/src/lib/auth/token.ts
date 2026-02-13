@@ -8,7 +8,7 @@
  */
 
 import { UserManager, type User } from 'oidc-client-ts';
-import { buildOIDCSettings, isOIDCEnabled, getStorageKey } from './config';
+import { buildOIDCSettings, isOIDCEnabledAsync, getStorageKey } from './config';
 
 // Cached UserManager instance
 let userManager: UserManager | null = null;
@@ -17,7 +17,8 @@ let userManager: UserManager | null = null;
  * Gets or creates the UserManager instance
  */
 async function getUserManager(): Promise<UserManager | null> {
-  if (!isOIDCEnabled()) {
+  const oidcEnabled = await isOIDCEnabledAsync();
+  if (!oidcEnabled) {
     return null;
   }
 

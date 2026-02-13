@@ -51,11 +51,26 @@ async function fetchRuntimeConfig(): Promise<RuntimeConfig | null> {
 }
 
 /**
- * Checks if OIDC is enabled
- * OIDC is enabled when VITE_OIDC_AUTHORITY is set
+ * Checks if OIDC is enabled (synchronous, build-time only)
+ * OIDC is enabled when VITE_OIDC_AUTHORITY is set at build time
+ * @deprecated Use isOIDCEnabledAsync for runtime config support
  */
 export function isOIDCEnabled(): boolean {
   return !!import.meta.env.VITE_OIDC_AUTHORITY;
+}
+
+/**
+ * Checks if OIDC is enabled (async, supports runtime config)
+ * OIDC is enabled when authority is set via env var OR runtime config
+ */
+export async function isOIDCEnabledAsync(): Promise<boolean> {
+  // First check build-time env var
+  if (import.meta.env.VITE_OIDC_AUTHORITY) {
+    return true;
+  }
+  // Then check runtime config
+  const runtime = await fetchRuntimeConfig();
+  return !!runtime?.oidc?.authority;
 }
 
 /**

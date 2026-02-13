@@ -10,7 +10,7 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { AuthProvider as OIDCAuthProvider } from 'react-oidc-context';
 import type { UserManagerSettings } from 'oidc-client-ts';
-import { buildOIDCSettings, isOIDCEnabled } from './config';
+import { buildOIDCSettings, isOIDCEnabledAsync } from './config';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -58,8 +58,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   useEffect(() => {
     async function loadSettings() {
-      // If OIDC is not enabled, skip loading settings
-      if (!isOIDCEnabled()) {
+      // Check if OIDC is enabled (supports runtime config.json)
+      const oidcEnabled = await isOIDCEnabledAsync();
+      if (!oidcEnabled) {
         setLoading(false);
         return;
       }
