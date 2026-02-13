@@ -222,9 +222,10 @@ Add these to your `.env` file:
 
 | Variable | Example | Description |
 |----------|---------|-------------|
-| `OIDC_ISSUER` | `https://keycloak.example.com/realms/pki` | OIDC provider base URL |
+| `OIDC_ISSUER` | `https://keycloak.example.com/realms/pki` | OIDC provider base URL (must match token `iss` claim) |
 | `OIDC_AUDIENCE` | `pki-web,pki-service` | Expected audience claim(s), comma-separated |
 | `OIDC_ROLES_CLAIM` | `realm_access.roles` | JWT path to roles (provider-specific) |
+| `OIDC_DISCOVERY_BASE_URL` | _(optional)_ | Override URL for fetching OIDC discovery (for Docker networking) |
 
 **Provider-specific issuer URLs:**
 - **Keycloak**: `https://keycloak.example.com/realms/your-realm`
@@ -386,21 +387,54 @@ Available tags:
 
 PKI Manager includes comprehensive E2E tests for Role-Based Access Control (RBAC). Tests can run against a local Docker environment or production.
 
+### E2E Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Host Machine                                  │
+│  ┌────────────────┐                                                 │
+│  │  Playwright    │ ──────────────────┐                             │
+│  │  Test Runner   │                   │                             │
+│  └────────────────┘                   ▼                             │
+│         │                    localhost:8080 (Frontend)              │
+│         │                    localhost:3000 (Backend API)           │
+│         │                    localhost:8180 (Keycloak)              │
+│         │                             │                             │
+│  ═══════╪═════════════════════════════╪═════════════════════════    │
+│         │          Docker Network     │                             │
+│         ▼               (pki-e2e-network)                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
+│  │  Frontend   │  │   Backend   │  │  Keycloak   │  │     KMS     │ │
+│  │  (nginx)    │  │  (Node.js)  │  │   (OIDC)    │  │  (Cosmian)  │ │
+│  │  :8080      │──│  :3000      │──│  :8080      │  │  :9998      │ │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
+│                          │                                          │
+│                          └──── OIDC_DISCOVERY_BASE_URL ────┘        │
+│                                (keycloak:8080)                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+The backend uses `OIDC_DISCOVERY_BASE_URL` to fetch OIDC configuration from the Docker network (`keycloak:8080`) while validating tokens against the issuer URL that browsers use (`localhost:8180`).
+
 ### Local E2E Testing (Recommended)
 
 The `docker-compose.e2e.yml` provides a complete isolated environment for testing:
 
 ```bash
-# 1. Start the E2E environment (includes Keycloak with pre-configured test users)
+# 1. Build images with latest code (if you made changes)
+docker build --target backend -t ghcr.io/oriolrius/pki-manager-web/backend:latest -f docker/Dockerfile .
+docker build --target frontend -t ghcr.io/oriolrius/pki-manager-web/frontend:latest -f docker/Dockerfile .
+
+# 2. Start the E2E environment (includes Keycloak with pre-configured test users)
 docker compose -f docker/docker-compose.e2e.yml up -d
 
-# 2. Wait for all services to be healthy (~60-90 seconds for Keycloak)
+# 3. Wait for all services to be healthy (~60-90 seconds for Keycloak)
 docker compose -f docker/docker-compose.e2e.yml ps
 
-# 3. Run the RBAC tests
+# 4. Run the RBAC tests
 pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
 
-# 4. Cleanup when done
+# 5. Cleanup when done
 docker compose -f docker/docker-compose.e2e.yml down -v
 ```
 
@@ -461,7 +495,7 @@ pnpm playwright test tests/e2e-rbac.spec.ts
 cd backend && pnpm typecheck
 ```
 
-###Image Pull Failures
+### Image Pull Failures
 
 **Problem**: Cannot pull from ghcr.io
 
@@ -527,6 +561,40 @@ docker-compose ps kms
 BACKEND_EXTERNAL_PORT=3001
 FRONTEND_EXTERNAL_PORT=8081
 KMS_EXTERNAL_PORT=9999
+```
+
+### E2E Test Failures
+
+**Problem**: "no such table: audit_log" error
+
+**Solution**: Database migrations didn't run. The E2E docker-compose automatically runs migrations on startup. If using a custom setup:
+```bash
+docker exec pki-e2e-backend node /app/backend/dist/db/migrate.js
+```
+
+**Problem**: OIDC token validation fails in Docker
+
+**Solution**: Ensure `OIDC_DISCOVERY_BASE_URL` is set for Docker networking:
+```yaml
+# docker-compose.e2e.yml
+environment:
+  - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+  - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-e2e
+```
+
+**Problem**: Keycloak healthcheck fails (timeout)
+
+**Solution**: Keycloak 26+ takes ~60-90 seconds to start. The healthcheck has a 90-second start period. Check logs:
+```bash
+docker logs pki-e2e-keycloak
+```
+
+**Problem**: Tests fail with "Login button not found"
+
+**Solution**: Wait for all services to be healthy before running tests:
+```bash
+docker compose -f docker/docker-compose.e2e.yml ps
+# All services should show "healthy" status
 ```
 
 ### Production Configuration

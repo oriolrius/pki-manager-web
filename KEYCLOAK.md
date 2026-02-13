@@ -348,6 +348,27 @@ The `pki-e2e` realm is automatically imported when starting the E2E Docker envir
 - **Direct Access Grants**: Enabled (for automated testing)
 - **Brute Force Protection**: Disabled (to prevent test lockouts)
 
+### Docker OIDC Networking
+
+The E2E environment handles OIDC token validation in Docker with special configuration:
+
+```yaml
+# Keycloak (v26+) - use full URL for consistent issuer
+environment:
+  - KC_HOSTNAME=http://localhost:8180
+
+# Backend - separate discovery URL for Docker networking
+environment:
+  - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+  - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-e2e
+```
+
+**Why this is needed:**
+1. Browser accesses Keycloak at `localhost:8180` and tokens have `iss: http://localhost:8180/...`
+2. Backend container cannot reach `localhost:8180` (it refers to the container itself)
+3. `OIDC_DISCOVERY_BASE_URL` tells the backend to fetch OIDC config from Docker network (`keycloak:8080`)
+4. The backend validates tokens against `OIDC_ISSUER` (what's in tokens) while fetching from the discovery URL
+
 ### Running E2E Tests
 
 ```bash
