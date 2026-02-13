@@ -16,6 +16,7 @@ import {
   CAOperationError,
   CAKmsInconsistencyError,
 } from '../../services/ca.service.js';
+import { isOIDCEnabled } from '../../lib/oidc.js';
 
 // Helper to map service errors to tRPC errors
 function mapServiceError(error: unknown): never {
@@ -109,12 +110,15 @@ export const caRouter = router({
     .input(createCaSchema)
     .mutation(async ({ ctx, input }) => {
       // Explicit role check as safety net (adminProcedure middleware should also check this)
-      const authenticatedCtx = ctx as { user?: { roles?: string[] } };
-      if (!authenticatedCtx.user?.roles?.includes('admin')) {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin role required to create CA',
-        });
+      // Skip check if OIDC is disabled (same as adminRoleMiddleware)
+      if (isOIDCEnabled()) {
+        const authenticatedCtx = ctx as { user?: { roles?: string[] } };
+        if (!authenticatedCtx.user?.roles?.includes('admin')) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: 'Admin role required to create CA',
+          });
+        }
       }
 
       const caService = getCAService();
