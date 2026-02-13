@@ -1,0 +1,10 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "1.6.1"
+tag_format = "v$version"
+version_files = [
+    "package.json:version",
+    "frontend/package.json:version",
+    "backend/package.json:version"
+]
+update_changelog_on_bump = false
