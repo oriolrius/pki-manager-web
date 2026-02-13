@@ -3,6 +3,7 @@ import type { OpenApiMeta } from 'trpc-swagger';
 import type { Context, AuthenticatedContext } from './context.js';
 import { createAuthMiddleware } from './middleware/auth.js';
 import { isOIDCEnabled } from '../lib/oidc.js';
+import { logger } from '../lib/logger.js';
 
 const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
   errorFormatter({ shape, error }) {
@@ -62,30 +63,35 @@ export const protectedProcedure = t.procedure.use(authMiddleware);
  * Admin role middleware - requires 'admin' role
  */
 const adminRoleMiddleware = t.middleware(async ({ ctx, next }) => {
+  logger.info('[AdminMiddleware] Middleware entered');
+
   // Skip role check if OIDC is disabled
   if (!isOIDCEnabled()) {
-    console.log('[AdminMiddleware] OIDC is disabled, skipping role check');
+    logger.info('[AdminMiddleware] OIDC is disabled, skipping role check');
     return next();
   }
 
   // Type assertion since this middleware runs after authMiddleware
   const authenticatedCtx = ctx as AuthenticatedContext;
 
-  console.log('[AdminMiddleware] Checking admin role for user:', {
-    sub: authenticatedCtx.user?.sub,
-    roles: authenticatedCtx.user?.roles,
-    hasAdmin: authenticatedCtx.user?.roles?.includes('admin'),
-  });
+  logger.info(
+    {
+      sub: authenticatedCtx.user?.sub,
+      roles: authenticatedCtx.user?.roles,
+      hasAdmin: authenticatedCtx.user?.roles?.includes('admin'),
+    },
+    '[AdminMiddleware] Checking admin role for user'
+  );
 
   if (!authenticatedCtx.user.roles.includes('admin')) {
-    console.log('[AdminMiddleware] FORBIDDEN - User does not have admin role');
+    logger.info('[AdminMiddleware] FORBIDDEN - User does not have admin role');
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'Admin role required',
     });
   }
 
-  console.log('[AdminMiddleware] Admin role verified');
+  logger.info('[AdminMiddleware] Admin role verified');
   return next();
 });
 
