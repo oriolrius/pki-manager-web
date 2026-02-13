@@ -23,7 +23,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       target: backend
-    image: ghcr.io/oriolrius/pki-manager-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/oriolrius/pki-manager-web/backend:${IMAGE_TAG:-latest}
     container_name: pki-backend
     restart: unless-stopped
     networks:
@@ -79,11 +79,13 @@ services:
       target: frontend
       args:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
-    image: ghcr.io/oriolrius/pki-manager-frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG:-latest}
     container_name: pki-frontend
     restart: unless-stopped
     networks:
       - pki-network
+    volumes:
+      - ./config.json:/usr/share/nginx/html/config.json:ro
     environment:
       # Runtime API URL - overrides build-time default via config.json
       - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
