@@ -108,6 +108,15 @@ export const caRouter = router({
   create: adminProcedure
     .input(createCaSchema)
     .mutation(async ({ ctx, input }) => {
+      // Explicit role check as safety net (adminProcedure middleware should also check this)
+      const authenticatedCtx = ctx as { user?: { roles?: string[] } };
+      if (!authenticatedCtx.user?.roles?.includes('admin')) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Admin role required to create CA',
+        });
+      }
+
       const caService = getCAService();
 
       try {
