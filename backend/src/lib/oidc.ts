@@ -85,11 +85,16 @@ function parseAudiences(audienceEnv: string): string[] {
 
 /**
  * Fetches OIDC discovery document from the issuer
+ * Uses OIDC_DISCOVERY_BASE_URL if set, otherwise uses the issuer URL
+ * This is useful when the backend needs to reach the OIDC provider via a different URL
+ * than what appears in tokens (e.g., in Docker environments where localhost differs)
  */
 async function fetchDiscoveryDocument(issuer: string): Promise<OIDCDiscoveryDocument> {
-  const discoveryUrl = `${issuer.replace(/\/$/, '')}/.well-known/openid-configuration`;
+  // Use OIDC_DISCOVERY_BASE_URL if set, otherwise use issuer
+  const baseUrl = process.env.OIDC_DISCOVERY_BASE_URL || issuer;
+  const discoveryUrl = `${baseUrl.replace(/\/$/, '')}/.well-known/openid-configuration`;
 
-  logger.debug({ discoveryUrl }, 'Fetching OIDC discovery document');
+  logger.debug({ discoveryUrl, issuer }, 'Fetching OIDC discovery document');
 
   const response = await fetch(discoveryUrl);
 
@@ -159,11 +164,23 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
     );
   }
 
+  // If OIDC_DISCOVERY_BASE_URL is set, rewrite JWKS URI to use it
+  // This is needed because discovery may return localhost URLs that aren't reachable from containers
+  let jwksUri = discovery.jwks_uri;
+  const discoveryBaseUrl = process.env.OIDC_DISCOVERY_BASE_URL;
+  if (discoveryBaseUrl && discovery.issuer) {
+    // Replace the issuer part of the JWKS URI with the discovery base URL
+    jwksUri = discovery.jwks_uri.replace(discovery.issuer, discoveryBaseUrl);
+    if (jwksUri !== discovery.jwks_uri) {
+      logger.debug({ original: discovery.jwks_uri, rewritten: jwksUri }, 'Rewrote JWKS URI for container access');
+    }
+  }
+
   cachedConfig = {
     issuer: discovery.issuer,
     audiences,
     rolesClaimPath,
-    jwksUri: discovery.jwks_uri,
+    jwksUri,
     enabled: true,
   };
 

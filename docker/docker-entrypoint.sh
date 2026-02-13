@@ -3,6 +3,10 @@ set -e
 
 echo "Starting PKI Manager Backend..."
 
-# Start the server (migrations handled by application startup)
+# Run database migrations
+echo "Running database migrations..."
+node /app/backend/dist/db/migrate.js
+
+# Start the server
 echo "Starting server..."
 exec "$@"
