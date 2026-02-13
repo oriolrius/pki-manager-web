@@ -64,19 +64,28 @@ export const protectedProcedure = t.procedure.use(authMiddleware);
 const adminRoleMiddleware = t.middleware(async ({ ctx, next }) => {
   // Skip role check if OIDC is disabled
   if (!isOIDCEnabled()) {
+    console.log('[AdminMiddleware] OIDC is disabled, skipping role check');
     return next();
   }
 
   // Type assertion since this middleware runs after authMiddleware
   const authenticatedCtx = ctx as AuthenticatedContext;
 
+  console.log('[AdminMiddleware] Checking admin role for user:', {
+    sub: authenticatedCtx.user?.sub,
+    roles: authenticatedCtx.user?.roles,
+    hasAdmin: authenticatedCtx.user?.roles?.includes('admin'),
+  });
+
   if (!authenticatedCtx.user.roles.includes('admin')) {
+    console.log('[AdminMiddleware] FORBIDDEN - User does not have admin role');
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'Admin role required',
     });
   }
 
+  console.log('[AdminMiddleware] Admin role verified');
   return next();
 });
 
