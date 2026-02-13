@@ -1,6 +1,6 @@
 ---
 name: GitHub CLI
-description: Expert help with GitHub CLI (gh) for managing pull requests, issues, repositories, workflows, and releases. Use this when working with GitHub operations from the command line.
+description: Expert help with GitHub CLI (gh) for managing pull requests, issues, repositories, workflows, and releases. Use this when working with GitHub operations from the command line, creating new releases, or bumping package versions.
 ---
 
 # GitHub CLI (gh)
@@ -253,6 +253,97 @@ gh release download v1.0.0
 # Delete release
 gh release delete v1.0.0
 ```
+
+## Version Management (pki-manager specific)
+
+**IMPORTANT**: When creating a new release for this project, you MUST bump the version in ALL THREE package.json files:
+- `package.json` (root - authoritative source)
+- `frontend/package.json`
+- `backend/package.json`
+
+### Version Bump Types (Semantic Versioning)
+
+| Type | When to use | Example |
+|------|-------------|---------|
+| **patch** | Bug fixes, minor changes | `1.2.0` → `1.2.1` |
+| **minor** | New features, backwards compatible | `1.2.0` → `1.3.0` |
+| **major** | Breaking changes | `1.2.0` → `2.0.0` |
+
+### Pre-Release Workflow
+
+Before creating a release, you MUST:
+
+1. **Check current version** in root package.json
+2. **Determine bump type** based on changes since last release
+3. **Update ALL package.json files** with the new version
+4. **Commit version changes** with message: `chore: bump version to vX.Y.Z`
+5. **Create git tag**: `git tag vX.Y.Z`
+6. **Push tag**: `git push origin vX.Y.Z`
+7. **Create GitHub release**: `gh release create vX.Y.Z --generate-notes`
+
+### Complete Release Workflow
+
+```bash
+# 1. Determine current version
+cat package.json | grep '"version"'
+# Output: "version": "1.2.0"
+
+# 2. Update versions in all package.json files
+# For patch bump (1.2.0 → 1.2.1):
+NEW_VERSION="1.2.1"
+
+# Edit package.json (root)
+# Edit frontend/package.json
+# Edit backend/package.json
+# All three must have the same version!
+
+# 3. Commit version bump
+git add package.json frontend/package.json backend/package.json
+git commit -m "chore: bump version to v${NEW_VERSION}"
+
+# 4. Create and push tag
+git tag "v${NEW_VERSION}"
+git push origin main
+git push origin "v${NEW_VERSION}"
+
+# 5. Create GitHub release with auto-generated notes
+gh release create "v${NEW_VERSION}" --generate-notes
+
+# Or with custom notes
+gh release create "v${NEW_VERSION}" --notes "## What's Changed
+- Feature A
+- Bug fix B
+- Improvement C"
+```
+
+### Version Synchronization Rules
+
+**CRITICAL**: All three package.json files MUST have matching versions:
+
+| File | Path | Must Match Root |
+|------|------|-----------------|
+| Root | `package.json` | ✓ (authoritative) |
+| Frontend | `frontend/package.json` | ✓ |
+| Backend | `backend/package.json` | ✓ |
+
+### Checking Version Consistency
+
+```bash
+# Quick check all versions
+echo "Root: $(cat package.json | grep '"version"' | head -1)"
+echo "Frontend: $(cat frontend/package.json | grep '"version"' | head -1)"
+echo "Backend: $(cat backend/package.json | grep '"version"' | head -1)"
+```
+
+### Release Checklist
+
+Before releasing, verify:
+- [ ] All tests pass (`pnpm test`)
+- [ ] Build succeeds (`pnpm build`)
+- [ ] All three package.json versions match
+- [ ] Changes are committed to main branch
+- [ ] No uncommitted changes (`git status`)
+- [ ] Previous release tag exists for comparison
 
 ## Gists
 
