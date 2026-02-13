@@ -8,7 +8,7 @@
  */
 
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useAuth } from '@/lib/auth';
+import { useAuth, getAuthority, getClientId } from '@/lib/auth';
 import { useEffect, useState } from 'react';
 
 export const Route = createFileRoute('/callback')({
@@ -24,8 +24,8 @@ interface TokenResponse {
 }
 
 async function exchangeCodeForTokens(code: string): Promise<TokenResponse> {
-  const authority = import.meta.env.VITE_OIDC_AUTHORITY;
-  const clientId = import.meta.env.VITE_OIDC_CLIENT_ID;
+  const authority = await getAuthority();
+  const clientId = await getClientId();
   const redirectUri = window.location.origin + '/callback';
 
   const response = await fetch(`${authority}/protocol/openid-connect/token`, {
@@ -69,11 +69,13 @@ function CallbackRoute() {
         console.log('[Callback] Library state failed, attempting manual token exchange...');
         setManualLoading(true);
 
-        exchangeCodeForTokens(code)
-          .then((tokens) => {
+        (async () => {
+          try {
+            const tokens = await exchangeCodeForTokens(code);
             console.log('[Callback] Manual token exchange successful');
             // Store tokens in localStorage for the app to use
-            const storageKey = `oidc.user:${import.meta.env.VITE_OIDC_AUTHORITY}:${import.meta.env.VITE_OIDC_CLIENT_ID}`;
+            const [authority, clientId] = await Promise.all([getAuthority(), getClientId()]);
+            const storageKey = `oidc.user:${authority}:${clientId}`;
             localStorage.setItem(storageKey, JSON.stringify({
               access_token: tokens.access_token,
               id_token: tokens.id_token,
@@ -90,12 +92,12 @@ function CallbackRoute() {
             const returnUrl = sessionStorage.getItem('returnUrl') || '/';
             sessionStorage.removeItem('returnUrl');
             window.location.href = returnUrl;
-          })
-          .catch((err) => {
+          } catch (err) {
             console.error('[Callback] Manual token exchange failed:', err);
-            setManualError(err.message);
+            setManualError(err instanceof Error ? err.message : 'Token exchange failed');
             setManualLoading(false);
-          });
+          }
+        })();
       }
     }
   }, [auth.error]);
