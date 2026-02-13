@@ -282,6 +282,8 @@ services:
 
 For detailed step-by-step instructions with screenshots, see **[KEYCLOAK.md](KEYCLOAK.md)**.
 
+For a deep dive into how OIDC works (public clients, PKCE, token validation), see **[OIDC.md](OIDC.md)**.
+
 **Quick summary:**
 
 1. **Create a Realm** (e.g., `pki-manager`)

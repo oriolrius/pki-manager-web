@@ -414,6 +414,7 @@ E2E_TARGET=production pnpm playwright test tests/e2e-rbac.spec.ts
 
 ## See Also
 
+- [OIDC.md](OIDC.md) - How OIDC authentication works in PKI Manager (public clients, PKCE, token validation)
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Docker deployment and E2E testing instructions
 - [Keycloak Documentation](https://www.keycloak.org/documentation)
 - [OIDC Specification](https://openid.net/specs/openid-connect-core-1_0.html)
