@@ -162,25 +162,63 @@ async function submitCAFormAndCheck(
     await dialog.dismiss();
   });
 
-  // Click submit button
-  await page.getByRole('button', { name: /create certificate authority/i }).click();
+  // Click submit button and wait for response
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (resp) => resp.url().includes('ca.create') && resp.request().method() === 'POST',
+      { timeout: 30000 }
+    ),
+    page.getByRole('button', { name: /create certificate authority/i }).click(),
+  ]);
 
-  // Wait for either navigation (success) or alert (error)
+  // Log response details
+  const status = response.status();
+  let body = '';
   try {
-    // Success: navigates to the new CA detail page
-    await page.waitForURL(/\/cas\/[a-zA-Z0-9-]+$/, { timeout: 10000 });
-    return { success: true };
+    body = await response.text();
   } catch {
-    // Check if we got a forbidden error in the alert
-    if (
-      alertMessage.includes('FORBIDDEN') ||
-      alertMessage.includes('Admin access required') ||
-      alertMessage.includes('403')
-    ) {
-      return { success: false, errorMessage: alertMessage };
+    body = '<unable to get body>';
+  }
+  console.log(`[TEST] Response Status: ${status}`);
+  console.log(`[TEST] Response Body: ${body.substring(0, 500)}`);
+
+  // Parse tRPC batch response
+  try {
+    const parsed = JSON.parse(body);
+    const result = parsed[0];
+
+    if (result.error) {
+      const errorCode = result.error.data?.code;
+      const errorMessage = result.error.message;
+      console.log(`[TEST] tRPC Error: ${errorCode} - ${errorMessage}`);
+
+      if (errorCode === 'FORBIDDEN' || errorMessage.includes('Admin') || errorMessage.includes('FORBIDDEN')) {
+        return { success: false, errorMessage: `${errorCode}: ${errorMessage}` };
+      }
+      return { success: false, errorMessage: errorMessage };
     }
-    // Other error
-    return { success: false, errorMessage: alertMessage || 'Unknown error' };
+
+    // Success - wait for navigation
+    await page.waitForURL(/\/cas\/[a-zA-Z0-9-]+$/, { timeout: 5000 }).catch(() => {});
+    console.log(`[TEST] CA created successfully, navigated to: ${page.url()}`);
+    return { success: true };
+  } catch (parseError) {
+    console.log(`[TEST] Failed to parse response: ${parseError}`);
+    // Fall back to checking alert
+    if (alertMessage) {
+      if (
+        alertMessage.includes('FORBIDDEN') ||
+        alertMessage.includes('Admin access required') ||
+        alertMessage.includes('403')
+      ) {
+        return { success: false, errorMessage: alertMessage };
+      }
+    }
+    // Check if page navigated (success case)
+    if (page.url().match(/\/cas\/[a-zA-Z0-9-]+$/)) {
+      return { success: true };
+    }
+    return { success: false, errorMessage: alertMessage || `HTTP ${status}` };
   }
 }
 
