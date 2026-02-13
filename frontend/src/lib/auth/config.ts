@@ -74,7 +74,8 @@ export async function isOIDCEnabledAsync(): Promise<boolean> {
 }
 
 /**
- * Gets the storage key for manual token storage
+ * Gets the storage key for manual token storage (sync, build-time only)
+ * @deprecated Use getStorageKeyAsync for runtime config support
  */
 export function getStorageKey(): string {
   const authority = import.meta.env.VITE_OIDC_AUTHORITY;
@@ -83,12 +84,45 @@ export function getStorageKey(): string {
 }
 
 /**
- * Checks if we have valid manually stored tokens
- * Returns true if tokens exist and are not expired
+ * Gets the storage key for manual token storage (async, supports runtime config)
+ */
+export async function getStorageKeyAsync(): Promise<string> {
+  const authority = await getAuthority();
+  const clientId = await getClientId();
+  return `oidc.user:${authority}:${clientId}`;
+}
+
+/**
+ * Checks if we have valid manually stored tokens (sync, build-time only)
+ * @deprecated Use hasValidManualTokensAsync for runtime config support
  */
 export function hasValidManualTokens(): boolean {
   try {
     const storageKey = getStorageKey();
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) return false;
+
+    const data = JSON.parse(stored);
+    if (!data.access_token) return false;
+
+    // Check expiration (with 30 second buffer)
+    if (data.expires_at) {
+      const now = Math.floor(Date.now() / 1000);
+      if (data.expires_at < now + 30) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks if we have valid manually stored tokens (async, supports runtime config)
+ */
+export async function hasValidManualTokensAsync(): Promise<boolean> {
+  try {
+    const storageKey = await getStorageKeyAsync();
     const stored = localStorage.getItem(storageKey);
     if (!stored) return false;
 

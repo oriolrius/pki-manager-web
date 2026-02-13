@@ -14,7 +14,7 @@ export { AuthProvider } from './AuthProvider';
 export { AuthGuard } from './AuthGuard';
 
 // Re-export configuration utilities
-export { isOIDCEnabled, isOIDCEnabledAsync, getAuthority, getClientId, getScope, hasValidManualTokens, getStorageKey } from './config';
+export { isOIDCEnabled, isOIDCEnabledAsync, getAuthority, getClientId, getScope, hasValidManualTokens, hasValidManualTokensAsync, getStorageKey, getStorageKeyAsync } from './config';
 
 // Re-export token utilities for tRPC client
 export { getAccessToken, getUser } from './token';

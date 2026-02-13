@@ -9,7 +9,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { isOIDCEnabledAsync, hasValidManualTokens, getAuthority, getClientId, getScope } from './config';
+import { isOIDCEnabledAsync, hasValidManualTokensAsync, getAuthority, getClientId, getScope } from './config';
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -51,7 +51,8 @@ function AuthRedirecting() {
 function AuthGuardInner({ children }: AuthGuardProps) {
   const auth = useAuth();
   // Check for manually stored tokens (from our custom callback handler)
-  const [hasManualTokens, setHasManualTokens] = useState(() => hasValidManualTokens());
+  const [hasManualTokens, setHasManualTokens] = useState(false);
+  const [tokensChecked, setTokensChecked] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   // Check if we're on the callback route (don't redirect during OIDC callback)
@@ -59,15 +60,18 @@ function AuthGuardInner({ children }: AuthGuardProps) {
 
   // Re-check manual tokens when component mounts or auth state changes
   useEffect(() => {
-    setHasManualTokens(hasValidManualTokens());
+    hasValidManualTokensAsync().then((hasTokens) => {
+      setHasManualTokens(hasTokens);
+      setTokensChecked(true);
+    });
   }, [auth.isAuthenticated]);
 
   // Consider authenticated if library says so OR we have valid manual tokens
   const isAuthenticated = auth.isAuthenticated || hasManualTokens;
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated (wait for token check to complete)
   useEffect(() => {
-    if (!isCallbackRoute && !auth.isLoading && !isAuthenticated && !auth.activeNavigator && !isRedirecting) {
+    if (!isCallbackRoute && !auth.isLoading && tokensChecked && !isAuthenticated && !auth.activeNavigator && !isRedirecting) {
       setIsRedirecting(true);
 
       // Store current path for redirect after login
@@ -92,15 +96,15 @@ function AuthGuardInner({ children }: AuthGuardProps) {
         window.location.href = url;
       });
     }
-  }, [isCallbackRoute, auth.isLoading, isAuthenticated, auth.activeNavigator, isRedirecting]);
+  }, [isCallbackRoute, auth.isLoading, tokensChecked, isAuthenticated, auth.activeNavigator, isRedirecting]);
 
   // Allow callback route to render without auth check
   if (isCallbackRoute) {
     return <>{children}</>;
   }
 
-  // Loading state
-  if (auth.isLoading) {
+  // Loading state (waiting for auth library or token check)
+  if (auth.isLoading || !tokensChecked) {
     return <AuthLoading />;
   }
 

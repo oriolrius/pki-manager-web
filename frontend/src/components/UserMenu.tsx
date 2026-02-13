@@ -10,7 +10,7 @@
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import { useAuth, isOIDCEnabledAsync, hasValidManualTokens, getStorageKey, getAuthority, getClientId, getScope } from '@/lib/auth';
+import { useAuth, isOIDCEnabledAsync, hasValidManualTokensAsync, getStorageKeyAsync, getAuthority, getClientId, getScope } from '@/lib/auth';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser,
@@ -22,11 +22,10 @@ import {
 import { useState, useRef, useEffect } from 'react';
 
 /**
- * Gets user info from manually stored tokens
+ * Gets user info from manually stored tokens using a specific storage key
  */
-function getManualUserInfo(): { name?: string; email?: string } | null {
+function getManualUserInfoFromStorage(storageKey: string): { name?: string; email?: string } | null {
   try {
-    const storageKey = getStorageKey();
     const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
 
@@ -54,8 +53,8 @@ export function UserMenu() {
   const [oidcConfig, setOidcConfig] = useState<{ authority: string; clientId: string; scope: string } | null>(null);
 
   // Check for manual tokens
-  const [hasManualTokens, setHasManualTokens] = useState(() => hasValidManualTokens());
-  const [manualUserInfo, setManualUserInfo] = useState(() => getManualUserInfo());
+  const [hasManualTokens, setHasManualTokens] = useState(false);
+  const [manualUserInfo, setManualUserInfo] = useState<{ name?: string; email?: string } | null>(null);
 
   // Check if OIDC is enabled and load config (supports runtime config)
   useEffect(() => {
@@ -69,6 +68,14 @@ export function UserMenu() {
           getScope(),
         ]);
         setOidcConfig({ authority, clientId, scope });
+
+        // Check for manual tokens
+        const hasTokens = await hasValidManualTokensAsync();
+        setHasManualTokens(hasTokens);
+        if (hasTokens) {
+          const storageKey = await getStorageKeyAsync();
+          setManualUserInfo(getManualUserInfoFromStorage(storageKey));
+        }
       }
     }
     loadOIDCConfig();
@@ -76,8 +83,17 @@ export function UserMenu() {
 
   // Re-check manual tokens when auth state changes
   useEffect(() => {
-    setHasManualTokens(hasValidManualTokens());
-    setManualUserInfo(getManualUserInfo());
+    async function checkTokens() {
+      const hasTokens = await hasValidManualTokensAsync();
+      setHasManualTokens(hasTokens);
+      if (hasTokens) {
+        const storageKey = await getStorageKeyAsync();
+        setManualUserInfo(getManualUserInfoFromStorage(storageKey));
+      } else {
+        setManualUserInfo(null);
+      }
+    }
+    checkTokens();
   }, [auth.isAuthenticated]);
 
   // Close menu when clicking outside
@@ -127,8 +143,8 @@ export function UserMenu() {
 
   // Handle logout - clear tokens and redirect to OIDC provider logout
   const handleLogout = () => {
-    // Clear manual tokens
-    const storageKey = getStorageKey();
+    // Clear manual tokens (use oidcConfig which is already loaded)
+    const storageKey = `oidc.user:${oidcConfig.authority}:${oidcConfig.clientId}`;
     localStorage.removeItem(storageKey);
     sessionStorage.removeItem('oidc_state');
     sessionStorage.removeItem('oidc_nonce');
