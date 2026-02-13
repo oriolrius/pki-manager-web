@@ -8,7 +8,7 @@
  */
 
 import { UserManager, type User } from 'oidc-client-ts';
-import { buildOIDCSettings, isOIDCEnabledAsync, getStorageKey } from './config';
+import { buildOIDCSettings, isOIDCEnabledAsync, getStorageKeyAsync } from './config';
 
 // Cached UserManager instance
 let userManager: UserManager | null = null;
@@ -50,9 +50,9 @@ export async function getUser(): Promise<User | null> {
  * Gets access token from manual storage
  * Used when tokens were exchanged via manual token flow
  */
-function getManualAccessToken(): string | null {
+async function getManualAccessToken(): Promise<string | null> {
   try {
-    const storageKey = getStorageKey();
+    const storageKey = await getStorageKeyAsync();
     const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
 
