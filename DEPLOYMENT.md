@@ -278,30 +278,36 @@ services:
 
 #### Keycloak Setup Example
 
-1. **Create a Realm** (e.g., `pki`)
+For detailed step-by-step instructions with screenshots, see **[KEYCLOAK.md](KEYCLOAK.md)**.
+
+**Quick summary:**
+
+1. **Create a Realm** (e.g., `pki-manager`)
 
 2. **Create a Client** for the SPA:
    - Client ID: `pki-web`
-   - Client Type: `public`
+   - Client authentication: **Off** (public client)
+   - Standard flow: **Enabled** (for PKCE)
    - Valid redirect URIs: `https://pki.example.com/*`
    - Web origins: `https://pki.example.com`
-   - Enable: Standard flow, Direct access grants
 
 3. **Create a Client** for M2M (optional):
    - Client ID: `pki-service`
-   - Client Type: `confidential`
-   - Enable: Service accounts
+   - Client authentication: **On** (confidential)
+   - Service accounts roles: **Enabled**
 
-4. **Configure `.env`**:
+4. **Create a test user** with username and password
+
+5. **Configure `.env`**:
 
 ```bash
 # Backend
-OIDC_ISSUER=https://keycloak.example.com/realms/pki
+OIDC_ISSUER=https://keycloak.example.com/realms/pki-manager
 OIDC_AUDIENCE=pki-web,pki-service
 OIDC_ROLES_CLAIM=realm_access.roles
 
 # Frontend (build-time or runtime)
-VITE_OIDC_AUTHORITY=https://keycloak.example.com/realms/pki
+VITE_OIDC_AUTHORITY=https://keycloak.example.com/realms/pki-manager
 VITE_OIDC_CLIENT_ID=pki-web
 ```
 
