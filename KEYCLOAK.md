@@ -18,6 +18,7 @@ This guide provides step-by-step instructions for configuring Keycloak as the OI
   - [Docker Configuration](#docker-configuration)
 - [Testing the Integration](#testing-the-integration)
 - [Troubleshooting](#troubleshooting)
+- [E2E Testing Configuration](#e2e-testing-configuration)
 
 ## Overview
 
@@ -324,8 +325,74 @@ VITE_OIDC_CLIENT_ID=pki-web
 | `VITE_OIDC_CLIENT_ID` | `pki-web` | Yes (frontend) |
 | `VITE_OIDC_SCOPE` | `openid profile email` | No (default shown) |
 
+## E2E Testing Configuration
+
+PKI Manager includes a pre-configured Keycloak realm for E2E testing with RBAC verification.
+
+### E2E Test Users
+
+The E2E environment (`docker-compose.e2e.yml`) includes pre-configured test users:
+
+| Username | Password | Roles | Use Case |
+|----------|----------|-------|----------|
+| `testadmin` | `Test123!` | `admin` | Admin operations: create/revoke/delete CAs and certificates |
+| `testuser` | `Test123!` | `user` | Regular user: view and issue certificates only |
+
+### E2E Keycloak Realm
+
+The `pki-e2e` realm is automatically imported when starting the E2E Docker environment:
+
+- **Realm**: `pki-e2e`
+- **Client**: `pki-web` (public client with PKCE)
+- **Roles**: `admin`, `user`
+- **Direct Access Grants**: Enabled (for automated testing)
+- **Brute Force Protection**: Disabled (to prevent test lockouts)
+
+### Running E2E Tests
+
+```bash
+# Start the E2E environment
+docker compose -f docker/docker-compose.e2e.yml up -d
+
+# Wait for Keycloak to be ready (~60 seconds)
+docker compose -f docker/docker-compose.e2e.yml ps
+
+# Run RBAC tests
+pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
+
+# Cleanup
+docker compose -f docker/docker-compose.e2e.yml down -v
+```
+
+### E2E Keycloak Access
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Keycloak Console | http://localhost:8180 | admin / admin |
+| OIDC Discovery | http://localhost:8180/realms/pki-e2e/.well-known/openid-configuration | - |
+
+### Production Test Users
+
+For production testing, create equivalent users in your production Keycloak:
+
+1. **Create `testadmin` user**:
+   - Username: `testadmin`
+   - Password: `Test123!` (or stronger)
+   - Realm roles: `admin`
+
+2. **Create `testuser` user**:
+   - Username: `testuser`
+   - Password: `Test123!` (or stronger)
+   - Realm roles: `user` (no `admin` role)
+
+Then run production tests:
+
+```bash
+E2E_TARGET=production pnpm playwright test tests/e2e-rbac.spec.ts
+```
+
 ## See Also
 
-- [DEPLOYMENT.md](DEPLOYMENT.md) - Docker deployment instructions
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Docker deployment and E2E testing instructions
 - [Keycloak Documentation](https://www.keycloak.org/documentation)
 - [OIDC Specification](https://openid.net/specs/openid-connect-core-1_0.html)

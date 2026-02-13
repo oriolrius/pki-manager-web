@@ -5,32 +5,55 @@ import { test, expect, type Page } from '@playwright/test';
  *
  * Tests RBAC enforcement for admin and regular user roles.
  *
- * Prerequisites:
- * - PKI Manager deployed at pki.nexiona.io
- * - Backend deployed at api.pki.nexiona.io
- * - Keycloak running at iam.nexiona.io with pki-manager realm
- * - Test users created:
- *   - testadmin / Test123! (has admin role)
- *   - testuser / Test123! (regular user, no admin role)
+ * Local E2E Testing (default):
+ *   1. Start the E2E environment:
+ *      docker compose -f docker/docker-compose.e2e.yml up -d
+ *   2. Wait for services to be healthy (~60s for Keycloak)
+ *   3. Run tests:
+ *      pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
+ *   4. Cleanup:
+ *      docker compose -f docker/docker-compose.e2e.yml down -v
  *
- * Environment variables:
- *   PROD_FRONTEND_URL - Frontend URL (default: https://pki.nexiona.io)
- *   PROD_KEYCLOAK_URL - Keycloak URL (default: https://iam.nexiona.io)
- *   PROD_ADMIN_USER - Admin username (default: testadmin)
- *   PROD_ADMIN_PASSWORD - Admin password (default: Test123!)
- *   PROD_TEST_USER - Regular user username (default: testuser)
- *   PROD_TEST_PASSWORD - Regular user password (default: Test123!)
+ * Production Testing (optional):
+ *   Set E2E_TARGET=production to test against production environment:
+ *   E2E_TARGET=production pnpm playwright test tests/e2e-rbac.spec.ts
  *
- * Usage:
- *   pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
+ * Test Users (pre-configured in Keycloak):
+ *   - testadmin / Test123! (has 'admin' role)
+ *   - testuser / Test123! (has 'user' role, no admin)
+ *
+ * Environment Variables:
+ *   E2E_TARGET - 'local' (default) or 'production'
+ *   E2E_FRONTEND_URL - Frontend URL (overrides default for target)
+ *   E2E_ADMIN_USER - Admin username (default: testadmin)
+ *   E2E_ADMIN_PASSWORD - Admin password (default: Test123!)
+ *   E2E_TEST_USER - Regular user username (default: testuser)
+ *   E2E_TEST_PASSWORD - Regular user password (default: Test123!)
  */
 
-// Configuration from environment
-const FRONTEND_URL = process.env.PROD_FRONTEND_URL || 'https://pki.nexiona.io';
-const ADMIN_USER = process.env.PROD_ADMIN_USER || 'testadmin';
-const ADMIN_PASSWORD = process.env.PROD_ADMIN_PASSWORD || 'Test123!';
-const TEST_USER = process.env.PROD_TEST_USER || 'testuser';
-const TEST_PASSWORD = process.env.PROD_TEST_PASSWORD || 'Test123!';
+// Target environment configuration
+const E2E_TARGET = process.env.E2E_TARGET || 'local';
+
+const TARGETS = {
+  local: {
+    frontendUrl: 'http://localhost:8080',
+    keycloakPattern: /.*localhost:8180.*realms.*/,
+  },
+  production: {
+    frontendUrl: 'https://pki.nexiona.io',
+    keycloakPattern: /.*iam\.nexiona\.io.*realms.*/,
+  },
+};
+
+const targetConfig = TARGETS[E2E_TARGET as keyof typeof TARGETS] || TARGETS.local;
+
+// Configuration from environment with target defaults
+const FRONTEND_URL = process.env.E2E_FRONTEND_URL || targetConfig.frontendUrl;
+const KEYCLOAK_PATTERN = targetConfig.keycloakPattern;
+const ADMIN_USER = process.env.E2E_ADMIN_USER || 'testadmin';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'Test123!';
+const TEST_USER = process.env.E2E_TEST_USER || 'testuser';
+const TEST_PASSWORD = process.env.E2E_TEST_PASSWORD || 'Test123!';
 
 // Test data identifiers (unique per run)
 const TEST_SUFFIX = Date.now().toString(36);
@@ -88,7 +111,7 @@ async function waitForDashboard(page: Page) {
  */
 async function loginAsAdmin(page: Page) {
   await page.goto(FRONTEND_URL);
-  await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+  await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
   await keycloakLogin(page, ADMIN_USER, ADMIN_PASSWORD);
   await waitForDashboard(page);
 }
@@ -98,7 +121,7 @@ async function loginAsAdmin(page: Page) {
  */
 async function loginAsUser(page: Page) {
   await page.goto(FRONTEND_URL);
-  await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+  await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
   await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
   await waitForDashboard(page);
 }

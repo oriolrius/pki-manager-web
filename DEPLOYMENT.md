@@ -8,6 +8,7 @@
 - [Production Deployment](#production-deployment)
 - [Environment Configuration](#environment-configuration)
 - [GitHub Actions CI/CD](#github-actions-cicd)
+- [E2E Testing](#e2e-testing)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
@@ -380,6 +381,74 @@ Available tags:
 - `v1.0.0`, `v1.0`, `v1` - Semantic version tags
 - `main-sha-abc123` - Branch + commit SHA
 - `pr-123` - Pull request builds
+
+## E2E Testing
+
+PKI Manager includes comprehensive E2E tests for Role-Based Access Control (RBAC). Tests can run against a local Docker environment or production.
+
+### Local E2E Testing (Recommended)
+
+The `docker-compose.e2e.yml` provides a complete isolated environment for testing:
+
+```bash
+# 1. Start the E2E environment (includes Keycloak with pre-configured test users)
+docker compose -f docker/docker-compose.e2e.yml up -d
+
+# 2. Wait for all services to be healthy (~60-90 seconds for Keycloak)
+docker compose -f docker/docker-compose.e2e.yml ps
+
+# 3. Run the RBAC tests
+pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
+
+# 4. Cleanup when done
+docker compose -f docker/docker-compose.e2e.yml down -v
+```
+
+### E2E Test Users
+
+The E2E environment includes pre-configured test users in Keycloak:
+
+| Username | Password | Role | Description |
+|----------|----------|------|-------------|
+| `testadmin` | `Test123!` | `admin` | Full access - can create, revoke, delete CAs and certificates |
+| `testuser` | `Test123!` | `user` | Limited access - can view and issue certificates, cannot perform admin operations |
+
+### E2E Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:8080 | PKI Manager UI |
+| Backend API | http://localhost:3000 | tRPC API |
+| Keycloak | http://localhost:8180 | Identity Provider (admin/admin for Keycloak console) |
+| KMS | Internal only | Cosmian Key Management System |
+
+### Production E2E Testing
+
+To test against a production environment:
+
+```bash
+E2E_TARGET=production pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
+```
+
+Or with custom URLs:
+
+```bash
+E2E_FRONTEND_URL=https://pki.example.com \
+E2E_ADMIN_USER=testadmin \
+E2E_ADMIN_PASSWORD=Test123! \
+pnpm playwright test tests/e2e-rbac.spec.ts
+```
+
+### E2E Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `E2E_TARGET` | `local` | Target environment: `local` or `production` |
+| `E2E_FRONTEND_URL` | (from target) | Override frontend URL |
+| `E2E_ADMIN_USER` | `testadmin` | Admin test user |
+| `E2E_ADMIN_PASSWORD` | `Test123!` | Admin password |
+| `E2E_TEST_USER` | `testuser` | Regular test user |
+| `E2E_TEST_PASSWORD` | `Test123!` | Regular user password |
 
 ## Troubleshooting
 

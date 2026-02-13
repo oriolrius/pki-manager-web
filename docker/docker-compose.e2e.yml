@@ -1,0 +1,130 @@
+# Docker Compose for E2E Testing
+#
+# This configuration provides a complete local environment for running E2E tests,
+# simulating a production deployment with OIDC authentication via Keycloak.
+#
+# Usage:
+#   docker compose -f docker/docker-compose.e2e.yml up -d
+#   pnpm playwright test tests/e2e-rbac.spec.ts
+#   docker compose -f docker/docker-compose.e2e.yml down
+#
+# Test Users (pre-configured in Keycloak pki-e2e realm):
+#   - testadmin / Test123! (has 'admin' role)
+#   - testuser / Test123! (has 'user' role, no admin)
+#
+# URLs:
+#   - Frontend: http://localhost:8080
+#   - Backend API: http://localhost:3000
+#   - Keycloak: http://localhost:8180
+#   - KMS: http://localhost:9998 (internal)
+
+services:
+  # Keycloak Identity Provider
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.5
+    container_name: pki-e2e-keycloak
+    restart: unless-stopped
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./keycloak-e2e-realm.json:/opt/keycloak/data/import/pki-e2e-realm.json:ro
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_HEALTH_ENABLED=true
+      - KC_METRICS_ENABLED=false
+      - KC_HTTP_PORT=8080
+    command: start-dev --import-realm
+    networks:
+      - pki-e2e-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e 'GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3;grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # Cosmian KMS
+  kms:
+    image: ghcr.io/cosmian/kms:5.0.1
+    container_name: pki-e2e-kms
+    restart: unless-stopped
+    networks:
+      - pki-e2e-network
+    volumes:
+      - kms-data:/root/cosmian-kms
+    environment:
+      - KMS_PORT=9998
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9998/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Backend API
+  backend:
+    image: ghcr.io/oriolrius/pki-manager-web/backend:${IMAGE_TAG:-latest}
+    container_name: pki-e2e-backend
+    restart: unless-stopped
+    networks:
+      - pki-e2e-network
+    volumes:
+      - backend-data:/app/backend/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      - FRONTEND_URL=http://localhost:8080
+      - DATABASE_PATH=/app/backend/data/pki.db
+      - KMS_URL=http://kms:9998
+      - CRL_DISTRIBUTION_URL=http://localhost:3000/crl
+      # OIDC Configuration - Keycloak
+      - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+      - OIDC_AUDIENCE=pki-web
+      - OIDC_ROLES_CLAIM=realm_access.roles
+    ports:
+      - "3000:3000"
+    depends_on:
+      kms:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Frontend UI
+  frontend:
+    image: ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG:-latest}
+    container_name: pki-e2e-frontend
+    restart: unless-stopped
+    networks:
+      - pki-e2e-network
+    volumes:
+      - ./config.e2e.json:/usr/share/nginx/html/config.json:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  pki-e2e-network:
+    name: pki-e2e-network
+    driver: bridge
+
+volumes:
+  kms-data:
+  backend-data:
