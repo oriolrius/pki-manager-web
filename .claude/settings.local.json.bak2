@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git tag:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: add OpenAPI spec URLs to REST API description\n\nAdd a section documenting the OpenAPI specification endpoints\n(/api/v1/openapi.json and /api/v1/openapi.yaml) in the API description.\nThis helps third-party tools discover and integrate with the API.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [
+      "Read(*.csv)",
+      "Read(*.log)",
+      "Read(*.pyc)",
+      "Read(backend/.env)",
+      "Read(scripts/.env)",
+      "Read(service-account-key.json)",
+      "Read(.idea/)",
+      "Read(.next/)",
+      "Read(.serverless)",
+      "Read(.terraform.lock.hcl)",
+      "Read(.terraform/)",
+      "Read(.vscode/)",
+      "Read(__pycache__/)",
+      "Read(build/)",
+      "Read(data/)",
+      "Read(dist/)",
+      "Read(frontend/dist/)",
+      "Read(node_modules/)",
+      "Read(frontend/node_modules/)",
+      "Read(venv/)",
+      "Read(yarn.lock)",
+      "Read(backend/.env)"
+    ],
+    "ask": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/scripts/validate-bash.py"
+          }
+        ]
+      }
+    ]
+  }
+}
