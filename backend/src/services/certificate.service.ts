@@ -165,6 +165,74 @@ export interface DownloadCertificateResult {
 export type { ServiceContext };
 
 /**
+ * Build X.509 v3 extensions string for certificate signing
+ * Format follows OpenSSL config file syntax for Cosmian KMS
+ */
+export function buildCertificateExtensions(params: {
+  certificateType: 'server' | 'client' | 'code_signing' | 'email';
+  sanDns?: string[];
+  sanIp?: string[];
+  sanEmail?: string[];
+}): string {
+  // KMS expects 'v3_ca' section name for extensions
+  const lines: string[] = ['[ v3_ca ]'];
+
+  // Basic Constraints - all end-entity certificates are CA:FALSE
+  lines.push('basicConstraints=critical,CA:FALSE');
+
+  // Key Usage and Extended Key Usage based on certificate type
+  switch (params.certificateType) {
+    case 'server':
+      lines.push('keyUsage=critical,digitalSignature,keyEncipherment');
+      lines.push('extendedKeyUsage=serverAuth');
+      break;
+    case 'client':
+      lines.push('keyUsage=critical,digitalSignature');
+      lines.push('extendedKeyUsage=clientAuth');
+      break;
+    case 'code_signing':
+      lines.push('keyUsage=critical,digitalSignature');
+      lines.push('extendedKeyUsage=codeSigning');
+      break;
+    case 'email':
+      lines.push('keyUsage=critical,digitalSignature,keyEncipherment,nonRepudiation');
+      lines.push('extendedKeyUsage=emailProtection');
+      break;
+  }
+
+  // Subject Alternative Names
+  const sanParts: string[] = [];
+
+  if (params.sanDns && params.sanDns.length > 0) {
+    for (const dns of params.sanDns) {
+      sanParts.push(`DNS:${dns}`);
+    }
+  }
+
+  if (params.sanIp && params.sanIp.length > 0) {
+    for (const ip of params.sanIp) {
+      sanParts.push(`IP:${ip}`);
+    }
+  }
+
+  if (params.sanEmail && params.sanEmail.length > 0) {
+    for (const email of params.sanEmail) {
+      sanParts.push(`email:${email}`);
+    }
+  }
+
+  if (sanParts.length > 0) {
+    lines.push(`subjectAltName=${sanParts.join(',')}`);
+  }
+
+  // Standard extensions for certificate chain validation
+  lines.push('subjectKeyIdentifier=hash');
+  lines.push('authorityKeyIdentifier=keyid:always');
+
+  return lines.join('\n') + '\n';
+}
+
+/**
  * Certificate Service - Business logic for Certificate operations
  * Shared between tRPC and REST API layers
  */
@@ -655,6 +723,14 @@ export class CertificateService {
       const subjectName = formatDN(subjectDN);
       logger.info({ certId, subjectName, caId: params.caId }, 'Signing certificate via KMS');
 
+      // Build X.509 v3 extensions including SANs
+      const x509Extensions = buildCertificateExtensions({
+        certificateType: params.certificateType,
+        sanDns: params.sanDns,
+        sanIp: params.sanIp,
+        sanEmail: params.sanEmail,
+      });
+
       const certInfo = await kmsService.signCertificate({
         publicKeyId: keyPair.publicKeyId,
         issuerPrivateKeyId: caRecord.kmsKeyId,
@@ -664,6 +740,7 @@ export class CertificateService {
         daysValid: params.validityDays,
         tags: params.tags || [],
         entityId: certId,
+        x509Extensions,
       });
 
       // Convert certificate data from hex to PEM
@@ -874,13 +951,24 @@ export class CertificateService {
       const subjectName = formatDN(subjectDN);
       logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS');
 
+      // Build X.509 v3 extensions including SANs
+      const x509Extensions = buildCertificateExtensions({
+        certificateType: originalCert.certificateType as 'server' | 'client' | 'code_signing' | 'email',
+        sanDns: sanDns || undefined,
+        sanIp: sanIp || undefined,
+        sanEmail: sanEmail || undefined,
+      });
+
       const certInfo = await kmsService.signCertificate({
         publicKeyId: publicKeyId,
         issuerPrivateKeyId: caRecord.kmsKeyId,
+        issuerCertificateId: caRecord.kmsCertificateId,
+        issuerName: caRecord.subjectDn,
         subjectName: subjectName,
         daysValid: validityDays,
         tags: [],
         entityId: newCertId,
+        x509Extensions,
       });
 
       // Convert certificate data from hex to PEM

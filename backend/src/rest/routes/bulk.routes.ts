@@ -19,6 +19,7 @@ import {
   generateJKSTruststore,
   JKSKeytoolError,
 } from '../../services/jks.service.js';
+import { buildCertificateExtensions } from '../../services/certificate.service.js';
 
 // Request/Response types
 interface BulkIssueBody {
@@ -378,6 +379,14 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         const subjectName = formatDN(subjectDN);
         logger.info({ certId, subjectName, caId, row: rowNumber }, 'Signing certificate via KMS (bulk REST)');
 
+        // Build X.509 v3 extensions including SANs
+        const x509Extensions = buildCertificateExtensions({
+          certificateType: certificateType as 'server' | 'client' | 'code_signing' | 'email',
+          sanDns: sanDns.length > 0 ? sanDns : undefined,
+          sanIp: sanIp.length > 0 ? sanIp : undefined,
+          sanEmail: sanEmail.length > 0 ? sanEmail : undefined,
+        });
+
         const certInfo = await kmsService.signCertificate({
           publicKeyId: keyPair.publicKeyId,
           issuerPrivateKeyId: caRecord.kmsKeyId,
@@ -387,6 +396,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           daysValid: validityDays,
           tags: [],
           entityId: certId,
+          x509Extensions,
         });
 
         // Convert certificate data from hex to PEM
@@ -844,13 +854,24 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         const subjectName = formatDN(subjectDN);
         logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS (bulk REST)');
 
+        // Build X.509 v3 extensions including SANs
+        const x509Extensions = buildCertificateExtensions({
+          certificateType: originalCert.certificateType as 'server' | 'client' | 'code_signing' | 'email',
+          sanDns: sanDns || undefined,
+          sanIp: sanIp || undefined,
+          sanEmail: sanEmail || undefined,
+        });
+
         const certInfo = await kmsService.signCertificate({
           publicKeyId: publicKeyId,
           issuerPrivateKeyId: caRecord.kmsKeyId,
+          issuerCertificateId: caRecord.kmsCertificateId,
+          issuerName: caRecord.subjectDn,
           subjectName: subjectName,
           daysValid: effectiveValidityDays,
           tags: [],
           entityId: newCertId,
+          x509Extensions,
         });
 
         // Convert certificate data from hex to PEM
