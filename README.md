@@ -325,7 +325,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 |---------|-------------|
 | [pki-manager-cli](https://github.com/oriolrius/pki-manager-cli) | Python CLI tool for PKI Manager - manage certificates from the command line |
 | [pki-manager-skill](https://github.com/oriolrius/pki-manager-skill) | Claude Code skill for AI-assisted certificate management |
-| [pki-manager-role](https://github.com/oriolrius/pki-manager-role) | Ansible Galaxy role for automating certificate management |
+| [pki-manager-ansible](https://github.com/oriolrius/pki-manager-ansible) | Ansible Collection for certificate management ([Galaxy](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/)) |
 
 ## Additional Resources
 
