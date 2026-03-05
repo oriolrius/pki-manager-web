@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyError } from 'fastify';
+import yaml from 'js-yaml';
 import { registerOpenAPI } from './openapi.js';
 import { healthRoutes } from './routes/health.js';
 import { caRoutes } from './routes/ca.routes.js';
@@ -25,7 +26,8 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
       // Create auth preHandler that skips authentication for public endpoints
       const authHandler = createAuthPreHandler([
         '/api/v1/health',        // Health check
-        '/api/v1/openapi.json',  // OpenAPI spec (handled separately, but listed for clarity)
+        '/api/v1/openapi.json',  // OpenAPI spec JSON
+        '/api/v1/openapi.yaml',  // OpenAPI spec YAML
       ]);
 
       // Register auth preHandler for all routes in this context
@@ -94,5 +96,16 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
     },
   }, async (_request, reply) => {
     return reply.send(fastify.swagger());
+  });
+
+  // Add OpenAPI YAML endpoint
+  fastify.get('/api/v1/openapi.yaml', {
+    schema: {
+      hide: true, // Hide from documentation
+    },
+  }, async (_request, reply) => {
+    const spec = fastify.swagger();
+    const yamlSpec = yaml.dump(spec, { lineWidth: -1, noRefs: true });
+    return reply.type('text/yaml').send(yamlSpec);
   });
 }
