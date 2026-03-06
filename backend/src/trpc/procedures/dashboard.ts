@@ -101,7 +101,7 @@ export const dashboardRouter = router({
       z.array(
         z.object({
           id: z.string(),
-          type: z.enum(['CA', 'Server', 'Client', 'Code Signing', 'Email (S/MIME)']),
+          type: z.enum(['CA', 'Server', 'Client', 'Dual (mTLS)', 'Code Signing', 'Email (S/MIME)']),
           cn: z.string(),
           san: z.string(),
           notAfter: z.string(),
