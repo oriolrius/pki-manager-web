@@ -61,7 +61,7 @@ export const certificates = sqliteTable(
     subjectDn: text('subject_dn').notNull(),
     serialNumber: text('serial_number').notNull().unique(),
     certificateType: text('certificate_type', {
-      enum: ['server', 'client', 'code_signing', 'email'],
+      enum: ['server', 'client', 'dual', 'code_signing', 'email'],
     }).notNull(),
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),

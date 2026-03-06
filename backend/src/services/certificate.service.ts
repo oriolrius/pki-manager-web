@@ -975,7 +975,7 @@ export class CertificateService {
 
       // Build X.509 v3 extensions including SANs
       const x509Extensions = buildCertificateExtensions({
-        certificateType: originalCert.certificateType as 'server' | 'client' | 'code_signing' | 'email',
+        certificateType: originalCert.certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
         sanDns: sanDns || undefined,
         sanIp: sanIp || undefined,
         sanEmail: sanEmail || undefined,

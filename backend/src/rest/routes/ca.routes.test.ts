@@ -79,7 +79,7 @@ describe('CA REST Endpoints', () => {
   async function createTestCertificate(caId: string, options: {
     id?: string;
     status?: 'active' | 'revoked';
-    type?: 'server' | 'client' | 'email' | 'code_signing';
+    type?: 'server' | 'client' | 'dual' | 'email' | 'code_signing';
   } = {}) {
     const certId = options.id || randomUUID();
     const certKeypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check, Shield } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 
 export const Route = createFileRoute('/certificates')({
@@ -36,10 +36,13 @@ function getCertificateTypeIcon(type: string) {
       return { icon: Server, label: 'Server Certificate' };
     case 'client':
       return { icon: User, label: 'Client Certificate' };
+    case 'dual':
+      return { icon: Shield, label: 'Dual Certificate (mTLS)' };
     case 'email (s/mime)':
     case 'email':
       return { icon: Mail, label: 'Email Certificate (S/MIME)' };
     case 'code signing':
+    case 'code_signing':
       return { icon: FileCode, label: 'Code Signing Certificate' };
     default:
       return { icon: Award, label: type };

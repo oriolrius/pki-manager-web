@@ -84,7 +84,7 @@ describe('Utility REST Endpoints', () => {
   async function createTestCertificate(caId: string, options: {
     id?: string;
     status?: 'active' | 'revoked' | 'expired';
-    type?: 'server' | 'client' | 'email' | 'code_signing';
+    type?: 'server' | 'client' | 'dual' | 'email' | 'code_signing';
     subject?: string;
     sanDns?: string[];
     notAfter?: Date;

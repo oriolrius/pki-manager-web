@@ -919,13 +919,15 @@ function CertificateDetail() {
                   ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                   : cert.certificateType === 'client'
                   ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                  : cert.certificateType === 'dual'
+                  ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200'
                   : cert.certificateType === 'code_signing'
                   ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
                   : cert.certificateType === 'email'
                   ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200'
                   : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
               }`}>
-                {cert.certificateType}
+                {cert.certificateType === 'dual' ? 'dual (mTLS)' : cert.certificateType}
               </span>
             </div>
           </div>

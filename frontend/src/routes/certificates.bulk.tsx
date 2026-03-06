@@ -193,7 +193,7 @@ server,api.example.com,Acme Corp,US,api.example.com;192.168.1.10,825`;
                 <div className="text-sm text-foreground/80 space-y-2">
                   <p><strong>Required fields:</strong></p>
                   <ul className="list-disc list-inside ml-2 space-y-1">
-                    <li><strong>certificateType:</strong> server, client, code_signing, or email</li>
+                    <li><strong>certificateType:</strong> server, client, dual, code_signing, or email</li>
                     <li><strong>CN:</strong> Common Name (domain, email, or username)</li>
                     <li><strong>O:</strong> Organization name</li>
                     <li><strong>C:</strong> 2-letter country code (e.g., US, GB)</li>

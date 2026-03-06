@@ -78,7 +78,7 @@ describe('Bulk Operations REST Endpoints', () => {
   async function createTestCertificate(caId: string, options: {
     id?: string;
     status?: 'active' | 'revoked';
-    type?: 'server' | 'client' | 'email' | 'code_signing';
+    type?: 'server' | 'client' | 'dual' | 'email' | 'code_signing';
     subject?: string;
     expiredDaysAgo?: number;
   } = {}) {
