@@ -27,6 +27,7 @@ export const certificateStatusSchema = z.enum(['active', 'revoked', 'expired']);
 export const certificateTypeSchema = z.enum([
   'server',
   'client',
+  'dual',
   'code_signing',
   'email',
 ]);

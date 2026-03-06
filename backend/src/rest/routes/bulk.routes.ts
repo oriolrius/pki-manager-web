@@ -132,7 +132,7 @@ const DOWNLOAD_FORMATS = [
 ] as const;
 
 // Certificate type enum values
-const CERTIFICATE_TYPES = ['server', 'client', 'code_signing', 'email'] as const;
+const CERTIFICATE_TYPES = ['server', 'client', 'dual', 'code_signing', 'email'] as const;
 
 /**
  * Bulk Operations REST routes
@@ -342,6 +342,28 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             break;
           }
 
+          case 'dual': {
+            // Dual certificates use server validation rules
+            const dualValidityCheck = validateCertificateValidity(validityDays, 825);
+            if (!dualValidityCheck.valid) {
+              throw new Error(dualValidityCheck.error || 'Invalid validity period');
+            }
+
+            const dualCnValidation = validateDomainName(commonName);
+            if (!dualCnValidation.valid) {
+              throw new Error(`Invalid common name: ${dualCnValidation.error}`);
+            }
+
+            const dualSansValidation = validateServerSANs(
+              sanDns.length > 0 ? sanDns : undefined,
+              sanIp.length > 0 ? sanIp : undefined
+            );
+            if (!dualSansValidation.valid) {
+              throw new Error(`Invalid SANs: ${dualSansValidation.errors.join(', ')}`);
+            }
+            break;
+          }
+
           case 'code_signing': {
             const codeSignValidityCheck = validateCertificateValidity(validityDays, 1095);
             if (!codeSignValidityCheck.valid) {
@@ -381,7 +403,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Build X.509 v3 extensions including SANs
         const x509Extensions = buildCertificateExtensions({
-          certificateType: certificateType as 'server' | 'client' | 'code_signing' | 'email',
+          certificateType: certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
           sanDns: sanDns.length > 0 ? sanDns : undefined,
           sanIp: sanIp.length > 0 ? sanIp : undefined,
           sanEmail: sanEmail.length > 0 ? sanEmail : undefined,
@@ -414,7 +436,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           caId: caId,
           subjectDn: subjectName,
           serialNumber: certMetadata.serialNumber,
-          certificateType: certificateType as 'server' | 'client' | 'code_signing' | 'email',
+          certificateType: certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
           notBefore: certMetadata.validity.notBefore,
           notAfter: certMetadata.validity.notAfter,
           kmsCertificateId: certInfo.certificateId,
@@ -856,7 +878,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Build X.509 v3 extensions including SANs
         const x509Extensions = buildCertificateExtensions({
-          certificateType: originalCert.certificateType as 'server' | 'client' | 'code_signing' | 'email',
+          certificateType: originalCert.certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
           sanDns: sanDns || undefined,
           sanIp: sanIp || undefined,
           sanEmail: sanEmail || undefined,

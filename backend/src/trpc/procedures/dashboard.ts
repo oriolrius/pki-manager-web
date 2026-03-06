@@ -29,10 +29,11 @@ function safeJsonParse<T>(value: string | null): T | null {
 }
 
 // Helper to format certificate type for display
-function formatCertificateType(type: 'server' | 'client' | 'code_signing' | 'email'): 'Server' | 'Client' | 'Code Signing' | 'Email (S/MIME)' {
+function formatCertificateType(type: 'server' | 'client' | 'dual' | 'code_signing' | 'email'): 'Server' | 'Client' | 'Dual (mTLS)' | 'Code Signing' | 'Email (S/MIME)' {
   const typeMap = {
     server: 'Server' as const,
     client: 'Client' as const,
+    dual: 'Dual (mTLS)' as const,
     code_signing: 'Code Signing' as const,
     email: 'Email (S/MIME)' as const,
   };

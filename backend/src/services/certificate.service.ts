@@ -17,7 +17,7 @@ import type { ServiceContext } from './types.js';
 export interface ListCertificatesParams {
   caId?: string;
   status?: 'active' | 'revoked' | 'expired';
-  certificateType?: 'server' | 'client' | 'code_signing' | 'email';
+  certificateType?: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   domain?: string;
   expiryStatus?: 'active' | 'expired' | 'expiring_soon';
   issuedAfter?: Date;
@@ -69,7 +69,7 @@ export interface IssueCertificateParams {
     state?: string;
     locality?: string;
   };
-  certificateType: 'server' | 'client' | 'code_signing' | 'email';
+  certificateType: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   keyAlgorithm: string;
   validityDays: number;
   sanDns?: string[];
@@ -169,7 +169,7 @@ export type { ServiceContext };
  * Format follows OpenSSL config file syntax for Cosmian KMS
  */
 export function buildCertificateExtensions(params: {
-  certificateType: 'server' | 'client' | 'code_signing' | 'email';
+  certificateType: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   sanDns?: string[];
   sanIp?: string[];
   sanEmail?: string[];
@@ -189,6 +189,10 @@ export function buildCertificateExtensions(params: {
     case 'client':
       lines.push('keyUsage=critical,digitalSignature');
       lines.push('extendedKeyUsage=clientAuth');
+      break;
+    case 'dual':
+      lines.push('keyUsage=critical,digitalSignature,keyEncipherment');
+      lines.push('extendedKeyUsage=serverAuth,clientAuth');
       break;
     case 'code_signing':
       lines.push('keyUsage=critical,digitalSignature');
@@ -628,6 +632,24 @@ export class CertificateService {
               throw new CertificateValidationError(`Invalid email in SANs: ${email}`);
             }
           }
+        }
+        break;
+
+      case 'dual':
+        // Dual certificates combine server and client auth - use server validation rules
+        const dualValidityCheck = validateCertificateValidity(params.validityDays, 825);
+        if (!dualValidityCheck.valid) {
+          throw new CertificateValidationError(dualValidityCheck.error || 'Invalid validity period');
+        }
+
+        const dualCnValidation = validateDomainName(params.subject.commonName);
+        if (!dualCnValidation.valid) {
+          throw new CertificateValidationError(`Invalid common name: ${dualCnValidation.error}`);
+        }
+
+        const dualSansValidation = validateServerSANs(params.sanDns, params.sanIp);
+        if (!dualSansValidation.valid) {
+          throw new CertificateValidationError(`Invalid SANs: ${dualSansValidation.errors.join(', ')}`);
         }
         break;
 

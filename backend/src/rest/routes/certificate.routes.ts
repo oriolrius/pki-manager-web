@@ -28,7 +28,7 @@ import {
 // Request/Response types
 interface ListCertificatesQuery {
   status?: 'active' | 'revoked' | 'expired';
-  type?: 'server' | 'client' | 'code_signing' | 'email';
+  type?: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   caId?: string;
   search?: string;
   sortBy?: 'createdAt' | 'notAfter' | 'subjectDn';
@@ -51,7 +51,7 @@ interface IssueCertificateBody {
     state?: string;
     locality?: string;
   };
-  certificateType: 'server' | 'client' | 'code_signing' | 'email';
+  certificateType: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   keyAlgorithm: string;
   validityDays: number;
   sanDns?: string[];
@@ -213,7 +213,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           },
           type: {
             type: 'string',
-            enum: ['server', 'client', 'code_signing', 'email'],
+            enum: ['server', 'client', 'dual', 'code_signing', 'email'],
             description: 'Filter by certificate type',
           },
           caId: {
@@ -265,7 +265,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
                   caId: { type: 'string', format: 'uuid' },
                   subjectDn: { type: 'string' },
                   serialNumber: { type: 'string' },
-                  certificateType: { type: 'string', enum: ['server', 'client', 'code_signing', 'email'] },
+                  certificateType: { type: 'string', enum: ['server', 'client', 'dual', 'code_signing', 'email'] },
                   notBefore: { type: 'string', format: 'date-time' },
                   notAfter: { type: 'string', format: 'date-time' },
                   status: { type: 'string', enum: ['active', 'revoked', 'expired'] },
@@ -371,7 +371,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           },
           certificateType: {
             type: 'string',
-            enum: ['server', 'client', 'code_signing', 'email'],
+            enum: ['server', 'client', 'dual', 'code_signing', 'email'],
           },
           keyAlgorithm: {
             type: 'string',

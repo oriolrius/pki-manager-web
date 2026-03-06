@@ -1587,8 +1587,8 @@ export const certificateRouter = router({
           const validityDays = parts[5] ? parseInt(parts[5], 10) : input.defaultValidityDays || 365;
 
           // Validate certificate type
-          if (!['server', 'client', 'code_signing', 'email'].includes(certificateType)) {
-            throw new Error(`Invalid certificate type: ${certificateType}. Must be one of: server, client, code_signing, email`);
+          if (!['server', 'client', 'dual', 'code_signing', 'email'].includes(certificateType)) {
+            throw new Error(`Invalid certificate type: ${certificateType}. Must be one of: server, client, dual, code_signing, email`);
           }
 
           // Validate required fields
@@ -1645,6 +1645,24 @@ export const certificateRouter = router({
               }
               break;
 
+            case 'dual':
+              // Dual certificates use server validation rules
+              const dualValidityCheck = validateCertificateValidity(validityDays, 825);
+              if (!dualValidityCheck.valid) {
+                throw new Error(dualValidityCheck.error || 'Invalid validity period');
+              }
+
+              const dualCnValidation = validateDomainName(commonName);
+              if (!dualCnValidation.valid) {
+                throw new Error(`Invalid common name: ${dualCnValidation.error}`);
+              }
+
+              const dualSansValidation = validateServerSANs(sanDns.length > 0 ? sanDns : undefined, sanIp.length > 0 ? sanIp : undefined);
+              if (!dualSansValidation.valid) {
+                throw new Error(`Invalid SANs: ${dualSansValidation.errors.join(', ')}`);
+              }
+              break;
+
             case 'code_signing':
               const codeSignValidityCheck = validateCertificateValidity(validityDays, 1095);
               if (!codeSignValidityCheck.valid) {
@@ -1686,7 +1704,7 @@ export const certificateRouter = router({
 
           // Build X.509 extensions with proper SANs
           const x509Extensions = buildCertificateExtensions({
-            certificateType: certificateType as 'server' | 'client' | 'code_signing' | 'email',
+            certificateType: certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
             sanDns: sanDns.length > 0 ? sanDns : undefined,
             sanIp: sanIp.length > 0 ? sanIp : undefined,
             sanEmail: sanEmail.length > 0 ? sanEmail : undefined,
@@ -2091,7 +2109,7 @@ export const certificateRouter = router({
 
           // Build X.509 extensions with proper SANs (copied from original certificate)
           const x509Extensions = buildCertificateExtensions({
-            certificateType: originalCert.certificateType as 'server' | 'client' | 'code_signing' | 'email',
+            certificateType: originalCert.certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
             sanDns: sanDns && sanDns.length > 0 ? sanDns : undefined,
             sanIp: sanIp && sanIp.length > 0 ? sanIp : undefined,
             sanEmail: sanEmail && sanEmail.length > 0 ? sanEmail : undefined,

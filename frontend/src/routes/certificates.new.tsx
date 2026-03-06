@@ -18,7 +18,7 @@ function NewCertificate() {
     country: '',
     state: '',
     locality: '',
-    certificateType: 'server' as 'server' | 'client' | 'code_signing' | 'email',
+    certificateType: 'server' as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
     keyAlgorithm: 'RSA-2048' as 'RSA-2048' | 'RSA-4096' | 'ECDSA-P256' | 'ECDSA-P384',
     validityDays: 365,
     sanDns: [''],
@@ -55,7 +55,7 @@ function NewCertificate() {
       country: randomCountry,
       state: randomState,
       locality: randomCity,
-      sanDns: formData.certificateType === 'server' ? [`${randomString}.${randomDomain}`, `www.${randomString}.${randomDomain}`] : [''],
+      sanDns: (formData.certificateType === 'server' || formData.certificateType === 'dual') ? [`${randomString}.${randomDomain}`, `www.${randomString}.${randomDomain}`] : [''],
       sanEmail: formData.certificateType === 'email' ? [`user-${randomString}@${randomDomain}`] : [''],
     }));
   };
@@ -140,7 +140,7 @@ function NewCertificate() {
           <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
             <li>Basic Constraints (CA=false for end-entity certificates)</li>
             <li>Key Usage (digitalSignature, keyEncipherment for server/client)</li>
-            <li>Extended Key Usage (serverAuth for server, clientAuth for client, codeSigning for code signing, emailProtection for email)</li>
+            <li>Extended Key Usage (serverAuth for server, clientAuth for client, both for dual/mTLS, codeSigning for code signing, emailProtection for email)</li>
             <li>Subject Alternative Names (DNS, IP, Email as specified)</li>
             <li>Subject Key Identifier</li>
             <li>Authority Key Identifier</li>
@@ -184,12 +184,14 @@ function NewCertificate() {
             >
               <option value="server">Server (TLS/SSL Web Server)</option>
               <option value="client">Client (User Authentication)</option>
+              <option value="dual">Dual (Server + Client mTLS)</option>
               <option value="code_signing">Code Signing</option>
               <option value="email">Email (S/MIME)</option>
             </select>
             <p className="text-xs text-muted-foreground mt-1">
               {formData.certificateType === 'server' && 'For web servers, API endpoints, and TLS/SSL connections'}
               {formData.certificateType === 'client' && 'For client authentication and user identity. CN can be any identifier (username, ID, etc.)'}
+              {formData.certificateType === 'dual' && 'For mutual TLS (mTLS) where the certificate is used for both server and client authentication'}
               {formData.certificateType === 'code_signing' && 'For signing software, scripts, and executable code'}
               {formData.certificateType === 'email' && 'For email encryption and signing (S/MIME). CN should be an email address'}
             </p>
@@ -210,6 +212,7 @@ function NewCertificate() {
                   required
                   placeholder={
                     formData.certificateType === 'server' ? 'example.com or *.example.com' :
+                    formData.certificateType === 'dual' ? 'example.com or *.example.com' :
                     formData.certificateType === 'email' ? 'user@example.com' :
                     formData.certificateType === 'client' ? 'username or client-id' :
                     'identifier'
@@ -219,6 +222,7 @@ function NewCertificate() {
                 <p className="text-xs text-muted-foreground mt-1">
                   {formData.certificateType === 'server' && 'Domain name or wildcard (e.g., example.com or *.example.com)'}
                   {formData.certificateType === 'client' && 'User identifier - can be username, employee ID, or any unique identifier'}
+                  {formData.certificateType === 'dual' && 'Domain name or wildcard (e.g., example.com or *.example.com)'}
                   {formData.certificateType === 'email' && 'Email address for S/MIME'}
                   {formData.certificateType === 'code_signing' && 'Developer or organization name'}
                 </p>

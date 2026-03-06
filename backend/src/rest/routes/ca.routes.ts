@@ -65,7 +65,7 @@ interface DeleteCAQuery {
 
 interface ListCertificatesQuery {
   status?: 'active' | 'revoked' | 'expired';
-  certificateType?: 'server' | 'client' | 'code_signing' | 'email';
+  certificateType?: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   search?: string;
   limit?: number;
   offset?: number;
@@ -551,7 +551,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           },
           certificateType: {
             type: 'string',
-            enum: ['server', 'client', 'code_signing', 'email'],
+            enum: ['server', 'client', 'dual', 'code_signing', 'email'],
             description: 'Filter by certificate type',
           },
           search: {
