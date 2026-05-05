@@ -385,3 +385,18 @@ export const certificateDetailSchema = z.object({
   createdAt: z.date(),
   updatedAt: z.date(),
 });
+
+// Cluster (k8s external issuer) schemas
+export const registerClusterSchema = z.object({
+  name: z.string().min(1).max(128),
+  description: z.string().max(512).optional(),
+  caId: idSchema,
+});
+
+export const revokeClusterSchema = z.object({
+  id: idSchema,
+});
+
+export const getClusterSchema = z.object({
+  id: idSchema,
+});

@@ -4,6 +4,7 @@ import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { registerRestApi } from './rest/index.js';
+import { externalRoutes } from './rest/routes/external.routes.js';
 import { db } from './db/client.js';
 import { certificateAuthorities, crls } from './db/schema.js';
 import { eq, desc } from 'drizzle-orm';
@@ -29,6 +30,9 @@ await server.register(cors, {
 
 // Register REST API with OpenAPI/Swagger documentation
 await registerRestApi(server);
+
+// Register external issuer API (cluster bearer-token auth, separate from OIDC)
+await server.register(externalRoutes, { prefix: '/api/v1/external' });
 
 // Register tRPC
 await server.register(fastifyTRPCPlugin, {

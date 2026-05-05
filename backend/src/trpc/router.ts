@@ -6,6 +6,7 @@ import { auditRouter } from './procedures/audit.js';
 import { domainRouter } from './procedures/domain.js';
 import { searchRouter } from './procedures/search.js';
 import { dashboardRouter } from './procedures/dashboard.js';
+import { clusterRouter } from './procedures/cluster.js';
 
 export const appRouter = router({
   health: publicProcedure.query(() => {
@@ -23,6 +24,7 @@ export const appRouter = router({
   domain: domainRouter,
   search: searchRouter,
   dashboard: dashboardRouter,
+  cluster: clusterRouter,
 });
 
 export type AppRouter = typeof appRouter;
