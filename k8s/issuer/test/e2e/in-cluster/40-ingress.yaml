@@ -1,0 +1,54 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pki-manager
+  namespace: pki-manager
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /trpc
+            pathType: Prefix
+            backend:
+              service:
+                name: pki-manager-backend
+                port:
+                  number: 3000
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: pki-manager-backend
+                port:
+                  number: 3000
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: pki-manager-backend
+                port:
+                  number: 3000
+          - path: /cas
+            pathType: Prefix
+            backend:
+              service:
+                name: pki-manager-backend
+                port:
+                  number: 3000
+          - path: /crl
+            pathType: Prefix
+            backend:
+              service:
+                name: pki-manager-backend
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pki-manager-frontend
+                port:
+                  number: 8080

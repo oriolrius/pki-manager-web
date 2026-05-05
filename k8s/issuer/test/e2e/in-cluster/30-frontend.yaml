@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pki-manager-frontend
+  namespace: pki-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: pki-manager-frontend }
+  template:
+    metadata:
+      labels: { app: pki-manager-frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: pki-manager-frontend:e2e
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pki-manager-frontend
+  namespace: pki-manager
+spec:
+  selector: { app: pki-manager-frontend }
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
