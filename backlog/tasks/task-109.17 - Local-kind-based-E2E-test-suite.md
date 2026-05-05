@@ -1,10 +1,10 @@
 ---
 id: TASK-109.17
 title: Local kind-based E2E test suite
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - testing
   - e2e
@@ -41,5 +41,5 @@ Local-runnable E2E: kind cluster with k8s 1.35 (kindest/node:v1.35.x), install c
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Reuse sample-external-issuer Makefile e2e targets as starting point. Use chainsaw (preferred over kuttl, more active) for declarative test cases. Pin kindest/node digest for reproducibility.
+Makefile e2e-local target spins up kind 1.31 (bumpable to 1.35), installs cert-manager 1.16, builds + loads image, helm install. test/e2e/sample-clusterissuer.yaml + sample-certificate.yaml wired. chainsaw declarative test cases pending.
 <!-- SECTION:NOTES:END -->

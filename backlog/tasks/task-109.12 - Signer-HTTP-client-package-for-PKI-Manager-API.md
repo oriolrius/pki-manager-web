@@ -1,10 +1,10 @@
 ---
 id: TASK-109.12
 title: Signer HTTP client package for PKI Manager API
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - controller
 dependencies:
@@ -33,5 +33,5 @@ Internal Go pkg wrapping /external/* endpoints. Typed types, retry+backoff, cont
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Follow signer interface pattern from sample (HealthChecker + Signer interfaces). Inject via factory for testability. Use net/http with Retry-After honoring middleware.
+internal/issuer/signer/signer.go: typed HTTP client. Methods: Health, CABundle, Sign, Revoke. Bearer auth header, JSON marshal, error parsing. WithCABundle + WithTimeout options. Unit tests pending (109.14).
 <!-- SECTION:NOTES:END -->

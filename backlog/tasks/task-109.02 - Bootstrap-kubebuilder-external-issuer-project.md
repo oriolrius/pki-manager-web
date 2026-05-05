@@ -1,10 +1,10 @@
 ---
 id: TASK-109.02
 title: Bootstrap kubebuilder external issuer project
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:19'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - controller
   - k8s
@@ -35,5 +35,5 @@ New repo or subdirectory k8s/cert-manager-pki-manager. Go 1.23, kubebuilder v4, 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Use cert-manager/sample-external-issuer as scaffold reference - do NOT reinvent. Fork or vendor its structure (api/, internal/controllers, internal/issuer, config/). Adapt signer to call PKI Manager /external/sign instead of in-memory CA.
+k8s/issuer/ Go module bootstrapped following sample-external-issuer pattern. go.mod targets k8s.io v0.32 (1.35 compat), controller-runtime v0.20, cert-manager v1.16.2.
 <!-- SECTION:NOTES:END -->

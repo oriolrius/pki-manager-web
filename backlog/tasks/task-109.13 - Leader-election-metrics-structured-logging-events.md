@@ -1,10 +1,10 @@
 ---
 id: TASK-109.13
 title: 'Leader election, metrics, structured logging, events'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - controller
   - observability
@@ -35,5 +35,5 @@ controller-runtime leader election (lease). Prom metrics: certificate_requests_t
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Use controller-runtime built-in /metrics. Follow Prometheus naming: certmanager_pkimanager_sign_total, _duration_seconds. EventRecorder from Manager.GetEventRecorderFor().
+Manager wires leader election (lease), healthz/readyz, metrics :8080 (controller-runtime defaults). Custom Prometheus counters/histograms for sign_total + sign_duration not yet added (~30 LOC remaining).
 <!-- SECTION:NOTES:END -->

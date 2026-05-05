@@ -1,10 +1,10 @@
 ---
 id: TASK-109.11
 title: 'CertificateRequest reconciler: sign CSR via PKI Manager'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:20'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - controller
 dependencies:
@@ -36,5 +36,5 @@ Watch cert-manager CertificateRequest matching our group. Require Approved condi
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Follow sample certificaterequest_controller.go. Required handling: skip if Denied, require Approved (cert-manager 1.16+), set Ready with cert+ca, never re-sign once Ready=True. Use k8s.io/utils/clock for testability.
+CertificateRequestReconciler implemented. Filters by issuerRef.group=pki-manager.issuer.io. Honors Denied (final), requires Approved (cert-manager 1.16+) before signing. Idempotent via CR.UID as request_uid. Populates status.certificate + status.ca. Ready condition with Reason=Issued/Failed/Pending. Events recorded.
 <!-- SECTION:NOTES:END -->

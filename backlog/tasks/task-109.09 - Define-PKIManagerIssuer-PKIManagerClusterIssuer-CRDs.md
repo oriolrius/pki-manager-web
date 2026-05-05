@@ -1,10 +1,10 @@
 ---
 id: TASK-109.09
 title: Define PKIManagerIssuer + PKIManagerClusterIssuer CRDs
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:20'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - controller
   - k8s
@@ -36,5 +36,5 @@ Two CRDs (Issuer namespaced, ClusterIssuer cluster-scoped). Spec: url, caBundle,
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Mirror sample-external-issuer api/v1alpha1 Issuer/ClusterIssuer types. Add CEL x-kubernetes-validations for url and caId per K8s 1.30+ stable rules.
+Issuer + ClusterIssuer types in api/v1alpha1. CRDs hand-written in deploy/helm/pki-manager-issuer/crds/issuers.yaml with CEL x-kubernetes-validations on url, status subresource, additionalPrinterColumns for Ready+Age. Status: Conditions array per metav1.Condition.
 <!-- SECTION:NOTES:END -->

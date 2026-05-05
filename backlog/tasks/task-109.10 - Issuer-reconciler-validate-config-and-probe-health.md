@@ -1,10 +1,10 @@
 ---
 id: TASK-109.10
 title: 'Issuer reconciler: validate config and probe health'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:20'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - controller
 dependencies:
@@ -33,5 +33,5 @@ Reconcile Issuer/ClusterIssuer: load auth secret, call /external/health, set Rea
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Pattern from sample-external-issuer issuer_controller.go: shared reconciler for Issuer + ClusterIssuer via IssuerInterface. Set Ready condition with reasons (NotFound, SecretMissing, Unreachable, Verified).
+Shared IssuerReconciler handles both Issuer and ClusterIssuer kinds via Kind discriminator. Loads auth Secret (ClusterIssuer uses controller's namespace), probes /health, validates CAID match. Ready condition: Verified / SecretMissing / Unreachable / CAIDMismatch with backoff requeue.
 <!-- SECTION:NOTES:END -->

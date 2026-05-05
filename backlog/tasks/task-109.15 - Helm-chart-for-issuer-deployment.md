@@ -1,10 +1,10 @@
 ---
 id: TASK-109.15
 title: Helm chart for issuer deployment
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:03'
 labels:
   - deployment
   - helm
@@ -35,5 +35,5 @@ Chart packaging CRDs (crds/ dir), Deployment, SA, RBAC, ServiceMonitor (optional
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Follow Helm CRD best practice: ship CRDs in crds/ dir (install-only, no upgrade). Mirror cert-manager chart structure for RBAC, ServiceAccount, NetworkPolicy templates.
+Helm chart at deploy/helm/pki-manager-issuer/. CRDs in crds/ dir for Helm install convention (no upgrades). Templates: Deployment, ServiceAccount, ClusterRole+Binding (cert-manager.io CR + our group + secrets/events/leases), optional ServiceMonitor, optional NetworkPolicy egress allowlist. values.yaml documented; non-root distroless securityContext defaults.
 <!-- SECTION:NOTES:END -->
