@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cosmian-kms
+  namespace: pki-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: cosmian-kms }
+  template:
+    metadata:
+      labels: { app: cosmian-kms }
+    spec:
+      containers:
+        - name: kms
+          image: ghcr.io/cosmian/kms:latest
+          ports:
+            - containerPort: 9998
+              name: http
+          readinessProbe:
+            httpGet: { path: /version, port: 9998 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /version, port: 9998 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 1, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cosmian-kms
+  namespace: pki-manager
+spec:
+  selector: { app: cosmian-kms }
+  ports:
+    - port: 9998
+      targetPort: 9998
+      name: http

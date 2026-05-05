@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pki-manager-data
+  namespace: pki-manager
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pki-manager-backend
+  namespace: pki-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: pki-manager-backend }
+  template:
+    metadata:
+      labels: { app: pki-manager-backend }
+    spec:
+      containers:
+        - name: backend
+          image: pki-manager-backend:e2e
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: KMS_URL
+              value: http://cosmian-kms:9998
+            - name: DATABASE_PATH
+              value: /data/pki.db
+            - name: PORT
+              value: "3000"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: EXTERNAL_ISSUER_CA_CERT_PEM
+              value: /ca/ca.crt
+            - name: EXTERNAL_ISSUER_CA_KEY_PEM
+              value: /ca/ca.key
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: ca
+              mountPath: /ca
+              readOnly: true
+          readinessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: 3000 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 1, memory: 512Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pki-manager-data
+        - name: ca
+          secret:
+            secretName: pki-manager-external-ca
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pki-manager-backend
+  namespace: pki-manager
+spec:
+  selector: { app: pki-manager-backend }
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
