@@ -1,10 +1,10 @@
 ---
 id: TASK-109.18
 title: 'Documentation: install, register cluster, usage examples'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:04'
 labels:
   - docs
 dependencies:
@@ -31,5 +31,5 @@ Markdown docs: Helm install, register cluster in UI, create Issuer with token Se
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Mirror cert-manager external issuer docs structure: Quickstart, Configuration, Examples, Troubleshooting. Cross-link from PKI Manager UI Clusters page.
+docs/install.md + docs/security.md committed. Walkthrough covers Helm install, Secret + ClusterIssuer, Certificate example, troubleshooting.
 <!-- SECTION:NOTES:END -->

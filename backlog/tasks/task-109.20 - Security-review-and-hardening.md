@@ -1,10 +1,10 @@
 ---
 id: TASK-109.20
 title: Security review and hardening
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:04'
 labels:
   - security
 dependencies:
@@ -34,5 +34,5 @@ Threat model: token theft, MITM, CA compromise blast radius. Verify TLS, Network
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Run threat model with STRIDE. Validate against CIS Kubernetes Benchmark and OWASP K8s Top 10.
+Threat model + operational checklist in docs/security.md. CIS/OWASP alignment documented. Pending: pen test, NetworkPolicy validation in real cluster, audit log retention review on PKI Manager.
 <!-- SECTION:NOTES:END -->

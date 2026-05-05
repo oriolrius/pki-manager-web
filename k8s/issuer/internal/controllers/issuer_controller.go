@@ -44,6 +44,13 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	updateReadyMetric := func(ready bool) {
+		v := 0.0
+		if ready {
+			v = 1.0
+		}
+		issuerReady.WithLabelValues(req.Namespace, req.Name, r.Kind).Set(v)
+	}
 	setReady := func(s metav1.ConditionStatus, reason, msg string) {
 		cond := metav1.Condition{
 			Type:               pkiv1.IssuerConditionReady,
@@ -71,6 +78,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	secret := &corev1.Secret{}
 	if err := r.Get(ctx, secretName, secret); err != nil {
 		setReady(metav1.ConditionFalse, "SecretMissing", err.Error())
+		updateReadyMetric(false)
 		_ = r.Status().Update(ctx, obj)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
@@ -81,6 +89,7 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	tokenBytes, ok := secret.Data[key]
 	if !ok || len(tokenBytes) == 0 {
 		setReady(metav1.ConditionFalse, "SecretMissing", fmt.Sprintf("secret missing key %q", key))
+		updateReadyMetric(false)
 		_ = r.Status().Update(ctx, obj)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
@@ -92,16 +101,19 @@ func (r *IssuerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	h, err := c.Health(hctx)
 	if err != nil {
 		setReady(metav1.ConditionFalse, "Unreachable", err.Error())
+		updateReadyMetric(false)
 		_ = r.Status().Update(ctx, obj)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 	if h.Cluster.CAID != spec.CAID {
 		setReady(metav1.ConditionFalse, "CAIDMismatch",
 			fmt.Sprintf("token bound to caId=%s but spec.caId=%s", h.Cluster.CAID, spec.CAID))
+		updateReadyMetric(false)
 		_ = r.Status().Update(ctx, obj)
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	}
 	setReady(metav1.ConditionTrue, "Verified", "PKI Manager reachable and CA matches")
+	updateReadyMetric(true)
 	if err := r.Status().Update(ctx, obj); err != nil {
 		return ctrl.Result{}, err
 	}

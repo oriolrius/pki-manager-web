@@ -14,11 +14,14 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	pkiv1 "github.com/oriolrius/pki-manager-issuer/api/v1alpha1"
 	"github.com/oriolrius/pki-manager-issuer/internal/issuer/signer"
 )
+
+const revokeFinalizer = "pki-manager.issuer.io/revoke-on-delete"
 
 // CertificateRequestReconciler reconciles cert-manager CertificateRequest objects
 // whose issuerRef matches our group.
@@ -47,6 +50,21 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// Ignore CRs not targeting our issuer group
 	if cr.Spec.IssuerRef.Group != ourGroup {
+		return ctrl.Result{}, nil
+	}
+
+	// Handle deletion: revoke if finalizer present
+	if !cr.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(cr, revokeFinalizer) {
+			if err := r.handleRevoke(ctx, cr); err != nil {
+				logger.Error(err, "revoke-on-delete failed; will retry")
+				revokeTotal.WithLabelValues("error").Inc()
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+			revokeTotal.WithLabelValues("success").Inc()
+			controllerutil.RemoveFinalizer(cr, revokeFinalizer)
+			return ctrl.Result{}, r.Update(ctx, cr)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -109,6 +127,15 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		certType = inferCertType(cr.Spec.Usages)
 	}
 
+	// Add revoke finalizer if requested
+	if spec.RevokeOnDelete && !controllerutil.ContainsFinalizer(cr, revokeFinalizer) {
+		controllerutil.AddFinalizer(cr, revokeFinalizer)
+		if err := r.Update(ctx, cr); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	signStart := time.Now()
 	resp, err := c.Sign(ctx, &signer.SignRequest{
 		CSRPem:          string(cr.Spec.Request),
 		DurationDays:    durationDays,
@@ -117,14 +144,23 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		K8sNamespace:    cr.Namespace,
 		K8sResource:     cr.Name,
 	})
+	signDuration.WithLabelValues(resultLabel(err)).Observe(time.Since(signStart).Seconds())
 	if err != nil {
+		signTotal.WithLabelValues("error").Inc()
 		r.Recorder.Eventf(cr, corev1.EventTypeWarning, "SignFailed", err.Error())
 		setReady(cr, cmapi.CertificateRequestReasonFailed, err.Error())
 		return ctrl.Result{}, r.Status().Update(ctx, cr)
 	}
+	signTotal.WithLabelValues("success").Inc()
 
 	cr.Status.Certificate = []byte(resp.CertificatePEM)
 	cr.Status.CA = []byte(resp.ChainPEM)
+	if resp.SerialNumber != "" {
+		if cr.Annotations == nil {
+			cr.Annotations = map[string]string{}
+		}
+		cr.Annotations["pki-manager.issuer.io/serial"] = resp.SerialNumber
+	}
 	setReady(cr, cmapi.CertificateRequestReasonIssued, fmt.Sprintf("Issued serial %s", resp.SerialNumber))
 	r.Recorder.Eventf(cr, corev1.EventTypeNormal, "Issued", "Certificate issued: %s", resp.SerialNumber)
 	logger.Info("CertificateRequest signed", "serial", resp.SerialNumber, "idempotent", resp.Idempotent)
@@ -147,6 +183,36 @@ func (r *CertificateRequestReconciler) resolveIssuer(ctx context.Context, cr *cm
 		return &obj.Spec, r.ClusterResourceNamespace, ""
 	}
 	return nil, "", "unsupported issuerRef.Kind: " + cr.Spec.IssuerRef.Kind
+}
+
+// handleRevoke calls /external/revoke for the cert annotated on the CR.
+func (r *CertificateRequestReconciler) handleRevoke(ctx context.Context, cr *cmapi.CertificateRequest) error {
+	serial := cr.Annotations["pki-manager.issuer.io/serial"]
+	if serial == "" {
+		return nil
+	}
+	spec, secretNS, errMsg := r.resolveIssuer(ctx, cr)
+	if errMsg != "" {
+		return fmt.Errorf("%s", errMsg)
+	}
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: secretNS, Name: spec.AuthSecretRef.Name}, secret); err != nil {
+		return err
+	}
+	key := spec.AuthSecretRef.Key
+	if key == "" {
+		key = "token"
+	}
+	c := signer.New(spec.URL, string(secret.Data[key]), signer.WithCABundle(spec.CABundle))
+	_, err := c.Revoke(ctx, &signer.RevokeRequest{SerialNumber: serial, Reason: "cessationOfOperation"})
+	return err
+}
+
+func resultLabel(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "success"
 }
 
 func (r *CertificateRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {

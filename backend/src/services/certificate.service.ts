@@ -20,6 +20,7 @@ export interface ListCertificatesParams {
   certificateType?: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   domain?: string;
   expiryStatus?: 'active' | 'expired' | 'expiring_soon';
+  sourceType?: 'manual' | 'k8s';
   issuedAfter?: Date;
   issuedBefore?: Date;
   expiresAfter?: Date;
@@ -260,6 +261,7 @@ export class CertificateService {
       sortOrder = 'desc',
       limit = 50,
       offset = 0,
+      sourceType,
     } = params || {};
 
     // Build where conditions
@@ -273,6 +275,9 @@ export class CertificateService {
     }
     if (certificateType) {
       whereConditions.push(eq(certificates.certificateType, certificateType));
+    }
+    if (sourceType) {
+      whereConditions.push(eq(certificates.sourceType, sourceType));
     }
 
     // Date range filters

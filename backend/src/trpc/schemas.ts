@@ -103,6 +103,7 @@ export const listCertificatesSchema = z
     certificateType: certificateTypeSchema.optional(),
     domain: z.string().optional(), // Filter by domain (searches in CN and SANs)
     expiryStatus: z.enum(['active', 'expired', 'expiring_soon']).optional(), // Dynamic expiry status
+    sourceType: z.enum(['manual', 'k8s']).optional(),
 
     // Date range filters
     issuedAfter: z.coerce.date().optional(),

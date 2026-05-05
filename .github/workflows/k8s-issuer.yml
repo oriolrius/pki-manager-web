@@ -1,0 +1,90 @@
+name: k8s-issuer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'k8s/issuer/**'
+      - '.github/workflows/k8s-issuer.yml'
+  pull_request:
+    paths:
+      - 'k8s/issuer/**'
+      - '.github/workflows/k8s-issuer.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    defaults:
+      run:
+        working-directory: k8s/issuer
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: k8s/issuer/go.sum
+
+      - run: go mod download
+      - run: go vet ./...
+      - run: go test ./... -count=1
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tag
+        id: tag
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build (and push on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: k8s/issuer
+          file: k8s/issuer/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:latest
+
+      - name: Install cosign
+        if: github.event_name == 'push'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        if: github.event_name == 'push'
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}
+
+      - name: Generate SBOM with syft
+        if: github.event_name == 'push'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}
+          format: spdx-json
+          artifact-name: sbom.spdx.json
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with: { version: v3.16.2 }
+      - run: helm lint k8s/issuer/deploy/helm/pki-manager-issuer
+      - run: helm template t k8s/issuer/deploy/helm/pki-manager-issuer > /tmp/rendered.yaml
+      - run: head -5 /tmp/rendered.yaml
