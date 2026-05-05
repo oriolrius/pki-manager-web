@@ -1,10 +1,10 @@
 ---
 id: TASK-109.16
 title: Container image build and multi-arch CI
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:11'
 labels:
   - deployment
   - ci
@@ -34,5 +34,5 @@ Distroless base, non-root, multi-stage Dockerfile. GH Actions: build amd64+arm64
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Base: gcr.io/distroless/static-debian12:nonroot. Sign with cosign keyless (OIDC GH Actions). SBOM via syft attached as cosign attestation.
+.github/workflows/k8s-issuer.yml: go vet + test, buildx multi-arch (amd64+arm64), push to ghcr.io on main, cosign keyless OIDC sign, syft SBOM, helm lint + template.
 <!-- SECTION:NOTES:END -->

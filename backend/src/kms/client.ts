@@ -451,8 +451,10 @@ export class KMSClient {
       ? this.parseKeyAlgorithm(options.keyAlgorithm)
       : { algorithm: "RSA", sizeInBits: options.keySizeInBits || 4096 };
 
-    // Add cryptographic algorithm information (required for key pair generation)
-    // When no key links are provided, Cosmian will generate a new key pair
+    // Always add CryptographicAlgorithm/Length: Cosmian rejects requests without them.
+    // When CSR is provided, Cosmian unfortunately still generates a fresh keypair instead
+    // of reusing CSR's public key — callers needing CSR-pubkey-fidelity should sign
+    // offline (see /api/v1/external/sign in rest/routes/external.routes.ts).
     attributes.push({
       tag: "CryptographicAlgorithm",
       type: "Enumeration",

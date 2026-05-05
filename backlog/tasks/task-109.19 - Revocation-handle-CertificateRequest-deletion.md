@@ -1,10 +1,10 @@
 ---
 id: TASK-109.19
 title: 'Revocation: handle CertificateRequest deletion'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:11'
 labels:
   - controller
   - security
@@ -32,5 +32,5 @@ Finalizer on CertificateRequest: on delete call /external/revoke with serial. Co
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Standard finalizer pattern: pki-manager.issuer.io/revoke-on-delete. Only add finalizer when spec.revokeOnDelete=true on Issuer.
+Finalizer pki-manager.issuer.io/revoke-on-delete added when spec.revokeOnDelete=true. Serial number captured as annotation on CR at sign time. handleRevoke() reads serial, calls signer.Revoke, removes finalizer. Metric revoke_total{result} recorded.
 <!-- SECTION:NOTES:END -->

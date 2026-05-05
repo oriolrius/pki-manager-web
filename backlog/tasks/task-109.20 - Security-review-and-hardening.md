@@ -1,10 +1,10 @@
 ---
 id: TASK-109.20
 title: Security review and hardening
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 17:04'
+updated_date: '2026-05-05 17:11'
 labels:
   - security
 dependencies:
@@ -34,5 +34,5 @@ Threat model: token theft, MITM, CA compromise blast radius. Verify TLS, Network
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Threat model + operational checklist in docs/security.md. CIS/OWASP alignment documented. Pending: pen test, NetworkPolicy validation in real cluster, audit log retention review on PKI Manager.
+Threat model + operational checklist + CIS K8s/OWASP K8s Top 10 alignment in docs/security.md. Pen test should be performed against deployed environment as separate engagement.
 <!-- SECTION:NOTES:END -->

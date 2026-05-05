@@ -148,21 +148,53 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		signTotal.WithLabelValues("error").Inc()
 		r.Recorder.Eventf(cr, corev1.EventTypeWarning, "SignFailed", err.Error())
-		setReady(cr, cmapi.CertificateRequestReasonFailed, err.Error())
-		return ctrl.Result{}, r.Status().Update(ctx, cr)
+		// Re-fetch to avoid stale resourceVersion
+		fresh := &cmapi.CertificateRequest{}
+		if gerr := r.Get(ctx, req.NamespacedName, fresh); gerr == nil {
+			setReady(fresh, cmapi.CertificateRequestReasonFailed, err.Error())
+			return ctrl.Result{}, r.Status().Update(ctx, fresh)
+		}
+		return ctrl.Result{}, err
 	}
 	signTotal.WithLabelValues("success").Inc()
 
-	cr.Status.Certificate = []byte(resp.CertificatePEM)
-	cr.Status.CA = []byte(resp.ChainPEM)
+	// Persist serial on metadata (separate Update from Status update)
 	if resp.SerialNumber != "" {
-		if cr.Annotations == nil {
-			cr.Annotations = map[string]string{}
+		fresh := &cmapi.CertificateRequest{}
+		if err := r.Get(ctx, req.NamespacedName, fresh); err == nil {
+			if fresh.Annotations == nil {
+				fresh.Annotations = map[string]string{}
+			}
+			if fresh.Annotations["pki-manager.issuer.io/serial"] != resp.SerialNumber {
+				fresh.Annotations["pki-manager.issuer.io/serial"] = resp.SerialNumber
+				_ = r.Update(ctx, fresh)
+			}
 		}
-		cr.Annotations["pki-manager.issuer.io/serial"] = resp.SerialNumber
 	}
-	setReady(cr, cmapi.CertificateRequestReasonIssued, fmt.Sprintf("Issued serial %s", resp.SerialNumber))
-	r.Recorder.Eventf(cr, corev1.EventTypeNormal, "Issued", "Certificate issued: %s", resp.SerialNumber)
+
+	// Retry status update on resourceVersion conflict (cert-manager
+	// controllers race on the same CR).
+	var lastErr error
+	for i := 0; i < 5; i++ {
+		fresh := &cmapi.CertificateRequest{}
+		if err := r.Get(ctx, req.NamespacedName, fresh); err != nil {
+			return ctrl.Result{}, err
+		}
+		fresh.Status.Certificate = []byte(resp.CertificatePEM)
+		fresh.Status.CA = []byte(resp.ChainPEM)
+		setReady(fresh, cmapi.CertificateRequestReasonIssued, fmt.Sprintf("Issued serial %s", resp.SerialNumber))
+		if err := r.Status().Update(ctx, fresh); err == nil {
+			r.Recorder.Eventf(fresh, corev1.EventTypeNormal, "Issued", "Certificate issued: %s", resp.SerialNumber)
+			return ctrl.Result{}, nil
+		} else if apierrors.IsConflict(err) {
+			lastErr = err
+			time.Sleep(100 * time.Millisecond)
+			continue
+		} else {
+			return ctrl.Result{}, err
+		}
+	}
+	return ctrl.Result{}, lastErr
 	logger.Info("CertificateRequest signed", "serial", resp.SerialNumber, "idempotent", resp.Idempotent)
 	return ctrl.Result{}, r.Status().Update(ctx, cr)
 }

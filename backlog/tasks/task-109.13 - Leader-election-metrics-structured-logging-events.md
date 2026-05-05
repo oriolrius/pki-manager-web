@@ -1,10 +1,10 @@
 ---
 id: TASK-109.13
 title: 'Leader election, metrics, structured logging, events'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 17:03'
+updated_date: '2026-05-05 17:11'
 labels:
   - controller
   - observability
@@ -35,5 +35,5 @@ controller-runtime leader election (lease). Prom metrics: certificate_requests_t
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Manager wires leader election (lease), healthz/readyz, metrics :8080 (controller-runtime defaults). Custom Prometheus counters/histograms for sign_total + sign_duration not yet added (~30 LOC remaining).
+Custom Prom metrics added: sign_total, sign_duration_seconds (Histogram), revoke_total, ready (Gauge per Issuer/Kind). Registered to controller-runtime metrics.Registry. Leader election + healthz/readyz already wired in main.go.
 <!-- SECTION:NOTES:END -->

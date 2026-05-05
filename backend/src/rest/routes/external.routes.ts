@@ -8,7 +8,7 @@ import { logger } from '../../lib/logger.js';
 import { parseCertificate } from '../../crypto/x509.js';
 import { buildCertificateExtensions } from '../../services/certificate.service.js';
 import { clusterAuthPreHandler } from '../middleware/cluster-auth.js';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 
 type ExternalCertType = 'server' | 'client' | 'dual';
 
@@ -174,6 +174,15 @@ export async function externalRoutes(fastify: FastifyInstance) {
         error: { code: 'INVALID_CSR', message: 'CSR subject must include CN' },
       });
     }
+    // Cosmian KMS requires CertificateSubjectO. cert-manager-generated CSRs may
+    // contain only CN. Backfill missing fields from the CA's DN so KMS accepts.
+    function pickField(dn: string, key: string): string | undefined {
+      for (const part of dn.split(',')) {
+        const [k, ...rest] = part.trim().split('=');
+        if (k.trim() === key) return rest.join('=').trim();
+      }
+      return undefined;
+    }
 
     // Load CA bound to this cluster
     const caRows = await db
@@ -198,6 +207,17 @@ export async function externalRoutes(fastify: FastifyInstance) {
       });
     }
 
+    // Backfill missing Subject parts from CA so KMS subjectName is complete
+    const haveO = pickField(parsed.subjectDn, 'O');
+    const haveC = pickField(parsed.subjectDn, 'C');
+    const caO = pickField(ca.subjectDn, 'O') ?? 'Kubernetes';
+    const caC = pickField(ca.subjectDn, 'C') ?? 'XX';
+    const augmentedParts: string[] = [];
+    augmentedParts.push(`CN=${parsed.cn}`);
+    augmentedParts.push(`O=${haveO ?? caO}`);
+    augmentedParts.push(`C=${haveC ?? caC}`);
+    const augmentedSubjectDn = augmentedParts.join(',');
+
     const certificateType: ExternalCertType = body.certificateType ?? 'dual';
     const durationDays = Math.min(Math.max(body.durationDays ?? 90, 1), 825);
 
@@ -220,31 +240,112 @@ export async function externalRoutes(fastify: FastifyInstance) {
     try {
       logger.info(
         { certId, clusterId: req.cluster!.id, cn: parsed.cn, caId: ca.id },
-        'Signing CSR via KMS for k8s cluster'
+        'Signing CSR offline for k8s cluster'
       );
 
-      const certInfo = await kms.signCertificate({
-        csr: body.csrPem,
-        issuerPrivateKeyId: ca.kmsKeyId,
-        issuerCertificateId: ca.kmsCertificateId,
-        issuerName: ca.subjectDn,
-        subjectName: parsed.subjectDn,
-        daysValid: durationDays,
-        tags: [`cluster:${req.cluster!.id}`, `request_uid:${body.requestUid}`],
-        entityId: certId,
-        x509Extensions,
-      });
+      // CSR signing strategy: cert-manager requires the cluster's CSR public key
+      // to be preserved exactly. Cosmian KMS .certify() always regenerates a key
+      // pair, so we sign offline with node-forge.
+      // Two CA-key sources, in order of preference:
+      //   1. Env vars EXTERNAL_ISSUER_CA_CERT_PEM / EXTERNAL_ISSUER_CA_KEY_PEM (path or inline)
+      //      — used in test/dev environments
+      //   2. KMS getPrivateKey(ca.kmsKeyId) — works only if CA was created with
+      //      a private-key reference; some CA creation paths leave kmsKeyId
+      //      pointing at the certificate (Cosmian quirk). Falls back gracefully.
+      let caCertPem: string;
+      let caKeyPem: string;
+      const envCertPath = process.env.EXTERNAL_ISSUER_CA_CERT_PEM;
+      const envKeyPath = process.env.EXTERNAL_ISSUER_CA_KEY_PEM;
+      if (envCertPath && envKeyPath) {
+        const fs = await import('node:fs/promises');
+        caCertPem = envCertPath.startsWith('-----')
+          ? envCertPath
+          : await fs.readFile(envCertPath, 'utf-8');
+        caKeyPem = envKeyPath.startsWith('-----')
+          ? envKeyPath
+          : await fs.readFile(envKeyPath, 'utf-8');
+        logger.debug({ caId: ca.id }, 'Using CA from env (EXTERNAL_ISSUER_CA_*)');
+      } else {
+        caCertPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
+        caKeyPem = await kms.getPrivateKey(ca.kmsKeyId, ca.id);
+      }
+      const caCert = forge.pki.certificateFromPem(caCertPem);
+      const caKey = forge.pki.privateKeyFromPem(caKeyPem);
+      const csrObj = forge.pki.certificationRequestFromPem(body.csrPem);
 
-      const certBase64 = Buffer.from(certInfo.certificateData, 'hex').toString('base64');
-      const certificatePem = `-----BEGIN CERTIFICATE-----\n${certBase64
-        .match(/.{1,64}/g)
-        ?.join('\n')}\n-----END CERTIFICATE-----`;
+      const cert = forge.pki.createCertificate();
+      cert.publicKey = csrObj.publicKey!;
+      // 20-byte random serial
+      const serialBytes = randomBytes(19);
+      cert.serialNumber = '00' + serialBytes.toString('hex');
+      cert.validity.notBefore = new Date();
+      cert.validity.notAfter = new Date(Date.now() + durationDays * 24 * 3600 * 1000);
+      cert.setSubject([
+        { name: 'commonName', value: parsed.cn },
+        { name: 'organizationName', value: haveO ?? caO },
+        { name: 'countryName', value: haveC ?? caC },
+      ]);
+      cert.setIssuer(caCert.subject.attributes);
+
+      const eku: { id: string }[] = [];
+      const ekuOids = {
+        serverAuth: '1.3.6.1.5.5.7.3.1',
+        clientAuth: '1.3.6.1.5.5.7.3.2',
+      };
+      let keyUsageDigitalSig = true;
+      let keyUsageKeyEnc = false;
+      switch (certificateType) {
+        case 'server':
+          eku.push({ id: ekuOids.serverAuth });
+          keyUsageKeyEnc = true;
+          break;
+        case 'client':
+          eku.push({ id: ekuOids.clientAuth });
+          break;
+        case 'dual':
+          eku.push({ id: ekuOids.serverAuth }, { id: ekuOids.clientAuth });
+          keyUsageKeyEnc = true;
+          break;
+      }
+
+      const altNames: { type: number; value?: string; ip?: string }[] = [];
+      for (const d of sanDns) altNames.push({ type: 2, value: d });
+      for (const ip of sanIp) altNames.push({ type: 7, ip });
+      for (const e of sanEmail) altNames.push({ type: 1, value: e });
+
+      const exts: any[] = [
+        { name: 'basicConstraints', cA: false, critical: true },
+        {
+          name: 'keyUsage',
+          digitalSignature: keyUsageDigitalSig,
+          keyEncipherment: keyUsageKeyEnc,
+          critical: true,
+        },
+      ];
+      if (eku.length) {
+        exts.push({
+          name: 'extKeyUsage',
+          serverAuth: certificateType !== 'client',
+          clientAuth: certificateType !== 'server',
+        });
+      }
+      if (altNames.length) exts.push({ name: 'subjectAltName', altNames });
+      exts.push({ name: 'subjectKeyIdentifier' });
+      exts.push({ name: 'authorityKeyIdentifier', keyIdentifier: caCert.generateSubjectKeyIdentifier?.().getBytes() });
+      cert.setExtensions(exts);
+      cert.sign(caKey, forge.md.sha256.create());
+
+      const certificatePem = forge.pki.certificateToPem(cert);
       const certMeta = parseCertificate(certificatePem, 'PEM');
+      // Best-effort: zero CA key reference (forge stores as object; nothing to scrub)
+      void caKey;
+      // Synthesize a kmsCertificateId placeholder since we did not register cert in KMS
+      const certInfo = { certificateId: `local:${certId}`, certificateData: '' };
 
       await db.insert(certificates).values({
         id: certId,
         caId: ca.id,
-        subjectDn: parsed.subjectDn,
+        subjectDn: augmentedSubjectDn,
         serialNumber: certMeta.serialNumber,
         certificateType,
         notBefore: certMeta.validity.notBefore,
@@ -274,7 +375,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
           clusterId: req.cluster!.id,
           caId: ca.id,
           requestUid: body.requestUid,
-          subjectDn: parsed.subjectDn,
+          subjectDn: augmentedSubjectDn,
           serialNumber: certMeta.serialNumber,
           k8sNamespace: body.k8sNamespace,
           k8sResource: body.k8sResource,
@@ -283,7 +384,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         ipAddress: req.ip,
       } as any);
 
-      const chainPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
+      const chainPem = caCertPem;
 
       return {
         idempotent: false,
@@ -307,7 +408,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         status: 'failure',
         details: JSON.stringify({
           requestUid: body.requestUid,
-          subjectDn: parsed.subjectDn,
+          subjectDn: augmentedSubjectDn,
           error: err instanceof Error ? err.message : String(err),
         }),
         ipAddress: req.ip,

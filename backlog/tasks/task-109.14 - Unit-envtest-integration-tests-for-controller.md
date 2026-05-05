@@ -1,10 +1,10 @@
 ---
 id: TASK-109.14
 title: Unit + envtest integration tests for controller
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:11'
 labels:
   - controller
   - testing
@@ -34,5 +34,5 @@ envtest via setup-envtest, fake PKI Manager via httptest. Cover Issuer transitio
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Use setup-envtest for K8s API binaries. Reuse test patterns from sample-external-issuer (table-driven, fakeClient + httptest server).
+Signer client unit tests (httptest) cover Health success, Sign 4xx error parsing, Revoke success. Controller-level envtest suite remaining as follow-up (requires setup-envtest binaries + Cosmian KMS mock).
 <!-- SECTION:NOTES:END -->

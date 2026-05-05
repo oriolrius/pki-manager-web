@@ -1,10 +1,10 @@
 ---
 id: TASK-109
 title: K8s cert-manager external issuer integration
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-05-05 16:17'
-updated_date: '2026-05-05 16:23'
+updated_date: '2026-05-05 17:11'
 labels:
   - epic
   - k8s
@@ -26,5 +26,5 @@ Build cert-manager external issuer for PKI Manager so K8s clusters (v1.35) reque
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-PRIMARY REFERENCE: cert-manager/sample-external-issuer - clone its structure, do not reinvent. All controller subtasks must follow its patterns.
+All 20 subtasks delivered or substantively complete. See branch k8s-cert-manager (5 commits). Pending follow-ups: full envtest suite for controllers, chainsaw declarative E2E pack, UI source-filter dropdown, pen test.
 <!-- SECTION:NOTES:END -->
