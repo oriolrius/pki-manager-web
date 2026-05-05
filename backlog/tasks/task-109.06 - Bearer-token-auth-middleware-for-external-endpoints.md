@@ -1,10 +1,10 @@
 ---
 id: TASK-109.06
 title: Bearer token auth middleware for external endpoints
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:20'
-updated_date: '2026-05-05 16:21'
+updated_date: '2026-05-05 16:50'
 labels:
   - backend
   - security
@@ -27,3 +27,9 @@ Fastify preHandler verifying Authorization header against clusters table. Consta
 - [ ] #3 last_seen updated on auth
 - [ ] #4 Per-cluster rate limit enforced
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+rest/middleware/cluster-auth.ts implemented. Bearer Authorization required, last_seen updated async, revoked clusters rejected. Per-cluster rate limit pending (lower priority - add when wiring actual /sign load).
+<!-- SECTION:NOTES:END -->

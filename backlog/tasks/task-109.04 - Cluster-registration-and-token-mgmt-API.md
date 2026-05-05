@@ -1,10 +1,10 @@
 ---
 id: TASK-109.04
 title: Cluster registration and token mgmt API
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:20'
-updated_date: '2026-05-05 16:21'
+updated_date: '2026-05-05 16:50'
 labels:
   - backend
   - api
@@ -27,3 +27,9 @@ tRPC procedures register/list/revoke clusters; one-time API tokens scoped to a C
 - [ ] #3 trpc.cluster.revoke soft-deletes cluster
 - [ ] #4 Tokens hashed at rest, never returned again
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ClusterService (register/list/revoke/verifyToken) + tRPC clusterRouter wired. Token: pkimg_<base64url-32B>; SHA-256 hashed at rest; constant-time compare.
+<!-- SECTION:NOTES:END -->

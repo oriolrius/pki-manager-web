@@ -1,11 +1,63 @@
 import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
+import forge from 'node-forge';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates, auditLog } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
 import { logger } from '../../lib/logger.js';
+import { parseCertificate } from '../../crypto/x509.js';
+import { buildCertificateExtensions } from '../../services/certificate.service.js';
 import { clusterAuthPreHandler } from '../middleware/cluster-auth.js';
 import { randomUUID } from 'crypto';
+
+type ExternalCertType = 'server' | 'client' | 'dual';
+
+interface ParsedCsr {
+  subjectDn: string;
+  cn: string;
+  sanDns: string[];
+  sanIp: string[];
+  sanEmail: string[];
+}
+
+function parseCsrPem(csrPem: string): ParsedCsr {
+  const csr = forge.pki.certificationRequestFromPem(csrPem);
+  if (!csr.verify()) {
+    throw new Error('CSR signature verification failed');
+  }
+  const fields = ['CN', 'O', 'OU', 'C', 'ST', 'L'] as const;
+  const parts: string[] = [];
+  let cn = '';
+  for (const f of fields) {
+    const attr = csr.subject.getField(f);
+    if (attr?.value) {
+      parts.push(`${f}=${attr.value}`);
+      if (f === 'CN') cn = String(attr.value);
+    }
+  }
+  const subjectDn = parts.join(',');
+
+  const sanDns: string[] = [];
+  const sanIp: string[] = [];
+  const sanEmail: string[] = [];
+
+  // node-forge: extensionRequest attribute holds requested extensions
+  const extReq = csr.getAttribute({ name: 'extensionRequest' }) as
+    | { extensions?: Array<{ name?: string; altNames?: Array<{ type: number; value?: string; ip?: string }> }> }
+    | undefined;
+  const exts = extReq?.extensions ?? [];
+  for (const ext of exts) {
+    if (ext.name === 'subjectAltName' && Array.isArray(ext.altNames)) {
+      for (const an of ext.altNames) {
+        // type 2=DNS, 7=IP, 1=email per RFC 5280
+        if (an.type === 2 && an.value) sanDns.push(an.value);
+        else if (an.type === 7 && an.ip) sanIp.push(an.ip);
+        else if (an.type === 1 && an.value) sanEmail.push(an.value);
+      }
+    }
+  }
+  return { subjectDn, cn, sanDns, sanIp, sanEmail };
+}
 
 /**
  * External issuer API consumed by the cert-manager external issuer controller.
@@ -105,43 +157,168 @@ export async function externalRoutes(fastify: FastifyInstance) {
       };
     }
 
-    // TODO(task-109.05): Implement CSR-based signing via Cosmian KMS.
-    // Steps required:
-    //   1. Parse CSR (node-forge: forge.pki.certificationRequestFromPem)
-    //   2. Verify CSR signature
-    //   3. Import public key into Cosmian KMS via KMIP Register operation
-    //      (extend backend/src/kms/service.ts with importPublicKey method)
-    //   4. Call kmsService.signCertificate({ publicKeyId: imported, issuerPrivateKeyId: ca.kmsKeyId, ... })
-    //   5. Persist certificate row with source_type='k8s', k8s_cluster_id, k8s_namespace,
-    //      k8s_resource, request_uid
-    //   6. Return PEM cert + chain
-    logger.warn(
-      { clusterId: req.cluster!.id, requestUid: body.requestUid },
-      'External /sign called; CSR-based KMS signing not yet implemented'
-    );
+    // Parse + verify CSR
+    let parsed: ParsedCsr;
+    try {
+      parsed = parseCsrPem(body.csrPem);
+    } catch (err) {
+      return reply.code(400).send({
+        error: {
+          code: 'INVALID_CSR',
+          message: err instanceof Error ? err.message : 'Invalid CSR',
+        },
+      });
+    }
+    if (!parsed.cn) {
+      return reply.code(400).send({
+        error: { code: 'INVALID_CSR', message: 'CSR subject must include CN' },
+      });
+    }
 
-    await db.insert(auditLog).values({
-      id: randomUUID(),
-      operation: 'external.sign.unimplemented',
-      entityType: 'cluster',
-      entityId: req.cluster!.id,
-      status: 'failure',
-      details: JSON.stringify({
-        requestUid: body.requestUid,
-        k8sNamespace: body.k8sNamespace,
-        k8sResource: body.k8sResource,
-        reason: 'CSR signing path pending KMS Register-public-key implementation',
-      }),
-      ipAddress: req.ip,
-    } as any);
+    // Load CA bound to this cluster
+    const caRows = await db
+      .select()
+      .from(certificateAuthorities)
+      .where(eq(certificateAuthorities.id, req.cluster!.caId))
+      .limit(1);
+    if (!caRows.length) {
+      return reply.code(404).send({
+        error: { code: 'CA_NOT_FOUND', message: 'CA bound to cluster not found' },
+      });
+    }
+    const ca = caRows[0];
+    if (ca.status !== 'active') {
+      return reply.code(409).send({
+        error: { code: 'CA_NOT_ACTIVE', message: `CA status: ${ca.status}` },
+      });
+    }
+    if (new Date() > ca.notAfter) {
+      return reply.code(409).send({
+        error: { code: 'CA_EXPIRED', message: 'CA expired' },
+      });
+    }
 
-    return reply.code(501).send({
-      error: {
-        code: 'NOT_IMPLEMENTED',
-        message:
-          'CSR-based signing pending Cosmian KMS public-key import support. See task-109.05.',
-      },
+    const certificateType: ExternalCertType = body.certificateType ?? 'dual';
+    const durationDays = Math.min(Math.max(body.durationDays ?? 90, 1), 825);
+
+    // Merge SANs from CSR with optional body overrides (cert-manager may not echo SANs in CSR
+    // when usages-only requests are made; defensive merge is safe)
+    const sanDns = Array.from(new Set([...parsed.sanDns, ...(body.sanDns ?? [])]));
+    const sanIp = Array.from(new Set([...parsed.sanIp, ...(body.sanIp ?? [])]));
+    const sanEmail = parsed.sanEmail;
+
+    const x509Extensions = buildCertificateExtensions({
+      certificateType,
+      sanDns: sanDns.length ? sanDns : undefined,
+      sanIp: sanIp.length ? sanIp : undefined,
+      sanEmail: sanEmail.length ? sanEmail : undefined,
     });
+
+    const certId = randomUUID();
+    const kms = getKMSService();
+
+    try {
+      logger.info(
+        { certId, clusterId: req.cluster!.id, cn: parsed.cn, caId: ca.id },
+        'Signing CSR via KMS for k8s cluster'
+      );
+
+      const certInfo = await kms.signCertificate({
+        csr: body.csrPem,
+        issuerPrivateKeyId: ca.kmsKeyId,
+        issuerCertificateId: ca.kmsCertificateId,
+        issuerName: ca.subjectDn,
+        subjectName: parsed.subjectDn,
+        daysValid: durationDays,
+        tags: [`cluster:${req.cluster!.id}`, `request_uid:${body.requestUid}`],
+        entityId: certId,
+        x509Extensions,
+      });
+
+      const certBase64 = Buffer.from(certInfo.certificateData, 'hex').toString('base64');
+      const certificatePem = `-----BEGIN CERTIFICATE-----\n${certBase64
+        .match(/.{1,64}/g)
+        ?.join('\n')}\n-----END CERTIFICATE-----`;
+      const certMeta = parseCertificate(certificatePem, 'PEM');
+
+      await db.insert(certificates).values({
+        id: certId,
+        caId: ca.id,
+        subjectDn: parsed.subjectDn,
+        serialNumber: certMeta.serialNumber,
+        certificateType,
+        notBefore: certMeta.validity.notBefore,
+        notAfter: certMeta.validity.notAfter,
+        kmsCertificateId: certInfo.certificateId,
+        kmsKeyId: null, // private key never reaches PKI Manager
+        status: 'active',
+        sanDns: sanDns.length ? JSON.stringify(sanDns) : null,
+        sanIp: sanIp.length ? JSON.stringify(sanIp) : null,
+        sanEmail: sanEmail.length ? JSON.stringify(sanEmail) : null,
+        sourceType: 'k8s',
+        k8sClusterId: req.cluster!.id,
+        k8sNamespace: body.k8sNamespace ?? null,
+        k8sResource: body.k8sResource ?? null,
+        requestUid: body.requestUid,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
+      await db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'external.sign',
+        entityType: 'certificate',
+        entityId: certId,
+        status: 'success',
+        details: JSON.stringify({
+          clusterId: req.cluster!.id,
+          caId: ca.id,
+          requestUid: body.requestUid,
+          subjectDn: parsed.subjectDn,
+          serialNumber: certMeta.serialNumber,
+          k8sNamespace: body.k8sNamespace,
+          k8sResource: body.k8sResource,
+          certificateType,
+        }),
+        ipAddress: req.ip,
+      } as any);
+
+      const chainPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
+
+      return {
+        idempotent: false,
+        id: certId,
+        serialNumber: certMeta.serialNumber,
+        certificatePem,
+        chainPem,
+        notBefore: certMeta.validity.notBefore.toISOString(),
+        notAfter: certMeta.validity.notAfter.toISOString(),
+      };
+    } catch (err) {
+      logger.error(
+        { err, clusterId: req.cluster!.id, requestUid: body.requestUid },
+        'External /sign failed'
+      );
+      await db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'external.sign',
+        entityType: 'cluster',
+        entityId: req.cluster!.id,
+        status: 'failure',
+        details: JSON.stringify({
+          requestUid: body.requestUid,
+          subjectDn: parsed.subjectDn,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+        ipAddress: req.ip,
+      } as any);
+      return reply.code(500).send({
+        error: {
+          code: 'SIGN_FAILED',
+          message: err instanceof Error ? err.message : 'Signing failed',
+        },
+      });
+    }
   });
 
   // POST /revoke
