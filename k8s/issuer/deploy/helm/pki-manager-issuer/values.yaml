@@ -1,0 +1,53 @@
+image:
+  repository: ghcr.io/oriolrius/pki-manager-issuer
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+leaderElection:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+clusterResourceNamespace: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+networkPolicy:
+  enabled: false
+  pkiManagerEgressCIDR: ""
+
+affinity: {}
+tolerations: []
+nodeSelector: {}

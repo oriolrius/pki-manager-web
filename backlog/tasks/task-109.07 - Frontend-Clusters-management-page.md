@@ -1,10 +1,10 @@
 ---
 id: TASK-109.07
 title: 'Frontend: Clusters management page'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-05-05 16:20'
-updated_date: '2026-05-05 16:21'
+updated_date: '2026-05-05 16:58'
 labels:
   - frontend
   - ui
@@ -27,3 +27,9 @@ priority: medium
 - [ ] #3 List shows name, CA, last_seen, status badge
 - [ ] #4 Revoke confirmation modal calls trpc.cluster.revoke
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+/clusters route + nav link + register modal + copy-once token + revoke.
+<!-- SECTION:NOTES:END -->

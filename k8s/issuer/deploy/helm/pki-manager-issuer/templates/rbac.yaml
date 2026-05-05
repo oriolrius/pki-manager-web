@@ -1,0 +1,43 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "pki-manager-issuer.fullname" . }}
+  labels:
+    {{- include "pki-manager-issuer.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [pki-manager.issuer.io]
+    resources: [issuers, clusterissuers]
+    verbs: [get, list, watch]
+  - apiGroups: [pki-manager.issuer.io]
+    resources: [issuers/status, clusterissuers/status]
+    verbs: [get, update, patch]
+  - apiGroups: [cert-manager.io]
+    resources: [certificaterequests]
+    verbs: [get, list, watch, update]
+  - apiGroups: [cert-manager.io]
+    resources: [certificaterequests/status]
+    verbs: [get, update, patch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "pki-manager-issuer.fullname" . }}
+  labels:
+    {{- include "pki-manager-issuer.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "pki-manager-issuer.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "pki-manager-issuer.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
