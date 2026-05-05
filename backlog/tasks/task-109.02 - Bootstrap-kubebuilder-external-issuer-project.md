@@ -4,7 +4,7 @@ title: Bootstrap kubebuilder external issuer project
 status: Done
 assignee: []
 created_date: '2026-05-05 16:19'
-updated_date: '2026-05-05 17:03'
+updated_date: '2026-05-05 17:48'
 labels:
   - controller
   - k8s
@@ -36,4 +36,6 @@ New repo or subdirectory k8s/cert-manager-pki-manager. Go 1.23, kubebuilder v4, 
 
 <!-- SECTION:NOTES:BEGIN -->
 k8s/issuer/ Go module bootstrapped following sample-external-issuer pattern. go.mod targets k8s.io v0.32 (1.35 compat), controller-runtime v0.20, cert-manager v1.16.2.
+
+Hand-wrote zz_generated.deepcopy.go for api/v1alpha1 (Issuer/IssuerList/ClusterIssuer/ClusterIssuerList + IssuerSpec/Status/SecretKeySelector) so controller builds without controller-gen integration. Replace with controller-gen output when CRD generation pipeline is added.
 <!-- SECTION:NOTES:END -->

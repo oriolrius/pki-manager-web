@@ -4,7 +4,7 @@ title: Add KMIP Register public-key wrapper to KMS service
 status: Done
 assignee: []
 created_date: '2026-05-05 16:55'
-updated_date: '2026-05-05 16:55'
+updated_date: '2026-05-05 17:48'
 labels:
   - backend
   - kms
@@ -31,4 +31,6 @@ Extend backend/src/kms/service.ts with importPublicKey(pem) using KMIP Register 
 
 <!-- SECTION:NOTES:BEGIN -->
 Not needed: backend/src/kms/client.ts certify() already accepts CSR via KMIP CertificateRequest tag. Cosmian KMS handles CSR-based signing natively. /sign in external.routes.ts can call kms.signCertificate({csr, issuerPrivateKeyId, issuerCertificateId, ...}) directly.
+
+Reopened understanding: KMIP Register wrapper still desirable for production (so KMS retains private key + audit). For e2e and simple deployments, env-based file source is the working path (see task-109.05).
 <!-- SECTION:NOTES:END -->

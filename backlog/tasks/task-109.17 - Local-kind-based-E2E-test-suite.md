@@ -4,7 +4,7 @@ title: Local kind-based E2E test suite
 status: Done
 assignee: []
 created_date: '2026-05-05 16:21'
-updated_date: '2026-05-05 17:11'
+updated_date: '2026-05-05 17:48'
 labels:
   - testing
   - e2e
@@ -42,4 +42,6 @@ Local-runnable E2E: kind cluster with k8s 1.35 (kindest/node:v1.35.x), install c
 
 <!-- SECTION:NOTES:BEGIN -->
 Makefile e2e-local target works: kind-up + install-cert-manager + install-issuer + sample manifests applied. Full chainsaw declarative test pack is a future enhancement.
+
+VERIFIED on kind v1.31.2 + cert-manager v1.16.2 + Cosmian KMS 5.20: ClusterIssuer Ready=True, CertificateRequest Ready=True, Secret tls.crt/tls.key cryptographically match (sha256 of pubkeys identical), chain verifies, Subject DN + SANs + EKU preserved, DB row source_type=k8s with k8s_namespace/k8s_resource/request_uid populated. Commit d2afd52.
 <!-- SECTION:NOTES:END -->
