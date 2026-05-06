@@ -87,6 +87,9 @@ export const certificates = sqliteTable(
     sanIp: text('san_ip'), // JSON array
     sanEmail: text('san_email'), // JSON array
 
+    // Cached PEM (used for offline-signed certs whose KMS object is a placeholder)
+    certificatePem: text('certificate_pem'),
+
     // Certificate renewal tracking
     renewedFromId: text('renewed_from_id').references(() => certificates.id),
 

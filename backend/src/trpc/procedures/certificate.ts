@@ -378,12 +378,14 @@ export const certificateRouter = router({
         });
       }
 
-      // Fetch certificate from KMS
+      // Fetch certificate. Prefer cached PEM (offline-signed k8s certs); fall back to KMS.
       const { getKMSService } = await import('../../kms/service.js');
       const { logger } = await import('../../lib/logger.js');
       const kmsService = getKMSService();
       let certificatePem: string;
-      try {
+      if ((certificate as any).certificatePem) {
+        certificatePem = (certificate as any).certificatePem;
+      } else try {
         certificatePem = await kmsService.getCertificate(
           certificate.kmsCertificateId,
           certificate.id

@@ -139,7 +139,9 @@ export async function externalRoutes(fastify: FastifyInstance) {
 
     if (existing.length > 0 && existing[0].k8sClusterId === req.cluster!.id) {
       const kms = getKMSService();
-      const certPem = await kms.getCertificate(existing[0].kmsCertificateId, existing[0].id);
+      const certPem = (existing[0] as any).certificatePem
+        ? (existing[0] as any).certificatePem
+        : await kms.getCertificate(existing[0].kmsCertificateId, existing[0].id);
       const ca = await db
         .select()
         .from(certificateAuthorities)
@@ -352,6 +354,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         notAfter: certMeta.validity.notAfter,
         kmsCertificateId: certInfo.certificateId,
         kmsKeyId: null, // private key never reaches PKI Manager
+        certificatePem: certificatePem,
         status: 'active',
         sanDns: sanDns.length ? JSON.stringify(sanDns) : null,
         sanIp: sanIp.length ? JSON.stringify(sanIp) : null,
