@@ -46,7 +46,14 @@ function getManualUserInfoFromStorage(storageKey: string): { name?: string; emai
 }
 
 export function UserMenu() {
-  const auth = useAuth();
+  // useAuth() throws/returns undefined when no OIDCAuthProvider wraps the tree
+  // (i.e. OIDC disabled). Guard so the rest of the component is safe.
+  let auth: ReturnType<typeof useAuth> | undefined;
+  try {
+    auth = useAuth();
+  } catch {
+    auth = undefined;
+  }
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
@@ -94,7 +101,7 @@ export function UserMenu() {
       }
     }
     checkTokens();
-  }, [auth.isAuthenticated]);
+  }, [auth?.isAuthenticated]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -164,10 +171,10 @@ export function UserMenu() {
   };
 
   // Consider authenticated if library says so OR we have valid manual tokens
-  const isAuthenticated = auth.isAuthenticated || hasManualTokens;
+  const isAuthenticated = auth?.isAuthenticated || hasManualTokens;
 
   // Loading state
-  if (auth.isLoading) {
+  if (auth?.isLoading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
@@ -190,7 +197,7 @@ export function UserMenu() {
 
   // Authenticated - show user menu
   // Use library user info if available, otherwise use manual token info
-  const user = auth.user;
+  const user = auth?.user;
   const displayName = user?.profile?.name || user?.profile?.preferred_username || user?.profile?.email || manualUserInfo?.name || 'User';
   const email = user?.profile?.email || manualUserInfo?.email;
   const accountUrl = getAccountUrl();
