@@ -34,3 +34,9 @@ Singleton service that signs a user's pubkey with the User CA: principals = role
 - [x] #3 Key-id is a free-form (control-char-validated) human identifier persisted for audit correlation; default validity is short (+1w, configurable) and surfaced as the primary revocation mechanism with no auto-backdate
 - [x] #4 Revoking a user cert triggers KRL regeneration; get()/list() expose principals, extensions, critical options, serial, key-id, expiry
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-user.service identities + issue w/ extension whitelist (DEFAULT_USER_EXTENSIONS), force-command/source-address (CIDR-validated, malformed rejected), +1w TTL. Hardened cert (no permit-pty) verified via ssh-keygen -L.
+<!-- SECTION:NOTES:END -->
