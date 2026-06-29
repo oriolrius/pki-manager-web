@@ -34,3 +34,9 @@ OpenSSH in-cert signatures use ssh-string-wrapped r||s mpints; detached signatur
 - [x] #3 A test asserts the chosen format verifies consistently whether the signature comes from Node export-and-sign or a Cosmian-native ec sign output over identical bytes, so swapping signing backends does not silently break verification
 - [x] #4 The pinned format is referenced by the KRL service (SSH-21) and the deferred puller (SSH-24) so neither re-decides it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Detached signature format pinned to DER (KMS-native); derToP1363/derToSshEcdsaSignature; cross-format verify tests (Node DER + ieee-p1363). sign.test.ts (5).
+<!-- SECTION:NOTES:END -->
