@@ -3,11 +3,11 @@ id: TASK-143
 title: >-
   SSH-MON: Rate limiting + abuse controls + health/metrics for expiring certs,
   stale KRLs, non-pulling hosts
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 18:32'
+updated_date: '2026-06-29 18:35'
 labels:
   - ssh-cert-manager
   - backend
@@ -31,8 +31,8 @@ Two related ops concerns the brief named (monitoring) and the security lens rais
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Public /krl/:caId.* endpoints are rate-limited per client and return a stable 404 for unknown CA IDs that does not distinguish 'no CA' from 'no KRL' to aid enumeration
-- [ ] #2 External /sign-host, /sign-user, /register-host-pubkey are rate-limited per token and reject bursts beyond a configured threshold
-- [ ] #3 A query/endpoint exposes counts of SSH certs expiring within the TTL window, KRLs past next_update, and hosts whose last KRL fetch is older than 2x the pull interval, in a machine-readable form for alerting
-- [ ] #4 The ECIES 404-vs-200 host_id disclosure (if/when that path ships) is documented as accepted and bounded (registered-or-not only)
+- [x] #1 Public /krl/:caId.* endpoints are rate-limited per client and return a stable 404 for unknown CA IDs that does not distinguish 'no CA' from 'no KRL' to aid enumeration
+- [x] #2 External /sign-host, /sign-user, /register-host-pubkey are rate-limited per token and reject bursts beyond a configured threshold
+- [x] #3 A query/endpoint exposes counts of SSH certs expiring within the TTL window, KRLs past next_update, and hosts whose last KRL fetch is older than 2x the pull interval, in a machine-readable form for alerting
+- [x] #4 The ECIES 404-vs-200 host_id disclosure (if/when that path ships) is documented as accepted and bounded (registered-or-not only)
 <!-- AC:END -->
