@@ -3,10 +3,10 @@ id: TASK-131
 title: >-
   SSH-13: ssh-user.service.ts: issue/list/get/revoke user certs with extensions
   + validated critical options
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:03'
 labels:
   - ssh-cert-manager
   - backend
@@ -29,8 +29,8 @@ Singleton service that signs a user's pubkey with the User CA: principals = role
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can issue a user cert carrying chosen role principals and an explicit extension whitelist; a hardened cert (no permit-pty) behaves as least-privilege per ssh-keygen -L
-- [ ] #2 force-command and source-address critical options are settable and appear in ssh-keygen -L; a malformed source-address CIDR is rejected at issuance rather than silently encoded
-- [ ] #3 Key-id is a free-form (control-char-validated) human identifier persisted for audit correlation; default validity is short (+1w, configurable) and surfaced as the primary revocation mechanism with no auto-backdate
-- [ ] #4 Revoking a user cert triggers KRL regeneration; get()/list() expose principals, extensions, critical options, serial, key-id, expiry
+- [x] #1 An operator can issue a user cert carrying chosen role principals and an explicit extension whitelist; a hardened cert (no permit-pty) behaves as least-privilege per ssh-keygen -L
+- [x] #2 force-command and source-address critical options are settable and appear in ssh-keygen -L; a malformed source-address CIDR is rejected at issuance rather than silently encoded
+- [x] #3 Key-id is a free-form (control-char-validated) human identifier persisted for audit correlation; default validity is short (+1w, configurable) and surfaced as the primary revocation mechanism with no auto-backdate
+- [x] #4 Revoking a user cert triggers KRL regeneration; get()/list() expose principals, extensions, critical options, serial, key-id, expiry
 <!-- AC:END -->
