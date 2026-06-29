@@ -3,10 +3,10 @@ id: TASK-149
 title: >-
   SSH-28: SSH Users: issue cert with capability editor + live decoded preview +
   detail
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:45'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 19:00'
 labels:
   - ssh-cert-manager
   - frontend
@@ -30,8 +30,8 @@ User/identity pages. List shows identity (key-id/name), principals (roles), TTL/
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can issue a User-CA-signed cert by pasting a user pubkey, choosing principals/roles, toggling extensions, optionally setting force-command and a validated source-address CIDR, and picking a TTL
-- [ ] #2 The 'Harden' preset clears all default extensions (matching ssh-keygen -O clear) and the live preview reflects which extensions/critical-options are present before issuing; a malformed source-address CIDR is rejected in the form
-- [ ] #3 After issuance the operator can download the user cert and copy a ready-to-paste ~/.ssh/config block (IdentityFile/CertificateFile/IdentitiesOnly) and the ssh-add hint
-- [ ] #4 The detail page shows the full decoded cert, TTL/expiry with shared days-left coloring + a short-TTL NTP note and a renewal nudge; renew re-opens the editor pre-filled; no private key is ever sent to the backend
+- [x] #1 An operator can issue a User-CA-signed cert by pasting a user pubkey, choosing principals/roles, toggling extensions, optionally setting force-command and a validated source-address CIDR, and picking a TTL
+- [x] #2 The 'Harden' preset clears all default extensions (matching ssh-keygen -O clear) and the live preview reflects which extensions/critical-options are present before issuing; a malformed source-address CIDR is rejected in the form
+- [x] #3 After issuance the operator can download the user cert and copy a ready-to-paste ~/.ssh/config block (IdentityFile/CertificateFile/IdentitiesOnly) and the ssh-add hint
+- [x] #4 The detail page shows the full decoded cert, TTL/expiry with shared days-left coloring + a short-TTL NTP note and a renewal nudge; renew re-opens the editor pre-filled; no private key is ever sent to the backend
 <!-- AC:END -->
