@@ -1,10 +1,10 @@
 ---
 id: TASK-139
 title: 'SSH-BULK: Bulk renew expiring + bulk revoke SSH certs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:18'
 labels:
   - ssh-cert-manager
   - backend
@@ -29,8 +29,8 @@ Short TTLs (+1w users, +52w hosts) make bulk renewal the dominant steady-state o
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can select multiple expiring host/user certs and re-sign them in one operation with progress feedback, reusing the existing bulk-operation-progress pattern
-- [ ] #2 An operator can bulk-revoke a set of serials/keys that lands as KRL directives and increments the KRL version exactly once
-- [ ] #3 Bulk renew respects SSH-11 renewal semantics (new serial/key_id, superseded_by link) for each cert
-- [ ] #4 The bulk UI reuses the certificates.bulk pattern rather than a parallel implementation
+- [x] #1 An operator can select multiple expiring host/user certs and re-sign them in one operation with progress feedback, reusing the existing bulk-operation-progress pattern
+- [x] #2 An operator can bulk-revoke a set of serials/keys that lands as KRL directives and increments the KRL version exactly once
+- [x] #3 Bulk renew respects SSH-11 renewal semantics (new serial/key_id, superseded_by link) for each cert
+- [x] #4 The bulk UI reuses the certificates.bulk pattern rather than a parallel implementation
 <!-- AC:END -->
