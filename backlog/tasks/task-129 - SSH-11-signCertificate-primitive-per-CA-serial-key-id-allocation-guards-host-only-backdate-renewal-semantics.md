@@ -3,10 +3,10 @@ id: TASK-129
 title: >-
   SSH-11: signCertificate primitive: per-CA serial/key-id allocation, guards,
   host-only backdate, renewal semantics
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:03'
 labels:
   - ssh-cert-manager
   - backend
@@ -33,8 +33,8 @@ Expose signCertificate(ctx, { caId, sshPublicKey, type:'user'|'host', keyId, pri
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A host caller gets a signed host cert (type 2) with principals = supplied FQDN+IPs; a user caller gets a user cert (type 1) with principals = role names — both pass ssh-keygen -L; requesting a user cert from the Host CA (or vice versa) is rejected before any KMS call
-- [ ] #2 Serials are unique and monotonic per CA under concurrent issuance (UI + automation use the same scheme); an empty-principal or malformed-key_id request is rejected before signing; a TTL exceeding the CA cap is rejected
-- [ ] #3 Freshly issued HOST certs are accepted by an sshd whose clock is slightly ahead (host-only notBefore backdate applied); user certs are not auto-backdated and the returned object includes serial and validBefore
-- [ ] #4 Renewal allocates a new serial+key_id, links via superseded_by, optionally revokes the prior serial into the KRL, and preserves the host_id/identity_id audit link — covered by a test asserting whether renewing invalidates the prior cert
+- [x] #1 A host caller gets a signed host cert (type 2) with principals = supplied FQDN+IPs; a user caller gets a user cert (type 1) with principals = role names — both pass ssh-keygen -L; requesting a user cert from the Host CA (or vice versa) is rejected before any KMS call
+- [x] #2 Serials are unique and monotonic per CA under concurrent issuance (UI + automation use the same scheme); an empty-principal or malformed-key_id request is rejected before signing; a TTL exceeding the CA cap is rejected
+- [x] #3 Freshly issued HOST certs are accepted by an sshd whose clock is slightly ahead (host-only notBefore backdate applied); user certs are not auto-backdated and the returned object includes serial and validBefore
+- [x] #4 Renewal allocates a new serial+key_id, links via superseded_by, optionally revokes the prior serial into the KRL, and preserves the host_id/identity_id audit link — covered by a test asserting whether renewing invalidates the prior cert
 <!-- AC:END -->
