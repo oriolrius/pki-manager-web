@@ -3,11 +3,11 @@ id: TASK-117
 title: >-
   SSH-SENS: Decision + spike: keep SSH CA keys NON-exportable and sign via
   Cosmian native ec sign (PKCS#11/KMIP) vs in-memory export
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:38'
-updated_date: '2026-06-29 17:08'
+updated_date: '2026-06-29 17:22'
 labels:
   - ssh-cert-manager
   - crypto
@@ -32,8 +32,14 @@ BLOCKING decision before any signer or CA service is built. The source PoC creat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A spike against the live KMS records the exact result (HTTP status + signature format) of signing an ECDSA-P256 key marked --sensitive true via (a) KMIP-JSON Sign and (b) Cosmian native ec sign, and (c) whether a non-sensitive EC key exports in a Node-importable layout (with a normalization helper if SEC1/EC-PARAMETERS-only)
-- [ ] #2 A decision (decision-011) selects the non-exportable native-sign path if (a) or (b) works; export-and-sign is selected ONLY if both are proven impossible, and then documents the residual risk, a named risk owner, buffer-zeroization after one op, and a loud audit+alert on every CA-key export
-- [ ] #3 If export-and-sign is chosen, ssh_cas CA keys are created non-exportable for normal issuance is reconciled with the chosen path (i.e. the decision states the exact KMS key-creation flags used) so issuance does not fail at runtime against a sensitive key
-- [ ] #4 The decision names signRaw as the single function whose body differs between non-exportable-sign and export-and-sign, and the spike skips (not fails) when KMS_URL is unreachable
+- [x] #1 A spike against the live KMS records the exact result (HTTP status + signature format) of signing an ECDSA-P256 key marked --sensitive true via (a) KMIP-JSON Sign and (b) Cosmian native ec sign, and (c) whether a non-sensitive EC key exports in a Node-importable layout (with a normalization helper if SEC1/EC-PARAMETERS-only)
+- [x] #2 A decision (decision-011) selects the non-exportable native-sign path if (a) or (b) works; export-and-sign is selected ONLY if both are proven impossible, and then documents the residual risk, a named risk owner, buffer-zeroization after one op, and a loud audit+alert on every CA-key export
+- [x] #3 If export-and-sign is chosen, ssh_cas CA keys are created non-exportable for normal issuance is reconciled with the chosen path (i.e. the decision states the exact KMS key-creation flags used) so issuance does not fail at runtime against a sensitive key
+- [x] #4 The decision names signRaw as the single function whose body differs between non-exportable-sign and export-and-sign, and the spike skips (not fails) when KMS_URL is unreachable
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Reproducible spike: backend/src/kms/spike-ssh-sign.ts (skips/exit-0 when KMS_URL unreachable). Run against live Cosmian KMS (wsl.ymbihq.local:42998). Results: (a) KMIP-JSON Sign on a Sensitive=true ECDSA-P256 key = PASS (DER/ASN.1 sig ~72B, server-validated via KMIP SignatureVerify; CA key never leaves KMS); (b) cosmian native `ec sign` = PASS (byte-compatible DER); (c) non-sensitive EC key exports via KMIP Get PKCS#8 and imports directly into Node crypto.createPrivateKey = PASS (fallback proven, NOT adopted); (d) Get on a Sensitive=true key = DENIED. KMS mechanics pinned for downstream: KMIP keys are PreActive and MUST be Activated before Sign (else "no valid key for id"); RecommendedCurve token is "P256" (not P_256/secp256r1); CryptographicUsageMask=3 (Sign|Verify) required; signatures are DER (SSH-03 must DER->r||s); EC public key from KMIP Get is NOT Node-importable SPKI (SSH-02/SSH-10 must convert); the KMS also advertises Encrypt/Decrypt/Locate/Register/SignatureVerify (de-risks SSH-23 ECIES + SSH-15 register). DECISION (decision-011, Accepted): adopt the non-exportable path; kmsService.signRaw() signs via KMIP-JSON Sign (no CLI dependency); export-and-sign NOT needed. signRaw is the single swap-seam.
+<!-- SECTION:NOTES:END -->
