@@ -4,6 +4,8 @@ import type { KeyPairIds, CertificateInfo } from "./types.js";
 import { db } from "../db/client.js";
 import { auditLog } from "../db/schema.js";
 import { logger } from "../lib/logger.js";
+import { derToP1363 } from "../crypto/ssh/sign.js";
+import { ecPointToOpenSshEcdsa } from "../crypto/ssh/pubkey.js";
 
 export interface KMSServiceOptions {
   kmsUrl: string;
@@ -313,6 +315,92 @@ export class KMSService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Canonical raw-signature seam (SSH-03, decision-011). Signs arbitrary bytes
+   * with a KMS-held ECDSA key via KMIP `Sign` — the CA private key never leaves
+   * the KMS. Returns DER by default, or fixed-width IEEE P-1363 `r‖s`. Every call
+   * writes a kms.sign_raw audit row (success and failure).
+   */
+  async signRaw(
+    keyId: string,
+    data: Buffer,
+    opts?: { entityId?: string; hashingAlgorithm?: string; format?: "der" | "ieee-p1363" }
+  ): Promise<Buffer> {
+    const operationId = randomUUID();
+    try {
+      const der = await this.client.sign(keyId, data, { hashingAlgorithm: opts?.hashingAlgorithm });
+      const result = opts?.format === "ieee-p1363" ? derToP1363(der) : der;
+      await this.logAudit(
+        "kms.sign_raw",
+        "key",
+        opts?.entityId ?? keyId,
+        "success",
+        { keyId, bytes: data.length, format: opts?.format ?? "der" },
+        operationId
+      );
+      return result;
+    } catch (error) {
+      await this.logAudit(
+        "kms.sign_raw",
+        "key",
+        opts?.entityId ?? keyId,
+        "failure",
+        { error: String(error), keyId },
+        operationId
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Create a NON-exportable ECDSA P-256 SSH CA key pair (Sensitive + Active),
+   * per decision-011. Returns the KMS key ids.
+   */
+  async createSshCaKeyPair(options: {
+    tags?: string[];
+    sensitive?: boolean;
+    entityId?: string;
+  }): Promise<KeyPairIds> {
+    const operationId = randomUUID();
+    try {
+      const result = await this.client.createEcSigningKeyPair({
+        tags: options.tags,
+        sensitive: options.sensitive,
+      });
+      await this.logAudit(
+        "kms.create_ssh_ca_key",
+        "ssh_ca",
+        options.entityId ?? null,
+        "success",
+        { tags: options.tags, sensitive: options.sensitive !== false, ...result },
+        operationId
+      );
+      logger.info({ ...result }, "Created SSH CA key pair in KMS (sensitive, active)");
+      return result;
+    } catch (error) {
+      await this.logAudit(
+        "kms.create_ssh_ca_key",
+        "ssh_ca",
+        options.entityId ?? null,
+        "failure",
+        { error: String(error), tags: options.tags },
+        operationId
+      );
+      throw error;
+    }
+  }
+
+  /** Fetch a KMS EC public key and return it as an `ecdsa-sha2-nistp256 AAAA…` OpenSSH line. */
+  async getSshPublicKeyLine(publicKeyId: string, comment = "", _entityId?: string): Promise<string> {
+    const q = await this.client.getEcPublicPoint(publicKeyId);
+    return ecPointToOpenSshEcdsa(q, comment);
+  }
+
+  /** Verify a DER ECDSA signature server-side (KMIP SignatureVerify). */
+  async signatureVerify(publicKeyId: string, data: Buffer, signature: Buffer): Promise<boolean> {
+    return this.client.signatureVerify(publicKeyId, data, signature);
   }
 
   /**
