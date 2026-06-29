@@ -3,10 +3,10 @@ id: TASK-121
 title: >-
   SSH-04: Pin and document the detached-signature format end-to-end (signer ↔
   KRL puller ↔ KMS)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:39'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:48'
 labels:
   - ssh-cert-manager
   - crypto
@@ -29,8 +29,8 @@ OpenSSH in-cert signatures use ssh-string-wrapped r||s mpints; detached signatur
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The detached KRL/envelope signature format (DER vs raw r||s) is fixed and documented, and the (future) host-side puller verifier is specified to use the same format and curve
-- [ ] #2 A test asserts a backend-produced detached signature over fixed bytes verifies with the chosen verifier library/curve
-- [ ] #3 A test asserts the chosen format verifies consistently whether the signature comes from Node export-and-sign or a Cosmian-native ec sign output over identical bytes, so swapping signing backends does not silently break verification
-- [ ] #4 The pinned format is referenced by the KRL service (SSH-21) and the deferred puller (SSH-24) so neither re-decides it
+- [x] #1 The detached KRL/envelope signature format (DER vs raw r||s) is fixed and documented, and the (future) host-side puller verifier is specified to use the same format and curve
+- [x] #2 A test asserts a backend-produced detached signature over fixed bytes verifies with the chosen verifier library/curve
+- [x] #3 A test asserts the chosen format verifies consistently whether the signature comes from Node export-and-sign or a Cosmian-native ec sign output over identical bytes, so swapping signing backends does not silently break verification
+- [x] #4 The pinned format is referenced by the KRL service (SSH-21) and the deferred puller (SSH-24) so neither re-decides it
 <!-- AC:END -->
