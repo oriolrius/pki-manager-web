@@ -3,10 +3,11 @@ id: TASK-138
 title: >-
   SSH-19: Build the SSH automation fleet-token auth stack + external signing
   endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:11'
 labels:
   - ssh-cert-manager
   - backend
