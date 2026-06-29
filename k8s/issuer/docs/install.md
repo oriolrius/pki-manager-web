@@ -30,6 +30,27 @@ helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
   -n pki-manager-issuer --create-namespace
 ```
 
+### Approval (cert-manager 1.16+)
+
+cert-manager requires every `CertificateRequest` to be **Approved** before an issuer signs
+it, and its built-in approver only auto-approves first-party (`cert-manager.io`) issuers. So
+that requests for this external issuer are auto-approved, the chart installs (when
+`approver.enabled=true`, the default) a ClusterRole + ClusterRoleBinding granting
+cert-manager's controller the `approve` verb on this issuer's signers
+(`issuers.pki-manager.issuer.io/*`, `clusterissuers.pki-manager.issuer.io/*`).
+
+The binding targets the cert-manager controller ServiceAccount, defaulting to `cert-manager`
+in namespace `cert-manager`. If yours differs, set it:
+
+```bash
+helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
+  -n pki-manager-issuer --create-namespace \
+  --set approver.certManagerServiceAccount.name=<sa> \
+  --set approver.certManagerServiceAccount.namespace=<ns>
+```
+
+Set `--set approver.enabled=false` to manage approval yourself (custom approver, manual, etc.).
+
 ## 3. Create Secret + ClusterIssuer
 
 ```yaml
@@ -94,5 +115,5 @@ cert-manager creates a `CertificateRequest`; the controller signs it via PKI Man
 | Issuer Ready=False, Reason=SecretMissing | Wrong namespace or key | ClusterIssuer secrets live in controller's namespace; use `key: token` |
 | Reason=Unreachable | Network / TLS | Set `caBundle` if PKI Manager uses internal CA; check NetworkPolicy |
 | Reason=CAIDMismatch | Token belongs to different CA | Re-register cluster in PKI Manager bound to the right CA |
-| CertificateRequest stuck Pending=Approved? | cert-manager 1.16+ requires approval | RBAC for approver; default ApprovalController approves cert-manager-issued CRs only |
+| CertificateRequest stuck unapproved | approver RBAC missing or bound to the wrong SA | Ensure `approver.enabled=true` and that `approver.certManagerServiceAccount` matches your cert-manager controller ServiceAccount (default `cert-manager`/`cert-manager`) |
 | 401 Unauthorized in controller logs | Token revoked or wrong | Re-register and rotate Secret |

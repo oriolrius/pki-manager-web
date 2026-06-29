@@ -74,11 +74,9 @@ spec:
   usages: [server auth, client auth]
 EOF
 
-# Approve manually (cert-manager auto-approver scopes to first-party issuers
-# unless you grant approve RBAC on signers.cert-manager.io for our group)
-CR=$(kubectl get cr -n default -o jsonpath='{.items[0].metadata.name}')
-kubectl -n default patch cr $CR --type=merge --subresource=status \
-  -p '{"status":{"conditions":[{"type":"Approved","status":"True","reason":"e2e","message":"manual","lastTransitionTime":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}]}}'
+# Approval is automatic: the issuer Helm chart installs an approver ClusterRole/Binding
+# (approver.enabled=true, default) granting cert-manager's controller the `approve` verb on
+# our signers, so the CertificateRequest is approved + issued without a manual patch.
 
 # Verify
 kubectl get certificate,cr -n default
