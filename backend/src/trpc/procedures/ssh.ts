@@ -29,6 +29,7 @@ import { getSshUserService, SshUserError } from '../../services/ssh-user.service
 import { getSshPrincipalService, SshPrincipalError } from '../../services/ssh-principal.service.js';
 import { getSshFleetTokenService, SshTokenError } from '../../services/ssh-fleet-token.service.js';
 import { getSshBulkService } from '../../services/ssh-bulk.service.js';
+import { getSshKrlService, SshKrlError } from '../../services/ssh-krl.service.js';
 import {
   SshSignCaNotFoundError,
   SshCaUnusableError,
@@ -41,7 +42,7 @@ function mapSshError(error: unknown): never {
     throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
   if (error instanceof SshCaAlgorithmError || error instanceof SshCaUnusableError || error instanceof SshCertTypeMismatchError)
     throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
-  if (error instanceof SshHostError || error instanceof SshUserError || error instanceof SshPrincipalError || error instanceof SshTokenError) {
+  if (error instanceof SshHostError || error instanceof SshUserError || error instanceof SshPrincipalError || error instanceof SshTokenError || error instanceof SshKrlError) {
     const code = /not found/i.test(error.message) ? 'NOT_FOUND' : 'BAD_REQUEST';
     throw new TRPCError({ code, message: error.message });
   }
@@ -238,6 +239,51 @@ const bulkRouter = router({
     .mutation(async ({ ctx, input }) => getSshBulkService().bulkRevoke(svcCtx(ctx), input.certIds, input.reason)),
 });
 
+const krlRouter = router({
+  getLatest: sshProtectedProcedure.input(sshCaIdSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshKrlService().getLatest(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  listRevocations: sshProtectedProcedure.input(sshCaIdSchema).query(async ({ ctx, input }) =>
+    getSshKrlService().listRevocations(svcCtx(ctx), input.id)
+  ),
+  generate: sshProtectedProcedure.input(sshCaIdSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshKrlService().generate(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  revokeCert: sshProtectedProcedure.input(revokeSshCertSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshKrlService().revokeByCert(svcCtx(ctx), input.certId, input.reason);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  revokeSerial: sshProtectedProcedure
+    .input(z.object({ caId: z.string().min(1), serial: z.string().regex(/^\d+$/), reason: z.string().max(256).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await getSshKrlService().revokeBySerial(svcCtx(ctx), input.caId, input.serial, input.reason);
+      } catch (e) {
+        mapSshError(e);
+      }
+    }),
+  revokeKey: sshProtectedProcedure
+    .input(z.object({ caId: z.string().min(1), fingerprint: z.string().min(1), reason: z.string().max(256).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await getSshKrlService().revokeByKeyFingerprint(svcCtx(ctx), input.caId, input.fingerprint, input.reason);
+      } catch (e) {
+        mapSshError(e);
+      }
+    }),
+});
+
 export const sshRouter = router({
   ca: caRouter,
   host: hostRouter,
@@ -245,4 +291,5 @@ export const sshRouter = router({
   principal: principalRouter,
   token: tokenRouter,
   bulk: bulkRouter,
+  krl: krlRouter,
 });

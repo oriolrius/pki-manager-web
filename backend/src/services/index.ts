@@ -18,4 +18,5 @@ export * from './ssh-user.service.js';
 export * from './ssh-principal.service.js';
 export * from './ssh-fleet-token.service.js';
 export * from './ssh-bulk.service.js';
+export * from './ssh-krl.service.js';
 export * from './ssh-config.js';

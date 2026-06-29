@@ -8,10 +8,69 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/client.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
+import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { certAuthorityLine } from '../../services/ssh-config.js';
 
 export function registerSshPublicRoutes(server: FastifyInstance): void {
   const ctx = { db, ipAddress: null };
+
+  /** Fetch the freshest KRL row, lazily (re)generating when missing or stale. */
+  async function freshestKrl(caId: string): Promise<any | null> {
+    const svc = getSshKrlService();
+    let row = await svc.getLatestRow(ctx, caId).catch(() => null);
+    const stale = row && new Date(row.nextUpdate).getTime() < Date.now();
+    if (!row || stale) {
+      try {
+        await svc.generate(ctx, caId);
+        row = await svc.getLatestRow(ctx, caId);
+      } catch {
+        // signing unavailable: fall back to last-good bytes if we have them.
+      }
+    }
+    return row;
+  }
+
+  // Public BARE KRL bytes for sshd's RevokedKeys (SSH-22). sshd does NOT verify
+  // any signature on this file — integrity rests on TLS + 0444 root-owned perms.
+  // ETag/If-None-Match/304 + lazy-regen + last-good fallback are new here.
+  server.get('/krl/:caId.bin', async (req, reply) => {
+    const { caId } = req.params as { caId: string };
+    const row = await freshestKrl(caId);
+    if (!row) {
+      reply.code(404);
+      return 'no KRL\n';
+    }
+    const version = row.versionHash as string;
+    const inm = (req.headers['if-none-match'] as string | undefined)?.trim();
+    reply.header('ETag', version);
+    reply.header('X-KRL-Version', version);
+    reply.header('Last-Modified', new Date(row.thisUpdate).toUTCString());
+    reply.header('Expires', new Date(row.nextUpdate).toUTCString());
+    const maxAge = Math.max(0, Math.floor((new Date(row.nextUpdate).getTime() - Date.now()) / 1000));
+    reply.header('Cache-Control', `public, max-age=${maxAge}`);
+    if (inm && inm === version) {
+      return reply.code(304).send();
+    }
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Disposition', 'attachment; filename="revoked_keys"');
+    return Buffer.from(row.krlBlob);
+  });
+
+  // Signed envelope for the (deferred) puller: bare KRL + detached CA signature.
+  server.get('/krl/:caId.json', async (req, reply) => {
+    const { caId } = req.params as { caId: string };
+    const row = await freshestKrl(caId);
+    if (!row) {
+      reply.code(404);
+      return { error: { code: 'NOT_FOUND', message: 'no KRL' } };
+    }
+    return {
+      krl_b64: Buffer.from(row.krlBlob).toString('base64'),
+      ca_signature_b64: row.caSignature ? Buffer.from(row.caSignature).toString('base64') : null,
+      krl_version: row.versionHash,
+      signed_at: new Date(row.thisUpdate).toISOString(),
+    };
+  });
   const text = (reply: any, filename?: string) => {
     reply.header('Content-Type', 'text/plain; charset=utf-8');
     if (filename) reply.header('Content-Disposition', `attachment; filename="${filename}"`);
