@@ -3,10 +3,11 @@ id: TASK-134
 title: >-
   SSH-16: SSH Zod schemas (single source of truth for tRPC + OpenAPI) with input
   validation
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:03'
 labels:
   - ssh-cert-manager
   - backend
