@@ -3,10 +3,11 @@ id: TASK-122
 title: >-
   SSH-05: Schema: ssh_cas table (dual User/Host CA, rotation columns, per-CA
   serial allocator)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:48'
 labels:
   - ssh-cert-manager
   - database
