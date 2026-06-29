@@ -3,10 +3,10 @@ id: TASK-147
 title: >-
   SSH-26: SSH CAs: list + create/import dual CA + detail with trust-material
   generators
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 19:00'
 labels:
   - ssh-cert-manager
   - frontend
@@ -29,8 +29,8 @@ Pages to manage the dual SSH CA. List shows the two CA roles with OpenSSH finger
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can create OR import a dual SSH CA and lands on a detail view showing both OpenSSH public keys; the form offers only ECDSA nistp256 and explains why inline
-- [ ] #2 For a Host CA, the operator can copy a correct '@cert-authority <pattern> ecdsa-sha2-nistp256 AAAA...' line where the pattern is editable and IP-vs-glob mismatch is warned; during rotation both keys are shown
-- [ ] #3 For a User CA, the operator can copy/download a TrustedUserCAKeys-ready public key file and an sshd_config drop-in referencing it, and download the CA public key as a .pub
-- [ ] #4 If no SSH CA exists, Hosts/Users/Principals/KRL pages guide the operator to create the dual CA first; backend errors surface inline without crashing
+- [x] #1 An operator can create OR import a dual SSH CA and lands on a detail view showing both OpenSSH public keys; the form offers only ECDSA nistp256 and explains why inline
+- [x] #2 For a Host CA, the operator can copy a correct '@cert-authority <pattern> ecdsa-sha2-nistp256 AAAA...' line where the pattern is editable and IP-vs-glob mismatch is warned; during rotation both keys are shown
+- [x] #3 For a User CA, the operator can copy/download a TrustedUserCAKeys-ready public key file and an sshd_config drop-in referencing it, and download the CA public key as a .pub
+- [x] #4 If no SSH CA exists, Hosts/Users/Principals/KRL pages guide the operator to create the dual CA first; backend errors surface inline without crashing
 <!-- AC:END -->
