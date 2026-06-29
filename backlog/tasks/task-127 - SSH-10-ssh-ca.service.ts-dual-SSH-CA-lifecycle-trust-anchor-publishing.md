@@ -4,12 +4,16 @@ title: 'SSH-10: ssh-ca.service.ts: dual SSH CA lifecycle + trust-anchor publishi
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:41'
+updated_date: '2026-06-29 15:46'
 labels:
   - ssh-cert-manager
   - backend
   - services
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-119
+  - TASK-120
+  - TASK-122
 priority: medium
 ---
 
