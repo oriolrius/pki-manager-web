@@ -3,11 +3,11 @@ id: TASK-122
 title: >-
   SSH-05: Schema: ssh_cas table (dual User/Host CA, rotation columns, per-CA
   serial allocator)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 17:48'
+updated_date: '2026-06-29 17:55'
 labels:
   - ssh-cert-manager
   - database
@@ -30,8 +30,8 @@ Add the ssh_cas Drizzle table to backend/src/db/schema.ts and the next sequentia
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The migration creates ssh_cas with id, ca_type, label, kms_key_id, kms_public_key_id, openssh_public_key, fingerprint_sha256, key_algorithm (ECDSA-P256, schema-constrained), next_serial (default 1), status('active'|'rotating'|'retired'), predecessor_ca_id (nullable FK), retire_after (nullable), revocation fields, created_at, updated_at
-- [ ] #2 A partial unique index allows at most one active and at most one rotating CA per ca_type; db:generate && db:migrate apply cleanly on a fresh DB and typecheck passes
-- [ ] #3 Exported SshCa/NewSshCa types; ssh_cas carries no subjectDn/notAfter and the X.509 certificate_authorities table and queries are unchanged
-- [ ] #4 next_serial covers the practical OpenSSH serial range (documented that SQLite INTEGER is signed 64-bit) and the migration file number is the next sequential after the verified head, not hard-coded
+- [x] #1 The migration creates ssh_cas with id, ca_type, label, kms_key_id, kms_public_key_id, openssh_public_key, fingerprint_sha256, key_algorithm (ECDSA-P256, schema-constrained), next_serial (default 1), status('active'|'rotating'|'retired'), predecessor_ca_id (nullable FK), retire_after (nullable), revocation fields, created_at, updated_at
+- [x] #2 A partial unique index allows at most one active and at most one rotating CA per ca_type; db:generate && db:migrate apply cleanly on a fresh DB and typecheck passes
+- [x] #3 Exported SshCa/NewSshCa types; ssh_cas carries no subjectDn/notAfter and the X.509 certificate_authorities table and queries are unchanged
+- [x] #4 next_serial covers the practical OpenSSH serial range (documented that SQLite INTEGER is signed 64-bit) and the migration file number is the next sequential after the verified head, not hard-coded
 <!-- AC:END -->
