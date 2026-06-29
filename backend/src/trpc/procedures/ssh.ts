@@ -30,6 +30,7 @@ import { getSshPrincipalService, SshPrincipalError } from '../../services/ssh-pr
 import { getSshFleetTokenService, SshTokenError } from '../../services/ssh-fleet-token.service.js';
 import { getSshBulkService } from '../../services/ssh-bulk.service.js';
 import { getSshKrlService, SshKrlError } from '../../services/ssh-krl.service.js';
+import { getSshMonService } from '../../services/ssh-mon.service.js';
 import {
   SshSignCaNotFoundError,
   SshCaUnusableError,
@@ -284,6 +285,12 @@ const krlRouter = router({
     }),
 });
 
+const monRouter = router({
+  metrics: sshProtectedProcedure
+    .input(z.object({ ttlWindowSeconds: z.number().int().positive().optional(), pullIntervalSeconds: z.number().int().positive().optional() }).optional())
+    .query(async ({ ctx, input }) => getSshMonService().metrics(svcCtx(ctx), input)),
+});
+
 export const sshRouter = router({
   ca: caRouter,
   host: hostRouter,
@@ -292,4 +299,5 @@ export const sshRouter = router({
   token: tokenRouter,
   bulk: bulkRouter,
   krl: krlRouter,
+  mon: monRouter,
 });

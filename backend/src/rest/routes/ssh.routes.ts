@@ -18,6 +18,7 @@ import {
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
+import { getSshMonService } from '../../services/ssh-mon.service.js';
 
 class HttpError extends Error {
   constructor(public statusCode: number, message: string, public code = 'SSH_ERROR') {
@@ -82,6 +83,12 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   api.post('/users/issue', { schema: { tags: tag, summary: 'Issue a user certificate' } }, async (req) => {
     ensureSshAllowed();
     return getSshUserService().issue(ctx(req), parse(issueUserCertSchema, req.body));
+  });
+
+  // Machine-readable health/metrics for alerting (SSH-MON).
+  api.get('/metrics', { schema: { tags: tag, summary: 'SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts)' } }, async (req) => {
+    ensureSshAllowed();
+    return getSshMonService().metrics(ctx(req));
   });
 
   // Translate our HttpError into the standard {error:{code,message}} shape.

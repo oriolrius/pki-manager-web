@@ -17,6 +17,7 @@ import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
 import { getKMSService } from '../../kms/service.js';
 import { createAuditLog } from '../../lib/audit.js';
+import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 
 const eciesEnabled = () => process.env.SSH_ECIES_ENABLED === 'true';
 const KRL_VALID_FOR_SECONDS = parseInt(process.env.KRL_VALID_FOR_SECONDS || '1800', 10);
@@ -56,6 +57,10 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     }
     if (!verified.opSet.includes(op)) {
       err(reply, 403, 'FORBIDDEN', `token is not scoped for ${op}`);
+      return null;
+    }
+    if (!rateLimitOk(`ssh-ext:${verified.id}`, 120, 60_000)) {
+      err(reply, 429, 'RATE_LIMITED', 'too many requests for this token');
       return null;
     }
     return verified;
@@ -175,6 +180,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // No app auth: ECIES means only the target host can decrypt (the 404-vs-200
   // host oracle is an accepted bounded disclosure). host_id is in the BODY.
   server.post(`${base}/krl`, async (req, reply) => {
+    if (!rateLimitOk(`ecies-krl:${req.ip}`, 120, 60_000)) return err(reply, 429, 'RATE_LIMITED', 'too many requests');
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
     const hostId = (req.body as any)?.host_id;
     if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');

@@ -10,6 +10,7 @@ import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { certAuthorityLine } from '../../services/ssh-config.js';
+import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 
 export function registerSshPublicRoutes(server: FastifyInstance): void {
   const ctx = { db, ipAddress: null };
@@ -34,6 +35,10 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   // any signature on this file — integrity rests on TLS + 0444 root-owned perms.
   // ETag/If-None-Match/304 + lazy-regen + last-good fallback are new here.
   server.get('/krl/:caId.bin', async (req, reply) => {
+    if (!rateLimitOk(`krl:${req.ip}`, 120, 60_000)) {
+      reply.code(429);
+      return 'rate limited\n';
+    }
     const { caId } = req.params as { caId: string };
     const row = await freshestKrl(caId);
     if (!row) {
