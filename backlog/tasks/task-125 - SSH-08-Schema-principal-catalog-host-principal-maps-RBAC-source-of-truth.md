@@ -1,10 +1,10 @@
 ---
 id: TASK-125
 title: 'SSH-08: Schema: principal catalog + host principal-maps (RBAC source of truth)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:55'
 labels:
   - ssh-cert-manager
   - database
@@ -27,8 +27,8 @@ Add the three RBAC tables. ssh_principals (id, name unique e.g. 'admin','deploye
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The migration creates ssh_principals, ssh_user_principals, ssh_host_principal_maps with the FKs, cascade/restrict rules, and unique indexes described
-- [ ] #2 A query can answer 'who can become root on host H' and 'which auth_principals files does host H need' without schema change
-- [ ] #3 Deleting an identity cascades its ssh_user_principals, deleting a host cascades its ssh_host_principal_maps, and deleting an in-use principal is restricted
-- [ ] #4 Exported types for all three tables; migration applies cleanly; typecheck passes
+- [x] #1 The migration creates ssh_principals, ssh_user_principals, ssh_host_principal_maps with the FKs, cascade/restrict rules, and unique indexes described
+- [x] #2 A query can answer 'who can become root on host H' and 'which auth_principals files does host H need' without schema change
+- [x] #3 Deleting an identity cascades its ssh_user_principals, deleting a host cascades its ssh_host_principal_maps, and deleting an in-use principal is restricted
+- [x] #4 Exported types for all three tables; migration applies cleanly; typecheck passes
 <!-- AC:END -->
