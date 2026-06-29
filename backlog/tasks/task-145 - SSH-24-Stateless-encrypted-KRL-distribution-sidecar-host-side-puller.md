@@ -4,13 +4,18 @@ title: 'SSH-24: Stateless encrypted KRL distribution sidecar + host-side puller'
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:44'
+updated_date: '2026-06-29 15:47'
 labels:
   - ssh-cert-manager
   - backend
   - revocation
   - kms
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-144
+  - TASK-142
+  - TASK-138
+  - TASK-133
 priority: medium
 ---
 
