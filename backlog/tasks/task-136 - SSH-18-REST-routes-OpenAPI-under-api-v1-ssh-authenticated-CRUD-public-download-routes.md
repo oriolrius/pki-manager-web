@@ -3,11 +3,11 @@ id: TASK-136
 title: >-
   SSH-18: REST routes + OpenAPI under /api/v1/ssh (authenticated CRUD) + public
   download routes
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 18:07'
+updated_date: '2026-06-29 18:11'
 labels:
   - ssh-cert-manager
   - backend
@@ -30,8 +30,8 @@ Add rest/routes/ssh.routes.ts registered in rest/index.ts under prefix /ssh for 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Authenticated SSH CRUD operations are callable over REST under /api/v1/ssh and documented in the same Swagger UI at /api/docs as existing endpoints with the standard {error:{code,message}} shape
-- [ ] #2 Public GET /ssh/cas/:id/trusted-user-ca-keys returns exactly the bytes for sshd's TrustedUserCAKeys, and /cert-authority?pattern=*.example.com returns a ready-to-paste '@cert-authority' known_hosts line, both reachable without OIDC via the public-path allowlist
-- [ ] #3 Public GET /ssh/hosts/:id/sshd-config returns a downloadable ready-to-paste sshd_config drop-in; creating an SSH CA via REST and via tRPC produces identical ssh_cas records
-- [ ] #4 This task does not implement the public raw /krl bytes route (owned by SSH-22) and does not claim the public download routes are inside the /api/v1 Swagger block
+- [x] #1 Authenticated SSH CRUD operations are callable over REST under /api/v1/ssh and documented in the same Swagger UI at /api/docs as existing endpoints with the standard {error:{code,message}} shape
+- [x] #2 Public GET /ssh/cas/:id/trusted-user-ca-keys returns exactly the bytes for sshd's TrustedUserCAKeys, and /cert-authority?pattern=*.example.com returns a ready-to-paste '@cert-authority' known_hosts line, both reachable without OIDC via the public-path allowlist
+- [x] #3 Public GET /ssh/hosts/:id/sshd-config returns a downloadable ready-to-paste sshd_config drop-in; creating an SSH CA via REST and via tRPC produces identical ssh_cas records
+- [x] #4 This task does not implement the public raw /krl bytes route (owned by SSH-22) and does not claim the public download routes are inside the /api/v1 Swagger block
 <!-- AC:END -->
