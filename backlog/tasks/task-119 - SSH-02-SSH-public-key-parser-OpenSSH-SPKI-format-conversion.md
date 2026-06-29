@@ -33,3 +33,9 @@ crypto/ssh/pubkey.ts: the single chokepoint for accepting SSH public keys. Parse
 - [x] #3 A KMS-exported ECDSA-P256 SPKI public key converts to a valid 'ecdsa-sha2-nistp256 AAAA...' OpenSSH line whose fingerprint matches ssh-keygen
 - [x] #4 The parser is the only path other services use to accept a host or user public key
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+pubkey.ts: parser for ssh-ed25519/ecdsa-sha2-nistp256; SHA256 fingerprint == ssh-keygen -lf; rejects garbage/private-key/ssh-rsa(actionable); ecPointToOpenSshEcdsa + spkiToOpenSshEcdsa. Tests: pubkey.test.ts (6).
+<!-- SECTION:NOTES:END -->
