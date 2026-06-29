@@ -1,10 +1,10 @@
 ---
 id: TASK-123
 title: 'SSH-06: Schema: ssh_hosts (+ KRL/principal telemetry) + ssh_identities'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:55'
 labels:
   - ssh-cert-manager
   - database
@@ -27,8 +27,8 @@ Add ssh_hosts (fqdn unique, display_name, addresses JSON array used as host-cert
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The migration creates ssh_hosts (fqdn unique index; indexes on status, kms_pubkey_id; columns last_krl_version, last_krl_fetch_at, last_principal_push_at) and ssh_identities (subject unique index; indexes on status, external_subject)
-- [ ] #2 A host can exist with no cert (status 'pending', current_cert_id NULL) and transition to 'active' and 'offboarded'; an identity can exist before any pubkey is supplied (pubkey_source 'per_request')
-- [ ] #3 No table has a private-key column; addresses round-trips as string[] via JSON.parse/stringify; the telemetry columns are nullable and render as 'unknown' when absent
-- [ ] #4 Exported SshHost/NewSshHost and SshIdentity/NewSshIdentity types; migration applies cleanly; typecheck passes
+- [x] #1 The migration creates ssh_hosts (fqdn unique index; indexes on status, kms_pubkey_id; columns last_krl_version, last_krl_fetch_at, last_principal_push_at) and ssh_identities (subject unique index; indexes on status, external_subject)
+- [x] #2 A host can exist with no cert (status 'pending', current_cert_id NULL) and transition to 'active' and 'offboarded'; an identity can exist before any pubkey is supplied (pubkey_source 'per_request')
+- [x] #3 No table has a private-key column; addresses round-trips as string[] via JSON.parse/stringify; the telemetry columns are nullable and render as 'unknown' when absent
+- [x] #4 Exported SshHost/NewSshHost and SshIdentity/NewSshIdentity types; migration applies cleanly; typecheck passes
 <!-- AC:END -->
