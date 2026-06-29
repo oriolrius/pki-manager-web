@@ -1,10 +1,10 @@
 ---
 id: TASK-135
 title: 'SSH-17: tRPC sub-routers (ssh.ca/host/user/principal) wired into router.ts'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:07'
 labels:
   - ssh-cert-manager
   - backend
@@ -32,8 +32,8 @@ Add procedures/ssh-ca.ts, ssh-host.ts, ssh-user.ts, ssh-principal.ts following p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The frontend can call trpc.ssh.ca.*, ssh.host.*, ssh.user.*, ssh.principal.* with full TypeScript inference
-- [ ] #2 CA create/import/rotate/revoke use adminProcedure; issuance and reads use protectedProcedure; service errors map to correct tRPC codes (NOT_FOUND, BAD_REQUEST, FORBIDDEN, INTERNAL_SERVER_ERROR)
-- [ ] #3 appRouter exposes a single ssh namespace and the existing routers are unchanged
-- [ ] #4 The procedures honour the SSH-34 fail-closed guard so they are not silently open when OIDC is disabled
+- [x] #1 The frontend can call trpc.ssh.ca.*, ssh.host.*, ssh.user.*, ssh.principal.* with full TypeScript inference
+- [x] #2 CA create/import/rotate/revoke use adminProcedure; issuance and reads use protectedProcedure; service errors map to correct tRPC codes (NOT_FOUND, BAD_REQUEST, FORBIDDEN, INTERNAL_SERVER_ERROR)
+- [x] #3 appRouter exposes a single ssh namespace and the existing routers are unchanged
+- [x] #4 The procedures honour the SSH-34 fail-closed guard so they are not silently open when OIDC is disabled
 <!-- AC:END -->
