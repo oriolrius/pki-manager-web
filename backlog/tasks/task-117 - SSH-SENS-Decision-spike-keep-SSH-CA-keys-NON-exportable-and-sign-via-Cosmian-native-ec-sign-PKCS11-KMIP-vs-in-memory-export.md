@@ -3,10 +3,11 @@ id: TASK-117
 title: >-
   SSH-SENS: Decision + spike: keep SSH CA keys NON-exportable and sign via
   Cosmian native ec sign (PKCS#11/KMIP) vs in-memory export
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:38'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:08'
 labels:
   - ssh-cert-manager
   - crypto
