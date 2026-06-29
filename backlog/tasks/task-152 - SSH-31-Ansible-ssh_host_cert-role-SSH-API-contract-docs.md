@@ -1,10 +1,10 @@
 ---
 id: TASK-152
 title: 'SSH-31: Ansible ssh_host_cert role + SSH API contract docs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:45'
-updated_date: '2026-06-29 15:48'
+updated_date: '2026-06-29 18:48'
 labels:
   - ssh-cert-manager
   - automation
@@ -28,8 +28,8 @@ Port the PoC's Ansible ssh_host_cert role into the repo (Jan-Piet Mens pattern):
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The ssh_host_cert role generates the host key on the node, signs the pubkey via the external API with a bearer token over TLS, installs the cert + sshd drop-in, runs sshd -t, and reloads sshd; host-pubkey registration is invoked only when the ECIES path is enabled
-- [ ] #2 docs/ssh-api-contract.md documents every SSH external endpoint with request/response schemas, the Idempotency-Key contract, the per-fleet bearer auth model, the standard error shape, and the bare-KRL-unsigned vs detached-signature trust model
-- [ ] #3 The role's HTTP calls map 1:1 to documented endpoints and the contract states which endpoints are token-scoped vs public and their retryability
-- [ ] #4 An operator can retrieve the OpenSSH CA trust bundle (@cert-authority + TrustedUserCAKeys lines) from one documented public endpoint
+- [x] #1 The ssh_host_cert role generates the host key on the node, signs the pubkey via the external API with a bearer token over TLS, installs the cert + sshd drop-in, runs sshd -t, and reloads sshd; host-pubkey registration is invoked only when the ECIES path is enabled
+- [x] #2 docs/ssh-api-contract.md documents every SSH external endpoint with request/response schemas, the Idempotency-Key contract, the per-fleet bearer auth model, the standard error shape, and the bare-KRL-unsigned vs detached-signature trust model
+- [x] #3 The role's HTTP calls map 1:1 to documented endpoints and the contract states which endpoints are token-scoped vs public and their retryability
+- [x] #4 An operator can retrieve the OpenSSH CA trust bundle (@cert-authority + TrustedUserCAKeys lines) from one documented public endpoint
 <!-- AC:END -->
