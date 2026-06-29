@@ -35,3 +35,9 @@ Add ssh_revocations (ca_id, target_type 'cert'|'serial'|'key_fingerprint'|'key_i
 - [x] #3 A backlog decision (decision-012) records the new-tables choice, on-row blob choice, the bare-KRL-unsigned vs detached-signature trust model, ONE serial scheme used by both UI and automation, the per-CA monotonic allocator, the key-id convention, and that serial-range revocation is out of v1 scope
 - [x] #4 Exported SshRevocation/SshKrl types; migration applies cleanly; typecheck passes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+9 ssh_* tables via hand-written additive migration 0004 (drizzle-kit generate blocked by pre-existing 0002/0003 snapshot drift). Migrations 0000-0004 apply cleanly to fresh DB. decision-012 Accepted. Validated by src/db/ssh-schema.test.ts (5 tests): partial unique active/rotating-per-type, per-CA (ca_id,serial) uniqueness, identity->user_principals cascade, in-use principal delete restricted, KRL blob+detached-sig storage, JSON round-trip.
+<!-- SECTION:NOTES:END -->
