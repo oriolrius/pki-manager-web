@@ -35,3 +35,9 @@ Add the ssh_cas Drizzle table to backend/src/db/schema.ts and the next sequentia
 - [x] #3 Exported SshCa/NewSshCa types; ssh_cas carries no subjectDn/notAfter and the X.509 certificate_authorities table and queries are unchanged
 - [x] #4 next_serial covers the practical OpenSSH serial range (documented that SQLite INTEGER is signed 64-bit) and the migration file number is the next sequential after the verified head, not hard-coded
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh_cas: caType discriminator, KMS refs, openssh_public_key+fingerprint, ECDSA-P256, next_serial allocator, rotation cols (predecessor_ca_id/status/retire_after), partial unique indexes (1 active + 1 rotating per type). Migration head verified 0003 -> 0004.
+<!-- SECTION:NOTES:END -->
