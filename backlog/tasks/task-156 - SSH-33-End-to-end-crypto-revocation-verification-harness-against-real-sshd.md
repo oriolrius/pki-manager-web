@@ -1,10 +1,11 @@
 ---
 id: TASK-156
 title: 'SSH-33: End-to-end crypto + revocation verification harness against real sshd'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:46'
-updated_date: '2026-06-29 15:48'
+updated_date: '2026-06-29 18:39'
 labels:
   - ssh-cert-manager
   - automation
