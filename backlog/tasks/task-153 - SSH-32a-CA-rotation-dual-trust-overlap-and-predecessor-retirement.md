@@ -1,10 +1,10 @@
 ---
 id: TASK-153
 title: 'SSH-32a: CA rotation: dual-trust overlap and predecessor retirement'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:45'
-updated_date: '2026-06-29 15:48'
+updated_date: '2026-06-29 18:39'
 labels:
   - ssh-cert-manager
   - automation
@@ -28,8 +28,8 @@ Implement SSH CA rotation backed by the rotation columns added in SSH-05 (predec
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Rotating an SSH CA keeps the predecessor key trusted (both keys published in the trust bundle) until old certs expire, then retires it, with no valid cert rejected mid-rotation
-- [ ] #2 New certificates after rotation are signed by the successor CA; the predecessor signs nothing further
-- [ ] #3 The rotation uses the SSH-05 rotation columns (no late schema migration) and the partial unique index permits the active+rotating pair
-- [ ] #4 Rotation start and predecessor retirement each write an audit_log row and are reachable from the CA detail UI
+- [x] #1 Rotating an SSH CA keeps the predecessor key trusted (both keys published in the trust bundle) until old certs expire, then retires it, with no valid cert rejected mid-rotation
+- [x] #2 New certificates after rotation are signed by the successor CA; the predecessor signs nothing further
+- [x] #3 The rotation uses the SSH-05 rotation columns (no late schema migration) and the partial unique index permits the active+rotating pair
+- [x] #4 Rotation start and predecessor retirement each write an audit_log row and are reachable from the CA detail UI
 <!-- AC:END -->
