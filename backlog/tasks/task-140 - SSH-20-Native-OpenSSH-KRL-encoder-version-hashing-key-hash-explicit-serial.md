@@ -3,10 +3,11 @@ id: TASK-140
 title: >-
   SSH-20: Native OpenSSH KRL encoder + version hashing (key-hash +
   explicit-serial)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:43'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:18'
 labels:
   - ssh-cert-manager
   - backend
