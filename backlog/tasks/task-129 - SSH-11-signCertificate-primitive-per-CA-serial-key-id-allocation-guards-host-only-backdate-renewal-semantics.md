@@ -38,3 +38,9 @@ Expose signCertificate(ctx, { caId, sshPublicKey, type:'user'|'host', keyId, pri
 - [x] #3 Freshly issued HOST certs are accepted by an sshd whose clock is slightly ahead (host-only notBefore backdate applied); user certs are not auto-backdated and the returned object includes serial and validBefore
 - [x] #4 Renewal allocates a new serial+key_id, links via superseded_by, optionally revokes the prior serial into the KRL, and preserves the host_id/identity_id audit link — covered by a test asserting whether renewing invalidates the prior cert
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+signCertificate primitive: validates type<->CA caType, atomic per-CA serial via UPDATE+1 RETURNING (race-free on better-sqlite3), host-only -5m backdate, renewal sets superseded_by. Validated: serials monotonic per-CA (host 1,2,3 independent of user 1), ssh-keygen -L decodes all fields.
+<!-- SECTION:NOTES:END -->
