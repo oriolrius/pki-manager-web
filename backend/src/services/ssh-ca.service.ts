@@ -199,6 +199,55 @@ export class SshCaService {
     };
   }
 
+  /**
+   * Rotate a CA (SSH-32a): mark the predecessor 'rotating' (still trusted until
+   * its certs expire), provision a successor active CA linked to it. Both keys
+   * are published by getTrustAnchors during overlap; new issuance uses the
+   * successor (resolvers pick the active CA).
+   */
+  async rotate(ctx: ServiceContext, id: string, overlapSeconds = 53 * 7 * 24 * 3600): Promise<{ predecessor: SshCaDto; successor: SshCaDto }> {
+    const old = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0];
+    if (!old) throw new SshCaNotFoundError(id);
+    if (old.status !== 'active') throw new SshCaAlgorithmError(`only an active CA can be rotated (status: ${old.status})`);
+
+    // Demote predecessor to 'rotating' first so the active-per-type slot is free.
+    await ctx.db
+      .update(sshCas)
+      .set({ status: 'rotating', retireAfter: new Date(Date.now() + overlapSeconds * 1000), updatedAt: new Date() })
+      .where(eq(sshCas.id, id));
+
+    const successor = await this.create(ctx, { caType: old.caType, label: `${old.label ?? old.caType} (rotated ${new Date().toISOString().slice(0, 10)})` });
+    await ctx.db.update(sshCas).set({ predecessorCaId: id, updatedAt: new Date() }).where(eq(sshCas.id, successor.id));
+
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.ca.rotate',
+      entityType: 'ssh_ca',
+      entityId: successor.id,
+      status: 'success',
+      details: { predecessor: id, caType: old.caType },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+    return { predecessor: await this.get(ctx, id), successor: await this.get(ctx, successor.id) };
+  }
+
+  /** Retire a 'rotating' predecessor once its certs have expired. */
+  async retire(ctx: ServiceContext, id: string): Promise<SshCaDto> {
+    const row = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0];
+    if (!row) throw new SshCaNotFoundError(id);
+    await ctx.db.update(sshCas).set({ status: 'retired', updatedAt: new Date() }).where(eq(sshCas.id, id));
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.ca.rotate',
+      entityType: 'ssh_ca',
+      entityId: id,
+      status: 'success',
+      details: { action: 'retire-predecessor' },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+    return this.get(ctx, id);
+  }
+
   /** Retire (revoke) a CA. */
   async revoke(ctx: ServiceContext, id: string, reason?: string): Promise<SshCaDto> {
     const row = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0];

@@ -83,6 +83,20 @@ const caRouter = router({
       mapSshError(e);
     }
   }),
+  rotate: sshAdminProcedure.input(sshCaIdSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshCaService().rotate(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  retire: sshAdminProcedure.input(sshCaIdSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshCaService().retire(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
 });
 
 const hostRouter = router({
@@ -122,6 +136,21 @@ const hostRouter = router({
       mapSshError(e);
     }
   }),
+  registerEciesKey: sshProtectedProcedure.input(hostIdSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshHostService().registerEciesKey(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  offboard: sshProtectedProcedure.input(hostIdSchema.extend({ reason: z.string().max(256).optional() })).mutation(async ({ ctx, input }) => {
+    try {
+      await getSshHostService().offboard(svcCtx(ctx), input.id, input.reason);
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
 });
 
 const userRouter = router({
@@ -136,6 +165,14 @@ const userRouter = router({
   disableIdentity: sshProtectedProcedure.input(identityIdSchema).mutation(async ({ ctx, input }) => {
     try {
       await getSshUserService().disableIdentity(svcCtx(ctx), input.id);
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  offboard: sshProtectedProcedure.input(identityIdSchema.extend({ reason: z.string().max(256).optional() })).mutation(async ({ ctx, input }) => {
+    try {
+      await getSshUserService().offboard(svcCtx(ctx), input.id, input.reason);
       return { ok: true };
     } catch (e) {
       mapSshError(e);

@@ -187,6 +187,46 @@ export class SshHostService {
     return { kmsPublicKeyId: publicKeyId, kmsPrivateKeyId: privateKeyId };
   }
 
+  /**
+   * Decommission a host in one action (SSH-32b): revoke its outstanding certs
+   * (feeding the KRL), remove its principal maps, destroy its KMS ECIES key if
+   * registered, and set status 'offboarded'. Succeeds even with no ECIES key.
+   */
+  async offboard(ctx: ServiceContext, hostId: string, reason = 'host decommissioned'): Promise<void> {
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
+    if (!host) throw new SshHostError(`host ${hostId} not found`);
+
+    const { sshCertificates, sshHostPrincipalMaps } = await import('../db/schema.js');
+    const { getSshKrlService } = await import('./ssh-krl.service.js');
+    const krl = getSshKrlService();
+
+    const certs = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.hostId, hostId))) as any[];
+    for (const c of certs) {
+      if (c.status === 'active') await krl.revokeByCert(ctx, c.id, reason);
+    }
+    await ctx.db.delete(sshHostPrincipalMaps).where(eq(sshHostPrincipalMaps.hostId, hostId));
+
+    if (host.kmsPubkeyId) {
+      try {
+        const priv = String(host.kmsPubkeyId).replace(/_pk$/, '');
+        const { getKMSService } = await import('../kms/service.js');
+        await getKMSService().destroyKeyPair(priv, host.kmsPubkeyId);
+      } catch {
+        /* best effort */
+      }
+    }
+    await ctx.db.update(sshHosts).set({ status: 'offboarded', currentCertId: null, kmsPubkeyId: null, updatedAt: new Date() }).where(eq(sshHosts.id, hostId));
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.host.offboard',
+      entityType: 'ssh_host',
+      entityId: hostId,
+      status: 'success',
+      details: { reason, revoked: certs.filter((c) => c.status === 'active' || c.status === 'revoked').length },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+  }
+
   private async resolveHostCa(ctx: ServiceContext, caId?: string): Promise<any> {
     if (caId) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];

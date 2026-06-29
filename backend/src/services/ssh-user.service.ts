@@ -103,6 +103,32 @@ export class SshUserService {
     });
   }
 
+  /**
+   * Offboard an identity in one action (SSH-32c): revoke its outstanding user
+   * certs (feeding the KRL) and disable it so no new certs can be issued.
+   */
+  async offboard(ctx: ServiceContext, id: string, reason = 'identity offboarded'): Promise<void> {
+    const row = (await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, id)).limit(1))[0];
+    if (!row) throw new SshUserError(`identity ${id} not found`);
+    const { getSshKrlService } = await import('./ssh-krl.service.js');
+    const krl = getSshKrlService();
+    const certs = (await ctx.db
+      .select()
+      .from(sshCertificates)
+      .where(and(eq(sshCertificates.identityId, id), eq(sshCertificates.status, 'active')))) as any[];
+    for (const c of certs) await krl.revokeByCert(ctx, c.id, reason);
+    await ctx.db.update(sshIdentities).set({ status: 'disabled', updatedAt: new Date() }).where(eq(sshIdentities.id, id));
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.identity.disable',
+      entityType: 'ssh_identity',
+      entityId: id,
+      status: 'success',
+      details: { offboard: true, reason, revoked: certs.length },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+  }
+
   async issue(
     ctx: ServiceContext,
     params: IssueUserCertParams
