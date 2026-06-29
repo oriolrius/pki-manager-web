@@ -4,12 +4,16 @@ title: 'SSH-BULK: Bulk renew expiring + bulk revoke SSH certs'
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:42'
+updated_date: '2026-06-29 15:47'
 labels:
   - ssh-cert-manager
   - backend
   - api
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-130
+  - TASK-131
+  - TASK-141
 priority: low
 ---
 
