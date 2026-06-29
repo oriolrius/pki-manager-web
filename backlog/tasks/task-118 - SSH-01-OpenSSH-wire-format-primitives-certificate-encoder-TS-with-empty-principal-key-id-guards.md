@@ -3,10 +3,11 @@ id: TASK-118
 title: >-
   SSH-01: OpenSSH wire-format primitives + certificate encoder (TS) with
   empty-principal/key-id guards
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:39'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:31'
 labels:
   - ssh-cert-manager
   - crypto
