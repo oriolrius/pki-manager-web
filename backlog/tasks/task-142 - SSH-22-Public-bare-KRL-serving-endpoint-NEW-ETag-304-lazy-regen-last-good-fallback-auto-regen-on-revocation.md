@@ -3,10 +3,10 @@ id: TASK-142
 title: >-
   SSH-22: Public bare-KRL serving endpoint + NEW
   ETag/304/lazy-regen/last-good-fallback + auto-regen on revocation
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:43'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:25'
 labels:
   - ssh-cert-manager
   - backend
@@ -29,8 +29,8 @@ Serve the BARE unsigned KRL for RevokedKeys/RevokedHostKeys at a public GET /krl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A host can GET /krl/:caId.bin over plain HTTP and install the bytes as RevokedKeys so sshd revokes the listed keys without restart; the trust model (TLS + file perms, sshd does not verify the KRL signature) is documented in the response/route comments and operator docs
-- [ ] #2 A matching If-None-Match yields 304 with no body (NEW behaviour, not present on /crl); responses set ETag/X-KRL-Version and Last-Modified/Expires/Cache-Control from next_update; an unknown caId returns a stable 404
-- [ ] #3 Revoking a key/serial via any path causes the next GET to return a higher version revoking it (verified with ssh-keygen -Q); a stale KRL is lazily regenerated before serving, falling back to last-good bytes if signing is unavailable (never an empty/503 KRL once one exists)
-- [ ] #4 The raw .bin endpoint requires no authentication, is safe behind a CDN, and an emergency revocation is reflected without restarting the backend; this task is the sole owner of the public raw-bytes route
+- [x] #1 A host can GET /krl/:caId.bin over plain HTTP and install the bytes as RevokedKeys so sshd revokes the listed keys without restart; the trust model (TLS + file perms, sshd does not verify the KRL signature) is documented in the response/route comments and operator docs
+- [x] #2 A matching If-None-Match yields 304 with no body (NEW behaviour, not present on /crl); responses set ETag/X-KRL-Version and Last-Modified/Expires/Cache-Control from next_update; an unknown caId returns a stable 404
+- [x] #3 Revoking a key/serial via any path causes the next GET to return a higher version revoking it (verified with ssh-keygen -Q); a stale KRL is lazily regenerated before serving, falling back to last-good bytes if signing is unavailable (never an empty/503 KRL once one exists)
+- [x] #4 The raw .bin endpoint requires no authentication, is safe behind a CDN, and an emergency revocation is reflected without restarting the backend; this task is the sole owner of the public raw-bytes route
 <!-- AC:END -->
