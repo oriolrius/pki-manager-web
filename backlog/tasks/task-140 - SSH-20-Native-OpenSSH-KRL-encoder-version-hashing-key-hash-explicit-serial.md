@@ -3,11 +3,11 @@ id: TASK-140
 title: >-
   SSH-20: Native OpenSSH KRL encoder + version hashing (key-hash +
   explicit-serial)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:43'
-updated_date: '2026-06-29 18:18'
+updated_date: '2026-06-29 18:25'
 labels:
   - ssh-cert-manager
   - backend
@@ -30,8 +30,8 @@ Add backend/src/crypto/ssh/krl.ts building a valid BARE (unsigned) OpenSSH-wire 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A KRL produced by the encoder is honoured by `ssh-keygen -Qf <krl> <pubkey>` (revoked key reported revoked, non-revoked not)
-- [ ] #2 A key revoked by SHA256 hash and a cert revoked by explicit serial are both honoured by ssh-keygen -Qf; serial-range/bitmap encoding is explicitly not implemented in v1
-- [ ] #3 krlVersion() returns a stable sha256:<hex> over the exact bytes; identical directive sets produce byte-identical KRLs
-- [ ] #4 uint64 serials are handled as bigint with no silent precision loss
+- [x] #1 A KRL produced by the encoder is honoured by `ssh-keygen -Qf <krl> <pubkey>` (revoked key reported revoked, non-revoked not)
+- [x] #2 A key revoked by SHA256 hash and a cert revoked by explicit serial are both honoured by ssh-keygen -Qf; serial-range/bitmap encoding is explicitly not implemented in v1
+- [x] #3 krlVersion() returns a stable sha256:<hex> over the exact bytes; identical directive sets produce byte-identical KRLs
+- [x] #4 uint64 serials are handled as bigint with no silent precision loss
 <!-- AC:END -->
