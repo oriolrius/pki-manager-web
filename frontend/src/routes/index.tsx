@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { AlertCircle, Lock, Server, Home, Zap, Shield } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faShield, faShieldHalved, faCertificate, faFileContract } from '@fortawesome/free-solid-svg-icons';
+import { faShield, faShieldHalved, faCertificate, faFileContract, faServer, faUserShield, faClock } from '@fortawesome/free-solid-svg-icons';
 
 export const Route = createFileRoute('/')({
   component: Dashboard,
@@ -12,6 +12,16 @@ function Dashboard() {
   const navigate = useNavigate();
   const statsQuery = trpc.dashboard.stats.useQuery();
   const expiringQuery = trpc.dashboard.expiringSoon.useQuery({ limit: 5 });
+
+  // SSH dashboard data (SSH-30)
+  const sshMetricsQuery = trpc.ssh.mon.metrics.useQuery(undefined);
+  const sshHostsQuery = trpc.ssh.host.list.useQuery();
+  const sshIdentitiesQuery = trpc.ssh.user.listIdentities.useQuery();
+
+  const sshActiveHostCerts = (sshHostsQuery.data ?? []).filter(
+    (h) => h.status === 'active' && !!h.currentCertId
+  ).length;
+  const sshActiveIdentities = (sshIdentitiesQuery.data ?? []).filter((i) => i.status === 'active').length;
 
   return (
     <div className="space-y-6">
@@ -129,6 +139,73 @@ function Dashboard() {
                 <span className="text-xs text-muted-foreground">Active Certs</span>
               </div>
               <p className="text-xs text-muted-foreground">Currently valid</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SSH Stats Cards (SSH-30) */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <FontAwesomeIcon icon={faServer} className="h-4 w-4 text-muted-foreground/70" />
+          <h3 className="text-sm font-semibold text-muted-foreground">SSH Certificate Manager</h3>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div
+            className="rounded-lg border bg-card px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => navigate({ to: '/ssh/hosts' })}
+          >
+            <div className="flex items-center gap-3">
+              <FontAwesomeIcon icon={faServer} className="h-5 w-5 text-blue-500/70" />
+              <div className="flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold">
+                    {sshHostsQuery.isLoading ? '...' : sshHostsQuery.isError ? 'Err' : sshActiveHostCerts}
+                  </span>
+                  <span className="text-xs text-muted-foreground">SSH Host Certs</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Active host certificates</p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="rounded-lg border bg-card px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => navigate({ to: '/ssh/users' })}
+          >
+            <div className="flex items-center gap-3">
+              <FontAwesomeIcon icon={faUserShield} className="h-5 w-5 text-muted-foreground/50" />
+              <div className="flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold">
+                    {sshIdentitiesQuery.isLoading ? '...' : sshIdentitiesQuery.isError ? 'Err' : sshActiveIdentities}
+                  </span>
+                  <span className="text-xs text-muted-foreground">User Identities</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Active SSH identities</p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="rounded-lg border bg-card px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
+            onClick={() => navigate({ to: '/ssh' })}
+          >
+            <div className="flex items-center gap-3">
+              <FontAwesomeIcon icon={faClock} className="h-5 w-5 text-orange-500/70" />
+              <div className="flex-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold text-orange-500">
+                    {sshMetricsQuery.isLoading
+                      ? '...'
+                      : sshMetricsQuery.isError
+                        ? 'Err'
+                        : (sshMetricsQuery.data?.expiringSoon ?? 0)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Expiring Soon</span>
+                </div>
+                <p className="text-xs text-muted-foreground">SSH certs expiring</p>
+              </div>
             </div>
           </div>
         </div>
