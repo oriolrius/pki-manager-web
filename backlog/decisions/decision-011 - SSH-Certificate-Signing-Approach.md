@@ -2,7 +2,7 @@
 id: decision-011
 title: SSH Certificate Signing Approach
 date: '2026-06-29 15:48'
-status: Proposed
+status: Accepted
 ---
 ## Context
 
@@ -16,43 +16,68 @@ widens any backend RCE / heap-dump from time-bounded signing access to permanent
 
 There is no `signRaw` seam on this branch yet (crl.service is still a placeholder), so this
 milestone AUTHORS the raw-signing primitive rather than reusing one. The export justification
-("Cosmian rejects EC Sign") is unverified here and is contradicted by the PoC. This decision is
-therefore settled empirically by the SSH-SENS spike (TASK-117) against the live KMS, and binds
-the signer (SSH-03 / TASK-120) and the pinned detached-signature format (SSH-04 / TASK-121).
+("Cosmian rejects EC Sign") is **disproven** here. This decision is settled empirically by the
+SSH-SENS spike (TASK-117, `backend/src/kms/spike-ssh-sign.ts`) run against the live KMS at
+`http://wsl.ymbihq.local:42998` (Cosmian KMS), and binds the signer (SSH-03 / TASK-120) and the
+pinned detached-signature format (SSH-04 / TASK-121).
+
+## Spike results (TASK-117, reproducible — `KMS_URL=… npx tsx src/kms/spike-ssh-sign.ts`)
+
+| Probe | Result |
+|---|---|
+| (a) KMIP-JSON `Sign` on a `Sensitive=true` ECDSA-P256 key | **PASS** — returns a DER/ASN.1 ECDSA signature (~72 B, `30 46…`); KMS hashes SHA-256 server-side; validated by KMIP `SignatureVerify`. CA key never leaves KMS. |
+| (b) Cosmian native `cosmian kms ec sign` on the same key | **PASS** — byte-compatible DER signature; also `SignatureVerify`-valid. |
+| (c) Non-sensitive EC key: KMIP `Get` (PKCS#8) → Node `createPrivateKey` + sign | **PASS** — exported key imports directly into Node `crypto` (the fallback works, but is NOT adopted). |
+| (d) `Get` (export) of a `Sensitive=true` private key | **DENIED** — `Sensitive: DENIED`. Non-exportability confirmed. |
+
+Non-obvious KMS mechanics the spike pinned (carried into SSH-05/SSH-10/SSH-03):
+
+1. **Key lifecycle:** `CreateKeyPair` yields **PreActive** keys; `Sign`/`SignatureVerify` reject
+   them with `Item_Not_Found: no valid key for id` until both the private and public key are
+   **`Activate`d**. CA creation MUST issue `Activate` after `CreateKeyPair`.
+2. **EC create recipe (pure KMIP-JSON, no CLI):** `CryptographicAlgorithm=ECDSA`,
+   `CryptographicDomainParameters.RecommendedCurve="P256"` (NOT `P_256`/`P-256`/`secp256r1` —
+   those are rejected), `CryptographicUsageMask=3` (Sign|Verify — without a Sign usage the key
+   signs nowhere even once Active), `Sensitive=true`.
+3. **Sign call:** `CryptographicParameters {CryptographicAlgorithm=ECDSA, HashingAlgorithm=SHA256}`
+   + `Data` as a hex `ByteString` → `SignResponse.SignatureData` (hex DER).
+4. **Signature format from the KMS is DER/ASN.1.** OpenSSH in-cert signatures need DER → fixed-width
+   `r||s` → ssh-string-wrapped mpints (SSH-03); SSH-04 pins the detached format.
+5. **EC public key from KMIP `Get` is NOT a Node-importable SPKI** (local `createPublicKey`
+   fails `DECODER unsupported`); server-side `SignatureVerify` is authoritative for now, and
+   SSH-02/SSH-10 must convert the EC point to SPKI / the `ecdsa-sha2-nistp256 AAAA…` OpenSSH line.
+6. The same KMS advertises `Encrypt`/`Decrypt`/`Locate`/`Register`/`SignatureVerify` over
+   KMIP-JSON — de-risking the SSH-23 ECIES + SSH-15 host-pubkey-register path (verify in SSH-23).
 
 ## Decision
 
-Prefer the NON-exportable signing path and keep SSH CA keys `--sensitive true`. The SSH-SENS
-spike probes the live KMS for: (a) KMIP-JSON Sign on a sensitive ECDSA-P256 key; (b) Cosmian
-native `ec sign` on the same; (c) whether a non-sensitive EC key exports in a Node-importable
-layout (SEC1/PKCS#8, with a normalization helper if needed).
+ADOPT the **non-exportable** signing path. SSH CA keys are created `Sensitive=true` (and
+`Activate`d), and `kmsService.signRaw()` signs via **KMIP-JSON `Sign`** — chosen over the
+Cosmian CLI because it needs no `cosmian` binary in the backend container and reuses the
+existing `KMSClient` HTTP/KMIP transport. The CA private key never leaves the KMS.
 
-- If (a) OR (b) yields a usable signature, adopt the non-exportable native-sign path; the CA
-  key never leaves KMS.
-- In-memory export-and-sign is a documented DOWNGRADE adopted ONLY if both Sign paths are
-  proven impossible, and then with: the exported buffer zeroized after one op, a named risk
-  owner, and a loud audit + alert on every CA-key export.
+In-memory export-and-sign is **NOT adopted** (both Sign paths work). It remains documented only
+as an emergency fallback; were it ever needed it would require buffer zeroization after one op,
+a named risk owner, and a loud audit + alert on every CA-key export.
 
-`kmsService.signRaw(keyId, data, {hash, format})` (SSH-03) is the single function whose body
-differs between the two modes; all callers (cert signer, KRL detached signature) are unchanged
-across the swap. The pinned detached-signature format (DER vs raw r||s) is fixed in SSH-04 so
-the KRL service (SSH-21) and the deferred puller (SSH-24) share one verifier regardless of
-whether the signature came from Node export-and-sign or Cosmian native `ec sign`. Status stays
-Proposed until the SSH-SENS spike records its result.
+`kmsService.signRaw(keyId, data, {hash, format})` (SSH-03) is the single seam; all callers (cert
+signer, KRL detached signature) are unchanged if the backend ever swaps. SSH-04 pins the
+detached-signature format (DER) so the KRL service (SSH-21) and the puller (SSH-24) share one
+verifier.
 
 ## Consequences
 
-- Security posture matches the PoC: a non-exportable CA key bounds the blast radius of a
-  backend compromise to time-limited signing, not permanent key theft.
-- A single seam (`signRaw`) means the signing backend can change without touching cert/KRL
-  callers, and CRL signing can later adopt the same seam.
-- The spike skips (not fails) when `KMS_URL` is unreachable, so CI without a KMS is unaffected.
-- If export-and-sign is unavoidable, the residual risk is explicit, owned, and loudly audited
-  rather than silent — and the decision records the exact KMS key-creation flags so issuance
-  does not fail at runtime against a sensitive key.
+- Security posture matches the PoC: a non-exportable CA key bounds a backend compromise to
+  time-limited signing, not permanent key theft. `getPrivateKey()` is not on the SSH signing path.
+- SSH-05/SSH-10 must add `Sensitive=true` + `Activate` + `RecommendedCurve="P256"` +
+  `CryptographicUsageMask=3` to the KMIP `CreateKeyPair` (the existing `createKeyPair` does none
+  of these). SSH-03 must DER→`r||s` convert. SSH-02/SSH-10 must convert the EC public key.
+- A single seam (`signRaw`) means CRL signing (TASK-110-series, other branch) can later adopt it.
+- The spike skips (exit 0) when `KMS_URL` is unreachable, so CI without a KMS is unaffected.
 
 ## Related tasks
 
-- TASK-117 (SSH-SENS) — the empirical spike that decides this.
-- TASK-120 (SSH-03) — the `signRaw` seam + SSH ECDSA signer.
+- TASK-117 (SSH-SENS) — the empirical spike that decided this. **Done.**
+- TASK-120 (SSH-03) — the `signRaw` seam + SSH ECDSA signer (DER→r||s).
 - TASK-121 (SSH-04) — pins the detached-signature format end-to-end.
+- TASK-122 (SSH-05) / TASK-127 (SSH-10) — must create CA keys Sensitive + Active per the recipe above.
