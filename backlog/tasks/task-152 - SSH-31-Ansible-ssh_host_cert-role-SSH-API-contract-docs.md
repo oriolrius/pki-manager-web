@@ -4,12 +4,15 @@ title: 'SSH-31: Ansible ssh_host_cert role + SSH API contract docs'
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:45'
+updated_date: '2026-06-29 15:48'
 labels:
   - ssh-cert-manager
   - automation
   - docs
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-138
+  - TASK-142
 priority: medium
 ---
 
