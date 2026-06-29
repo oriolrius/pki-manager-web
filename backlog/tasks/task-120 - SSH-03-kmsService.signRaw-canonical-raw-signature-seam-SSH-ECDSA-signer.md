@@ -34,3 +34,9 @@ Introduce kmsService.signRaw(keyId, data, {hash:'sha256'|null, format:'der'|'iee
 - [x] #3 signRaw's body implements the SSH-SENS-selected path; if export-and-sign, the exported key buffer is zeroized after the op and every export emits an audit+alert row; every signing op produces a kms.sign_raw audit row and a failure produces a failure row
 - [x] #4 The seam is the single function the design names as the swap-point between non-exportable and export signing, and crl.service is not assumed to consume it on day one
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+kms signRaw() via KMIP Sign (decision-011 non-exportable path); createSshCaKeyPair (private-only Sensitive + Activate + RecommendedCurve P256 + UsageMask); getEcPublicPoint (QString); sign.ts DER->OpenSSH sig. Live-KMS integration test signs host+user certs verified by ssh-keygen -L + KMIP SignatureVerify (3).
+<!-- SECTION:NOTES:END -->
