@@ -34,3 +34,9 @@ Singleton service that registers a host (pasted Ed25519/ECDSA pubkey) and issues
 - [x] #3 Issued host certs are listable/filterable by host_id, principal, serial, key-id, and expiry
 - [x] #4 revoke() marks the cert revoked (by key fingerprint/explicit serial), triggers KRL regeneration for its CA, and renew re-signs without re-registration
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-host.service register/issue/get/list/revoke + sshd drop-in; principals = fqdn+IPs; rejects private keys. Integration test: host cert ssh-keygen -L shows fqdn+IP + Signing CA fingerprint.
+<!-- SECTION:NOTES:END -->
