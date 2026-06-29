@@ -3,10 +3,10 @@ id: TASK-130
 title: >-
   SSH-12: ssh-host.service.ts: issue/list/get/revoke host certificates + sshd
   drop-in
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:03'
 labels:
   - ssh-cert-manager
   - backend
@@ -29,8 +29,8 @@ Singleton service that registers a host (pasted Ed25519/ECDSA pubkey) and issues
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can submit a host public key and receive a signed host cert whose principals contain the FQDN and every supplied IP; the API never accepts a private key
-- [ ] #2 get() returns a ready-to-paste sshd_config drop-in and the cert in OpenSSH format
-- [ ] #3 Issued host certs are listable/filterable by host_id, principal, serial, key-id, and expiry
-- [ ] #4 revoke() marks the cert revoked (by key fingerprint/explicit serial), triggers KRL regeneration for its CA, and renew re-signs without re-registration
+- [x] #1 An operator can submit a host public key and receive a signed host cert whose principals contain the FQDN and every supplied IP; the API never accepts a private key
+- [x] #2 get() returns a ready-to-paste sshd_config drop-in and the cert in OpenSSH format
+- [x] #3 Issued host certs are listable/filterable by host_id, principal, serial, key-id, and expiry
+- [x] #4 revoke() marks the cert revoked (by key fingerprint/explicit serial), triggers KRL regeneration for its CA, and renew re-signs without re-registration
 <!-- AC:END -->
