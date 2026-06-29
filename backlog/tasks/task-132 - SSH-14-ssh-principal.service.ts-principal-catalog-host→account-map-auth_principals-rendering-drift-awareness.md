@@ -3,10 +3,10 @@ id: TASK-132
 title: >-
   SSH-14: ssh-principal.service.ts: principal catalog + host→account map +
   auth_principals rendering + drift awareness
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:03'
 labels:
   - ssh-cert-manager
   - backend
@@ -30,8 +30,8 @@ Singleton service owning the RBAC catalog: CRUD over ssh_principals (role names)
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can define role-principals and map them to local accounts (e.g. 'admin'→'root') scoped per host or host-group
-- [ ] #2 render(hostId) returns the exact /etc/ssh/auth_principals/<account> file contents and the AuthorizedPrincipalsFile directive snippet for that host
-- [ ] #3 Adding a host to a group makes it inherit the group's principal→account mappings with no certificate re-signing; changing a mapping writes an audit_log row and updates the catalog's change timestamp
-- [ ] #4 Hosts whose catalog mappings changed after last_principal_push_at are flagged as 'stale'; principal and account names are validated against an injection-safe grammar
+- [x] #1 An operator can define role-principals and map them to local accounts (e.g. 'admin'→'root') scoped per host or host-group
+- [x] #2 render(hostId) returns the exact /etc/ssh/auth_principals/<account> file contents and the AuthorizedPrincipalsFile directive snippet for that host
+- [x] #3 Adding a host to a group makes it inherit the group's principal→account mappings with no certificate re-signing; changing a mapping writes an audit_log row and updates the catalog's change timestamp
+- [x] #4 Hosts whose catalog mappings changed after last_principal_push_at are flagged as 'stale'; principal and account names are validated against an injection-safe grammar
 <!-- AC:END -->
