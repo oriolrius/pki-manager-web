@@ -38,16 +38,9 @@ spec:
               value: "3000"
             - name: HOST
               value: "0.0.0.0"
-            - name: EXTERNAL_ISSUER_CA_CERT_PEM
-              value: /ca/ca.crt
-            - name: EXTERNAL_ISSUER_CA_KEY_PEM
-              value: /ca/ca.key
           volumeMounts:
             - name: data
               mountPath: /data
-            - name: ca
-              mountPath: /ca
-              readOnly: true
           readinessProbe:
             httpGet: { path: /health, port: 3000 }
             initialDelaySeconds: 5
@@ -63,9 +56,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: pki-manager-data
-        - name: ca
-          secret:
-            secretName: pki-manager-external-ca
 ---
 apiVersion: v1
 kind: Service

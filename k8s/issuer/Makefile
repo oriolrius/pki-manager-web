@@ -65,15 +65,7 @@ load-images: docker-build build-backend
 	kind load docker-image ghcr.io/cosmian/kms:latest --name $(KIND_CLUSTER)
 
 deploy-pki-manager:
-	@if [ ! -f /tmp/e2e-ca.crt ]; then \
-	  openssl genrsa -out /tmp/e2e-ca.key 2048 2>/dev/null; \
-	  openssl req -x509 -new -nodes -key /tmp/e2e-ca.key -sha256 -days 3650 \
-	    -out /tmp/e2e-ca.crt -subj "/CN=e2e-ca/O=Test/C=ES" 2>/dev/null; \
-	fi
 	kubectl apply -f test/e2e/in-cluster/00-namespace.yaml
-	kubectl -n pki-manager create secret generic pki-manager-external-ca \
-	  --from-file=ca.crt=/tmp/e2e-ca.crt --from-file=ca.key=/tmp/e2e-ca.key \
-	  --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -f test/e2e/in-cluster/10-kms.yaml -f test/e2e/in-cluster/20-pki-manager.yaml
 	kubectl -n pki-manager wait --for=condition=Available --timeout=180s deployment --all
 	kubectl -n pki-manager exec deploy/pki-manager-backend -- node backend/dist/db/migrate.js

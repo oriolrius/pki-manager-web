@@ -13,12 +13,14 @@ make e2e-in-cluster
 
 This:
 1. Creates kind cluster (`kindest/node:v1.31.2`)
-2. Generates a test CA (`/tmp/e2e-ca.{crt,key}`)
-3. Builds + loads `pki-manager-backend:e2e`, `pki-manager-issuer:e2e`, and pulls `ghcr.io/cosmian/kms:latest`
-4. Applies namespace + KMS Deployment/Service + PKI Manager backend Deployment/Service/PVC + Secret with CA cert+key
-5. Runs DB migrations inside the backend pod
-6. Installs cert-manager v1.16.2
-7. Installs the issuer Helm chart
+2. Builds + loads `pki-manager-backend:e2e`, `pki-manager-issuer:e2e`, and pulls `ghcr.io/cosmian/kms:latest`
+3. Applies namespace + KMS Deployment/Service + PKI Manager backend Deployment/Service/PVC
+4. Runs DB migrations inside the backend pod
+5. Installs cert-manager v1.16.2
+6. Installs the issuer Helm chart
+
+The backend signs CSRs via the KMS (the CA private key stays in the KMS), so no on-disk
+CA cert/key is mounted — the CA is created in-cluster during bootstrap below.
 
 ## Bootstrap CA + cluster token (post-install)
 
@@ -89,7 +91,7 @@ kubectl get secret in-cluster-tls -n default -o jsonpath='{.data.tls\.crt}' | ba
 kind cluster
 ├── ns: pki-manager
 │   ├── cosmian-kms       Service :9998 → Pod :9998
-│   └── pki-manager-backend Service :3000 → Pod :3000  (volumes: PVC /data, Secret /ca)
+│   └── pki-manager-backend Service :3000 → Pod :3000  (volume: PVC /data)
 ├── ns: cert-manager       (cert-manager 1.16.2)
 └── ns: pki-manager-issuer (Helm chart, controller talks to ClusterIssuer.spec.url)
 ```
