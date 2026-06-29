@@ -195,8 +195,6 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 	return ctrl.Result{}, lastErr
-	logger.Info("CertificateRequest signed", "serial", resp.SerialNumber, "idempotent", resp.Idempotent)
-	return ctrl.Result{}, r.Status().Update(ctx, cr)
 }
 
 func (r *CertificateRequestReconciler) resolveIssuer(ctx context.Context, cr *cmapi.CertificateRequest) (*pkiv1.IssuerSpec, string, string) {
