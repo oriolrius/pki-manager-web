@@ -3,10 +3,11 @@ id: TASK-144
 title: >-
   SSH-23: Spike Cosmian EC encrypt/decrypt (ECIES) + external-pubkey Register +
   locate-by-tag; v1 GATE for per-host distribution
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:25'
 labels:
   - ssh-cert-manager
   - backend
