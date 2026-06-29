@@ -3,10 +3,10 @@ id: TASK-126
 title: >-
   SSH-09: Schema: ssh_revocations + ssh_krls (bare-KRL + detached-sig split);
   audit-union + serial/key-id decision
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:55'
 labels:
   - ssh-cert-manager
   - database
@@ -30,8 +30,8 @@ Add ssh_revocations (ca_id, target_type 'cert'|'serial'|'key_fingerprint'|'key_i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The migration creates ssh_revocations and ssh_krls with the listed columns; serials stored as TEXT (uint64-safe); ssh_krls has both krl_blob (bare unsigned KRL) and a distinct ca_signature column; composite index (ca_id, krl_number) and an index on version_hash
-- [ ] #2 lib/audit.ts unions gain ssh_ca/ssh_host/ssh_identity/ssh_certificate/ssh_krl/ssh_principal entity types and ssh.ca.*, ssh.host.*, ssh.identity.*, ssh.cert.*, ssh.principal.*, ssh.krl.* operations, with no audit_log migration
-- [ ] #3 A backlog decision (decision-012) records the new-tables choice, on-row blob choice, the bare-KRL-unsigned vs detached-signature trust model, ONE serial scheme used by both UI and automation, the per-CA monotonic allocator, the key-id convention, and that serial-range revocation is out of v1 scope
-- [ ] #4 Exported SshRevocation/SshKrl types; migration applies cleanly; typecheck passes
+- [x] #1 The migration creates ssh_revocations and ssh_krls with the listed columns; serials stored as TEXT (uint64-safe); ssh_krls has both krl_blob (bare unsigned KRL) and a distinct ca_signature column; composite index (ca_id, krl_number) and an index on version_hash
+- [x] #2 lib/audit.ts unions gain ssh_ca/ssh_host/ssh_identity/ssh_certificate/ssh_krl/ssh_principal entity types and ssh.ca.*, ssh.host.*, ssh.identity.*, ssh.cert.*, ssh.principal.*, ssh.krl.* operations, with no audit_log migration
+- [x] #3 A backlog decision (decision-012) records the new-tables choice, on-row blob choice, the bare-KRL-unsigned vs detached-signature trust model, ONE serial scheme used by both UI and automation, the per-CA monotonic allocator, the key-id convention, and that serial-range revocation is out of v1 scope
+- [x] #4 Exported SshRevocation/SshKrl types; migration applies cleanly; typecheck passes
 <!-- AC:END -->
