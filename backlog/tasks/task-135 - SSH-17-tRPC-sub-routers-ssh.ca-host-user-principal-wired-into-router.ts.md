@@ -4,12 +4,19 @@ title: 'SSH-17: tRPC sub-routers (ssh.ca/host/user/principal) wired into router.
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:42'
+updated_date: '2026-06-29 15:47'
 labels:
   - ssh-cert-manager
   - backend
   - api
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-127
+  - TASK-128
+  - TASK-130
+  - TASK-131
+  - TASK-132
+  - TASK-134
 priority: high
 ---
 
