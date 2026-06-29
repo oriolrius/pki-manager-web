@@ -4,12 +4,14 @@ title: 'SSH-06: Schema: ssh_hosts (+ KRL/principal telemetry) + ssh_identities'
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:40'
+updated_date: '2026-06-29 15:46'
 labels:
   - ssh-cert-manager
   - database
   - backend
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-122
 priority: medium
 ---
 
