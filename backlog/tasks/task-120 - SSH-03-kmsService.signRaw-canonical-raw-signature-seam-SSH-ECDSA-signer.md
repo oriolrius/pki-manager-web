@@ -4,12 +4,16 @@ title: 'SSH-03: kmsService.signRaw() canonical raw-signature seam + SSH ECDSA si
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:39'
+updated_date: '2026-06-29 15:46'
 labels:
   - ssh-cert-manager
   - crypto
   - backend
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-117
+  - TASK-118
+  - TASK-119
 priority: high
 ---
 
