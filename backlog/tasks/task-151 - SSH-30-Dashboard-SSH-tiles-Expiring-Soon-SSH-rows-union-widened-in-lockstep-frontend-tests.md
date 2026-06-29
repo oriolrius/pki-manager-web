@@ -6,11 +6,15 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:45'
+updated_date: '2026-06-29 15:48'
 labels:
   - ssh-cert-manager
   - frontend
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-148
+  - TASK-149
+  - TASK-150
 priority: medium
 ---
 
