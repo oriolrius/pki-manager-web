@@ -3,10 +3,10 @@ id: TASK-150
 title: >-
   SSH-29: Principals/RBAC catalog UI + Revocation/KRL UI with telemetry-sourced
   distribution status
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:45'
-updated_date: '2026-06-29 15:48'
+updated_date: '2026-06-29 19:00'
 labels:
   - ssh-cert-manager
   - frontend
@@ -32,8 +32,8 @@ Two pages. Principals: the source-of-truth catalog of role-principals and their 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can define role-principals, map them to local accounts, generate the exact /etc/ssh/auth_principals/<account> file contents (copyable/downloadable per account and as a bundle) plus the AuthorizedPrincipalsFile directive, and see per-host which mappings apply and which hosts are stale vs last push
-- [ ] #2 An operator can revoke an SSH cert or paste a key/explicit-serial to revoke, choose a reason, and immediately see the KRL version increment and the directive appear in the auditable revocation list (scope/value/reason/who/when)
-- [ ] #3 The KRL panel shows version, revoked count, last-updated, next-update and KRL age per CA and offers signed-envelope + bare-KRL downloads; the per-host distribution table shows each host's last-fetched version and last-seen from real telemetry, with up-to-date/stale/unknown indicators
-- [ ] #4 Revocation is reachable from this page and from host/user detail pages and converges on the same KRL state; each revoked identity shows its cert expiry
+- [x] #1 An operator can define role-principals, map them to local accounts, generate the exact /etc/ssh/auth_principals/<account> file contents (copyable/downloadable per account and as a bundle) plus the AuthorizedPrincipalsFile directive, and see per-host which mappings apply and which hosts are stale vs last push
+- [x] #2 An operator can revoke an SSH cert or paste a key/explicit-serial to revoke, choose a reason, and immediately see the KRL version increment and the directive appear in the auditable revocation list (scope/value/reason/who/when)
+- [x] #3 The KRL panel shows version, revoked count, last-updated, next-update and KRL age per CA and offers signed-envelope + bare-KRL downloads; the per-host distribution table shows each host's last-fetched version and last-seen from real telemetry, with up-to-date/stale/unknown indicators
+- [x] #4 Revocation is reachable from this page and from host/user detail pages and converges on the same KRL state; each revoked identity shows its cert expiry
 <!-- AC:END -->
