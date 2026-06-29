@@ -4,12 +4,17 @@ title: 'SSH-33: End-to-end crypto + revocation verification harness against real
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 15:48'
 labels:
   - ssh-cert-manager
   - automation
   - testing
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-129
+  - TASK-130
+  - TASK-131
+  - TASK-142
 priority: medium
 ---
 
