@@ -3,10 +3,10 @@ id: TASK-151
 title: >-
   SSH-30: Dashboard SSH tiles + Expiring-Soon SSH rows (union widened in
   lockstep) + frontend tests
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:45'
-updated_date: '2026-06-29 15:48'
+updated_date: '2026-06-29 19:00'
 labels:
   - ssh-cert-manager
   - frontend
@@ -30,8 +30,8 @@ Extend index.tsx with SSH stat tiles (active SSH host certs, active user identit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The dashboard shows SSH host/user tiles styled consistently with existing tiles and the Expiring Soon view includes SSH rows with distinct type badges linking to SSH detail pages, with NO regression to existing X.509/Dual tiles/rows (asserted by a test)
-- [ ] #2 Tests assert copying a config snippet writes the expected exact text and shows the copied state, and that the 'Harden' preset yields a preview with no permit-* extensions while toggling adds them
-- [ ] #3 Tests assert force-command and source-address surface as critical options in the preview and a principal→account mapping renders the correct auth_principals file contents
-- [ ] #4 Tiles/rows render loading/error/empty states gracefully and pnpm --filter frontend test passes in CI
+- [x] #1 The dashboard shows SSH host/user tiles styled consistently with existing tiles and the Expiring Soon view includes SSH rows with distinct type badges linking to SSH detail pages, with NO regression to existing X.509/Dual tiles/rows (asserted by a test)
+- [x] #2 Tests assert copying a config snippet writes the expected exact text and shows the copied state, and that the 'Harden' preset yields a preview with no permit-* extensions while toggling adds them
+- [x] #3 Tests assert force-command and source-address surface as critical options in the preview and a principal→account mapping renders the correct auth_principals file contents
+- [x] #4 Tiles/rows render loading/error/empty states gracefully and pnpm --filter frontend test passes in CI
 <!-- AC:END -->
