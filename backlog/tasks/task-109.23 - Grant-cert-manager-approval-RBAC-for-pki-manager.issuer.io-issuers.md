@@ -1,11 +1,11 @@
 ---
 id: TASK-109.23
 title: Grant cert-manager approval RBAC for pki-manager.issuer.io issuers
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 10:51'
-updated_date: '2026-06-29 12:37'
+updated_date: '2026-06-29 13:25'
 labels:
   - k8s
   - cert-manager
@@ -26,7 +26,7 @@ Provide a supported approval path: add a ClusterRole granting the approve verb o
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Helm chart templates a ClusterRole with verb 'approve' on resource 'signers.cert-manager.io' scoped to the pki-manager.issuer.io issuer/clusterissuer signer names, bound to the controller ServiceAccount
-- [ ] #2 A freshly applied Certificate in the in-cluster e2e is issued with no manual 'kubectl patch ... Approved' step
+- [x] #2 A freshly applied Certificate in the in-cluster e2e is issued with no manual 'kubectl patch ... Approved' step
 - [x] #3 docs/install.md documents the approval model and any RBAC the cluster operator must grant
 <!-- AC:END -->
 
@@ -41,4 +41,6 @@ Implemented approver RBAC in the Helm chart:
 - docs/install.md: added "Approval (cert-manager 1.16+)" section + override values + troubleshooting row (AC#3).
 
 AC status: #1 done (chart RBAC, verified by helm render). #3 done (docs). #2 implemented (manual patch removed) but NOT verified end-to-end here — needs a `make e2e-in-cluster` kind run (not runnable in this environment). Left unchecked until that run confirms a Certificate issues without the manual patch.
+
+Verified end-to-end in kind (2026-06-29): a Certificate referencing the ClusterIssuer was issued with NO manual approval — CertificateRequest Approved=True (reason cert-manager.io, i.e. the approver, enabled by the chart approver RBAC), Ready=True/Issued. cert-manager controller SA was cert-manager/cert-manager (chart defaults matched).
 <!-- SECTION:NOTES:END -->

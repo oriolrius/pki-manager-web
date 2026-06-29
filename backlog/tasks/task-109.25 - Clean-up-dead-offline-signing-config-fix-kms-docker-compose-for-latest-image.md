@@ -1,11 +1,11 @@
 ---
 id: TASK-109.25
 title: Clean up dead offline-signing config + fix kms docker-compose for latest image
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 12:14'
-updated_date: '2026-06-29 13:02'
+updated_date: '2026-06-29 13:25'
 labels:
   - k8s
   - cleanup
@@ -25,7 +25,7 @@ Follow-ups from TASK-109.22 (which moved /sign to KMS signing):
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 20-pki-manager.yaml no longer references EXTERNAL_ISSUER_CA_* or the /ca mount, and the in-cluster e2e still issues a certificate
+- [x] #1 20-pki-manager.yaml no longer references EXTERNAL_ISSUER_CA_* or the /ca mount, and the in-cluster e2e still issues a certificate
 - [x] #2 cd kms && docker compose up -d brings up a healthy KMS against the current image (curl :42998/version succeeds)
 <!-- AC:END -->
 
@@ -40,4 +40,6 @@ Done:
 No residual EXTERNAL_ISSUER_CA / pki-manager-external-ca / /tmp/e2e-ca refs remain.
 
 AC#1: the manifest no longer references EXTERNAL_ISSUER_*//ca (verified) — but the "and the in-cluster e2e still issues a certificate" clause needs a real make e2e-in-cluster kind run (not runnable here; same kind-run that also closes 109.23 AC#2). Left unchecked until that run.
+
+Verified end-to-end in kind (2026-06-29): with the /ca mount + EXTERNAL_ISSUER_CA_* env + ca Secret removed and the Makefile secret-creation dropped, the full e2e (build → deploy → cert-manager → issuer chart → bootstrap → Certificate) issues a cert successfully (signed by the KMS-held CA, CSR key preserved, chain OK). AC#1 + AC#2 both met.
 <!-- SECTION:NOTES:END -->

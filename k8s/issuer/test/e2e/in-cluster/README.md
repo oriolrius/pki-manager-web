@@ -4,6 +4,15 @@ Deploys PKI Manager backend + Cosmian KMS + cert-manager + the external issuer c
 
 ## Prerequisites
 - `kind`, `kubectl`, `helm`, `docker`, `openssl`, `jq`
+- Adequate inotify limits. Running kind (especially alongside another kind cluster) can
+  exhaust the host default and crash kube-proxy/coredns with `too many open files`
+  (symptom: pods stuck `Pending`, PVCs `Pending`, `dial tcp 10.96.0.1:443: i/o timeout`).
+  Raise them before `kind create`:
+  ```bash
+  sudo sysctl -w fs.inotify.max_user_instances=1024 fs.inotify.max_user_watches=1048576
+  # persist: echo -e "fs.inotify.max_user_instances=1024\nfs.inotify.max_user_watches=1048576" \
+  #   | sudo tee /etc/sysctl.d/99-inotify.conf
+  ```
 
 ## One-shot
 
@@ -98,9 +107,13 @@ kind cluster
 
 The issuer controller resolves `pki-manager-backend.pki-manager.svc.cluster.local:3000` purely via in-cluster DNS — no host network involvement.
 
-## Verified outputs (2026-05-05)
+## Verified outputs (2026-06-29, KMS-signed path)
 
 - ClusterIssuer: `Ready=True, Reason=Verified`
-- CertificateRequest: single CR `Ready=True, Reason=Issued`
-- Secret: `tls.crt` and `tls.key` public-key sha256 match
+- CertificateRequest: single CR `Approved=True (reason cert-manager.io)` **with no manual
+  patch** (the chart's approver RBAC auto-approves), `Ready=True, Reason=Issued`
+- Issued cert signed by the KMS-held CA (`issuer=CN=e2e-ca`); SAN + serverAuth/clientAuth EKU
+  copied from the CSR; `basicConstraints critical CA:FALSE`
+- Secret: `tls.crt` public key == `tls.key` (sha256 match) — the CSR's own key was preserved
+  (the KMS did not regenerate it)
 - Chain verifies: `openssl verify -CAfile ca.crt tls.crt` → OK
