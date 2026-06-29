@@ -36,6 +36,13 @@
       "when": 1761680001000,
       "tag": "0004_ssh_certificate_manager",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1761680002000,
+      "tag": "0005_ssh_fleet_tokens",
+      "breakpoints": true
     }
   ]
 }

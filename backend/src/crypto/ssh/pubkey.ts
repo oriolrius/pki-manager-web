@@ -160,3 +160,31 @@ export function spkiToOpenSshEcdsa(spki: string | Buffer, comment = ""): string 
 export function openSshKeyBlob(key: ParsedSshPublicKey): Buffer {
   return key.blob;
 }
+
+/**
+ * Extract the subject public key from an OpenSSH certificate line as a plain
+ * `<algo> <base64>` line (used to renew a cert without re-supplying the key).
+ */
+export function subjectPubkeyFromCert(certLine: string): string {
+  const parts = certLine.trim().split(/\s+/);
+  const certType = parts[0];
+  const blob = Buffer.from(parts[1] ?? '', 'base64');
+  const reader = new SshReader(blob);
+  const embeddedType = reader.cstring();
+  if (embeddedType !== certType) throw new SshPublicKeyError('certificate type mismatch in blob');
+  reader.string(); // nonce
+  let line: string;
+  if (certType === 'ssh-ed25519-cert-v01@openssh.com') {
+    const pk = reader.string();
+    const w = new SshWriter().string('ssh-ed25519').string(pk).build();
+    line = `ssh-ed25519 ${w.toString('base64')}`;
+  } else if (certType === 'ecdsa-sha2-nistp256-cert-v01@openssh.com') {
+    const curve = reader.cstring();
+    const q = reader.string();
+    const w = new SshWriter().string('ecdsa-sha2-nistp256').string(curve).string(q).build();
+    line = `ecdsa-sha2-nistp256 ${w.toString('base64')}`;
+  } else {
+    throw new SshPublicKeyError(`unsupported certificate type '${certType}'`);
+  }
+  return line;
+}

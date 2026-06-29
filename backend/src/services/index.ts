@@ -16,4 +16,6 @@ export * from './ssh-cert.service.js';
 export * from './ssh-host.service.js';
 export * from './ssh-user.service.js';
 export * from './ssh-principal.service.js';
+export * from './ssh-fleet-token.service.js';
+export * from './ssh-bulk.service.js';
 export * from './ssh-config.js';

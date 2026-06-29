@@ -5,6 +5,7 @@ import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { registerRestApi } from './rest/index.js';
 import { registerSshPublicRoutes } from './rest/routes/ssh-public.routes.js';
+import { registerSshExternalRoutes } from './rest/routes/ssh-external.routes.js';
 import { db } from './db/client.js';
 import { certificateAuthorities, crls } from './db/schema.js';
 import { eq, desc } from 'drizzle-orm';
@@ -208,6 +209,9 @@ server.get('/crl/:caId.:format', async (req, reply) => {
 
 // Public SSH trust-material download endpoints (no auth, like /crl).
 registerSshPublicRoutes(server);
+
+// SSH external/automation signing API (fleet-token auth, bypasses OIDC).
+registerSshExternalRoutes(server);
 
 // Start server
 const start = async () => {

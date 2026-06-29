@@ -389,6 +389,38 @@ export const sshKrls = sqliteTable(
   })
 );
 
+// SSH automation fleet tokens (SSH-19) — bearer tokens for the Ansible/CI
+// external signing API. Stored only as a SHA-256 hash; one token scoped to a
+// CA pair + op-set. Plaintext (pkimg_…) is shown exactly once at mint time.
+export const sshFleetTokens = sqliteTable(
+  'ssh_fleet_tokens',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    tokenPrefix: text('token_prefix').notNull(), // display only, e.g. pkimg_ab12…
+    userCaId: text('user_ca_id').references(() => sshCas.id, { onDelete: 'set null' }),
+    hostCaId: text('host_ca_id').references(() => sshCas.id, { onDelete: 'set null' }),
+    opSet: text('op_set').notNull(), // JSON string[]: sign-host | sign-user | register-host-pubkey
+    revoked: integer('revoked', { mode: 'boolean' }).notNull().default(false),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
+    lastSeenIp: text('last_seen_ip'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    hashIdx: uniqueIndex('uq_ssh_fleet_tokens_hash').on(table.tokenHash),
+  })
+);
+
+// Idempotency cache for external signing (SSH-19).
+export const sshIdempotency = sqliteTable('ssh_idempotency', {
+  key: text('key').primaryKey(), // token-scoped Idempotency-Key
+  tokenId: text('token_id'),
+  certId: text('cert_id'),
+  response: text('response').notNull(), // cached JSON response
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+});
+
 // Type exports for use in application code
 export type CertificateAuthority = typeof certificateAuthorities.$inferSelect;
 export type NewCertificateAuthority = typeof certificateAuthorities.$inferInsert;
@@ -421,3 +453,5 @@ export type SshRevocation = typeof sshRevocations.$inferSelect;
 export type NewSshRevocation = typeof sshRevocations.$inferInsert;
 export type SshKrl = typeof sshKrls.$inferSelect;
 export type NewSshKrl = typeof sshKrls.$inferInsert;
+export type SshFleetToken = typeof sshFleetTokens.$inferSelect;
+export type NewSshFleetToken = typeof sshFleetTokens.$inferInsert;

@@ -27,6 +27,8 @@ import { getSshCaService, SshCaExistsError, SshCaAlgorithmError, SshCaNotFoundEr
 import { getSshHostService, SshHostError } from '../../services/ssh-host.service.js';
 import { getSshUserService, SshUserError } from '../../services/ssh-user.service.js';
 import { getSshPrincipalService, SshPrincipalError } from '../../services/ssh-principal.service.js';
+import { getSshFleetTokenService, SshTokenError } from '../../services/ssh-fleet-token.service.js';
+import { getSshBulkService } from '../../services/ssh-bulk.service.js';
 import {
   SshSignCaNotFoundError,
   SshCaUnusableError,
@@ -39,7 +41,7 @@ function mapSshError(error: unknown): never {
     throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
   if (error instanceof SshCaAlgorithmError || error instanceof SshCaUnusableError || error instanceof SshCertTypeMismatchError)
     throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
-  if (error instanceof SshHostError || error instanceof SshUserError || error instanceof SshPrincipalError) {
+  if (error instanceof SshHostError || error instanceof SshUserError || error instanceof SshPrincipalError || error instanceof SshTokenError) {
     const code = /not found/i.test(error.message) ? 'NOT_FOUND' : 'BAD_REQUEST';
     throw new TRPCError({ code, message: error.message });
   }
@@ -200,9 +202,47 @@ const principalRouter = router({
   }),
 });
 
+const tokenRouter = router({
+  list: sshAdminProcedure.query(async ({ ctx }) => getSshFleetTokenService().list(svcCtx(ctx))),
+  mint: sshAdminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(128),
+        userCaId: z.string().optional(),
+        hostCaId: z.string().optional(),
+        opSet: z.array(z.enum(['sign-host', 'sign-user', 'register-host-pubkey'])).min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await getSshFleetTokenService().mint(svcCtx(ctx), input);
+      } catch (e) {
+        mapSshError(e);
+      }
+    }),
+  revoke: sshAdminProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    await getSshFleetTokenService().revoke(svcCtx(ctx), input.id);
+    return { ok: true };
+  }),
+});
+
+const bulkRouter = router({
+  expiring: sshProtectedProcedure.input(z.object({ withinSeconds: z.number().int().positive() })).query(async ({ ctx, input }) =>
+    getSshBulkService().expiring(svcCtx(ctx), input.withinSeconds)
+  ),
+  renew: sshProtectedProcedure.input(z.object({ certIds: z.array(z.string().min(1)).min(1) })).mutation(async ({ ctx, input }) =>
+    getSshBulkService().bulkRenew(svcCtx(ctx), input.certIds)
+  ),
+  revoke: sshProtectedProcedure
+    .input(z.object({ certIds: z.array(z.string().min(1)).min(1), reason: z.string().max(256).optional() }))
+    .mutation(async ({ ctx, input }) => getSshBulkService().bulkRevoke(svcCtx(ctx), input.certIds, input.reason)),
+});
+
 export const sshRouter = router({
   ca: caRouter,
   host: hostRouter,
   user: userRouter,
   principal: principalRouter,
+  token: tokenRouter,
+  bulk: bulkRouter,
 });
