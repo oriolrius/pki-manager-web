@@ -1,11 +1,11 @@
 ---
 id: TASK-119
 title: 'SSH-02: SSH public-key parser + OpenSSH/SPKI format conversion'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:39'
-updated_date: '2026-06-29 17:31'
+updated_date: '2026-06-29 17:48'
 labels:
   - ssh-cert-manager
   - crypto
@@ -28,8 +28,8 @@ crypto/ssh/pubkey.ts: the single chokepoint for accepting SSH public keys. Parse
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A valid ed25519 and a valid ecdsa-nistp256 pubkey both parse and the computed SHA256 fingerprint matches `ssh-keygen -lf <pubkey>`
-- [ ] #2 Garbage input and a pasted private key each produce a clear validation error rather than a throw/crash; an ssh-rsa subject key is rejected with an actionable message instructing the operator to rekey to Ed25519/ECDSA
-- [ ] #3 A KMS-exported ECDSA-P256 SPKI public key converts to a valid 'ecdsa-sha2-nistp256 AAAA...' OpenSSH line whose fingerprint matches ssh-keygen
-- [ ] #4 The parser is the only path other services use to accept a host or user public key
+- [x] #1 A valid ed25519 and a valid ecdsa-nistp256 pubkey both parse and the computed SHA256 fingerprint matches `ssh-keygen -lf <pubkey>`
+- [x] #2 Garbage input and a pasted private key each produce a clear validation error rather than a throw/crash; an ssh-rsa subject key is rejected with an actionable message instructing the operator to rekey to Ed25519/ECDSA
+- [x] #3 A KMS-exported ECDSA-P256 SPKI public key converts to a valid 'ecdsa-sha2-nistp256 AAAA...' OpenSSH line whose fingerprint matches ssh-keygen
+- [x] #4 The parser is the only path other services use to accept a host or user public key
 <!-- AC:END -->
