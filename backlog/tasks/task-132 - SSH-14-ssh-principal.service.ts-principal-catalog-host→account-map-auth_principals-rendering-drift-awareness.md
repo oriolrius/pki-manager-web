@@ -35,3 +35,9 @@ Singleton service owning the RBAC catalog: CRUD over ssh_principals (role names)
 - [x] #3 Adding a host to a group makes it inherit the group's principal→account mappings with no certificate re-signing; changing a mapping writes an audit_log row and updates the catalog's change timestamp
 - [x] #4 Hosts whose catalog mappings changed after last_principal_push_at are flagged as 'stale'; principal and account names are validated against an injection-safe grammar
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-principal.service: catalog CRUD, identity entitlements, per-host principal->account maps, render() auth_principals files + directive, push-drift (lastPrincipalPushAt). FK restrict on in-use principal verified.
+<!-- SECTION:NOTES:END -->
