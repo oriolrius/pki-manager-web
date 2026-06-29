@@ -3,11 +3,11 @@ id: TASK-118
 title: >-
   SSH-01: OpenSSH wire-format primitives + certificate encoder (TS) with
   empty-principal/key-id guards
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:39'
-updated_date: '2026-06-29 17:31'
+updated_date: '2026-06-29 17:48'
 labels:
   - ssh-cert-manager
   - crypto
@@ -30,8 +30,8 @@ Build a pure-TypeScript, dependency-free module (crypto/ssh/wire.ts + crypto/ssh
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ssh-keygen -L -f <emitted-cert> reports the correct Type, Serial, Key ID, Principals, Valid range, Critical Options, and Extensions for ed25519 and ecdsa-nistp256 subject keys, and the pre-signature TBS region byte-for-byte matches what a local ssh-keygen CA signs for identical inputs
-- [ ] #2 permit-pty present vs absent, force-command=<cmd>, and source-address=<cidr> round-trip exactly through ssh-keygen -L; empty and multi-principal lists both encode and re-parse correctly
-- [ ] #3 Issuing with an empty principals list is rejected unless an explicit wildcard flag is set; key_id containing control characters is rejected; both guards are unit-tested
-- [ ] #4 The module has no runtime npm dependency (no forge/sshpk/ssh2), supports only ed25519 + ecdsa-nistp256 subjects in v1, and is exhaustively unit-tested
+- [x] #1 ssh-keygen -L -f <emitted-cert> reports the correct Type, Serial, Key ID, Principals, Valid range, Critical Options, and Extensions for ed25519 and ecdsa-nistp256 subject keys, and the pre-signature TBS region byte-for-byte matches what a local ssh-keygen CA signs for identical inputs
+- [x] #2 permit-pty present vs absent, force-command=<cmd>, and source-address=<cidr> round-trip exactly through ssh-keygen -L; empty and multi-principal lists both encode and re-parse correctly
+- [x] #3 Issuing with an empty principals list is rejected unless an explicit wildcard flag is set; key_id containing control characters is rejected; both guards are unit-tested
+- [x] #4 The module has no runtime npm dependency (no forge/sshpk/ssh2), supports only ed25519 + ecdsa-nistp256 subjects in v1, and is exhaustively unit-tested
 <!-- AC:END -->
