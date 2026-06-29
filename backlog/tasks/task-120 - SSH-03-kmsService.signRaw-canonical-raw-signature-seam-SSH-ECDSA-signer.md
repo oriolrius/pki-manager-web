@@ -1,10 +1,10 @@
 ---
 id: TASK-120
 title: 'SSH-03: kmsService.signRaw() canonical raw-signature seam + SSH ECDSA signer'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:39'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:48'
 labels:
   - ssh-cert-manager
   - crypto
@@ -29,8 +29,8 @@ Introduce kmsService.signRaw(keyId, data, {hash:'sha256'|null, format:'der'|'iee
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 signRaw produces an ECDSA-P256 raw signature over arbitrary bytes that Node crypto.verify and openssl verify against the CA public key, in both der and ieee-p1363 formats
-- [ ] #2 An SSH cert signed via the seam, presented to a real sshd trusting the CA public key, authenticates; ssh-keygen -L confirms the embedded 'Signing CA' fingerprint equals the CA's published OpenSSH public-key fingerprint
-- [ ] #3 signRaw's body implements the SSH-SENS-selected path; if export-and-sign, the exported key buffer is zeroized after the op and every export emits an audit+alert row; every signing op produces a kms.sign_raw audit row and a failure produces a failure row
-- [ ] #4 The seam is the single function the design names as the swap-point between non-exportable and export signing, and crl.service is not assumed to consume it on day one
+- [x] #1 signRaw produces an ECDSA-P256 raw signature over arbitrary bytes that Node crypto.verify and openssl verify against the CA public key, in both der and ieee-p1363 formats
+- [x] #2 An SSH cert signed via the seam, presented to a real sshd trusting the CA public key, authenticates; ssh-keygen -L confirms the embedded 'Signing CA' fingerprint equals the CA's published OpenSSH public-key fingerprint
+- [x] #3 signRaw's body implements the SSH-SENS-selected path; if export-and-sign, the exported key buffer is zeroized after the op and every export emits an audit+alert row; every signing op produces a kms.sign_raw audit row and a failure produces a failure row
+- [x] #4 The seam is the single function the design names as the swap-point between non-exportable and export signing, and crl.service is not assumed to consume it on day one
 <!-- AC:END -->
