@@ -1,4 +1,12 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+  blob,
+  type AnySQLiteColumn,
+} from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 // Certificate Authorities table (minimal schema - fetch cert/key data from KMS)
@@ -146,6 +154,241 @@ export const auditLog = sqliteTable(
   })
 );
 
+// ============================================================================
+// SSH Certificate Manager (milestone doc-006). OpenSSH certs are NOT X.509:
+// no PEM/DN/SAN — OpenSSH-wire trust material, principals, extensions, KRLs.
+// Minimal-schema: KMS holds private keys; SQLite holds metadata + the verbatim
+// signed cert/KRL blobs (re-signing is non-deterministic, like crls.crl_pem).
+// ============================================================================
+
+// SSH Certificate Authorities — one ECDSA-P256 KMS keypair per role, no X.509 cert.
+export const sshCas = sqliteTable(
+  'ssh_cas',
+  {
+    id: text('id').primaryKey(),
+    caType: text('ca_type', { enum: ['user', 'host'] }).notNull(),
+    label: text('label'),
+    // KMS references (the private key never leaves the KMS — decision-011).
+    kmsKeyId: text('kms_key_id').notNull(),
+    kmsPublicKeyId: text('kms_public_key_id').notNull(),
+    // Published trust material.
+    opensshPublicKey: text('openssh_public_key').notNull(),
+    fingerprintSha256: text('fingerprint_sha256').notNull(),
+    keyAlgorithm: text('key_algorithm').notNull().default('ECDSA-P256'),
+    // Per-CA monotonic serial allocator (SQLite INTEGER is signed 64-bit;
+    // covers the practical OpenSSH serial range).
+    nextSerial: integer('next_serial').notNull().default(1),
+    // Lifecycle + rotation (SSH-32a): one active + one rotating per type.
+    status: text('status', { enum: ['active', 'rotating', 'retired'] })
+      .notNull()
+      .default('active'),
+    predecessorCaId: text('predecessor_ca_id').references((): AnySQLiteColumn => sshCas.id),
+    retireAfter: integer('retire_after', { mode: 'timestamp' }),
+    revocationDate: integer('revocation_date', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    caTypeIdx: index('idx_ssh_cas_type').on(table.caType),
+    statusIdx: index('idx_ssh_cas_status').on(table.status),
+    fpIdx: index('idx_ssh_cas_fp').on(table.fingerprintSha256),
+    oneActivePerType: uniqueIndex('uq_ssh_cas_active_type')
+      .on(table.caType)
+      .where(sql`status = 'active'`),
+    oneRotatingPerType: uniqueIndex('uq_ssh_cas_rotating_type')
+      .on(table.caType)
+      .where(sql`status = 'rotating'`),
+  })
+);
+
+// SSH hosts — host-cert subjects + KRL/principal distribution telemetry.
+export const sshHosts = sqliteTable(
+  'ssh_hosts',
+  {
+    id: text('id').primaryKey(),
+    fqdn: text('fqdn').notNull().unique(),
+    displayName: text('display_name'),
+    addresses: text('addresses'), // JSON string[] — host-cert principals
+    opensshHostPubkey: text('openssh_host_pubkey'),
+    hostKeyAlgorithm: text('host_key_algorithm'),
+    kmsPubkeyId: text('kms_pubkey_id'), // set only when the ECIES path registers it
+    currentCertId: text('current_cert_id'), // logical pointer (no hard FK — avoids cycle)
+    status: text('status', { enum: ['pending', 'active', 'offboarded'] })
+      .notNull()
+      .default('pending'),
+    enrolledAt: integer('enrolled_at', { mode: 'timestamp' }),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
+    // Distribution telemetry (SSH-22 serving / SSH-24 puller callback / SSH-14 drift).
+    lastKrlVersion: text('last_krl_version'),
+    lastKrlFetchAt: integer('last_krl_fetch_at', { mode: 'timestamp' }),
+    lastPrincipalPushAt: integer('last_principal_push_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    statusIdx: index('idx_ssh_hosts_status').on(table.status),
+    kmsPubkeyIdx: index('idx_ssh_hosts_kms_pubkey').on(table.kmsPubkeyId),
+  })
+);
+
+// SSH identities — user-cert subjects (subject = the audit key-id seed).
+export const sshIdentities = sqliteTable(
+  'ssh_identities',
+  {
+    id: text('id').primaryKey(),
+    subject: text('subject').notNull().unique(),
+    externalSubject: text('external_subject'), // OIDC sub, optional
+    email: text('email'),
+    opensshUserPubkey: text('openssh_user_pubkey'),
+    pubkeySource: text('pubkey_source', { enum: ['uploaded', 'kms', 'per_request'] })
+      .notNull()
+      .default('per_request'),
+    kmsPubkeyId: text('kms_pubkey_id'),
+    status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    statusIdx: index('idx_ssh_identities_status').on(table.status),
+    extSubIdx: index('idx_ssh_identities_ext_sub').on(table.externalSubject),
+  })
+);
+
+// SSH certificates — issued host & user OpenSSH certs (polymorphic).
+export const sshCertificates = sqliteTable(
+  'ssh_certificates',
+  {
+    id: text('id').primaryKey(),
+    caId: text('ca_id')
+      .notNull()
+      .references(() => sshCas.id, { onDelete: 'cascade' }),
+    certType: text('cert_type', { enum: ['host', 'user'] }).notNull(),
+    hostId: text('host_id').references(() => sshHosts.id, { onDelete: 'set null' }),
+    identityId: text('identity_id').references(() => sshIdentities.id, { onDelete: 'set null' }),
+    serial: text('serial').notNull(), // uint64 as TEXT
+    keyId: text('key_id').notNull(), // the -I audit anchor, denormalized
+    principals: text('principals').notNull(), // JSON string[]
+    validAfter: integer('valid_after', { mode: 'timestamp' }).notNull(),
+    validBefore: integer('valid_before', { mode: 'timestamp' }).notNull(),
+    extensions: text('extensions'), // JSON string[]
+    criticalOptions: text('critical_options'), // JSON object
+    certOpenssh: text('cert_openssh').notNull(), // verbatim signed *-cert.pub
+    subjectPubkeyFingerprint: text('subject_pubkey_fingerprint').notNull(),
+    kmsSigningKeyId: text('kms_signing_key_id').notNull(),
+    status: text('status', { enum: ['active', 'revoked', 'expired'] }).notNull().default('active'),
+    revocationDate: integer('revocation_date', { mode: 'timestamp' }),
+    revocationReason: text('revocation_reason'),
+    sourceType: text('source_type', { enum: ['manual', 'automation'] }).notNull().default('manual'),
+    supersededBy: text('superseded_by').references((): AnySQLiteColumn => sshCertificates.id),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    caSerialUq: uniqueIndex('uq_ssh_certs_ca_serial').on(table.caId, table.serial),
+    caIdIdx: index('idx_ssh_certs_ca').on(table.caId),
+    statusIdx: index('idx_ssh_certs_status').on(table.status),
+    typeIdx: index('idx_ssh_certs_type').on(table.certType),
+    hostIdx: index('idx_ssh_certs_host').on(table.hostId),
+    identityIdx: index('idx_ssh_certs_identity').on(table.identityId),
+    keyIdIdx: index('idx_ssh_certs_keyid').on(table.keyId),
+    fpIdx: index('idx_ssh_certs_fp').on(table.subjectPubkeyFingerprint),
+  })
+);
+
+// RBAC catalog — role-principals (the picklist / source of truth).
+export const sshPrincipals = sqliteTable('ssh_principals', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+});
+
+// Which principals an identity's certs may carry.
+export const sshUserPrincipals = sqliteTable(
+  'ssh_user_principals',
+  {
+    id: text('id').primaryKey(),
+    identityId: text('identity_id')
+      .notNull()
+      .references(() => sshIdentities.id, { onDelete: 'cascade' }),
+    principalId: text('principal_id')
+      .notNull()
+      .references(() => sshPrincipals.id, { onDelete: 'restrict' }),
+  },
+  (table) => ({
+    uq: uniqueIndex('uq_ssh_user_principals').on(table.identityId, table.principalId),
+    identityIdx: index('idx_ssh_user_principals_identity').on(table.identityId),
+  })
+);
+
+// Per-host principal -> local-account mapping (rendered into AuthorizedPrincipalsFile).
+export const sshHostPrincipalMaps = sqliteTable(
+  'ssh_host_principal_maps',
+  {
+    id: text('id').primaryKey(),
+    hostId: text('host_id')
+      .notNull()
+      .references(() => sshHosts.id, { onDelete: 'cascade' }),
+    principalId: text('principal_id')
+      .notNull()
+      .references(() => sshPrincipals.id, { onDelete: 'restrict' }),
+    localAccount: text('local_account').notNull(),
+  },
+  (table) => ({
+    uq: uniqueIndex('uq_ssh_host_principal_maps').on(table.hostId, table.principalId, table.localAccount),
+    hostIdx: index('idx_ssh_host_principal_maps_host').on(table.hostId),
+  })
+);
+
+// Revocation directives (cert / serial / key-hash / key-id).
+export const sshRevocations = sqliteTable(
+  'ssh_revocations',
+  {
+    id: text('id').primaryKey(),
+    caId: text('ca_id')
+      .notNull()
+      .references(() => sshCas.id, { onDelete: 'cascade' }),
+    targetType: text('target_type', {
+      enum: ['cert', 'serial', 'key_fingerprint', 'key_id'],
+    }).notNull(),
+    certId: text('cert_id').references(() => sshCertificates.id, { onDelete: 'set null' }),
+    serial: text('serial'), // uint64 as TEXT
+    keyFingerprint: text('key_fingerprint'),
+    keyId: text('key_id'),
+    reason: text('reason'),
+    revokedBy: text('revoked_by'),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    caIdx: index('idx_ssh_revocations_ca').on(table.caId),
+    certIdx: index('idx_ssh_revocations_cert').on(table.certId),
+  })
+);
+
+// KRL state — bare unsigned KRL (what sshd reads) + a distinct detached CA signature.
+export const sshKrls = sqliteTable(
+  'ssh_krls',
+  {
+    id: text('id').primaryKey(),
+    caId: text('ca_id')
+      .notNull()
+      .references(() => sshCas.id, { onDelete: 'cascade' }),
+    krlNumber: integer('krl_number').notNull(),
+    versionHash: text('version_hash').notNull(), // 'sha256:<hex>' (ETag)
+    krlBlob: blob('krl_blob', { mode: 'buffer' }).notNull(), // bare unsigned OpenSSH KRL
+    caSignature: blob('ca_signature', { mode: 'buffer' }), // detached DER sig (puller-only)
+    thisUpdate: integer('this_update', { mode: 'timestamp' }).notNull(),
+    nextUpdate: integer('next_update', { mode: 'timestamp' }).notNull(),
+    revokedCount: integer('revoked_count').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    caNumberIdx: index('idx_ssh_krls_ca_number').on(table.caId, table.krlNumber),
+    versionIdx: index('idx_ssh_krls_version').on(table.versionHash),
+  })
+);
+
 // Type exports for use in application code
 export type CertificateAuthority = typeof certificateAuthorities.$inferSelect;
 export type NewCertificateAuthority = typeof certificateAuthorities.$inferInsert;
@@ -158,3 +401,23 @@ export type NewCrl = typeof crls.$inferInsert;
 
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
+
+// --- SSH Certificate Manager types ---
+export type SshCa = typeof sshCas.$inferSelect;
+export type NewSshCa = typeof sshCas.$inferInsert;
+export type SshHost = typeof sshHosts.$inferSelect;
+export type NewSshHost = typeof sshHosts.$inferInsert;
+export type SshIdentity = typeof sshIdentities.$inferSelect;
+export type NewSshIdentity = typeof sshIdentities.$inferInsert;
+export type SshCertificate = typeof sshCertificates.$inferSelect;
+export type NewSshCertificate = typeof sshCertificates.$inferInsert;
+export type SshPrincipal = typeof sshPrincipals.$inferSelect;
+export type NewSshPrincipal = typeof sshPrincipals.$inferInsert;
+export type SshUserPrincipal = typeof sshUserPrincipals.$inferSelect;
+export type NewSshUserPrincipal = typeof sshUserPrincipals.$inferInsert;
+export type SshHostPrincipalMap = typeof sshHostPrincipalMaps.$inferSelect;
+export type NewSshHostPrincipalMap = typeof sshHostPrincipalMaps.$inferInsert;
+export type SshRevocation = typeof sshRevocations.$inferSelect;
+export type NewSshRevocation = typeof sshRevocations.$inferInsert;
+export type SshKrl = typeof sshKrls.$inferSelect;
+export type NewSshKrl = typeof sshKrls.$inferInsert;
