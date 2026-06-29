@@ -1,11 +1,11 @@
 ---
 id: TASK-156
 title: 'SSH-33: End-to-end crypto + revocation verification harness against real sshd'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:46'
-updated_date: '2026-06-29 18:39'
+updated_date: '2026-06-29 18:43'
 labels:
   - ssh-cert-manager
   - automation
@@ -31,8 +31,8 @@ A Vitest integration suite (gated on ssh-keygen/sshd availability, skipping clea
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A host cert signed by our service makes ssh connect with StrictHostKeyChecking=yes via @cert-authority (no TOFU prompt); a user cert with principal 'admin' logs in as root while 'developer' does not
-- [ ] #2 A cert with cleared extensions runs a remote command but is denied an interactive PTY; force-command override is honoured; a malformed source-address CIDR is rejected at issuance; an expired cert is rejected
-- [ ] #3 Revoking a key, rebuilding and serving the BARE KRL, and installing it on the host causes sshd to deny that key ('revoked by file') with the prior cert previously working — confirming the unsigned bytes are honoured
-- [ ] #4 The suite skips cleanly (not fails) when ssh-keygen/sshd are unavailable, and all KMS-touching tests skip when KMS_URL is unreachable
+- [x] #1 A host cert signed by our service makes ssh connect with StrictHostKeyChecking=yes via @cert-authority (no TOFU prompt); a user cert with principal 'admin' logs in as root while 'developer' does not
+- [x] #2 A cert with cleared extensions runs a remote command but is denied an interactive PTY; force-command override is honoured; a malformed source-address CIDR is rejected at issuance; an expired cert is rejected
+- [x] #3 Revoking a key, rebuilding and serving the BARE KRL, and installing it on the host causes sshd to deny that key ('revoked by file') with the prior cert previously working — confirming the unsigned bytes are honoured
+- [x] #4 The suite skips cleanly (not fails) when ssh-keygen/sshd are unavailable, and all KMS-touching tests skip when KMS_URL is unreachable
 <!-- AC:END -->
