@@ -1,0 +1,12 @@
+---
+# Deploy SSH host certificates via the PKI Manager external API.
+#
+#   ansible-playbook -i inventory.ini site.yml \
+#     -e ssh_ca_base_url=https://pki.example.com \
+#     -e @secrets.yml   # provides ssh_ca_fleet_token (vault-encrypted)
+#
+- name: Deploy SSH host certificates (PKI Manager external API)
+  hosts: sshservers
+  gather_facts: true   # needs ansible_fqdn + ansible_all_ipv4_addresses
+  roles:
+    - role: ssh_host_cert

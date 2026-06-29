@@ -1,0 +1,27 @@
+---
+# Defaults for the ssh_host_cert role (SSH-31). Productionised Jan-Piet Mens
+# pattern, retargeted at the PKI Manager external API: the Ed25519 host key is
+# generated ON the node (never leaves it); only the public key is signed, via
+# POST /api/v1/external/ssh/sign-host with a fleet bearer token.
+
+# --- PKI Manager endpoints ---------------------------------------------------
+# Public base (trust-material downloads) and the token-scoped external API.
+ssh_ca_base_url: "https://pki.internal"
+ssh_ca_api_url: "{{ ssh_ca_base_url }}/api/v1/external/ssh"
+# Fleet token (pkimg_…) scoped to one Host CA + sign-host. Store in Ansible Vault.
+ssh_ca_fleet_token: ""
+ssh_host_cert_validate_certs: true
+
+# --- Layout on the node ------------------------------------------------------
+ssh_host_cert_dirname: /etc/ssh
+ssh_host_cert_key_path: "{{ ssh_host_cert_dirname }}/ssh_host_ed25519_key"
+ssh_host_cert_cert_path: "{{ ssh_host_cert_key_path }}-cert.pub"
+ssh_host_cert_user_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-user-ca.pub"
+ssh_host_cert_revoked_keys: "{{ ssh_host_cert_dirname }}/revoked_keys"
+ssh_host_cert_dropin: "{{ ssh_host_cert_dirname }}/sshd_config.d/10-ssh-ca.conf"
+ssh_host_cert_sshd_service: ssh
+
+# --- Optional ECIES KRL distribution (SSH-15/SSH-24) -------------------------
+# When true, also register the host's ECIES key and install the KRL puller.
+ssh_host_cert_ecies_enabled: false
+ssh_ca_krl_url: "{{ ssh_ca_api_url }}/krl"
