@@ -1,10 +1,10 @@
 ---
 id: TASK-124
 title: 'SSH-07: Schema: ssh_certificates (host + user certs, signed blob on-row)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:55'
 labels:
   - ssh-cert-manager
   - database
@@ -28,8 +28,8 @@ Add ssh_certificates, the core issued-cert table for both host and user OpenSSH 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The migration creates ssh_certificates with all listed columns; a composite unique index on (ca_id, serial); indexes on ca_id, status, cert_type, host_id, identity_id, key_id, subject_pubkey_fingerprint
-- [ ] #2 A service-level invariant ensures cert_type='host' implies host_id set & identity_id null and cert_type='user' implies identity_id set & host_id null
-- [ ] #3 cert_openssh holds the verbatim signed cert so re-download returns identical bytes — verified by issuing once and downloading twice with identical output
-- [ ] #4 Exported SshCertificate/NewSshCertificate types; superseded_by supports renewal correlation; migration applies cleanly; typecheck passes
+- [x] #1 The migration creates ssh_certificates with all listed columns; a composite unique index on (ca_id, serial); indexes on ca_id, status, cert_type, host_id, identity_id, key_id, subject_pubkey_fingerprint
+- [x] #2 A service-level invariant ensures cert_type='host' implies host_id set & identity_id null and cert_type='user' implies identity_id set & host_id null
+- [x] #3 cert_openssh holds the verbatim signed cert so re-download returns identical bytes — verified by issuing once and downloading twice with identical output
+- [x] #4 Exported SshCertificate/NewSshCertificate types; superseded_by supports renewal correlation; migration applies cleanly; typecheck passes
 <!-- AC:END -->
