@@ -3,9 +3,10 @@ id: TASK-146
 title: >-
   SSH-25: Grouped SSH nav section (FontAwesome), route scaffold, reusable
   ConfigSnippet/DeployPanel
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:44'
+updated_date: '2026-06-29 19:00'
 labels:
   - ssh-cert-manager
   - frontend
@@ -26,8 +27,8 @@ Add ONE grouped 'SSH' top-level entry to the nav in __root.tsx (using FontAwesom
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator sees ONE 'SSH' nav entry (FontAwesome icon, matching the existing nav) that opens an SSH section with a second-level sub-nav (CAs/Hosts/Users/Principals/KRL); the top bar stays ~6 items and routes under the authenticated layout without a full reload, rendering /new and /$id via an Outlet
-- [ ] #2 A developer can render a labeled config block an operator copies with one click (transient 'Copied' confirmation) and optionally downloads as a named file (e.g. 10-ssh-ca.conf)
-- [ ] #3 ConfigSnippet/DeployPanel match existing visual conventions (bg-card, muted code background) and are keyboard-accessible; the SSH section is empty-state-gated until a CA exists
-- [ ] #4 routeTree.gen.ts regenerates cleanly and pnpm --filter frontend typecheck and build pass
+- [x] #1 An operator sees ONE 'SSH' nav entry (FontAwesome icon, matching the existing nav) that opens an SSH section with a second-level sub-nav (CAs/Hosts/Users/Principals/KRL); the top bar stays ~6 items and routes under the authenticated layout without a full reload, rendering /new and /$id via an Outlet
+- [x] #2 A developer can render a labeled config block an operator copies with one click (transient 'Copied' confirmation) and optionally downloads as a named file (e.g. 10-ssh-ca.conf)
+- [x] #3 ConfigSnippet/DeployPanel match existing visual conventions (bg-card, muted code background) and are keyboard-accessible; the SSH section is empty-state-gated until a CA exists
+- [x] #4 routeTree.gen.ts regenerates cleanly and pnpm --filter frontend typecheck and build pass
 <!-- AC:END -->
