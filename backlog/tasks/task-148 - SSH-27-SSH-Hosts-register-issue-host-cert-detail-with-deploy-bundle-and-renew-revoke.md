@@ -3,10 +3,10 @@ id: TASK-148
 title: >-
   SSH-27: SSH Hosts: register/issue host cert + detail with deploy bundle and
   renew/revoke
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 19:00'
 labels:
   - ssh-cert-manager
   - frontend
@@ -30,8 +30,8 @@ Host management pages. List shows fqdn, principals, serial, key-id, expiry (shar
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can register a host by pasting its public host key and issue a Host-CA-signed cert whose principals include the FQDN and all IPs; the form blocks private keys
-- [ ] #2 After issuance the operator can view the decoded cert (type, principals, serial, key-id, valid_after/before in operator-TZ and UTC) and download the cert plus a ready-to-paste sshd_config drop-in and a zip bundle in one click
-- [ ] #3 The host list shows each cert's expiry with the shared color-coded days-left treatment; KRL registration status/action appears only when the ECIES path is enabled; re-issue/renew works without re-registering
-- [ ] #4 An operator can renew (re-sign) or revoke from the detail page, and revocation routes the key into the KRL flow
+- [x] #1 An operator can register a host by pasting its public host key and issue a Host-CA-signed cert whose principals include the FQDN and all IPs; the form blocks private keys
+- [x] #2 After issuance the operator can view the decoded cert (type, principals, serial, key-id, valid_after/before in operator-TZ and UTC) and download the cert plus a ready-to-paste sshd_config drop-in and a zip bundle in one click
+- [x] #3 The host list shows each cert's expiry with the shared color-coded days-left treatment; KRL registration status/action appears only when the ECIES path is enabled; re-issue/renew works without re-registering
+- [x] #4 An operator can renew (re-sign) or revoke from the detail page, and revocation routes the key into the KRL flow
 <!-- AC:END -->
