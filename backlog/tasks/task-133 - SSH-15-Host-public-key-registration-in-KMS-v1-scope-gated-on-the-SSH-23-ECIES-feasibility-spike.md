@@ -3,10 +3,10 @@ id: TASK-133
 title: >-
   SSH-15: Host public-key registration in KMS (v1 scope, gated on the SSH-23
   ECIES feasibility spike)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:32'
 labels:
   - ssh-cert-manager
   - backend
@@ -30,8 +30,8 @@ v1 scope, GATED on the SSH-23 feasibility spike proving Cosmian supports externa
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When the ECIES path is disabled, issuance proceeds with no KMS registration call and no dependency on KMS Locate/Register; when enabled and the spike has proven external-pubkey Register works, issuing a host cert registers that host's pubkey in KMS tagged with host_id + host-pubkey, fingerprint-matched to the just-signed cert, storing kms_pubkey_id
-- [ ] #2 A locate-by-tag for a registered host_id resolves exactly one pubkey id and zero for an unregistered host
-- [ ] #3 An operator can rotate/re-register a host's distribution pubkey without re-issuing its cert, old registrations are superseded, and a registration mismatch surfaces as host 'KRL-undeliverable' status rather than a silent failure
-- [ ] #4 host_id is validated against a strict hostname grammar before being used as a KMS tag; registration failure does not block cert issuance (kms_pubkey_id stays null)
+- [x] #1 When the ECIES path is disabled, issuance proceeds with no KMS registration call and no dependency on KMS Locate/Register; when enabled and the spike has proven external-pubkey Register works, issuing a host cert registers that host's pubkey in KMS tagged with host_id + host-pubkey, fingerprint-matched to the just-signed cert, storing kms_pubkey_id
+- [x] #2 A locate-by-tag for a registered host_id resolves exactly one pubkey id and zero for an unregistered host
+- [x] #3 An operator can rotate/re-register a host's distribution pubkey without re-issuing its cert, old registrations are superseded, and a registration mismatch surfaces as host 'KRL-undeliverable' status rather than a silent failure
+- [x] #4 host_id is validated against a strict hostname grammar before being used as a KMS tag; registration failure does not block cert issuance (kms_pubkey_id stays null)
 <!-- AC:END -->
