@@ -1,10 +1,11 @@
 ---
 id: TASK-127
 title: 'SSH-10: ssh-ca.service.ts: dual SSH CA lifecycle + trust-anchor publishing'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:55'
 labels:
   - ssh-cert-manager
   - backend
