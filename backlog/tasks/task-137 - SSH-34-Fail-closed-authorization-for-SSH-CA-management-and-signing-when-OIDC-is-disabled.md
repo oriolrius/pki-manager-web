@@ -3,10 +3,10 @@ id: TASK-137
 title: >-
   SSH-34: Fail-closed authorization for SSH CA management and signing when OIDC
   is disabled
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:07'
 labels:
   - ssh-cert-manager
   - backend
@@ -30,8 +30,8 @@ adminRoleMiddleware (init.ts:69-71) returns next() with NO role check whenever O
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With OIDC disabled and no opt-in, an unauthenticated request to create/import/rotate/revoke an SSH CA or issue an SSH cert is rejected (fail closed) over both tRPC and REST
-- [ ] #2 An explicit env opt-in enables unauthenticated SSH CA ops for local dev only, and the server logs a prominent warning at startup when it is set
-- [ ] #3 The behaviour is documented next to the 'OIDC optional' note so operators cannot accidentally run SSH issuance unauthenticated in production
-- [ ] #4 A test asserts the unauthenticated-create rejection holds unless the opt-in is set
+- [x] #1 With OIDC disabled and no opt-in, an unauthenticated request to create/import/rotate/revoke an SSH CA or issue an SSH cert is rejected (fail closed) over both tRPC and REST
+- [x] #2 An explicit env opt-in enables unauthenticated SSH CA ops for local dev only, and the server logs a prominent warning at startup when it is set
+- [x] #3 The behaviour is documented next to the 'OIDC optional' note so operators cannot accidentally run SSH issuance unauthenticated in production
+- [x] #4 A test asserts the unauthenticated-create rejection holds unless the opt-in is set
 <!-- AC:END -->
