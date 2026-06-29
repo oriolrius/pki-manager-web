@@ -2,8 +2,25 @@
 id: decision-013
 title: SSH KRL Distribution
 date: '2026-06-29 15:48'
-status: Proposed
+status: Accepted
 ---
+## Spike outcome (TASK-144, reproducible — `KMS_URL=… npx tsx src/kms/spike-ssh-ecies.ts`)
+
+ECIES is **VIABLE** against the live Cosmian KMS for nistp256 — all probes PASS:
+
+| Probe | Result |
+|---|---|
+| Register a per-host EC keypair tagged by host_id | PASS (KMS-resident model) |
+| Locate-by-tag | PASS (resolves the host's key) |
+| `ec encrypt` → `ec decrypt` round-trip | PASS (plaintext recovered exactly) |
+| KMIP-JSON `Encrypt`/`Decrypt` (no CLI dependency) | PASS — ECIES round-trips via pure KMIP |
+
+**Adopted model:** the host's ECIES key is a **KMS-resident** EC P-256 keypair tagged
+by host (matching `host_puller.sh` `HOST_PRIV_KEY_ID`); the backend stores the public
+key id on `ssh_hosts.kms_pubkey_id` at registration, so no locate-by-tag is needed at
+distribution time. The backend ECIES-encrypts via KMIP `Encrypt` (no CLI dependency);
+the host decrypts via the KMS with its private key id. SSH-15 and SSH-24 proceed.
+
 ## Context
 
 SSH revocation needs a delivery mechanism. The guaranteed, always-available path is the BARE

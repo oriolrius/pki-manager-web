@@ -968,6 +968,60 @@ export class KMSClient {
     return Buffer.from(this.getByteStringValue(qstr), "hex");
   }
 
+  /**
+   * Create an EC P-256 keypair for ECIES (SSH-15/SSH-24): usage Encrypt|Decrypt,
+   * tagged, activated. The host's KRL-distribution key (KMS-resident model).
+   */
+  async createEcEncryptionKeyPair(opts?: { tags?: string[] }): Promise<KeyPairIds> {
+    const domain = { tag: 'CryptographicDomainParameters', value: [{ tag: 'RecommendedCurve', type: 'Enumeration', value: 'P256' }] } as KMIPElement;
+    const common: KMIPElement[] = [
+      { tag: 'CryptographicAlgorithm', type: 'Enumeration', value: 'ECDSA' },
+      domain,
+      { tag: 'CryptographicUsageMask', type: 'Integer', value: 12 }, // Encrypt | Decrypt
+      { tag: 'ObjectType', type: 'Enumeration', value: 'PrivateKey' },
+    ];
+    if (opts?.tags?.length) {
+      common.push({
+        tag: 'Attribute',
+        value: [
+          { tag: 'VendorIdentification', type: 'TextString', value: 'cosmian' },
+          { tag: 'AttributeName', type: 'TextString', value: 'tag' },
+          { tag: 'AttributeValue', type: 'TextString', value: JSON.stringify(opts.tags) },
+        ],
+      });
+    }
+    const response = await this.sendKMIPRequest({ tag: 'CreateKeyPair', value: [{ tag: 'CommonAttributes', value: common }] });
+    const privateKeyId = this.getStringValue(this.findElement(response.value, 'PrivateKeyUniqueIdentifier'));
+    const publicKeyId = this.getStringValue(this.findElement(response.value, 'PublicKeyUniqueIdentifier'));
+    await this.activate(privateKeyId);
+    await this.activate(publicKeyId);
+    return { privateKeyId, publicKeyId };
+  }
+
+  /** ECIES-encrypt to an EC public key (KMIP Encrypt). Returns ciphertext bytes. */
+  async ecEncrypt(publicKeyId: string, data: Buffer): Promise<Buffer> {
+    const response = await this.sendKMIPRequest({
+      tag: 'Encrypt',
+      value: [
+        { tag: 'UniqueIdentifier', type: 'TextString', value: publicKeyId },
+        { tag: 'Data', type: 'ByteString', value: data.toString('hex') },
+      ],
+    });
+    return Buffer.from(this.getByteStringValue(this.findElement(response.value, 'Data')), 'hex');
+  }
+
+  /** ECIES-decrypt with an EC private key (KMIP Decrypt). Returns plaintext bytes. */
+  async ecDecrypt(privateKeyId: string, ciphertext: Buffer): Promise<Buffer> {
+    const response = await this.sendKMIPRequest({
+      tag: 'Decrypt',
+      value: [
+        { tag: 'UniqueIdentifier', type: 'TextString', value: privateKeyId },
+        { tag: 'Data', type: 'ByteString', value: ciphertext.toString('hex') },
+      ],
+    });
+    return Buffer.from(this.getByteStringValue(this.findElement(response.value, 'Data')), 'hex');
+  }
+
   /** Activate a key (KMIP keys are created PreActive and cannot Sign until Active). */
   async activate(keyId: string): Promise<void> {
     await this.sendKMIPRequest({

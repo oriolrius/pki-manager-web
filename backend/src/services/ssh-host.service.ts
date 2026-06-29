@@ -162,6 +162,31 @@ export class SshHostService {
     });
   }
 
+  /**
+   * Register a per-host ECIES keypair in the KMS, tagged by host (SSH-15, gated
+   * on the SSH-23 spike which proved ECIES viable). Stores the public key id on
+   * the host (for encryption); returns the private key id for the puller config.
+   * The keypair's fingerprint is NOT the SSH host key — it is a dedicated
+   * KMS-resident distribution key (matches host_puller.sh HOST_PRIV_KEY_ID).
+   */
+  async registerEciesKey(ctx: ServiceContext, hostId: string): Promise<{ kmsPublicKeyId: string; kmsPrivateKeyId: string }> {
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
+    if (!host) throw new SshHostError(`host ${hostId} not found`);
+    const { getKMSService } = await import('../kms/service.js');
+    const { publicKeyId, privateKeyId } = await getKMSService().registerHostEciesKey(host.fqdn);
+    await ctx.db.update(sshHosts).set({ kmsPubkeyId: publicKeyId, updatedAt: new Date() }).where(eq(sshHosts.id, hostId));
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.host.register_pubkey',
+      entityType: 'ssh_host',
+      entityId: hostId,
+      status: 'success',
+      details: { kmsPublicKeyId: publicKeyId },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+    return { kmsPublicKeyId: publicKeyId, kmsPrivateKeyId: privateKeyId };
+  }
+
   private async resolveHostCa(ctx: ServiceContext, caId?: string): Promise<any> {
     if (caId) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the PKI-Manager SSH KRL puller every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -8,12 +8,18 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { sshHosts, sshIdentities, sshIdempotency } from '../../db/schema.js';
+import { eq as eqcol, and as andcol, desc as desccol } from 'drizzle-orm';
+import { sshHosts, sshIdentities, sshIdempotency, sshCertificates, sshCas } from '../../db/schema.js';
 import { isValidHostId, validateCidrList, isValidPrincipalName } from '../../services/ssh-config.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
+import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
+import { getKMSService } from '../../kms/service.js';
 import { createAuditLog } from '../../lib/audit.js';
+
+const eciesEnabled = () => process.env.SSH_ECIES_ENABLED === 'true';
+const KRL_VALID_FOR_SECONDS = parseInt(process.env.KRL_VALID_FOR_SECONDS || '1800', 10);
 
 const signHostBody = z.object({
   fqdn: z.string().refine(isValidHostId),
@@ -148,10 +154,80 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     }
   });
 
-  // ---- POST /register-host-pubkey (gated on the ECIES path, SSH-15/SSH-23) ----
+  // ---- POST /register-host-pubkey (SSH-15; ECIES path, gated by SSH_ECIES_ENABLED) ----
   server.post(`${base}/register-host-pubkey`, async (req, reply) => {
     const token = await authn(req, reply, 'register-host-pubkey');
     if (!token) return;
-    return err(reply, 501, 'NOT_IMPLEMENTED', 'host pubkey registration is enabled only when the ECIES KRL path is active (SSH-15/SSH-23)');
+    if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
+    const fqdn = (req.body as any)?.fqdn ?? (req.body as any)?.host_id;
+    if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'fqdn required');
+    const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, fqdn)).limit(1))[0];
+    if (!host) return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
+    try {
+      const ids = await getSshHostService().registerEciesKey({ db, ipAddress: req.ip }, host.id);
+      return { hostId: host.id, kmsPublicKeyId: ids.kmsPublicKeyId, hostPrivKeyId: ids.kmsPrivateKeyId };
+    } catch (e: any) {
+      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'registration failed');
+    }
   });
+
+  // ---- POST /krl (SSH-24 encrypted per-host distribution) ----
+  // No app auth: ECIES means only the target host can decrypt (the 404-vs-200
+  // host oracle is an accepted bounded disclosure). host_id is in the BODY.
+  server.post(`${base}/krl`, async (req, reply) => {
+    if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
+    const hostId = (req.body as any)?.host_id;
+    if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');
+    const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId)).limit(1))[0];
+    if (!host || !host.kmsPubkeyId) return err(reply, 404, 'NOT_FOUND', 'host not registered for KRL distribution');
+
+    // Resolve the host's CA (via its current cert, else the active host CA).
+    let caId: string | undefined;
+    if (host.currentCertId) {
+      const c = (await db.select().from(sshCertificates).where(eqcol(sshCertificates.id, host.currentCertId)).limit(1))[0];
+      caId = c?.caId;
+    }
+    if (!caId) {
+      const ca = (await db.select().from(sshCas).where(andcol(eqcol(sshCas.caType, 'host'), eqcol(sshCas.status, 'active'))).limit(1))[0];
+      caId = ca?.id;
+    }
+    if (!caId) return err(reply, 503, 'NO_CA', 'no host CA available');
+
+    const svc = getSshKrlService();
+    let row = await svc.getLatestRow({ db, ipAddress: req.ip }, caId);
+    if (!row || new Date(row.nextUpdate).getTime() < Date.now()) {
+      try {
+        await svc.generate({ db, ipAddress: req.ip }, caId);
+        row = await svc.getLatestRow({ db, ipAddress: req.ip }, caId);
+      } catch { /* keep last-good */ }
+    }
+    if (!row) return err(reply, 503, 'NO_KRL', 'no KRL available');
+
+    const version = row.versionHash as string;
+    const inm = (req.headers['if-none-match'] as string | undefined)?.trim();
+    if (inm && inm === version) {
+      reply.header('X-KRL-Version', version);
+      return reply.code(304).send();
+    }
+
+    const payload = Buffer.from(
+      JSON.stringify({
+        krl: Buffer.from(row.krlBlob).toString('base64'),
+        ca_signature: row.caSignature ? Buffer.from(row.caSignature).toString('base64') : null,
+        krl_version: version,
+        valid_until: Math.floor(Date.now() / 1000) + KRL_VALID_FOR_SECONDS,
+        host_id: hostId,
+      })
+    );
+    try {
+      const ciphertext = await getKMSService().eciesEncrypt(host.kmsPubkeyId, payload);
+      await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version }).where(eqcol(sshHosts.id, host.id));
+      reply.header('X-KRL-Version', version);
+      reply.header('Content-Type', 'application/octet-stream');
+      return ciphertext;
+    } catch (e: any) {
+      return err(reply, 500, 'ENCRYPT_FAILED', e?.message ?? 'ECIES encryption failed');
+    }
+  });
+  void desccol;
 }

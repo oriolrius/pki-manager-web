@@ -403,6 +403,23 @@ export class KMSService {
     return this.client.signatureVerify(publicKeyId, data, signature);
   }
 
+  /** Register a per-host ECIES keypair in the KMS, tagged by host_id (SSH-15). */
+  async registerHostEciesKey(hostId: string, tags: string[] = []): Promise<KeyPairIds> {
+    const result = await this.client.createEcEncryptionKeyPair({ tags: ['ssh-host-ecies', `host:${hostId}`, ...tags] });
+    await this.logAudit('ssh.host.register_pubkey', 'ssh_host', hostId, 'success', { ...result }, randomUUID());
+    return result;
+  }
+
+  /** ECIES-encrypt to a host's registered public key (SSH-24). */
+  async eciesEncrypt(publicKeyId: string, data: Buffer): Promise<Buffer> {
+    return this.client.ecEncrypt(publicKeyId, data);
+  }
+
+  /** ECIES-decrypt with a host's private key in the KMS (used by the puller path). */
+  async eciesDecrypt(privateKeyId: string, ciphertext: Buffer): Promise<Buffer> {
+    return this.client.ecDecrypt(privateKeyId, ciphertext);
+  }
+
   /**
    * Revoke a key
    */
