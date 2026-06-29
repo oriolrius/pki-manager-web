@@ -1,10 +1,10 @@
 ---
 id: TASK-145
 title: 'SSH-24: Stateless encrypted KRL distribution sidecar + host-side puller'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:32'
 labels:
   - ssh-cert-manager
   - backend
@@ -31,8 +31,8 @@ v1 scope, gated on SSH-23 proving ECIES viable (external-pubkey Register + locat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A registered host POSTing /krl with a stale If-None-Match receives 200 ECIES ciphertext it can decrypt with its own private key; an up-to-date If-None-Match receives 304 + X-KRL-Version; an unregistered host_id returns 404 and a malformed one 400
-- [ ] #2 The puller refuses to install a payload whose CA signature fails, whose valid_until is past, whose host_id mismatches, whose sha256 differs from the advertised version, OR whose version is not strictly newer than the installed one (anti-rollback); otherwise installs atomically -m444 and exits 0 (no write on the 304 path)
-- [ ] #3 After central revocation and a timer fire, that key can no longer authenticate and sshd logs 'revoked by file'; the puller's authenticated callback populates ssh_hosts.last_krl_version/last_krl_fetch_at
-- [ ] #4 The sidecar holds no secrets, delegates all crypto to KMS, returns 503 if the backend KRL endpoint is down (never an unsigned/empty KRL); if SSH-23 finds ECIES unviable this task is dropped entirely
+- [x] #1 A registered host POSTing /krl with a stale If-None-Match receives 200 ECIES ciphertext it can decrypt with its own private key; an up-to-date If-None-Match receives 304 + X-KRL-Version; an unregistered host_id returns 404 and a malformed one 400
+- [x] #2 The puller refuses to install a payload whose CA signature fails, whose valid_until is past, whose host_id mismatches, whose sha256 differs from the advertised version, OR whose version is not strictly newer than the installed one (anti-rollback); otherwise installs atomically -m444 and exits 0 (no write on the 304 path)
+- [x] #3 After central revocation and a timer fire, that key can no longer authenticate and sshd logs 'revoked by file'; the puller's authenticated callback populates ssh_hosts.last_krl_version/last_krl_fetch_at
+- [x] #4 The sidecar holds no secrets, delegates all crypto to KMS, returns 503 if the backend KRL endpoint is down (never an unsigned/empty KRL); if SSH-23 finds ECIES unviable this task is dropped entirely
 <!-- AC:END -->
