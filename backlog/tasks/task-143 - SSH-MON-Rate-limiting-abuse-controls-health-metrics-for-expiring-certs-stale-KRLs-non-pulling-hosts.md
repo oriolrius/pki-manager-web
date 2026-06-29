@@ -3,10 +3,11 @@ id: TASK-143
 title: >-
   SSH-MON: Rate limiting + abuse controls + health/metrics for expiring certs,
   stale KRLs, non-pulling hosts
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:32'
 labels:
   - ssh-cert-manager
   - backend
