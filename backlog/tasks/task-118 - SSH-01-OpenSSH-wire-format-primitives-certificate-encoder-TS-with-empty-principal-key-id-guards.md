@@ -35,3 +35,9 @@ Build a pure-TypeScript, dependency-free module (crypto/ssh/wire.ts + crypto/ssh
 - [x] #3 Issuing with an empty principals list is rejected unless an explicit wildcard flag is set; key_id containing control characters is rejected; both guards are unit-tested
 - [x] #4 The module has no runtime npm dependency (no forge/sshpk/ssh2), supports only ed25519 + ecdsa-nistp256 subjects in v1, and is exhaustively unit-tested
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+wire.ts + openssh-cert.ts: PROTOCOL.certkeys encoder for ed25519+ecdsa subjects; empty-principal & control-char key_id guards; validated byte-exact via ssh-keygen -L (host+user, force-command/source-address/hardened). No runtime deps. Tests: openssh-cert.test.ts (4).
+<!-- SECTION:NOTES:END -->
