@@ -4,11 +4,14 @@ title: 'SSH-32c: User/identity offboarding (disable) in one action'
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 15:48'
 labels:
   - ssh-cert-manager
   - automation
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-131
+  - TASK-141
 priority: low
 ---
 
