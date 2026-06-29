@@ -4,11 +4,15 @@ title: 'SSH-32a: CA rotation: dual-trust overlap and predecessor retirement'
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:45'
+updated_date: '2026-06-29 15:48'
 labels:
   - ssh-cert-manager
   - automation
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-122
+  - TASK-127
+  - TASK-141
 priority: low
 ---
 
