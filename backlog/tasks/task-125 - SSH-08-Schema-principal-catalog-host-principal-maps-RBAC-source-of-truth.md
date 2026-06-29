@@ -4,12 +4,14 @@ title: 'SSH-08: Schema: principal catalog + host principal-maps (RBAC source of 
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:40'
+updated_date: '2026-06-29 15:46'
 labels:
   - ssh-cert-manager
   - database
   - backend
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-123
 priority: medium
 ---
 
