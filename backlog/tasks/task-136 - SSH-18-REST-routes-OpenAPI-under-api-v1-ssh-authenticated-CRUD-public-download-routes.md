@@ -3,10 +3,11 @@ id: TASK-136
 title: >-
   SSH-18: REST routes + OpenAPI under /api/v1/ssh (authenticated CRUD) + public
   download routes
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:42'
-updated_date: '2026-06-29 15:47'
+updated_date: '2026-06-29 18:07'
 labels:
   - ssh-cert-manager
   - backend
