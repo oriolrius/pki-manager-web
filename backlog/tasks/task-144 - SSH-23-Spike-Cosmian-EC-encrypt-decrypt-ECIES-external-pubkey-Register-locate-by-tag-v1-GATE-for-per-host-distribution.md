@@ -3,11 +3,11 @@ id: TASK-144
 title: >-
   SSH-23: Spike Cosmian EC encrypt/decrypt (ECIES) + external-pubkey Register +
   locate-by-tag; v1 GATE for per-host distribution
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:44'
-updated_date: '2026-06-29 18:25'
+updated_date: '2026-06-29 18:32'
 labels:
   - ssh-cert-manager
   - backend
@@ -31,8 +31,8 @@ v1 GATE spike: its outcome decides whether SSH-15/SSH-24 (per-host encrypted KRL
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A spike empirically confirms or refutes, against the running KMS for nistp256: external-EC-pubkey Register, locate-by-tag, and ec encrypt/decrypt round-trip including a host decrypting a Cosmian-encrypted ciphertext
-- [ ] #2 A decision (decision-013) states whether per-host ECIES KRL is viable, the chosen fallback (TLS-only delivery of the bare/signed KRL), and names the single seam that changes if Cosmian later supports it
-- [ ] #3 If any required op is unavailable, the ECIES path is marked INFEASIBLE and SSH-24/SSH-15 remain deferred with no functional gap for revocation
-- [ ] #4 The KMS client gains Register/Locate/Encrypt/Decrypt wrappers ONLY if the spike proves they work; the spike skips when KMS_URL is unreachable
+- [x] #1 A spike empirically confirms or refutes, against the running KMS for nistp256: external-EC-pubkey Register, locate-by-tag, and ec encrypt/decrypt round-trip including a host decrypting a Cosmian-encrypted ciphertext
+- [x] #2 A decision (decision-013) states whether per-host ECIES KRL is viable, the chosen fallback (TLS-only delivery of the bare/signed KRL), and names the single seam that changes if Cosmian later supports it
+- [x] #3 If any required op is unavailable, the ECIES path is marked INFEASIBLE and SSH-24/SSH-15 remain deferred with no functional gap for revocation
+- [x] #4 The KMS client gains Register/Locate/Encrypt/Decrypt wrappers ONLY if the spike proves they work; the spike skips when KMS_URL is unreachable
 <!-- AC:END -->
