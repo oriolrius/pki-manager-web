@@ -4,6 +4,7 @@ import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { registerRestApi } from './rest/index.js';
+import { registerSshPublicRoutes } from './rest/routes/ssh-public.routes.js';
 import { db } from './db/client.js';
 import { certificateAuthorities, crls } from './db/schema.js';
 import { eq, desc } from 'drizzle-orm';
@@ -204,6 +205,9 @@ server.get('/crl/:caId.:format', async (req, reply) => {
     return { error: 'Internal server error while serving CRL' };
   }
 });
+
+// Public SSH trust-material download endpoints (no auth, like /crl).
+registerSshPublicRoutes(server);
 
 // Start server
 const start = async () => {
