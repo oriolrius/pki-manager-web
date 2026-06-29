@@ -1,11 +1,11 @@
 ---
 id: TASK-127
 title: 'SSH-10: ssh-ca.service.ts: dual SSH CA lifecycle + trust-anchor publishing'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:41'
-updated_date: '2026-06-29 17:55'
+updated_date: '2026-06-29 18:03'
 labels:
   - ssh-cert-manager
   - backend
@@ -30,8 +30,8 @@ Singleton getSshCaService() class (ctx,params) managing the dual CA. create() ca
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can create a User CA and a Host CA, both ECDSA nistp256 and distinct keypairs; private keys are created with the SSH-SENS-chosen exportability flags and stay in KMS
-- [ ] #2 get()/getTrustAnchors() return each CA's OpenSSH public key, SHA256 fingerprint, and ready-to-paste TrustedUserCAKeys / @cert-authority snippets; pasting them makes a real sshd/known_hosts trust certs signed by them; during rotation both predecessor and successor keys are emitted
-- [ ] #3 Creating an Ed25519 or P-384 SSH CA is rejected before any KMS call with a clear incompatibility message
-- [ ] #4 Every create/revoke writes an audit_log row and ssh_cas records carry no X.509 fields
+- [x] #1 An operator can create a User CA and a Host CA, both ECDSA nistp256 and distinct keypairs; private keys are created with the SSH-SENS-chosen exportability flags and stay in KMS
+- [x] #2 get()/getTrustAnchors() return each CA's OpenSSH public key, SHA256 fingerprint, and ready-to-paste TrustedUserCAKeys / @cert-authority snippets; pasting them makes a real sshd/known_hosts trust certs signed by them; during rotation both predecessor and successor keys are emitted
+- [x] #3 Creating an Ed25519 or P-384 SSH CA is rejected before any KMS call with a clear incompatibility message
+- [x] #4 Every create/revoke writes an audit_log row and ssh_cas records carry no X.509 fields
 <!-- AC:END -->
