@@ -4,12 +4,15 @@ title: 'SSH-07: Schema: ssh_certificates (host + user certs, signed blob on-row)
 status: To Do
 assignee: []
 created_date: '2026-06-29 15:40'
+updated_date: '2026-06-29 15:46'
 labels:
   - ssh-cert-manager
   - database
   - backend
 milestone: SSH Certificate Manager
-dependencies: []
+dependencies:
+  - TASK-122
+  - TASK-123
 priority: high
 ---
 
