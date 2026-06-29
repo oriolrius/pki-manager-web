@@ -111,7 +111,7 @@ Then restart the service.
 
 ## Integration with PKI Manager
 
-The backend application connects to KMS through the KMS client service (`backend/src/services/kms.ts`). Configuration:
+The backend application connects to KMS through the KMS client/service modules (`backend/src/kms/` — `client.ts` + `service.ts`). Configuration:
 
 1. Set `KMS_URL=http://localhost:42998` in backend `.env`
 2. The KMS client handles all cryptographic operations:
