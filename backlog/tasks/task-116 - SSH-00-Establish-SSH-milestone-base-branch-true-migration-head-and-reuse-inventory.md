@@ -3,11 +3,11 @@ id: TASK-116
 title: >-
   SSH-00: Establish SSH milestone base branch, true migration head, and reuse
   inventory
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-06-29 15:37'
-updated_date: '2026-06-29 17:08'
+updated_date: '2026-06-29 17:22'
 labels:
   - ssh-cert-manager
   - crypto
@@ -29,8 +29,14 @@ Make the base branch a first-class, verified precondition before any SSH code is
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A short decision documents the chosen base branch and lists, per named 'reused' component (raw-signing seam, fleet-token auth, public KRL serving), whether it exists on that base or is authored by this milestone
-- [ ] #2 All SSH migration tasks reference 'the next sequential migration after the verified current head' (confirmed against meta/_journal.json), with no hard-coded number; the head is re-verified at branch-cut, not assumed to be 0003
-- [ ] #3 The milestone's reuse claims (signRaw-shared-with-CRL, cluster-token-generalisation, /crl-ETag-mirroring) are corrected to match the actual base-branch state before Phase 2 begins
-- [ ] #4 No downstream task asserts reuse of code absent on the chosen base
+- [x] #1 A short decision documents the chosen base branch and lists, per named 'reused' component (raw-signing seam, fleet-token auth, public KRL serving), whether it exists on that base or is authored by this milestone
+- [x] #2 All SSH migration tasks reference 'the next sequential migration after the verified current head' (confirmed against meta/_journal.json), with no hard-coded number; the head is re-verified at branch-cut, not assumed to be 0003
+- [x] #3 The milestone's reuse claims (signRaw-shared-with-CRL, cluster-token-generalisation, /crl-ETag-mirroring) are corrected to match the actual base-branch state before Phase 2 begins
+- [x] #4 No downstream task asserts reuse of code absent on the chosen base
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Verified base branch = ssh-cert-manager @3f95581 (descends from origin/main). Migration head = 0003_restore_key_algorithm in backend/src/db/migrations/meta/_journal.json -> first SSH migration is 0004 (SSH migration tasks reference "next after the verified head", never hard-coded). Reuse inventory verified by grep/ls and recorded in decision-014: signRaw ABSENT (authored by SSH-03), crl.service.ts:156 still `const crlPem = ''` placeholder, NO clusters table / cluster.service.ts / external.routes.ts (SSH-19 builds the fleet-token stack from scratch), /crl route has no ETag/304/lazy-regen (SSH-22 authors that). Milestone reuse claims already corrected in the finalized tasks (SSH-03/19/22 framed as authoring, not reuse). Decision: decision-014 (Accepted).
+<!-- SECTION:NOTES:END -->
