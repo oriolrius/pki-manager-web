@@ -1,10 +1,11 @@
 ---
 id: TASK-119
 title: 'SSH-02: SSH public-key parser + OpenSSH/SPKI format conversion'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:39'
-updated_date: '2026-06-29 15:46'
+updated_date: '2026-06-29 17:31'
 labels:
   - ssh-cert-manager
   - crypto
