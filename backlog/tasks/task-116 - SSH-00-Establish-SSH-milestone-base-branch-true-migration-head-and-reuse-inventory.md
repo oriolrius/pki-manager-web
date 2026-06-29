@@ -3,9 +3,11 @@ id: TASK-116
 title: >-
   SSH-00: Establish SSH milestone base branch, true migration head, and reuse
   inventory
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-06-29 15:37'
+updated_date: '2026-06-29 17:08'
 labels:
   - ssh-cert-manager
   - crypto
