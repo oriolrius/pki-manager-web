@@ -6,9 +6,16 @@ import { certificateAuthorities, certificates, auditLog } from '../../db/schema.
 import { getKMSService } from '../../kms/service.js';
 import { logger } from '../../lib/logger.js';
 import { parseCertificate } from '../../crypto/x509.js';
-import { buildCertificateExtensions } from '../../services/certificate.service.js';
 import { clusterAuthPreHandler } from '../middleware/cluster-auth.js';
-import { randomUUID, randomBytes } from 'crypto';
+import { randomUUID } from 'crypto';
+
+// Leaf extensions we add ourselves. SAN/keyUsage/extKeyUsage come from the CSR (Cosmian
+// copies the CSR's requested extensions verbatim), so we must NOT re-supply them here or
+// the issued certificate would carry duplicate, invalid extensions. CSRs never carry
+// basicConstraints, so adding CA:FALSE is safe and gives a proper end-entity cert.
+const LEAF_X509_EXTENSIONS = `[ v3_ca ]
+basicConstraints=critical,CA:FALSE
+`;
 
 type ExternalCertType = 'server' | 'client' | 'dual';
 
@@ -71,10 +78,10 @@ function parseCsrPem(csrPem: string): ParsedCsr {
  *
  * Idempotency: sign accepts request_uid; repeat calls return cached cert.
  *
- * NOTE on signing: Cosmian KMS does not currently expose a public-key-only
- * import path in our wrapper. Until KMS Register-public-key support is added
- * (see task-109.05 notes), the sign endpoint returns 501 Not Implemented and
- * documents the integration contract used by the controller.
+ * Signing: the CSR is signed by the cluster CA via the KMS Certify operation
+ * (kms.signCertificate with preserveCsrKey). The CA private key never leaves the KMS,
+ * and Cosmian signs the CSR's own public key + copies its requested extensions
+ * (SAN/keyUsage/EKU). See TASK-109.22.
  */
 export async function externalRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', clusterAuthPreHandler);
@@ -176,16 +183,6 @@ export async function externalRoutes(fastify: FastifyInstance) {
         error: { code: 'INVALID_CSR', message: 'CSR subject must include CN' },
       });
     }
-    // Cosmian KMS requires CertificateSubjectO. cert-manager-generated CSRs may
-    // contain only CN. Backfill missing fields from the CA's DN so KMS accepts.
-    function pickField(dn: string, key: string): string | undefined {
-      for (const part of dn.split(',')) {
-        const [k, ...rest] = part.trim().split('=');
-        if (k.trim() === key) return rest.join('=').trim();
-      }
-      return undefined;
-    }
-
     // Load CA bound to this cluster
     const caRows = await db
       .select()
@@ -209,152 +206,57 @@ export async function externalRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Backfill missing Subject parts from CA so KMS subjectName is complete
-    const haveO = pickField(parsed.subjectDn, 'O');
-    const haveC = pickField(parsed.subjectDn, 'C');
-    const caO = pickField(ca.subjectDn, 'O') ?? 'Kubernetes';
-    const caC = pickField(ca.subjectDn, 'C') ?? 'XX';
-    const augmentedParts: string[] = [];
-    augmentedParts.push(`CN=${parsed.cn}`);
-    augmentedParts.push(`O=${haveO ?? caO}`);
-    augmentedParts.push(`C=${haveC ?? caC}`);
-    const augmentedSubjectDn = augmentedParts.join(',');
-
+    // Subject + SANs are taken from the CSR. The issued cert's subject == the CSR subject
+    // (Cosmian signs CSRs as-is), so store the CSR subject DN. SAN columns are for
+    // display/search; we record what the CSR (and thus the cert) actually contains.
+    const subjectDn = parsed.subjectDn;
+    // certificateType is recorded for display only — the actual keyUsage/EKU come from the
+    // CSR (cert-manager encodes them), not from this hint.
     const certificateType: ExternalCertType = body.certificateType ?? 'dual';
     const durationDays = Math.min(Math.max(body.durationDays ?? 90, 1), 825);
-
-    // Merge SANs from CSR with optional body overrides (cert-manager may not echo SANs in CSR
-    // when usages-only requests are made; defensive merge is safe)
-    const sanDns = Array.from(new Set([...parsed.sanDns, ...(body.sanDns ?? [])]));
-    const sanIp = Array.from(new Set([...parsed.sanIp, ...(body.sanIp ?? [])]));
+    const sanDns = parsed.sanDns;
+    const sanIp = parsed.sanIp;
     const sanEmail = parsed.sanEmail;
-
-    const x509Extensions = buildCertificateExtensions({
-      certificateType,
-      sanDns: sanDns.length ? sanDns : undefined,
-      sanIp: sanIp.length ? sanIp : undefined,
-      sanEmail: sanEmail.length ? sanEmail : undefined,
-    });
 
     const certId = randomUUID();
     const kms = getKMSService();
 
+    let certificatePem: string;
+    let certMeta: ReturnType<typeof parseCertificate>;
+    let kmsCertificateId: string;
     try {
       logger.info(
         { certId, clusterId: req.cluster!.id, cn: parsed.cn, caId: ca.id },
-        'Signing CSR offline for k8s cluster'
+        'Signing CSR via KMS for k8s cluster'
       );
 
-      // CSR signing strategy: cert-manager requires the cluster's CSR public key
-      // to be preserved exactly. Cosmian KMS .certify() always regenerates a key
-      // pair, so we sign offline with node-forge.
-      // Two CA-key sources, in order of preference:
-      //   1. Env vars EXTERNAL_ISSUER_CA_CERT_PEM / EXTERNAL_ISSUER_CA_KEY_PEM (path or inline)
-      //      — used in test/dev environments
-      //   2. KMS getPrivateKey(ca.kmsKeyId) — works only if CA was created with
-      //      a private-key reference; some CA creation paths leave kmsKeyId
-      //      pointing at the certificate (Cosmian quirk). Falls back gracefully.
-      let caCertPem: string;
-      let caKeyPem: string;
-      const envCertPath = process.env.EXTERNAL_ISSUER_CA_CERT_PEM;
-      const envKeyPath = process.env.EXTERNAL_ISSUER_CA_KEY_PEM;
-      if (envCertPath && envKeyPath) {
-        const fs = await import('node:fs/promises');
-        caCertPem = envCertPath.startsWith('-----')
-          ? envCertPath
-          : await fs.readFile(envCertPath, 'utf-8');
-        caKeyPem = envKeyPath.startsWith('-----')
-          ? envKeyPath
-          : await fs.readFile(envKeyPath, 'utf-8');
-        logger.debug({ caId: ca.id }, 'Using CA from env (EXTERNAL_ISSUER_CA_*)');
-      } else {
-        caCertPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
-        caKeyPem = await kms.getPrivateKey(ca.kmsKeyId, ca.id);
-      }
-      const caCert = forge.pki.certificateFromPem(caCertPem);
-      const caKey = forge.pki.privateKeyFromPem(caKeyPem);
-      const csrObj = forge.pki.certificationRequestFromPem(body.csrPem);
-
-      const cert = forge.pki.createCertificate();
-      cert.publicKey = csrObj.publicKey!;
-      // 20-byte random serial
-      const serialBytes = randomBytes(19);
-      cert.serialNumber = '00' + serialBytes.toString('hex');
-      cert.validity.notBefore = new Date();
-      cert.validity.notAfter = new Date(Date.now() + durationDays * 24 * 3600 * 1000);
-      cert.setSubject([
-        { name: 'commonName', value: parsed.cn },
-        { name: 'organizationName', value: haveO ?? caO },
-        { name: 'countryName', value: haveC ?? caC },
-      ]);
-      cert.setIssuer(caCert.subject.attributes);
-
-      const eku: { id: string }[] = [];
-      const ekuOids = {
-        serverAuth: '1.3.6.1.5.5.7.3.1',
-        clientAuth: '1.3.6.1.5.5.7.3.2',
-      };
-      let keyUsageDigitalSig = true;
-      let keyUsageKeyEnc = false;
-      switch (certificateType) {
-        case 'server':
-          eku.push({ id: ekuOids.serverAuth });
-          keyUsageKeyEnc = true;
-          break;
-        case 'client':
-          eku.push({ id: ekuOids.clientAuth });
-          break;
-        case 'dual':
-          eku.push({ id: ekuOids.serverAuth }, { id: ekuOids.clientAuth });
-          keyUsageKeyEnc = true;
-          break;
-      }
-
-      const altNames: { type: number; value?: string; ip?: string }[] = [];
-      for (const d of sanDns) altNames.push({ type: 2, value: d });
-      for (const ip of sanIp) altNames.push({ type: 7, ip });
-      for (const e of sanEmail) altNames.push({ type: 1, value: e });
-
-      const exts: any[] = [
-        { name: 'basicConstraints', cA: false, critical: true },
-        {
-          name: 'keyUsage',
-          digitalSignature: keyUsageDigitalSig,
-          keyEncipherment: keyUsageKeyEnc,
-          critical: true,
-        },
-      ];
-      if (eku.length) {
-        exts.push({
-          name: 'extKeyUsage',
-          serverAuth: certificateType !== 'client',
-          clientAuth: certificateType !== 'server',
-        });
-      }
-      if (altNames.length) exts.push({ name: 'subjectAltName', altNames });
-      exts.push({ name: 'subjectKeyIdentifier' });
-      exts.push({ name: 'authorityKeyIdentifier', keyIdentifier: caCert.generateSubjectKeyIdentifier?.().getBytes() });
-      cert.setExtensions(exts);
-      cert.sign(caKey, forge.md.sha256.create());
-
-      const certificatePem = forge.pki.certificateToPem(cert);
-      const certMeta = parseCertificate(certificatePem, 'PEM');
-      // Best-effort: zero CA key reference (forge stores as object; nothing to scrub)
-      void caKey;
-      // Synthesize a kmsCertificateId placeholder since we did not register cert in KMS
-      const certInfo = { certificateId: `local:${certId}`, certificateData: '' };
+      // Sign the CSR with the cluster CA via the KMS. preserveCsrKey keeps the CSR's own
+      // public key; the CA private key stays in the KMS (issuer resolved from the CA's
+      // KMS certificate). Cosmian copies the CSR's SAN/keyUsage/EKU; we only add CA:FALSE.
+      const certInfo = await kms.signCertificate({
+        csr: body.csrPem,
+        issuerCertificateId: ca.kmsCertificateId,
+        daysValid: durationDays,
+        preserveCsrKey: true,
+        x509Extensions: LEAF_X509_EXTENSIONS,
+        entityId: certId,
+        tags: ['k8s', `cluster:${req.cluster!.id}`, `ca:${ca.id}`],
+      });
+      kmsCertificateId = certInfo.certificateId;
+      certificatePem = await kms.getCertificate(kmsCertificateId, ca.id);
+      certMeta = parseCertificate(certificatePem, 'PEM');
 
       await db.insert(certificates).values({
         id: certId,
         caId: ca.id,
-        subjectDn: augmentedSubjectDn,
+        subjectDn,
         serialNumber: certMeta.serialNumber,
         certificateType,
         notBefore: certMeta.validity.notBefore,
         notAfter: certMeta.validity.notAfter,
-        kmsCertificateId: certInfo.certificateId,
-        kmsKeyId: null, // private key never reaches PKI Manager
-        certificatePem: certificatePem,
+        kmsCertificateId,
+        kmsKeyId: null, // leaf private key is generated client-side; never reaches PKI Manager/KMS
+        certificatePem, // cached for fast reads (cert is also retrievable from the KMS)
         status: 'active',
         sanDns: sanDns.length ? JSON.stringify(sanDns) : null,
         sanIp: sanIp.length ? JSON.stringify(sanIp) : null,
@@ -378,7 +280,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
           clusterId: req.cluster!.id,
           caId: ca.id,
           requestUid: body.requestUid,
-          subjectDn: augmentedSubjectDn,
+          subjectDn,
           serialNumber: certMeta.serialNumber,
           k8sNamespace: body.k8sNamespace,
           k8sResource: body.k8sResource,
@@ -387,7 +289,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         ipAddress: req.ip,
       } as any);
 
-      const chainPem = caCertPem;
+      const chainPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
 
       return {
         idempotent: false,
@@ -411,7 +313,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         status: 'failure',
         details: JSON.stringify({
           requestUid: body.requestUid,
-          subjectDn: augmentedSubjectDn,
+          subjectDn,
           error: err instanceof Error ? err.message : String(err),
         }),
         ipAddress: req.ip,

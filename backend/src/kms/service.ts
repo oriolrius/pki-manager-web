@@ -258,6 +258,7 @@ export class KMSService {
     keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
     keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
     x509Extensions?: string; // X.509 extensions in OpenSSL v3_ca format
+    preserveCsrKey?: boolean; // Sign the CSR's embedded public key instead of generating (TASK-109.22 option b)
   }): Promise<CertificateInfo> {
     const operationId = randomUUID();
     try {
@@ -273,6 +274,7 @@ export class KMSService {
         keySizeInBits: options.keySizeInBits,
         keyAlgorithm: options.keyAlgorithm,
         x509Extensions: options.x509Extensions,
+        preserveCsrKey: options.preserveCsrKey,
       });
 
       await this.logAudit(
