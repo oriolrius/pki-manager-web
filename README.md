@@ -187,6 +187,18 @@ Efficient batch certificate creation and management.
 - ✅ Contextual action buttons
 - ✅ Real-time status updates
 
+### SSH Certificate Manager
+A self-contained OpenSSH certificate authority lives under **`/ssh`**: a dual
+(User + Host) CA, host registration, user-cert issuance with principals, and KRL
+revocation — all copy-paste, with a per-host deploy bundle and a guided checklist.
+
+**New to it? Start here:**
+- [How it works (concept)](docs/ssh/concept.md) — the dual CA, two trust
+  directions, the principal-in-two-places rule, two-tier revocation.
+- [Operator quickstart](docs/ssh/operator-quickstart.md) — zero to first login.
+- [Host & client setup](docs/ssh/setup.md) — set up an SSH server and client.
+- [Automation API contract](docs/ssh-api-contract.md) · [Ansible role](ansible/README.md)
+
 ## Architecture
 
 This is a **monorepo** project with two main packages:
