@@ -4,6 +4,8 @@ import forge from 'node-forge';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates, auditLog } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
+import { getCRLService } from '../../services/crl.service.js';
+import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { logger } from '../../lib/logger.js';
 import { parseCertificate } from '../../crypto/x509.js';
 import { clusterAuthPreHandler } from '../middleware/cluster-auth.js';
@@ -16,6 +18,16 @@ import { randomUUID } from 'crypto';
 const LEAF_X509_EXTENSIONS = `[ v3_ca ]
 basicConstraints=critical,CA:FALSE
 `;
+
+/**
+ * Leaf extensions for the external /sign path. The CSR already carries SAN/keyUsage/EKU
+ * (Cosmian copies them), so we add only basicConstraints CA:FALSE plus, when configured,
+ * the issuing CA's CRL Distribution Point. CSRs never request a CDP, so no duplication.
+ */
+function buildLeafExtensions(caId: string): string {
+  const cdp = crlDistributionUrl(caId);
+  return cdp ? `${LEAF_X509_EXTENSIONS}crlDistributionPoints=URI:${cdp}\n` : LEAF_X509_EXTENSIONS;
+}
 
 type ExternalCertType = 'server' | 'client' | 'dual';
 
@@ -238,7 +250,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         issuerCertificateId: ca.kmsCertificateId,
         daysValid: durationDays,
         preserveCsrKey: true,
-        x509Extensions: LEAF_X509_EXTENSIONS,
+        x509Extensions: buildLeafExtensions(ca.id),
         entityId: certId,
         tags: ['k8s', `cluster:${req.cluster!.id}`, `ca:${ca.id}`],
       });
@@ -391,6 +403,9 @@ export async function externalRoutes(fastify: FastifyInstance) {
       }),
       ipAddress: req.ip,
     } as any);
+
+    // Keep the CA CRL current so the revoked serial appears promptly (best-effort).
+    await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, cert[0].caId);
 
     return {
       id: cert[0].id,

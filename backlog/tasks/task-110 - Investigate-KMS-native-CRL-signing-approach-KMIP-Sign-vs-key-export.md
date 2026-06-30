@@ -1,9 +1,11 @@
 ---
 id: TASK-110
 title: Investigate KMS-native CRL signing approach (KMIP Sign vs key export)
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@myself'
 created_date: '2026-06-29 14:03'
+updated_date: '2026-06-29 14:23'
 labels:
   - crl
   - kms
@@ -25,6 +27,21 @@ Spike both against Cosmian KMS 5.21 and decide.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Chosen approach documented in docs/ with threat-model rationale (default: CA key stays in the KMS via KMIP Sign, consistent with TASK-109.22)
-- [ ] #2 A spike produces a valid CRL signature for a KMS-held CA via the chosen approach (verifiable with openssl)
+- [x] #1 Chosen approach documented in docs/ with threat-model rationale (default: CA key stays in the KMS via KMIP Sign, consistent with TASK-109.22)
+- [x] #2 A spike produces a valid CRL signature for a KMS-held CA via the chosen approach (verifiable with openssl)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Spike KMIP Sign against live Cosmian KMS for RSA+EC keys
+2. Decide approach based on empirical result
+3. Document decision + threat model in backlog/decisions
+4. Demonstrate a valid CRL signature via the chosen approach (openssl-verified)
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Spike (backend/src/kms/spike-crl-sign.ts) against live Cosmian KMS 5.24.0: Sign/SignatureVerify are advertised by QueryOperations but reject both RSA-2048 and ECDSA-P256 keys with 422 'no valid key for id' (Cosmian Sign is post-quantum/Covercrypt only). Chosen approach (b): export CA key via kmsService.getPrivateKey + node crypto signing (already the established pattern in ca/bulk/certificate routes). Decision recorded in backlog/decisions/decision-010. Spike builds a real v2 CRL for a KMS-held CA and 'openssl crl -CAfile' returns verify OK.
+<!-- SECTION:NOTES:END -->

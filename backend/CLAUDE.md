@@ -62,7 +62,14 @@ DB change: edit `schema.ts` → `pnpm db:generate` → `pnpm db:migrate`.
   `/sign` path — the CA key stays in the KMS). The CSR goes in the KMIP `CertificateRequestValue`
   field and Cosmian copies the CSR's SAN/keyUsage/EKU, so don't re-supply those in `x509Extensions`
   (would duplicate). See `src/kms/spike-csr-certify.ts` and TASK-109.22.
-- **CRL signing is NOT implemented**: `crls.crl_pem` is `''`; public `/crl/:caId.crl` returns 503. Revoke only flips DB status.
+- **CRL signing**: CRLs are real, signed X.509 v2 (RFC 5280) — `crl.service` exports the CA
+  key (`getPrivateKey`) and signs with node `crypto` (Cosmian has no usable KMIP Sign for
+  RSA/ECDSA; see `backlog/decisions/decision-010`). Revoking via tRPC/REST/external `/revoke`
+  auto-regenerates the CA CRL; the public `/crl/:caId.crl|.der` serves it and lazily refreshes
+  past `nextUpdate`. Issued certs carry a CDP when `CRL_DISTRIBUTION_URL` is set.
+- CA `kmsKeyId` may be missing from the Certify response (certify-from-subject generates the
+  keypair server-side); it is resolved from the cert's KMIP `PrivateKeyLink`
+  (`getCertificatePrivateKeyId`). Needed for CRL signing and PKCS#12/key export.
 - Renewal always generates a new KMS key pair (no reuse); rejected for certs ≥90 days old.
 - Tests are Vitest **single-fork, `fileParallelism:false`** (SQLite races); KMS integration
   tests auto-start/skip via `src/test/kms-helper.ts`. CORS is `origin:true` (review for prod).

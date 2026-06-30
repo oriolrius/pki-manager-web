@@ -175,6 +175,35 @@ export class KMSService {
   }
 
   /**
+   * Resolve the private-key id linked to a certificate (via KMIP PrivateKeyLink).
+   */
+  async getCertificatePrivateKeyId(certificateId: string, entityId?: string): Promise<string> {
+    const operationId = randomUUID();
+    try {
+      const result = await this.client.getCertificatePrivateKeyId(certificateId);
+      await this.logAudit(
+        "kms.resolve_private_key_id",
+        "certificate",
+        entityId || certificateId,
+        "success",
+        { certificateId, privateKeyId: result },
+        operationId
+      );
+      return result;
+    } catch (error) {
+      await this.logAudit(
+        "kms.resolve_private_key_id",
+        "certificate",
+        entityId || certificateId,
+        "failure",
+        { error: String(error), certificateId },
+        operationId
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Get public key in PEM format
    */
   async getPublicKey(keyId: string, entityId?: string): Promise<string> {

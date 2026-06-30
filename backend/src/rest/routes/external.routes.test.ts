@@ -14,16 +14,20 @@ import { randomUUID } from 'crypto';
 import forge from 'node-forge';
 
 // --- mocks (vi.hoisted so the fns exist when the mock factories run at import time) ---
-const { signCertificate, getCertificate, verifyToken } = vi.hoisted(() => ({
+const { signCertificate, getCertificate, verifyToken, regenerateForCa } = vi.hoisted(() => ({
   signCertificate: vi.fn(),
   getCertificate: vi.fn(),
   verifyToken: vi.fn(),
+  regenerateForCa: vi.fn(),
 }));
 vi.mock('../../kms/service.js', () => ({
   getKMSService: () => ({ signCertificate, getCertificate }),
 }));
 vi.mock('../../services/cluster.service.js', () => ({
   getClusterService: () => ({ verifyToken }),
+}));
+vi.mock('../../services/crl.service.js', () => ({
+  getCRLService: () => ({ regenerateForCa }),
 }));
 
 import { externalRoutes } from './external.routes.js';
@@ -107,6 +111,7 @@ describe('External /sign wiring (KMS certify)', () => {
     getCertificate.mockReset().mockImplementation(async (id: string) =>
       id === CA_KMS_CERT_ID ? caCertPem : makeLeafPem(lastCsr));
     signCertificate.mockReset().mockResolvedValue({ certificateId: KMS_LEAF_ID, certificateData: '' });
+    regenerateForCa.mockReset().mockResolvedValue(true);
   });
 
   let lastCsr = '';
@@ -175,5 +180,52 @@ describe('External /sign wiring (KMS certify)', () => {
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('CA_NOT_ACTIVE');
     await db.update(certificateAuthorities).set({ status: 'active' }).where(eq(certificateAuthorities.id, caId));
+  });
+
+  it('embeds the CRL Distribution Point when CRL_DISTRIBUTION_URL is configured (TASK-114)', async () => {
+    const saved = process.env.CRL_DISTRIBUTION_URL;
+    process.env.CRL_DISTRIBUTION_URL = 'http://crl.test/crl';
+    try {
+      const res = await postSign({ csrPem: makeCsr(), requestUid: randomUUID() });
+      expect(res.statusCode).toBe(200);
+      const arg = signCertificate.mock.calls[0][0];
+      expect(arg.x509Extensions).toContain(`crlDistributionPoints=URI:http://crl.test/crl/${caId}.crl`);
+    } finally {
+      if (saved === undefined) delete process.env.CRL_DISTRIBUTION_URL;
+      else process.env.CRL_DISTRIBUTION_URL = saved;
+    }
+  });
+
+  it('regenerates the CA CRL after /revoke (TASK-113)', async () => {
+    // Seed a cluster-owned cert to revoke.
+    const serialNumber = '00' + randomUUID().replace(/-/g, '').slice(0, 30);
+    await db.insert(certificates).values({
+      id: randomUUID(),
+      caId,
+      subjectDn: 'CN=svc.default.svc',
+      serialNumber,
+      certificateType: 'server',
+      notBefore: new Date(),
+      notAfter: new Date(Date.now() + 90 * 86400e3),
+      kmsCertificateId: 'leaf-cert-id',
+      kmsKeyId: null,
+      status: 'active',
+      sourceType: 'k8s',
+      k8sClusterId: clusterId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/external/revoke',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { serialNumber, reason: 'keyCompromise' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe('revoked');
+    expect(regenerateForCa).toHaveBeenCalledTimes(1);
+    expect(regenerateForCa.mock.calls[0][1]).toBe(caId);
   });
 });

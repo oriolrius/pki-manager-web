@@ -208,16 +208,32 @@ export class KMSClient {
         value: 2097152, // Sign/Verify
       },
       {
-        tag: "KeyFormatType",
-        type: "Enumeration",
-        value: "TransparentRSAPrivateKey",
-      },
-      {
         tag: "ObjectType",
         type: "Enumeration",
         value: "PrivateKey",
       },
     ];
+
+    if (algorithm === "ECDSA") {
+      // EC keys need the curve via CryptographicDomainParameters; do NOT send the RSA
+      // KeyFormatType (that makes Cosmian mint an x25519 key instead of a NIST P-curve).
+      commonAttributes.push({
+        tag: "CryptographicDomainParameters",
+        value: [
+          {
+            tag: "RecommendedCurve",
+            type: "Enumeration",
+            value: sizeInBits >= 384 ? "P384" : "P256",
+          },
+        ],
+      });
+    } else {
+      commonAttributes.push({
+        tag: "KeyFormatType",
+        type: "Enumeration",
+        value: "TransparentRSAPrivateKey",
+      });
+    }
 
     // Add tags if provided
     if (tags.length > 0) {
@@ -901,6 +917,43 @@ export class KMSClient {
     }
 
     return result;
+  }
+
+  /**
+   * Resolve the private-key UniqueIdentifier linked to a certificate via its KMIP
+   * PrivateKeyLink. Needed because certify-from-subject (CA creation) generates the keypair
+   * server-side and does not surface the private-key id in the Certify response — so the CA
+   * record may store the certificate id as a fallback. GetAttributes exposes the link.
+   */
+  async getCertificatePrivateKeyId(certificateId: string): Promise<string> {
+    const request: KMIPRequest = {
+      tag: "GetAttributes",
+      value: [
+        {
+          tag: "UniqueIdentifier",
+          type: "TextString",
+          value: certificateId,
+        },
+      ],
+    };
+
+    const response = await this.sendKMIPRequest(request);
+    const attributes = this.findElement(response.value, "Attributes");
+    if (!attributes || !Array.isArray((attributes as any).value)) {
+      throw new Error(`No attributes returned for certificate ${certificateId}`);
+    }
+
+    for (const attr of (attributes as any).value as KMIPElement[]) {
+      if (attr.tag === "Link" && Array.isArray(attr.value)) {
+        const linkType = this.findElement(attr.value as KMIPElement[], "LinkType");
+        if (linkType && this.getStringValue(linkType) === "PrivateKeyLink") {
+          const linkedId = this.findElement(attr.value as KMIPElement[], "LinkedObjectIdentifier");
+          return this.getStringValue(linkedId);
+        }
+      }
+    }
+
+    throw new Error(`No PrivateKeyLink found for certificate ${certificateId}`);
   }
 
   /**

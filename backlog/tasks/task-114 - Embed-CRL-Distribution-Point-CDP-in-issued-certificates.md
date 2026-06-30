@@ -1,10 +1,10 @@
 ---
 id: TASK-114
 title: Embed CRL Distribution Point (CDP) in issued certificates
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-29 14:03'
-updated_date: '2026-06-29 14:04'
+updated_date: '2026-06-29 14:46'
 labels:
   - crl
   - backend
@@ -23,7 +23,13 @@ For CRLs to be usable, issued certs must advertise where to fetch them. Add a CR
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Newly issued certificates (manual, bulk, and k8s external /sign) include a CDP extension pointing at the CRL endpoint for their CA
-- [ ] #2 The CDP base URL is configurable via env/setting
-- [ ] #3 openssl x509 -ext crlDistributionPoints shows the expected URL
+- [x] #1 Newly issued certificates (manual, bulk, and k8s external /sign) include a CDP extension pointing at the CRL endpoint for their CA
+- [x] #2 The CDP base URL is configurable via env/setting
+- [x] #3 openssl x509 -ext crlDistributionPoints shows the expected URL
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+buildCertificateExtensions takes cdpUrl; wired into manual (certificate.service), bulk (REST+tRPC) and external /sign (buildLeafExtensions). Base URL via CRL_DISTRIBUTION_URL env (lib/crl-url.ts -> <base>/<caId>.crl). Cosmian honors crlDistributionPoints in both certify modes (spike-cdp.ts). Verified with openssl x509 -ext crlDistributionPoints (crl-cdp.test.ts).
+<!-- SECTION:NOTES:END -->

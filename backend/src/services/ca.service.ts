@@ -414,18 +414,26 @@ subjectKeyIdentifier=hash
       const notBefore = certMetadata.validity.notBefore;
       const notAfter = certMetadata.validity.notAfter;
 
-      if (!certInfo.privateKeyId || !certInfo.publicKeyId) {
-        logger.warn(
-          { caId, certificateId: certInfo.certificateId },
-          'KMS did not return generated key IDs - will need to query them later'
-        );
+      // certify-from-subject generates the keypair server-side and the Certify response may
+      // not surface the private-key id. Resolve it from the certificate's PrivateKeyLink so
+      // kmsKeyId points at the real key (required for CRL signing and PKCS#12/key export).
+      let resolvedKeyId = certInfo.privateKeyId;
+      if (!resolvedKeyId) {
+        try {
+          resolvedKeyId = await kmsService.getCertificatePrivateKeyId(certInfo.certificateId, caId);
+        } catch (linkError) {
+          logger.warn(
+            { caId, certificateId: certInfo.certificateId, error: linkError },
+            'Could not resolve CA private key id from certificate link; storing certificate id as fallback'
+          );
+        }
       }
 
       // Store CA record in database
       await ctx.db.insert(certificateAuthorities).values({
         id: caId,
         kmsCertificateId: certInfo.certificateId,
-        kmsKeyId: certInfo.privateKeyId || certInfo.certificateId,
+        kmsKeyId: resolvedKeyId || certInfo.certificateId,
         subjectDn: subjectName,
         serialNumber: certMetadata.serialNumber,
         keyAlgorithm: certMetadata.keyAlgorithm,

@@ -1,12 +1,73 @@
 import { randomUUID } from 'crypto';
+import { createPrivateKey } from 'node:crypto';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { certificateAuthorities, certificates, crls } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
 import { parseCertificate } from '../crypto/x509.js';
+import { generateCRL } from '../crypto/crl.js';
+import { getDefaultSignatureAlgorithm } from '../crypto/keys.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
-import type { CRLEntry } from '../crypto/types.js';
+import { CRLReason } from '../crypto/types.js';
+import type { CRLEntry, KeyAlgorithm, SignatureAlgorithm } from '../crypto/types.js';
 import type { ServiceContext } from './types.js';
+
+/**
+ * Map a stored revocationReason string (e.g. "key_compromise" or "key_compromise: lost laptop")
+ * to an RFC 5280 CRL reason code. Unknown/empty reasons fall back to UNSPECIFIED (omitted from the CRL).
+ */
+export function mapRevocationReason(reason: string | null | undefined): CRLReason {
+  if (!reason) return CRLReason.UNSPECIFIED;
+  const key = reason.split(':')[0].trim().toLowerCase().replace(/[\s-]+/g, '_');
+  switch (key) {
+    case 'key_compromise':
+    case 'keycompromise':
+      return CRLReason.KEY_COMPROMISE;
+    case 'ca_compromise':
+    case 'cacompromise':
+      return CRLReason.CA_COMPROMISE;
+    case 'affiliation_changed':
+    case 'affiliationchanged':
+      return CRLReason.AFFILIATION_CHANGED;
+    case 'superseded':
+      return CRLReason.SUPERSEDED;
+    case 'cessation_of_operation':
+    case 'cessationofoperation':
+      return CRLReason.CESSATION_OF_OPERATION;
+    case 'certificate_hold':
+    case 'certificatehold':
+      return CRLReason.CERTIFICATE_HOLD;
+    case 'privilege_withdrawn':
+    case 'privilegewithdrawn':
+      return CRLReason.PRIVILEGE_WITHDRAWN;
+    case 'aa_compromise':
+    case 'aacompromise':
+      return CRLReason.AA_COMPROMISE;
+    default:
+      return CRLReason.UNSPECIFIED;
+  }
+}
+
+/**
+ * Determine the CRL signature algorithm. Prefer the CA's recorded keyAlgorithm; otherwise
+ * infer it from the exported private key (RSA ≥4096 / EC P-384 use SHA-384, else SHA-256).
+ */
+export function resolveSignatureAlgorithm(
+  caKeyAlgorithm: string | null | undefined,
+  privateKeyPem: string,
+): SignatureAlgorithm {
+  const known: KeyAlgorithm[] = ['RSA-2048', 'RSA-4096', 'ECDSA-P256', 'ECDSA-P384'];
+  if (caKeyAlgorithm && (known as string[]).includes(caKeyAlgorithm)) {
+    return getDefaultSignatureAlgorithm(caKeyAlgorithm as KeyAlgorithm);
+  }
+  const key = createPrivateKey(privateKeyPem);
+  if (key.asymmetricKeyType === 'ec') {
+    const curve = (key.asymmetricKeyDetails?.namedCurve || '').toLowerCase();
+    return curve.includes('384') ? 'SHA384-ECDSA' : 'SHA256-ECDSA';
+  }
+  const modulusBits = key.asymmetricKeyDetails?.modulusLength ?? 2048;
+  return modulusBits >= 4096 ? 'SHA384-RSA' : 'SHA256-RSA';
+}
 
 // Types for CRL Service inputs and outputs
 export interface GenerateCRLParams {
@@ -137,23 +198,46 @@ export class CRLService {
 
       const nextCrlNumber = latestCrl.length > 0 ? latestCrl[0].crlNumber + 1 : 1;
 
-      // Prepare CRL entries
+      // Prepare CRL entries (one per revoked cert, with mapped RFC 5280 reason code)
       const crlEntries: CRLEntry[] = revokedCerts.map((cert: any) => ({
         serialNumber: cert.serialNumber,
         revocationDate: cert.revocationDate || new Date(),
-        reason: undefined, // Simplified for now
+        reason: mapRevocationReason(cert.revocationReason),
       }));
 
       // Set CRL validity period
       const thisUpdate = new Date();
       const nextUpdate = new Date(Date.now() + nextUpdateDays * 24 * 60 * 60 * 1000);
 
-      // Parse CA certificate to extract subject DN
+      // Parse CA certificate to extract its subject DN (used as the CRL issuer).
       const caCertInfo = parseCertificate(caCertificatePem, 'PEM');
 
-      // NOTE: CRL signing with KMS-stored keys is not yet supported
-      // The current implementation uses a placeholder approach
-      const crlPem = ''; // Placeholder - would contain actual CRL PEM
+      // Sign the CRL with the CA private key. Cosmian KMS exposes no usable KMIP Sign for
+      // RSA/ECDSA (see decision-010), so we export the CA key and sign with node crypto.
+      // The key lives in memory only for the duration of this call.
+      //
+      // CA creation (certify-from-subject) may store the certificate id as kmsKeyId because the
+      // Certify response doesn't surface the generated private-key id; resolve the real key id
+      // from the certificate's PrivateKeyLink in that case.
+      let caKeyId = caRecord.kmsKeyId;
+      if (!caKeyId || caKeyId === caRecord.kmsCertificateId) {
+        caKeyId = await kmsService.getCertificatePrivateKeyId(caRecord.kmsCertificateId, caRecord.id);
+      }
+      const caPrivateKeyPem = await kmsService.getPrivateKey(caKeyId, caRecord.id);
+      const signatureAlgorithm = resolveSignatureAlgorithm(caRecord.keyAlgorithm, caPrivateKeyPem);
+
+      const generated = generateCRL({
+        issuer: caCertInfo.subject,
+        crlNumber: nextCrlNumber,
+        thisUpdate,
+        nextUpdate,
+        revokedCertificates: crlEntries,
+        signingKey: caPrivateKeyPem,
+        signatureAlgorithm,
+        issuerCertificate: caCertificatePem,
+      });
+
+      const crlPem = generated.pem;
 
       // Store CRL record in database
       await ctx.db.insert(crls).values({
@@ -180,7 +264,7 @@ export class CRLService {
           revokedCount: revokedCerts.length,
           thisUpdate: thisUpdate.toISOString(),
           nextUpdate: nextUpdate.toISOString(),
-          note: 'CRL metadata created; signing with KMS-stored keys not yet implemented',
+          signatureAlgorithm,
         },
         ipAddress: ctx.ipAddress,
       });
@@ -201,7 +285,6 @@ export class CRLService {
         thisUpdate: thisUpdate.toISOString(),
         nextUpdate: nextUpdate.toISOString(),
         revokedCount: revokedCerts.length,
-        note: 'CRL metadata created; full signing implementation requires KMS enhancement',
       };
     } catch (error) {
       logger.error({ error, caId, crlId }, 'Failed to generate CRL');
@@ -221,6 +304,24 @@ export class CRLService {
       });
 
       throw new CRLOperationError('generate', error);
+    }
+  }
+
+  /**
+   * Regenerate the CRL for a CA, best-effort: logs and swallows errors so that a CRL
+   * problem (e.g. KMS unreachable) never fails the caller's primary operation (revocation).
+   * Returns true if a fresh CRL was produced.
+   */
+  async regenerateForCa(ctx: ServiceContext, caId: string): Promise<boolean> {
+    try {
+      await this.generate(ctx, { caId });
+      return true;
+    } catch (error) {
+      logger.warn(
+        { caId, error: error instanceof Error ? error.message : String(error) },
+        'CRL regeneration failed (best-effort; primary operation unaffected)'
+      );
+      return false;
     }
   }
 
@@ -295,7 +396,13 @@ export class CRLService {
       validityStatus,
       revokedCount: crl.revokedCount,
       crlPem: crl.crlPem || null,
-      crlDer: crl.crlPem ? Buffer.from(crl.crlPem).toString('base64') : null,
+      // DER as base64: strip the PEM armor (the body is already base64-encoded DER).
+      crlDer: crl.crlPem
+        ? crl.crlPem
+            .replace(/-----BEGIN X509 CRL-----/g, '')
+            .replace(/-----END X509 CRL-----/g, '')
+            .replace(/\s/g, '')
+        : null,
       revokedCertificates: revokedCerts.map((cert: any) => ({
         serialNumber: cert.serialNumber,
         revocationDate: cert.revocationDate?.toISOString() || null,
