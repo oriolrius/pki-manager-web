@@ -64,14 +64,19 @@ const caRouter = router({
   trustAnchors: sshProtectedProcedure.query(async ({ ctx }) => getSshCaService().getTrustAnchors(svcCtx(ctx))),
   create: sshAdminProcedure.input(createSshCaSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshCaService().create(svcCtx(ctx), input);
+      return await getSshCaService().create(svcCtx(ctx), { caType: input.caType, label: input.label });
     } catch (e) {
       mapSshError(e);
     }
   }),
   import: sshAdminProcedure.input(importSshCaSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshCaService().import(svcCtx(ctx), input);
+      return await getSshCaService().import(svcCtx(ctx), {
+        caType: input.caType,
+        label: input.label,
+        kmsKeyId: input.kmsKeyId,
+        kmsPublicKeyId: input.kmsPublicKeyId,
+      });
     } catch (e) {
       mapSshError(e);
     }
@@ -110,7 +115,12 @@ const hostRouter = router({
   }),
   register: sshProtectedProcedure.input(registerHostSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshHostService().register(svcCtx(ctx), input);
+      return await getSshHostService().register(svcCtx(ctx), {
+        fqdn: input.fqdn,
+        displayName: input.displayName,
+        addresses: input.addresses,
+        opensshHostPubkey: input.opensshHostPubkey,
+      });
     } catch (e) {
       mapSshError(e);
     }
@@ -157,7 +167,11 @@ const userRouter = router({
   listIdentities: sshProtectedProcedure.query(async ({ ctx }) => getSshUserService().listIdentities(svcCtx(ctx))),
   createIdentity: sshProtectedProcedure.input(createIdentitySchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshUserService().createIdentity(svcCtx(ctx), input);
+      return await getSshUserService().createIdentity(svcCtx(ctx), {
+        subject: input.subject,
+        email: input.email,
+        externalSubject: input.externalSubject,
+      });
     } catch (e) {
       mapSshError(e);
     }
@@ -180,7 +194,18 @@ const userRouter = router({
   }),
   issue: sshProtectedProcedure.input(issueUserCertSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshUserService().issue(svcCtx(ctx), input);
+      return await getSshUserService().issue(svcCtx(ctx), {
+        identityId: input.identityId,
+        caId: input.caId,
+        sshPublicKey: input.sshPublicKey,
+        principals: input.principals,
+        extensions: input.extensions,
+        forceCommand: input.forceCommand,
+        sourceAddress: input.sourceAddress,
+        validForSeconds: input.validForSeconds,
+        keyId: input.keyId,
+        enforceEntitlement: input.enforceEntitlement,
+      });
     } catch (e) {
       mapSshError(e);
     }
@@ -202,7 +227,7 @@ const principalRouter = router({
   list: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().listPrincipals(svcCtx(ctx))),
   create: sshProtectedProcedure.input(createPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshPrincipalService().createPrincipal(svcCtx(ctx), input);
+      return await getSshPrincipalService().createPrincipal(svcCtx(ctx), { name: input.name, description: input.description });
     } catch (e) {
       mapSshError(e);
     }
@@ -216,12 +241,16 @@ const principalRouter = router({
     }
   }),
   grant: sshProtectedProcedure.input(grantPrincipalSchema).mutation(async ({ ctx, input }) => {
-    await getSshPrincipalService().grantToIdentity(svcCtx(ctx), input);
+    await getSshPrincipalService().grantToIdentity(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
     return { ok: true };
   }),
   map: sshProtectedProcedure.input(mapPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
-      await getSshPrincipalService().mapToHost(svcCtx(ctx), input);
+      await getSshPrincipalService().mapToHost(svcCtx(ctx), {
+        hostId: input.hostId,
+        principalId: input.principalId,
+        localAccount: input.localAccount,
+      });
       return { ok: true };
     } catch (e) {
       mapSshError(e);
@@ -254,7 +283,12 @@ const tokenRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       try {
-        return await getSshFleetTokenService().mint(svcCtx(ctx), input);
+        return await getSshFleetTokenService().mint(svcCtx(ctx), {
+          name: input.name,
+          userCaId: input.userCaId,
+          hostCaId: input.hostCaId,
+          opSet: input.opSet,
+        });
       } catch (e) {
         mapSshError(e);
       }

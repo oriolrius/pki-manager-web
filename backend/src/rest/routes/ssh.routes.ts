@@ -44,7 +44,8 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
 
   api.post('/cas', { schema: { tags: tag, summary: 'Create an SSH CA (User or Host)' } }, async (req) => {
     ensureSshAllowed();
-    return getSshCaService().create(ctx(req), parse(createSshCaSchema, req.body));
+    const input = parse(createSshCaSchema, req.body);
+    return getSshCaService().create(ctx(req), { caType: input.caType, label: input.label });
   });
 
   api.get('/cas', { schema: { tags: tag, summary: 'List SSH CAs' } }, async (req) => {
@@ -60,7 +61,12 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   api.post('/hosts', { schema: { tags: tag, summary: 'Register a host by its public host key' } }, async (req) => {
     ensureSshAllowed();
     const input = parse(registerHostSchema, req.body);
-    return getSshHostService().register(ctx(req), { ...input, addresses: input.addresses ?? [] });
+    return getSshHostService().register(ctx(req), {
+      fqdn: input.fqdn,
+      displayName: input.displayName,
+      addresses: input.addresses ?? [],
+      opensshHostPubkey: input.opensshHostPubkey,
+    });
   });
 
   api.post('/hosts/issue', { schema: { tags: tag, summary: 'Issue a host certificate' } }, async (req) => {
@@ -77,12 +83,29 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
 
   api.post('/identities', { schema: { tags: tag, summary: 'Create a user identity' } }, async (req) => {
     ensureSshAllowed();
-    return getSshUserService().createIdentity(ctx(req), parse(createIdentitySchema, req.body));
+    const input = parse(createIdentitySchema, req.body);
+    return getSshUserService().createIdentity(ctx(req), {
+      subject: input.subject,
+      email: input.email,
+      externalSubject: input.externalSubject,
+    });
   });
 
   api.post('/users/issue', { schema: { tags: tag, summary: 'Issue a user certificate' } }, async (req) => {
     ensureSshAllowed();
-    return getSshUserService().issue(ctx(req), parse(issueUserCertSchema, req.body));
+    const input = parse(issueUserCertSchema, req.body);
+    return getSshUserService().issue(ctx(req), {
+      identityId: input.identityId,
+      caId: input.caId,
+      sshPublicKey: input.sshPublicKey,
+      principals: input.principals,
+      extensions: input.extensions,
+      forceCommand: input.forceCommand,
+      sourceAddress: input.sourceAddress,
+      validForSeconds: input.validForSeconds,
+      keyId: input.keyId,
+      enforceEntitlement: input.enforceEntitlement,
+    });
   });
 
   // Machine-readable health/metrics for alerting (SSH-MON).

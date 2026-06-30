@@ -102,7 +102,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         });
         host = (await db.select().from(sshHosts).where(eq(sshHosts.id, created.id)).limit(1))[0];
       } else if (host.opensshHostPubkey !== body.opensshHostPubkey.trim()) {
-        await db.update(sshHosts).set({ opensshHostPubkey: body.opensshHostPubkey.trim(), updatedAt: new Date() }).where(eq(sshHosts.id, host.id));
+        await db.update(sshHosts).set({ opensshHostPubkey: body.opensshHostPubkey.trim(), updatedAt: new Date() } as any).where(eq(sshHosts.id, host.id));
       }
       const issued = await getSshHostService().issue(ctx, {
         hostId: host.id,
@@ -162,7 +162,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // ---- POST /register-host-pubkey (SSH-15; ECIES path, gated by SSH_ECIES_ENABLED) ----
   server.post(`${base}/register-host-pubkey`, async (req, reply) => {
     const token = await authn(req, reply, 'register-host-pubkey');
-    if (!token) return;
+    if (!token) return reply;
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
     const fqdn = (req.body as any)?.fqdn ?? (req.body as any)?.host_id;
     if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'fqdn required');
@@ -227,7 +227,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     );
     try {
       const ciphertext = await getKMSService().eciesEncrypt(host.kmsPubkeyId, payload);
-      await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version }).where(eqcol(sshHosts.id, host.id));
+      await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version } as any).where(eqcol(sshHosts.id, host.id));
       reply.header('X-KRL-Version', version);
       reply.header('Content-Type', 'application/octet-stream');
       return ciphertext;
