@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import forge from 'node-forge';
+import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { certificates, certificateAuthorities } from '../../db/schema.js';
@@ -375,7 +375,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           },
           keyAlgorithm: {
             type: 'string',
-            enum: ['RSA-2048', 'RSA-4096'],
+            enum: ['RSA-2048', 'RSA-4096', 'ECDSA-P256', 'ECDSA-P384'],
           },
           validityDays: {
             type: 'integer',
@@ -906,11 +906,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           try {
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
-            // Parse the private key and encrypt it with password
-            const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-            const encryptedPem = forge.pki.encryptRsaPrivateKey(privateKey, password!, {
-              algorithm: 'aes256',
-            });
+            // Encrypt with password via openssl (supports RSA + EC).
+            const encryptedPem = await encryptPrivateKeyPem(privateKeyPem, password!);
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_encrypted.key`;
             data = Buffer.from(encryptedPem).toString('base64');
@@ -929,22 +926,17 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
 
-            // Parse certificate and private key using node-forge
-            const forgeCert = forge.pki.certificateFromPem(cert.certificatePem);
-            const privateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-
-            // Create PKCS#12 structure
-            const p12Asn1 = forge.pkcs12.toPkcs12Asn1(privateKey, [forgeCert], password!, {
-              algorithm: '3des', // Use 3DES for compatibility
+            // Create PKCS#12 via openssl (supports RSA + EC; node-forge cannot encode EC keys).
+            const p12Buffer = await createPkcs12Bundle({
+              certPem: cert.certificatePem!,
+              privateKeyPem,
+              password: password!,
               friendlyName: cert.subjectDn,
             });
 
-            // Convert to DER format
-            const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
-
             mimeType = 'application/x-pkcs12';
             filename = `${baseName}.p12`;
-            data = forge.util.encode64(p12Der);
+            data = p12Buffer.toString('base64');
           } catch (kmsError) {
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to create P12 bundle');
           }

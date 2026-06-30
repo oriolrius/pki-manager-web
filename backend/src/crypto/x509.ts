@@ -3,12 +3,14 @@
  */
 
 import forge from 'node-forge';
+import { X509Certificate } from 'node:crypto';
 import { logger } from '../lib/logger.js';
 import {
   dnToForgeAttributes,
   forgeAttributesToDn,
   formatDN,
   validateDN,
+  parseDN,
 } from './dn.js';
 import {
   pemToForgeKey,
@@ -346,11 +348,59 @@ export function parseCertificate(
       extensions: cert.extensions,
       keyAlgorithm: getKeyAlgorithmFromCert(cert),
     };
-  } catch (error) {
-    throw new Error(
-      `Failed to parse certificate: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch (forgeError) {
+    // node-forge cannot read EC public keys ("OID is not RSA"), so fall back to Node's
+    // X509Certificate (handles RSA + ECDSA) for the fields our flows need.
+    try {
+      return parseCertificateViaNode(data, format);
+    } catch {
+      throw new Error(
+        `Failed to parse certificate: ${forgeError instanceof Error ? forgeError.message : String(forgeError)}`,
+      );
+    }
   }
+}
+
+/** Parse Node's newline/comma-separated DN string ("CN=x\nO=y") into a DistinguishedName. */
+function nodeDnToObject(dn: string): any {
+  return parseDN(dn.replace(/[\r\n]+/g, ',').replace(/,+/g, ','));
+}
+
+/** Map a Node KeyObject to our KeyAlgorithm label. */
+function nodeKeyAlgorithm(publicKey: any): string {
+  const type = publicKey.asymmetricKeyType;
+  if (type === 'ec') {
+    const curve = String(publicKey.asymmetricKeyDetails?.namedCurve || '').toLowerCase();
+    return curve.includes('384') ? 'ECDSA-P384' : 'ECDSA-P256';
+  }
+  const modulusBits = publicKey.asymmetricKeyDetails?.modulusLength ?? 2048;
+  return modulusBits >= 4096 ? 'RSA-4096' : 'RSA-2048';
+}
+
+/** Fallback certificate parser using Node's X509Certificate (RSA + ECDSA). */
+function parseCertificateViaNode(
+  data: string,
+  format: CertificateFormat,
+): ReturnType<typeof parseCertificate> {
+  const pem =
+    format === 'PEM'
+      ? data
+      : `-----BEGIN CERTIFICATE-----\n${(data.match(/.{1,64}/g) || []).join('\n')}\n-----END CERTIFICATE-----`;
+  const x = new X509Certificate(pem);
+  return {
+    // Normalize to lowercase hex (no colons) to match node-forge's serial format.
+    serialNumber: x.serialNumber.toLowerCase().replace(/[:\s]/g, ''),
+    subject: nodeDnToObject(x.subject),
+    issuer: nodeDnToObject(x.issuer),
+    validity: {
+      notBefore: new Date(x.validFrom),
+      notAfter: new Date(x.validTo),
+    },
+    // Generic ASN.1 extension list isn't exposed by X509Certificate; EC leaf flows don't
+    // consume parseCertificate().extensions (only CA/RSA paths do).
+    extensions: [],
+    keyAlgorithm: nodeKeyAlgorithm(x.publicKey as any),
+  };
 }
 
 /**
@@ -366,22 +416,17 @@ export function convertCertificateFormat(
   }
 
   try {
-    let cert: forge.pki.Certificate;
-
+    // Use Node's X509Certificate (RSA + EC) rather than node-forge, which cannot read EC certs.
     if (fromFormat === 'PEM') {
-      cert = forge.pki.certificateFromPem(data);
+      const x = new X509Certificate(data);
+      if (toFormat === 'PEM') return data;
+      return x.raw.toString('base64'); // DER (base64)
     } else {
-      const derBytes = forge.util.decode64(data);
-      const asn1 = forge.asn1.fromDer(derBytes);
-      cert = forge.pki.certificateFromAsn1(asn1);
-    }
-
-    if (toFormat === 'PEM') {
-      return forge.pki.certificateToPem(cert);
-    } else {
-      return forge.util.encode64(
-        forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes(),
-      );
+      // DER (base64) in
+      const der = Buffer.from(data.replace(/\s/g, ''), 'base64');
+      const x = new X509Certificate(der);
+      if (toFormat === 'DER') return der.toString('base64');
+      return x.toString(); // PEM
     }
   } catch (error) {
     throw new Error(

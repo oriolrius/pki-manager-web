@@ -33,6 +33,11 @@ import {
   CertificateOperationError,
   buildCertificateExtensions,
 } from '../../services/certificate.service.js';
+import { getCRLService } from '../../services/crl.service.js';
+import { crlDistributionUrl } from '../../lib/crl-url.js';
+import { convertCertificateFormat } from '../../crypto/x509.js';
+import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
+import { X509Certificate, createHash } from 'node:crypto';
 
 export const certificateRouter = router({
   list: protectedProcedure
@@ -412,34 +417,24 @@ export const certificateRouter = router({
       // Parse certificate to extract details
       const parsed = parseCertificate(certificatePem, 'PEM');
 
-      // Parse certificate using node-forge for extensions
-      const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+      // Fingerprints via Node crypto over the DER (works for RSA + EC; node-forge can't read
+      // EC certs). Extensions are parsed with node-forge when possible (null for EC).
+      const x509 = new X509Certificate(certificatePem);
+      const fp = (algo: string) =>
+        createHash(algo).update(x509.raw).digest('hex').toUpperCase().match(/.{1,2}/g)!.join(':');
+      const sha256Fingerprint = fp('sha256');
+      const sha1Fingerprint = fp('sha1');
 
-      // Calculate fingerprints
-      const certDer = forge.default.asn1.toDer(
-        forge.default.pki.certificateToAsn1(forgeCert)
-      ).getBytes();
-      const sha256Hash = forge.default.md.sha256.create();
-      sha256Hash.update(certDer);
-      const sha256Fingerprint = sha256Hash
-        .digest()
-        .toHex()
-        .toUpperCase()
-        .match(/.{1,2}/g)!
-        .join(':');
-
-      const sha1Hash = forge.default.md.sha1.create();
-      sha1Hash.update(certDer);
-      const sha1Fingerprint = sha1Hash
-        .digest()
-        .toHex()
-        .toUpperCase()
-        .match(/.{1,2}/g)!
-        .join(':');
+      let forgeCert: any = null;
+      try {
+        forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+      } catch {
+        forgeCert = null; // EC certificate — node-forge can't parse its public key
+      }
 
       // Parse Key Usage extension
       let keyUsage: any = null;
-      const keyUsageExt = forgeCert.extensions.find((ext: any) => ext.name === 'keyUsage');
+      const keyUsageExt = forgeCert?.extensions.find((ext: any) => ext.name === 'keyUsage');
       if (keyUsageExt) {
         keyUsage = {
           digitalSignature: keyUsageExt.digitalSignature || undefined,
@@ -456,7 +451,7 @@ export const certificateRouter = router({
 
       // Parse Extended Key Usage extension
       let extendedKeyUsage: string[] | null = null;
-      const ekuExt = forgeCert.extensions.find((ext: any) => ext.name === 'extKeyUsage');
+      const ekuExt = forgeCert?.extensions.find((ext: any) => ext.name === 'extKeyUsage');
       if (ekuExt) {
         extendedKeyUsage = [];
         if (ekuExt.serverAuth) extendedKeyUsage.push('serverAuth');
@@ -468,7 +463,7 @@ export const certificateRouter = router({
 
       // Parse Basic Constraints extension
       let basicConstraints: any = null;
-      const bcExt = forgeCert.extensions.find((ext: any) => ext.name === 'basicConstraints');
+      const bcExt = forgeCert?.extensions.find((ext: any) => ext.name === 'basicConstraints');
       if (bcExt) {
         basicConstraints = {
           cA: bcExt.cA || false,
@@ -767,10 +762,11 @@ export const certificateRouter = router({
           ipAddress: ctx.req.ip,
         } as any);
 
-        // TODO: Optional CRL generation (will be implemented in task-022)
-        if (input.generateCrl) {
-          logger.info({ caId: cert.caId }, 'CRL generation requested (not yet implemented)');
-        }
+        // Keep the CA CRL current so the revoked serial appears promptly (best-effort).
+        await getCRLService().regenerateForCa(
+          { db: ctx.db, ipAddress: ctx.req.ip },
+          cert.caId
+        );
 
         return {
           id: input.id,
@@ -1014,8 +1010,17 @@ export const certificateRouter = router({
       let filename: string;
 
       try {
-        const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
-        const forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
+        // node-forge can't read EC certs; build these lazily and fall back to Node/openssl
+        // for the formats that support EC (DER, PKCS#12, JKS). PKCS#7 stays forge-only.
+        let forgeCert: any = null;
+        let forgeCaCert: any = null;
+        try {
+          forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+          forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
+        } catch {
+          forgeCert = null;
+          forgeCaCert = null;
+        }
 
         // Handle 'all' format - generate all formats in a ZIP
         if (input.format === 'all') {
@@ -1038,10 +1043,8 @@ export const certificateRouter = router({
 
                 case 'der':
                 case 'cer':
-                  const derBytes = forge.default.asn1.toDer(
-                    forge.default.pki.certificateToAsn1(forgeCert)
-                  ).getBytes();
-                  fileContent = Buffer.from(derBytes, 'binary').toString('base64');
+                  // EC-safe DER conversion (node-forge can't read EC certs).
+                  fileContent = convertCertificateFormat(certificatePem, 'PEM', 'DER');
                   fileExtension = format;
                   break;
 
@@ -1059,14 +1062,9 @@ export const certificateRouter = router({
                   // Add certificate as .pem file
                   zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
 
-                  // Add private key as .priv file (encrypted or unencrypted)
+                  // Add private key as .priv file (encrypted or unencrypted; openssl handles RSA + EC)
                   if (input.encryptPrivateKey && input.password) {
-                    const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-                    const encryptedKeyPem = forge.default.pki.encryptRsaPrivateKey(
-                      forgePrivateKey,
-                      input.password,
-                      { algorithm: 'aes256' }
-                    );
+                    const encryptedKeyPem = await encryptPrivateKeyPem(privateKeyPem, input.password);
                     zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
                   } else {
                     // Unencrypted private key
@@ -1077,12 +1075,18 @@ export const certificateRouter = router({
 
                 case 'pkcs7':
                 case 'p7b':
-                  const p7 = forge.default.pkcs7.createSignedData();
-                  p7.addCertificate(forgeCert);
-                  p7.addCertificate(forgeCaCert);
-                  const p7Der = forge.default.asn1.toDer(p7.toAsn1()).getBytes();
-                  fileContent = Buffer.from(p7Der, 'binary').toString('base64');
-                  fileExtension = format === 'pkcs7' ? 'p7b' : format;
+                  if (!forgeCert || !forgeCaCert) {
+                    // PKCS#7 is node-forge-only; skip for EC certs in the 'all' bundle.
+                    continue;
+                  }
+                  {
+                    const p7 = forge.default.pkcs7.createSignedData();
+                    p7.addCertificate(forgeCert);
+                    p7.addCertificate(forgeCaCert);
+                    const p7Der = forge.default.asn1.toDer(p7.toAsn1()).getBytes();
+                    fileContent = Buffer.from(p7Der, 'binary').toString('base64');
+                    fileExtension = format === 'pkcs7' ? 'p7b' : format;
+                  }
                   break;
 
                 case 'pkcs12':
@@ -1092,21 +1096,16 @@ export const certificateRouter = router({
                     certificate.kmsKeyId!,
                     certificate.id
                   );
-                  const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-
                   // PKCS12 requires a password, use empty string if encryption is disabled
                   const password = input.encryptPrivateKey ? input.password! : '';
-                  const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
-                    forgePrivateKey,
-                    [forgeCert, forgeCaCert],
+                  const p12Buffer = await createPkcs12Bundle({
+                    certPem: certificatePem,
+                    privateKeyPem,
+                    chainPems: [caCertificatePem],
                     password,
-                    {
-                      algorithm: input.encryptPrivateKey ? '3des' : undefined,
-                      friendlyName: commonName,
-                    }
-                  );
-                  const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
-                  fileContent = Buffer.from(p12Der, 'binary').toString('base64');
+                    friendlyName: commonName,
+                  });
+                  fileContent = p12Buffer.toString('base64');
                   fileExtension = format === 'pkcs12' ? 'p12' : format;
                   break;
                 }
@@ -1139,11 +1138,8 @@ export const certificateRouter = router({
 
           case 'der':
           case 'cer':
-            // DER format (binary)
-            const derBytes = forge.default.asn1.toDer(
-              forge.default.pki.certificateToAsn1(forgeCert)
-            ).getBytes();
-            data = Buffer.from(derBytes, 'binary').toString('base64');
+            // DER format (binary) — EC-safe.
+            data = convertCertificateFormat(certificatePem, 'PEM', 'DER');
             mimeType = 'application/x-x509-ca-cert';
             filename = `${commonName}-${serialShort}.${input.format}`;
             break;
@@ -1177,14 +1173,9 @@ export const certificateRouter = router({
             // Add certificate as .pem file
             zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
 
-            // Add private key as .priv file (encrypted or unencrypted)
+            // Add private key as .priv file (encrypted or unencrypted; openssl handles RSA + EC)
             if (input.encryptPrivateKey && input.password) {
-              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-              const encryptedKeyPem = forge.default.pki.encryptRsaPrivateKey(
-                forgePrivateKey,
-                input.password,
-                { algorithm: 'aes256' }
-              );
+              const encryptedKeyPem = await encryptPrivateKeyPem(privateKeyPem, input.password);
               zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
             } else {
               // Unencrypted private key
@@ -1200,8 +1191,14 @@ export const certificateRouter = router({
           }
 
           case 'pkcs7':
-          case 'p7b':
-            // PKCS#7 format (certificate + CA chain, no private key)
+          case 'p7b': {
+            // PKCS#7 (certificate + CA chain, no private key). node-forge-only — not EC-capable.
+            if (!forgeCert || !forgeCaCert) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'PKCS#7 (p7b) export is not supported for ECDSA certificates',
+              });
+            }
             const p7 = forge.default.pkcs7.createSignedData();
             p7.addCertificate(forgeCert);
             p7.addCertificate(forgeCaCert);
@@ -1210,6 +1207,7 @@ export const certificateRouter = router({
             mimeType = 'application/pkcs7-mime';
             filename = `${commonName}-${serialShort}.${input.format === 'pkcs7' ? 'p7b' : input.format}`;
             break;
+          }
 
           case 'pkcs12':
           case 'pfx':
@@ -1228,23 +1226,16 @@ export const certificateRouter = router({
               certificate.id
             );
 
-            // Convert PEM private key to forge format
-            const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-
-            // PKCS12 requires a password, use empty string if encryption is disabled
+            // Create PKCS#12 via openssl (supports RSA + EC).
             const password = input.encryptPrivateKey ? input.password! : '';
-            // Create PKCS#12
-            const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
-              forgePrivateKey,
-              [forgeCert, forgeCaCert],
+            const p12Buffer = await createPkcs12Bundle({
+              certPem: certificatePem,
+              privateKeyPem,
+              chainPems: [caCertificatePem],
               password,
-              {
-                algorithm: input.encryptPrivateKey ? '3des' : undefined,
-                friendlyName: commonName,
-              }
-            );
-            const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
-            data = Buffer.from(p12Der, 'binary').toString('base64');
+              friendlyName: commonName,
+            });
+            data = p12Buffer.toString('base64');
             mimeType = 'application/x-pkcs12';
             filename = `${commonName}-${serialShort}.${input.format === 'pkcs12' ? 'p12' : input.format}`;
             break;
@@ -1360,15 +1351,10 @@ export const certificateRouter = router({
             const outputStream = new PassThrough();
             tarPack.pipe(outputStream);
 
-            // Prepare private key (encrypted or unencrypted)
+            // Prepare private key (encrypted or unencrypted; openssl handles RSA + EC)
             let keyContent: string;
             if (input.encryptPrivateKey && input.password) {
-              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-              keyContent = forge.default.pki.encryptRsaPrivateKey(
-                forgePrivateKey,
-                input.password,
-                { algorithm: 'aes256' }
-              );
+              keyContent = await encryptPrivateKeyPem(privateKeyPem, input.password);
             } else {
               keyContent = privateKeyPem;
             }
@@ -1710,6 +1696,7 @@ export const certificateRouter = router({
             sanDns: sanDns.length > 0 ? sanDns : undefined,
             sanIp: sanIp.length > 0 ? sanIp : undefined,
             sanEmail: sanEmail.length > 0 ? sanEmail : undefined,
+            cdpUrl: crlDistributionUrl(input.caId),
           });
 
           const certInfo = await kmsService.signCertificate({
@@ -1858,6 +1845,7 @@ export const certificateRouter = router({
 
       let successful = 0;
       let failed = 0;
+      const affectedCaIds = new Set<string>();
 
       // Process each certificate
       for (const certId of input.certificateIds) {
@@ -1922,6 +1910,7 @@ export const certificateRouter = router({
             success: true,
           });
 
+          affectedCaIds.add(cert.caId);
           successful++;
         } catch (error) {
           logger.error({ error, certId }, 'Failed to revoke certificate in bulk');
@@ -1952,6 +1941,11 @@ export const certificateRouter = router({
         }),
         ipAddress: ctx.req.ip,
       } as any);
+
+      // Regenerate the CRL once per affected CA so revoked serials appear (best-effort).
+      for (const caId of affectedCaIds) {
+        await getCRLService().regenerateForCa({ db: ctx.db, ipAddress: ctx.req.ip }, caId);
+      }
 
       logger.info(
         { totalCertificates: input.certificateIds.length, successful, failed },
@@ -2000,6 +1994,7 @@ export const certificateRouter = router({
 
       let successful = 0;
       let failed = 0;
+      const affectedCaIds = new Set<string>();
 
       const kmsService = getKMSService();
 
@@ -2086,7 +2081,7 @@ export const certificateRouter = router({
             logger.info({ newCertId, originalCertId: certId }, 'Creating new key pair for certificate renewal (bulk)');
 
             const keyPair = await kmsService.createKeyPair({
-              sizeInBits: 2048,
+              keyAlgorithm: originalParsed.keyAlgorithm,
               tags: [],
               purpose: 'certificate',
               entityId: newCertId,
@@ -2115,15 +2110,19 @@ export const certificateRouter = router({
             sanDns: sanDns && sanDns.length > 0 ? sanDns : undefined,
             sanIp: sanIp && sanIp.length > 0 ? sanIp : undefined,
             sanEmail: sanEmail && sanEmail.length > 0 ? sanEmail : undefined,
+            cdpUrl: crlDistributionUrl(originalCert.caId),
           });
 
           const certInfo = await kmsService.signCertificate({
             publicKeyId: publicKeyId,
             issuerPrivateKeyId: caRecord.kmsKeyId,
+            issuerCertificateId: caRecord.kmsCertificateId,
+            issuerName: caRecord.subjectDn,
             subjectName: subjectName,
             daysValid: validityDays,
             tags: [],
             entityId: newCertId,
+            keyAlgorithm: originalParsed.keyAlgorithm,
             x509Extensions,
           });
 
@@ -2169,6 +2168,7 @@ export const certificateRouter = router({
               .where(eq(certificates.id, certId));
 
             logger.info({ originalCertId: certId }, 'Original certificate revoked (superseded by renewal) (bulk)');
+            affectedCaIds.add(originalCert.caId);
           }
 
           // Create audit log entry for renewal
@@ -2230,6 +2230,11 @@ export const certificateRouter = router({
         }),
         ipAddress: ctx.req.ip,
       } as any);
+
+      // Regenerate the CRL once per CA whose original cert was revoked on renewal (best-effort).
+      for (const caId of affectedCaIds) {
+        await getCRLService().regenerateForCa({ db: ctx.db, ipAddress: ctx.req.ip }, caId);
+      }
 
       logger.info(
         { totalCertificates: input.certificateIds.length, successful, failed },
@@ -2460,8 +2465,17 @@ export const certificateRouter = router({
           ca.kmsCertificateId,
           ca.id
         );
-        const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
-        const forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
+        // node-forge can't read EC certs; build lazily (null for EC) and use Node/openssl for
+        // the EC-capable formats (DER, PKCS#12, JKS). PKCS#7 stays forge-only.
+        let forgeCert: any = null;
+        let forgeCaCert: any = null;
+        try {
+          forgeCert = forge.default.pki.certificateFromPem(certificatePem);
+          forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
+        } catch {
+          forgeCert = null;
+          forgeCaCert = null;
+        }
 
         switch (format) {
           case 'pem':
@@ -2473,11 +2487,9 @@ export const certificateRouter = router({
 
           case 'der':
           case 'cer':
-            const derBytes = forge.default.asn1.toDer(
-              forge.default.pki.certificateToAsn1(forgeCert)
-            ).getBytes();
+            // EC-safe DER conversion.
             return {
-              content: Buffer.from(derBytes, 'binary').toString('base64'),
+              content: convertCertificateFormat(certificatePem, 'PEM', 'DER'),
               extension: format,
             };
 
@@ -2501,11 +2513,7 @@ export const certificateRouter = router({
 
             // Return as special marker - caller will handle creating two files
             const keyContent = encryptKey && password
-              ? forge.default.pki.encryptRsaPrivateKey(
-                  forge.default.pki.privateKeyFromPem(privateKeyPem),
-                  password,
-                  { algorithm: 'aes256' }
-                )
+              ? await encryptPrivateKeyPem(privateKeyPem, password)
               : privateKeyPem;
 
             return {
@@ -2515,7 +2523,13 @@ export const certificateRouter = router({
           }
 
           case 'pkcs7':
-          case 'p7b':
+          case 'p7b': {
+            if (!forgeCert || !forgeCaCert) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'PKCS#7 (p7b) export is not supported for ECDSA certificates',
+              });
+            }
             const p7 = forge.default.pkcs7.createSignedData();
             p7.addCertificate(forgeCert);
             p7.addCertificate(forgeCaCert);
@@ -2524,6 +2538,7 @@ export const certificateRouter = router({
               content: Buffer.from(p7Der, 'binary').toString('base64'),
               extension: format === 'pkcs7' ? 'p7b' : format,
             };
+          }
 
           case 'pkcs12':
           case 'pfx':
@@ -2539,22 +2554,19 @@ export const certificateRouter = router({
               certificate.kmsKeyId,
               certificate.id
             );
-            const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
 
-            // PKCS12 requires a password, use empty string if encryption is disabled
+            // PKCS12 requires a password, use empty string if encryption is disabled.
+            // openssl supports RSA + EC (node-forge cannot encode EC keys).
             const pkcs12Password = encryptKey ? password! : '';
-            const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
-              forgePrivateKey,
-              [forgeCert, forgeCaCert],
-              pkcs12Password,
-              {
-                algorithm: encryptKey ? '3des' : undefined,
-                friendlyName: certificate.subjectDn,
-              }
-            );
-            const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
+            const p12Buffer = await createPkcs12Bundle({
+              certPem: certificatePem,
+              privateKeyPem,
+              chainPems: [caCertificatePem],
+              password: pkcs12Password,
+              friendlyName: certificate.subjectDn,
+            });
             return {
-              content: Buffer.from(p12Der, 'binary').toString('base64'),
+              content: p12Buffer.toString('base64'),
               extension: format === 'pkcs12' || format === 'jks-keystore' ? 'p12' : format,
             };
           }
@@ -2640,22 +2652,14 @@ export const certificateRouter = router({
                 continue;
               }
 
-              // Create PKCS#12 for this certificate (with CA chain)
-              const forgeCert = forge.default.pki.certificateFromPem(certificatePem);
-              const forgeCaCert = forge.default.pki.certificateFromPem(caData.pem);
-              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-
-              const p12Asn1 = forge.default.pkcs12.toPkcs12Asn1(
-                forgePrivateKey,
-                [forgeCert, forgeCaCert],
+              // Create PKCS#12 for this certificate (with CA chain) — openssl supports RSA + EC.
+              const p12Buffer = await createPkcs12Bundle({
+                certPem: certificatePem,
+                privateKeyPem,
+                chainPems: [caData.pem],
                 password,
-                {
-                  algorithm: input.encryptPrivateKey ? '3des' : undefined,
-                  friendlyName: alias,
-                }
-              );
-              const p12Der = forge.default.asn1.toDer(p12Asn1).getBytes();
-              const p12Buffer = Buffer.from(p12Der, 'binary');
+                friendlyName: alias,
+              });
 
               // Write PKCS#12 to temp file
               const p12Path = path.join(tempDir, `${alias}.p12`);
@@ -2894,15 +2898,10 @@ export const certificateRouter = router({
               certificate.id
             );
 
-            // Prepare private key (encrypted or unencrypted)
+            // Prepare private key (encrypted or unencrypted; openssl handles RSA + EC)
             let keyContent: string;
             if (input.encryptPrivateKey && input.password) {
-              const forgePrivateKey = forge.default.pki.privateKeyFromPem(privateKeyPem);
-              keyContent = forge.default.pki.encryptRsaPrivateKey(
-                forgePrivateKey,
-                input.password,
-                { algorithm: 'aes256' }
-              );
+              keyContent = await encryptPrivateKeyPem(privateKeyPem, input.password);
             } else {
               keyContent = privateKeyPem;
             }

@@ -11,7 +11,7 @@
  * - Used when an application needs to verify certificates signed by a CA
  */
 
-import forge from 'node-forge';
+import { createPkcs12Bundle } from '../crypto/pkcs12.js';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 import * as fs from 'fs/promises';
@@ -104,24 +104,15 @@ export async function generateJKSKeystore(input: JKSKeystoreInput): Promise<JKSR
     serialShort,
   } = input;
 
-  // Parse certificate and private key
-  const forgeCert = forge.pki.certificateFromPem(certificatePem);
-  const forgeCaCert = forge.pki.certificateFromPem(caCertificatePem);
-  const forgePrivateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-
-  // Create PKCS#12 as intermediate format (certificate + private key + CA chain)
-  const p12Password = password || '';
-  const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
-    forgePrivateKey,
-    [forgeCert, forgeCaCert], // Include CA certificate in chain
-    p12Password,
-    {
-      algorithm: password ? '3des' : undefined,
-      friendlyName: alias || commonName,
-    }
-  );
-  const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
-  const p12Buffer = Buffer.from(p12Der, 'binary');
+  // Create PKCS#12 as intermediate format (certificate + private key + CA chain).
+  // Uses openssl so EC keys are supported (node-forge cannot encode them).
+  const p12Buffer = await createPkcs12Bundle({
+    certPem: certificatePem,
+    privateKeyPem,
+    chainPems: [caCertificatePem],
+    password: password || '',
+    friendlyName: alias || commonName,
+  });
 
   // Create temp directory for keytool operations
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-keystore-'));

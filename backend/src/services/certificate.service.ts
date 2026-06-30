@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash, X509Certificate } from 'crypto';
 import { eq, and, or, gte, lte, like, sql } from 'drizzle-orm';
 import forge from 'node-forge';
 import { certificates, certificateAuthorities, auditLog } from '../db/schema.js';
@@ -11,6 +11,8 @@ import {
   validateCertificateValidity,
 } from '../crypto/validation.js';
 import { logger } from '../lib/logger.js';
+import { crlDistributionUrl } from '../lib/crl-url.js';
+import { getCRLService } from './crl.service.js';
 import type { ServiceContext } from './types.js';
 
 // Types for Certificate Service inputs and outputs
@@ -174,6 +176,8 @@ export function buildCertificateExtensions(params: {
   sanDns?: string[];
   sanIp?: string[];
   sanEmail?: string[];
+  /** CRL Distribution Point URL; when set, a crlDistributionPoints extension is added. */
+  cdpUrl?: string;
 }): string {
   // KMS expects 'v3_ca' section name for extensions
   const lines: string[] = ['[ v3_ca ]'];
@@ -233,6 +237,11 @@ export function buildCertificateExtensions(params: {
   // Standard extensions for certificate chain validation
   lines.push('subjectKeyIdentifier=hash');
   lines.push('authorityKeyIdentifier=keyid:always');
+
+  // CRL Distribution Point so relying parties know where to fetch the issuing CA's CRL.
+  if (params.cdpUrl) {
+    lines.push(`crlDistributionPoints=URI:${params.cdpUrl}`);
+  }
 
   return lines.join('\n') + '\n';
 }
@@ -446,34 +455,26 @@ export class CertificateService {
     // Parse certificate to extract details
     const parsed = parseCertificate(certificatePem, 'PEM');
 
-    // Parse certificate using node-forge for extensions
-    const forgeCert = forge.pki.certificateFromPem(certificatePem);
+    // Fingerprints via Node crypto over the DER — works for both RSA and EC (node-forge
+    // cannot read EC certificates). Extensions are parsed with node-forge when it can read
+    // the cert (RSA); for EC certs forgeCert is null and forge-derived fields are omitted.
+    const x509 = new X509Certificate(certificatePem);
+    const der = x509.raw;
+    const fingerprint = (algo: string) =>
+      createHash(algo).update(der).digest('hex').toUpperCase().match(/.{1,2}/g)!.join(':');
+    const sha256Fingerprint = fingerprint('sha256');
+    const sha1Fingerprint = fingerprint('sha1');
 
-    // Calculate fingerprints
-    const certDer = forge.asn1.toDer(
-      forge.pki.certificateToAsn1(forgeCert)
-    ).getBytes();
-    const sha256Hash = forge.md.sha256.create();
-    sha256Hash.update(certDer);
-    const sha256Fingerprint = sha256Hash
-      .digest()
-      .toHex()
-      .toUpperCase()
-      .match(/.{1,2}/g)!
-      .join(':');
-
-    const sha1Hash = forge.md.sha1.create();
-    sha1Hash.update(certDer);
-    const sha1Fingerprint = sha1Hash
-      .digest()
-      .toHex()
-      .toUpperCase()
-      .match(/.{1,2}/g)!
-      .join(':');
+    let forgeCert: forge.pki.Certificate | null = null;
+    try {
+      forgeCert = forge.pki.certificateFromPem(certificatePem);
+    } catch {
+      forgeCert = null; // EC certificate — node-forge can't parse its public key
+    }
 
     // Parse Key Usage extension
     let keyUsage: any = null;
-    const keyUsageExt = forgeCert.extensions.find((ext: any) => ext.name === 'keyUsage');
+    const keyUsageExt = forgeCert?.extensions.find((ext: any) => ext.name === 'keyUsage');
     if (keyUsageExt) {
       keyUsage = {
         digitalSignature: keyUsageExt.digitalSignature || undefined,
@@ -490,7 +491,7 @@ export class CertificateService {
 
     // Parse Extended Key Usage extension
     let extendedKeyUsage: string[] | null = null;
-    const ekuExt = forgeCert.extensions.find((ext: any) => ext.name === 'extKeyUsage');
+    const ekuExt = forgeCert?.extensions.find((ext: any) => ext.name === 'extKeyUsage');
     if (ekuExt) {
       extendedKeyUsage = [];
       if (ekuExt.serverAuth) extendedKeyUsage.push('serverAuth');
@@ -502,12 +503,15 @@ export class CertificateService {
 
     // Parse Basic Constraints extension
     let basicConstraints: any = null;
-    const bcExt = forgeCert.extensions.find((ext: any) => ext.name === 'basicConstraints');
+    const bcExt = forgeCert?.extensions.find((ext: any) => ext.name === 'basicConstraints');
     if (bcExt) {
       basicConstraints = {
         cA: bcExt.cA || false,
         pathLenConstraint: bcExt.pathLenConstraint ?? null,
       };
+    } else if (!forgeCert) {
+      // EC fallback: Node exposes the CA flag even though forge can't read the cert.
+      basicConstraints = { cA: x509.ca, pathLenConstraint: null };
     }
 
     // Compute validity status
@@ -734,16 +738,11 @@ export class CertificateService {
         L: params.subject.locality,
       };
 
-      // Determine key size from algorithm
-      let keySizeInBits = 2048;
-      if (params.keyAlgorithm === 'RSA-4096') {
-        keySizeInBits = 4096;
-      }
-
-      // Generate key pair in KMS
+      // Generate key pair in KMS. Pass keyAlgorithm so the KMS mints the requested algorithm
+      // (RSA-2048/4096 or ECDSA-P256/P384); otherwise it would default to RSA.
       logger.info({ certId, keyAlgorithm: params.keyAlgorithm }, 'Creating certificate key pair in KMS');
       const keyPair = await kmsService.createKeyPair({
-        sizeInBits: keySizeInBits,
+        keyAlgorithm: params.keyAlgorithm,
         tags: params.tags || [],
         purpose: 'certificate',
         entityId: certId,
@@ -752,12 +751,13 @@ export class CertificateService {
       const subjectName = formatDN(subjectDN);
       logger.info({ certId, subjectName, caId: params.caId }, 'Signing certificate via KMS');
 
-      // Build X.509 v3 extensions including SANs
+      // Build X.509 v3 extensions including SANs and the CA's CRL Distribution Point
       const x509Extensions = buildCertificateExtensions({
         certificateType: params.certificateType,
         sanDns: params.sanDns,
         sanIp: params.sanIp,
         sanEmail: params.sanEmail,
+        cdpUrl: crlDistributionUrl(params.caId),
       });
 
       const certInfo = await kmsService.signCertificate({
@@ -769,6 +769,7 @@ export class CertificateService {
         daysValid: params.validityDays,
         tags: params.tags || [],
         entityId: certId,
+        keyAlgorithm: params.keyAlgorithm,
         x509Extensions,
       });
 
@@ -965,10 +966,12 @@ export class CertificateService {
           'Key reuse requested but not supported - generating new key pair instead');
       }
 
-      logger.info({ newCertId, originalCertId: params.id }, 'Creating new key pair for certificate renewal');
+      // Preserve the original certificate's key algorithm on renewal (RSA-2048/4096 or EC).
+      const renewKeyAlgorithm = originalParsed.keyAlgorithm;
+      logger.info({ newCertId, originalCertId: params.id, keyAlgorithm: renewKeyAlgorithm }, 'Creating new key pair for certificate renewal');
 
       const keyPair = await kmsService.createKeyPair({
-        sizeInBits: 2048,
+        keyAlgorithm: renewKeyAlgorithm,
         tags: [],
         purpose: 'certificate',
         entityId: newCertId,
@@ -980,12 +983,13 @@ export class CertificateService {
       const subjectName = formatDN(subjectDN);
       logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS');
 
-      // Build X.509 v3 extensions including SANs
+      // Build X.509 v3 extensions including SANs and the CA's CRL Distribution Point
       const x509Extensions = buildCertificateExtensions({
         certificateType: originalCert.certificateType as 'server' | 'client' | 'dual' | 'code_signing' | 'email',
         sanDns: sanDns || undefined,
         sanIp: sanIp || undefined,
         sanEmail: sanEmail || undefined,
+        cdpUrl: crlDistributionUrl(originalCert.caId),
       });
 
       const certInfo = await kmsService.signCertificate({
@@ -997,6 +1001,7 @@ export class CertificateService {
         daysValid: validityDays,
         tags: [],
         entityId: newCertId,
+        keyAlgorithm: renewKeyAlgorithm,
         x509Extensions,
       });
 
@@ -1042,6 +1047,9 @@ export class CertificateService {
           .where(eq(certificates.id, params.id));
 
         logger.info({ originalCertId: params.id }, 'Original certificate revoked (superseded by renewal)');
+
+        // Keep the CA CRL current so the superseded serial appears (best-effort).
+        await getCRLService().regenerateForCa(ctx, originalCert.caId);
       }
 
       // Create audit log entry
@@ -1182,9 +1190,9 @@ export class CertificateService {
         ipAddress: ctx.ipAddress,
       } as any);
 
-      if (params.generateCrl) {
-        logger.info({ caId: cert.caId }, 'CRL generation requested (not yet implemented)');
-      }
+      // Keep the CA CRL current so the revoked serial appears promptly (best-effort:
+      // never fails the revocation if the KMS/CRL signing is unavailable).
+      await getCRLService().regenerateForCa(ctx, cert.caId);
 
       return {
         id: params.id,
