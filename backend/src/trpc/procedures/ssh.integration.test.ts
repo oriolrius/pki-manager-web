@@ -79,6 +79,7 @@ describe.skipIf(!KMS)('SSH tRPC router (with dev opt-in)', () => {
     const userCa = await c.ssh.ca.create({ caType: 'user', label: 'tRPC User CA' });
     const hostCa = await c.ssh.ca.create({ caType: 'host', label: 'tRPC Host CA' });
     expect(userCa.caType).toBe('user');
+    expect(hostCa.caType).toBe('host');
 
     const anchors = await c.ssh.ca.trustAnchors();
     expect(anchors.userCaKeys).toHaveLength(1);
