@@ -838,6 +838,33 @@ export class KMSClient {
       });
     }
 
+    // Add requested validity (in days) as a Cosmian vendor attribute.
+    // Cosmian KMS reads the certificate validity from the "requested_validity_days"
+    // vendor attribute (Integer); without it the server defaults to 365 days, so the
+    // caller's daysValid (e.g. a multi-year CA lifetime) was silently ignored.
+    if (options.daysValid && options.daysValid > 0) {
+      attributes.push({
+        tag: "Attribute",
+        value: [
+          {
+            tag: "VendorIdentification",
+            type: "TextString",
+            value: "cosmian",
+          },
+          {
+            tag: "AttributeName",
+            type: "TextString",
+            value: "requested_validity_days",
+          },
+          {
+            tag: "AttributeValue",
+            type: "Integer",
+            value: options.daysValid,
+          },
+        ],
+      });
+    }
+
     // Add Attributes structure to request
     if (attributes.length > 0) {
       requestValue.push({
