@@ -193,12 +193,12 @@ function SshCaDetail() {
         {isUserCa ? (
           <ConfigSnippet
             title="TrustedUserCAKeys (server sshd_config)"
-            description="Place on each server in /etc/ssh/trusted-user-ca-keys.pub and reference it from sshd_config."
+            description="Place on each server at /etc/ssh/ssh-user-ca.pub and reference it from sshd_config."
             content={
               [ca.opensshPublicKey, successor?.opensshPublicKey].filter(Boolean).join('\n') +
-              '\n\n# sshd_config:\n# TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pub'
+              '\n\n# sshd_config:\n# TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub'
             }
-            downloadFilename="trusted-user-ca-keys.pub"
+            downloadFilename="ssh-user-ca.pub"
           />
         ) : (
           <div className="space-y-2">

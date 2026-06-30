@@ -125,6 +125,13 @@ const hostRouter = router({
       mapSshError(e);
     }
   }),
+  deployBundle: sshProtectedProcedure.input(hostIdSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshHostService().buildHostDeployBundle(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
   issue: sshProtectedProcedure.input(issueHostCertSchema).mutation(async ({ ctx, input }) => {
     try {
       return await getSshHostService().issue(svcCtx(ctx), {

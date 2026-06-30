@@ -9,7 +9,16 @@ import { sshHosts, sshCas, sshCertificates } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
 import { parseSshPublicKey, type SshKeyAlgo } from '../crypto/ssh/pubkey.js';
 import { getSshCertService } from './ssh-cert.service.js';
-import { sshdConfigDropIn, isValidHostId } from './ssh-config.js';
+import {
+  sshdConfigDropIn,
+  isValidHostId,
+  hostKeyPathFor,
+  hostCertFilename,
+  SSHD_DROPIN_PATH,
+  SSHD_DROPIN_FILENAME,
+  USER_CA_PATH,
+  REVOKED_KEYS_PATH,
+} from './ssh-config.js';
 import type { ServiceContext } from './types.js';
 
 const DEFAULT_HOST_TTL = 52 * 7 * 24 * 3600; // +52w
@@ -35,6 +44,42 @@ export interface SshHostDto {
   lastKrlVersion: string | null;
   lastKrlFetchAt: string | null;
   enrolledAt: string | null;
+}
+
+/** One file an admin must place on the host, with its target path + perms. */
+export interface HostDeployFile {
+  /** Short label for the UI (e.g. "User CA public key"). */
+  name: string;
+  /** Absolute path on the host where the file belongs. */
+  path: string;
+  /** Suggested download filename. */
+  filename: string;
+  /** Verbatim file contents. */
+  content: string;
+  /** Octal mode hint (e.g. "0444"). */
+  mode: string;
+  /** True for the per-account auth_principals files (carry the stale flag). */
+  isAuthPrincipals?: boolean;
+}
+
+/** Everything a host admin must place on ONE server, assembled from live data. */
+export interface HostDeployBundle {
+  fqdn: string;
+  hostKeyAlgorithm: SshKeyAlgo;
+  /** Host CA id powering the KRL URL, or null if no CA/cert resolved yet. */
+  hostCaId: string | null;
+  /** False when the host has no issued certificate yet. */
+  hasCert: boolean;
+  /** Ordered list of files to place on the server. */
+  files: HostDeployFile[];
+  /** True if principal maps changed since the last push (auth_principals stale). */
+  principalsStale: boolean;
+  /** KRL refresh setup (the /krl/<caId>.bin URL + a ready cron snippet), or null. */
+  krl: { url: string; setup: string } | null;
+  /** Validate + reload commands. */
+  reloadCommands: string;
+  /** Plain-language prerequisites callout. */
+  prerequisites: string;
 }
 
 function hostDto(row: any): SshHostDto {
@@ -144,6 +189,101 @@ export class SshHostService {
       currentCert = c?.certOpenssh ?? null;
     }
     return { ...hostDto(row), sshdConfig: sshdConfigDropIn({ hostKeyAlgorithm: (row.hostKeyAlgorithm as SshKeyAlgo) ?? 'ssh-ed25519' }), currentCert };
+  }
+
+  /**
+   * Assemble EVERY file a host admin must place on this server, in one bundle,
+   * from live data — so nothing is forgotten (notably the User CA public key and
+   * the auth_principals files, which the old UI made you fetch from other pages).
+   * All paths/filenames come from ssh-config.ts so they are paste-safe.
+   */
+  async buildHostDeployBundle(ctx: ServiceContext, hostId: string): Promise<HostDeployBundle> {
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
+    if (!host) throw new SshHostError(`host ${hostId} not found`);
+    const algo = (host.hostKeyAlgorithm as SshKeyAlgo) ?? 'ssh-ed25519';
+
+    // Resolve the current cert (and the CA that signed it, for the KRL URL).
+    let currentCert: string | null = null;
+    let hostCaId: string | null = null;
+    if (host.currentCertId) {
+      const c = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.id, host.currentCertId)).limit(1))[0];
+      currentCert = c?.certOpenssh ?? null;
+      hostCaId = c?.caId ?? null;
+    }
+    if (!hostCaId) {
+      const ca = (await ctx.db.select().from(sshCas).where(and(eq(sshCas.caType, 'host'), eq(sshCas.status, 'active'))).limit(1))[0];
+      hostCaId = ca?.id ?? null;
+    }
+
+    // Pull in the User CA trust file and the auth_principals files (the two
+    // artifacts the old host page never emitted) from their owning services.
+    const { getSshCaService } = await import('./ssh-ca.service.js');
+    const { getSshPrincipalService } = await import('./ssh-principal.service.js');
+    const anchors = await getSshCaService().getTrustAnchors(ctx);
+    const principals = await getSshPrincipalService().render(ctx, hostId);
+
+    const hostKeyPath = hostKeyPathFor(algo);
+    const files: HostDeployFile[] = [];
+    if (currentCert) {
+      files.push({
+        name: 'Host certificate',
+        path: `${hostKeyPath}-cert.pub`,
+        filename: hostCertFilename(algo),
+        content: currentCert.endsWith('\n') ? currentCert : currentCert + '\n',
+        mode: '0444',
+      });
+    }
+    files.push({
+      name: 'User CA public key (TrustedUserCAKeys)',
+      path: USER_CA_PATH,
+      filename: 'ssh-user-ca.pub',
+      content: anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : ''),
+      mode: '0444',
+    });
+    files.push({
+      name: `sshd drop-in (${SSHD_DROPIN_FILENAME})`,
+      path: SSHD_DROPIN_PATH,
+      filename: SSHD_DROPIN_FILENAME,
+      content: sshdConfigDropIn({ hostKeyAlgorithm: algo }),
+      mode: '0644',
+    });
+    for (const [account, content] of Object.entries(principals.files)) {
+      files.push({
+        name: `AuthorizedPrincipals for '${account}'`,
+        path: `/etc/ssh/auth_principals/${account}`,
+        filename: account,
+        content,
+        mode: '0644',
+        isAuthPrincipals: true,
+      });
+    }
+
+    const krl = hostCaId
+      ? {
+          url: `/krl/${hostCaId}.bin`,
+          setup: [
+            '# RevokedKeys must exist or sshd refuses to start — create it once:',
+            `sudo install -m 0444 /dev/null ${REVOKED_KEYS_PATH}`,
+            '',
+            '# Keep it fresh (cron, every 15 min) — replace YOUR-PKI-HOST:',
+            `*/15 * * * * root curl -fsS -o ${REVOKED_KEYS_PATH}.new "https://YOUR-PKI-HOST/krl/${hostCaId}.bin" && install -m 0444 -o root -g root ${REVOKED_KEYS_PATH}.new ${REVOKED_KEYS_PATH}`,
+            '',
+          ].join('\n'),
+        }
+      : null;
+
+    return {
+      fqdn: host.fqdn,
+      hostKeyAlgorithm: algo,
+      hostCaId,
+      hasCert: !!currentCert,
+      files,
+      principalsStale: principals.stale,
+      krl,
+      reloadCommands: 'sudo sshd -t && sudo systemctl reload ssh   # unit is "ssh" on Debian/Ubuntu, "sshd" on RHEL-family',
+      prerequisites:
+        'Before you start: NTP/chrony must be running (certificate validity depends on the clock), and the local accounts your principals map to must already exist on this host.',
+    };
   }
 
   /** Mark the host's active cert revoked (eligible for the next KRL build). */
