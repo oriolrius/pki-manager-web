@@ -14,10 +14,13 @@ import {
   issueHostCertSchema,
   issueUserCertSchema,
   createIdentitySchema,
+  createPrincipalSchema,
+  mapPrincipalSchema,
 } from '../../trpc/ssh-schemas.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
+import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
 
 class HttpError extends Error {
@@ -106,6 +109,35 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       keyId: input.keyId,
       enforceEntitlement: input.enforceEntitlement,
     });
+  });
+
+  // --- Principals: RBAC catalog + per-host account mapping (renders AuthorizedPrincipalsFile) ---
+  api.get('/principals', { schema: { tags: tag, summary: 'List SSH principals (roles)' } }, async (req) => {
+    ensureSshAllowed();
+    return getSshPrincipalService().listPrincipals(ctx(req));
+  });
+
+  api.post('/principals', { schema: { tags: tag, summary: 'Create an SSH principal (role)' } }, async (req) => {
+    ensureSshAllowed();
+    const input = parse(createPrincipalSchema, req.body);
+    return getSshPrincipalService().createPrincipal(ctx(req), { name: input.name, description: input.description });
+  });
+
+  api.post('/principals/map', { schema: { tags: tag, summary: 'Map a principal to a local account on a host' } }, async (req) => {
+    ensureSshAllowed();
+    const input = parse(mapPrincipalSchema, req.body);
+    await getSshPrincipalService().mapToHost(ctx(req), {
+      hostId: input.hostId,
+      principalId: input.principalId,
+      localAccount: input.localAccount,
+    });
+    return { ok: true };
+  });
+
+  api.get('/hosts/:id/auth-principals', { schema: { tags: tag, summary: "Render a host's AuthorizedPrincipalsFile contents (per local account)" } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshPrincipalService().render(ctx(req), id);
   });
 
   // Machine-readable health/metrics for alerting (SSH-MON).
