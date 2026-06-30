@@ -11,7 +11,7 @@ key is signed, by `POST /api/v1/external/ssh/sign-host` with a fleet bearer toke
 2. Signs its public key via the external API (idempotent on host + fingerprint),
    installs the cert at `…-cert.pub` (mode `0444`).
 3. Fetches and installs the User CA trust bundle (`TrustedUserCAKeys`).
-4. Writes the `sshd_config.d/10-ssh-ca.conf` drop-in (HostCertificate,
+4. Writes the `sshd_config.d/60-ssh-ca.conf` drop-in (HostCertificate,
    TrustedUserCAKeys, AuthorizedPrincipalsFile, RevokedKeys), runs `sshd -t`,
    and reloads sshd.
 5. *(optional, `ssh_host_cert_ecies_enabled: true`)* registers the host's ECIES

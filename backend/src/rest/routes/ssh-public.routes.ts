@@ -9,7 +9,7 @@ import { db } from '../../db/client.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
-import { certAuthorityLine } from '../../services/ssh-config.js';
+import { certAuthorityLine, hostCertFilename, SSHD_DROPIN_FILENAME } from '../../services/ssh-config.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 
 export function registerSshPublicRoutes(server: FastifyInstance): void {
@@ -118,7 +118,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
         reply.code(404);
         return 'no certificate issued\n';
       }
-      text(reply, 'ssh_host_ed25519_key-cert.pub');
+      text(reply, hostCertFilename(host.hostKeyAlgorithm));
       return host.currentCert.endsWith('\n') ? host.currentCert : host.currentCert + '\n';
     } catch {
       reply.code(404);
@@ -131,7 +131,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     const { id } = req.params as { id: string };
     try {
       const host = await getSshHostService().get(ctx, id);
-      text(reply, '10-ssh-ca.conf');
+      text(reply, SSHD_DROPIN_FILENAME);
       return host.sshdConfig;
     } catch {
       reply.code(404);

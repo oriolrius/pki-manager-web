@@ -18,7 +18,7 @@ ssh_host_cert_key_path: "{{ ssh_host_cert_dirname }}/ssh_host_ed25519_key"
 ssh_host_cert_cert_path: "{{ ssh_host_cert_key_path }}-cert.pub"
 ssh_host_cert_user_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-user-ca.pub"
 ssh_host_cert_revoked_keys: "{{ ssh_host_cert_dirname }}/revoked_keys"
-ssh_host_cert_dropin: "{{ ssh_host_cert_dirname }}/sshd_config.d/10-ssh-ca.conf"
+ssh_host_cert_dropin: "{{ ssh_host_cert_dirname }}/sshd_config.d/60-ssh-ca.conf"
 ssh_host_cert_sshd_service: ssh
 
 # --- Optional ECIES KRL distribution (SSH-15/SSH-24) -------------------------

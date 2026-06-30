@@ -125,6 +125,13 @@ const hostRouter = router({
       mapSshError(e);
     }
   }),
+  deployBundle: sshProtectedProcedure.input(hostIdSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshHostService().buildHostDeployBundle(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
   issue: sshProtectedProcedure.input(issueHostCertSchema).mutation(async ({ ctx, input }) => {
     try {
       return await getSshHostService().issue(svcCtx(ctx), {
@@ -225,6 +232,7 @@ const userRouter = router({
 
 const principalRouter = router({
   list: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().listPrincipals(svcCtx(ctx))),
+  mappingsByPrincipal: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().mappingsByPrincipal(svcCtx(ctx))),
   create: sshProtectedProcedure.input(createPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
       return await getSshPrincipalService().createPrincipal(svcCtx(ctx), { name: input.name, description: input.description });
