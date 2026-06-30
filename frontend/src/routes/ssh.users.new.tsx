@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   SshCapabilityEditor,
@@ -9,6 +9,13 @@ import {
 } from '@/components/SshCapabilityEditor';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
+import {
+  type SshKeyType,
+  keyTypeToken,
+  userCertFilename,
+  userIdentityPath,
+  certAuthorityLine,
+} from '@/lib/ssh';
 
 export const Route = createFileRoute('/ssh/users/new')({
   component: IssueUserCert,
@@ -23,9 +30,17 @@ function IssueUserCert() {
   const { identityId: initialIdentityId } = Route.useSearch();
 
   const identitiesQuery = trpc.ssh.user.listIdentities.useQuery();
+  const trustAnchorsQuery = trpc.ssh.ca.trustAnchors.useQuery();
   const [identityId, setIdentityId] = useState(initialIdentityId ?? '');
   const [cap, setCap] = useState<SshCapabilityValue>(defaultCapabilityValue());
-  const [result, setResult] = useState<{ certOpenssh: string; sshClientConfig: string; serial: string } | null>(null);
+  const [result, setResult] = useState<{
+    certOpenssh: string;
+    sshClientConfig: string;
+    serial: string;
+    keyType: SshKeyType;
+    validBefore: string;
+    principals: string[];
+  } | null>(null);
 
   const issueMutation = trpc.ssh.user.issue.useMutation();
 
@@ -62,6 +77,9 @@ function IssueUserCert() {
             certOpenssh: res.cert.certOpenssh,
             sshClientConfig: res.sshClientConfig,
             serial: res.cert.serial,
+            keyType: res.keyType,
+            validBefore: res.cert.validBefore,
+            principals: cap.principals,
           });
         },
         onError: (err) => alert(`Failed to issue certificate: ${err.message}`),
@@ -70,6 +88,25 @@ function IssueUserCert() {
   };
 
   if (result) {
+    const certFile = userCertFilename(result.keyType);
+    const idPath = userIdentityPath(result.keyType);
+    const token = keyTypeToken(result.keyType);
+    const caLine = (trustAnchorsQuery.data?.hostCaKeys ?? []).map((k) => certAuthorityLine(k, '*')).join('\n');
+    const expires = new Date(result.validBefore);
+    const commands = [
+      "# 1. (If you don't already have a key) generate one:",
+      `ssh-keygen -t ${token} -f ${idPath}`,
+      '',
+      '# 2. Save the certificate above next to your private key:',
+      `#    ${idPath}-cert.pub   (chmod 644)`,
+      '',
+      '# 3. Verify what it grants (principals, expiry, options):',
+      `ssh-keygen -L -f ${idPath}-cert.pub`,
+      '',
+      '# 4. Log in as the account that maps to one of your principals:',
+      'ssh <account>@<host>',
+    ].join('\n');
+
     return (
       <div className="space-y-6 max-w-3xl">
         <button
@@ -80,21 +117,47 @@ function IssueUserCert() {
           Back to Users
         </button>
         <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-800 text-sm">
-          Certificate issued (serial {result.serial}). Deliver the certificate to the user.
+          Certificate issued (serial {result.serial}). It grants principals{' '}
+          <strong>{result.principals.join(', ') || '—'}</strong> and <strong>expires {expires.toLocaleString()}</strong>{' '}
+          (≈1 week — re-issue then, no new key needed). This certificate can log in only where one of its principals is
+          mapped to a local account. Deliver the blocks below to the user out-of-band.
         </div>
-        <DeployPanel title="Issued certificate" description="Save and distribute to the user.">
+        <DeployPanel
+          title="Send to the user"
+          description="Each block is copy-paste. The certificate filename already matches the user's key type."
+        >
           <ConfigSnippet
-            title="SSH certificate"
-            description="Save next to the user's key as <key>-cert.pub."
+            title="1. SSH certificate"
+            description={`Save next to the private key as ${certFile} (chmod 644). ssh then presents it automatically.`}
             content={result.certOpenssh}
-            downloadFilename="id_ecdsa-cert.pub"
+            downloadFilename={certFile}
             badge="cert"
           />
           <ConfigSnippet
-            title="ssh client config"
-            description="Optional ~/.ssh/config helper."
+            title="2. ~/.ssh/config (optional)"
+            description="Narrow the Host pattern to your fleet instead of * so unrelated sessions are unaffected."
             content={result.sshClientConfig}
             downloadFilename="ssh_config"
+            badge="ssh_config"
+          />
+          {caLine ? (
+            <ConfigSnippet
+              title="3. Trust the servers' Host CA (known_hosts)"
+              description="Add to ~/.ssh/known_hosts so host-key warnings stop. Narrow * to your host pattern."
+              content={caLine}
+              downloadFilename="known_hosts_cert_authority"
+              badge="known_hosts"
+            />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No Host CA published yet — create a Host CA so clients can verify servers without host-key warnings.
+            </p>
+          )}
+          <ConfigSnippet
+            title="4. Use &amp; verify"
+            description="Generate a key if needed, verify the certificate, then log in."
+            content={commands}
+            badge="shell"
           />
         </DeployPanel>
         <button
@@ -154,6 +217,8 @@ function IssueUserCert() {
 
           <SshCapabilityEditor value={cap} onChange={setCap} />
 
+          <PrincipalReachability principals={cap.principals} />
+
           <div className="flex gap-3 justify-end pt-4 border-t">
             <button
               type="button"
@@ -172,6 +237,52 @@ function IssueUserCert() {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Shows where each chosen principal currently grants login, and warns when one
+ * is mapped to no host account — the cert would authenticate but be denied login
+ * everywhere (the most common SSH-cert mistake).
+ */
+function PrincipalReachability({ principals }: { principals: string[] }) {
+  const q = trpc.ssh.principal.mappingsByPrincipal.useQuery();
+  if (principals.length === 0) return null;
+  const map = q.data ?? {};
+  const anyUnmapped = principals.some((p) => !(map[p]?.length));
+
+  return (
+    <div className="rounded-md border p-3 text-xs space-y-1.5">
+      <div className="font-medium">Where these principals grant login</div>
+      {principals.map((p) => {
+        const targets = map[p] ?? [];
+        return (
+          <div key={p} className="flex items-start gap-2">
+            {targets.length ? (
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            )}
+            <code className="font-mono">{p}</code>
+            {targets.length ? (
+              <span className="text-muted-foreground">
+                → {targets.map((t) => `${t.fqdn} (${t.localAccount})`).join(', ')}
+              </span>
+            ) : (
+              <span className="text-amber-700 dark:text-amber-400">
+                → not mapped to any host account. A certificate with only this principal cannot log in anywhere — map it
+                first.
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {anyUnmapped && (
+        <Link to="/ssh/principals" className="inline-flex items-center gap-1 text-primary hover:underline pt-1">
+          Map principals to host accounts →
+        </Link>
+      )}
     </div>
   );
 }

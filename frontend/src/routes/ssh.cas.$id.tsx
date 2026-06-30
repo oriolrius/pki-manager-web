@@ -4,6 +4,7 @@ import { ArrowLeft, RotateCw, Archive, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
+import { Callout } from '@/components/ssh/Callout';
 
 export const Route = createFileRoute('/ssh/cas/$id')({
   component: SshCaDetail,
@@ -164,6 +165,21 @@ function SshCaDetail() {
         </div>
       )}
 
+      <Callout title={isUserCa ? 'User CA → trusted BY servers' : 'Host CA → trusted BY clients'}>
+        {isUserCa ? (
+          <>
+            This CA signs <strong>people's login certificates</strong>. Install its public key on every server as{' '}
+            <code className="font-mono">/etc/ssh/ssh-user-ca.pub</code> (TrustedUserCAKeys) so the server trusts logins.
+          </>
+        ) : (
+          <>
+            This CA signs <strong>servers' host certificates</strong>. Add its{' '}
+            <code className="font-mono">@cert-authority</code> line to clients' <code className="font-mono">known_hosts</code>{' '}
+            so clients trust hosts (no more "authenticity can't be established" prompts).
+          </>
+        )}
+      </Callout>
+
       {/* Deploy panel */}
       <DeployPanel
         title="Deploy"
@@ -193,12 +209,12 @@ function SshCaDetail() {
         {isUserCa ? (
           <ConfigSnippet
             title="TrustedUserCAKeys (server sshd_config)"
-            description="Place on each server in /etc/ssh/trusted-user-ca-keys.pub and reference it from sshd_config."
+            description="Place on each server at /etc/ssh/ssh-user-ca.pub and reference it from sshd_config."
             content={
               [ca.opensshPublicKey, successor?.opensshPublicKey].filter(Boolean).join('\n') +
-              '\n\n# sshd_config:\n# TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pub'
+              '\n\n# sshd_config:\n# TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub'
             }
-            downloadFilename="trusted-user-ca-keys.pub"
+            downloadFilename="ssh-user-ca.pub"
           />
         ) : (
           <div className="space-y-2">

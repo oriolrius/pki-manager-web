@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import { eq, and, desc } from 'drizzle-orm';
 import { sshIdentities, sshCas, sshCertificates, sshUserPrincipals, sshPrincipals } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
-import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
+import { parseSshPublicKey, type SshKeyAlgo } from '../crypto/ssh/pubkey.js';
 import { DEFAULT_USER_EXTENSIONS } from '../crypto/ssh/openssh-cert.js';
 import { getSshCertService } from './ssh-cert.service.js';
 import { sshClientConfig, validateCidrList, isValidPrincipalName } from './ssh-config.js';
@@ -132,12 +132,16 @@ export class SshUserService {
   async issue(
     ctx: ServiceContext,
     params: IssueUserCertParams
-  ): Promise<{ cert: { id: string; serial: string; keyId: string; certOpenssh: string; validBefore: string }; sshClientConfig: string }> {
+  ): Promise<{
+    cert: { id: string; serial: string; keyId: string; certOpenssh: string; validBefore: string };
+    keyType: SshKeyAlgo;
+    sshClientConfig: string;
+  }> {
     const identity = (await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, params.identityId)).limit(1))[0];
     if (!identity) throw new SshUserError(`identity ${params.identityId} not found`);
     if (identity.status !== 'active') throw new SshUserError('identity is disabled; cannot issue certificates');
 
-    parseSshPublicKey(params.sshPublicKey); // reject private key / garbage early
+    const parsedKey = parseSshPublicKey(params.sshPublicKey); // reject private key / garbage early; algo drives client filenames
     if (params.principals.length === 0) throw new SshUserError('at least one principal (role) is required');
     for (const p of params.principals) {
       if (!isValidPrincipalName(p)) throw new SshUserError(`invalid principal name '${p}'`);
@@ -170,7 +174,8 @@ export class SshUserService {
 
     return {
       cert: { id: cert.id, serial: cert.serial, keyId: cert.keyId, certOpenssh: cert.certOpenssh, validBefore: cert.validBefore },
-      sshClientConfig: sshClientConfig({ hostPattern: '*' }),
+      keyType: parsedKey.algo,
+      sshClientConfig: sshClientConfig({ hostPattern: '*', keyAlgorithm: parsedKey.algo }),
     };
   }
 

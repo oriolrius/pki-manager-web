@@ -21,6 +21,11 @@ PKI Manager uses Docker for containerized deployment with the following componen
 
 All images are published exclusively to **GitHub Container Registry (ghcr.io)**.
 
+> Deploying the **SSH Certificate Manager** to real servers? See the SSH guides:
+> [concept](docs/ssh/concept.md) · [host & client setup](docs/ssh/setup.md) ·
+> [Ansible role](ansible/README.md). Hosts need NTP and outbound access to the
+> public trust/KRL endpoints (`/ssh/...`, `/krl/<caId>.bin`).
+
 ## Prerequisites
 
 - Docker 20.10+ and Docker Compose 2.0+

@@ -39,6 +39,8 @@ k8s/issuer/   Go cert-manager external issuer (own go.mod, Helm)      → k8s/is
 docker/       Full-stack Compose + Dockerfile          → DEPLOYMENT.md
 keycloak/     Keycloak dev IdP + realm import          → KEYCLOAK.md
 kms/          Cosmian KMS dev stack                    → kms/README.md
+ansible/      SSH host-cert deploy role                → ansible/README.md
+docs/ssh/     SSH onboarding guides (concept/quickstart/setup) → docs/ssh/concept.md
 tests/        Playwright E2E (auth, RBAC, screenshots)
 backlog/      Backlog.md tasks / docs / decisions
 ```
