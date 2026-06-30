@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
 import { RefreshCw, Ban } from 'lucide-react';
+import { Callout } from '@/components/ssh/Callout';
 
 export const Route = createFileRoute('/ssh/krl')({
   component: SshKrl,
@@ -31,6 +32,13 @@ function SshKrl() {
           ))}
         </select>
       </div>
+
+      <Callout tone="warn" title="Generating a KRL does not deploy it">
+        <strong>Generate KRL</strong> and <strong>Mark pushed</strong> only update PKI Manager — nothing is pushed to
+        your servers. Each host must fetch <code className="font-mono">/krl/&lt;caId&gt;.bin</code> into{' '}
+        <code className="font-mono">/etc/ssh/revoked_keys</code> (the per-host deploy panel includes a ready cron
+        snippet). Short certificate lifetimes are the primary revocation; the KRL is the emergency kill switch.
+      </Callout>
 
       {effectiveCaId ? <KrlForCa caId={effectiveCaId} /> : <p className="text-muted-foreground">Create a CA first.</p>}
 
@@ -118,6 +126,11 @@ function KrlForCa({ caId }: { caId: string }) {
           Generate KRL
         </button>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Hosts fetch this CA's KRL from <code className="font-mono">/krl/{caId}.bin</code> into{' '}
+        <code className="font-mono">/etc/ssh/revoked_keys</code>.
+      </p>
 
       {/* Revoke form */}
       <div className="rounded-lg border bg-card p-4 space-y-3">

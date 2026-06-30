@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
+import { Callout } from '@/components/ssh/Callout';
 
 export const Route = createFileRoute('/ssh/principals')({
   component: SshPrincipals,
@@ -51,6 +52,13 @@ function SshPrincipals() {
 
   return (
     <div className="space-y-6">
+      <Callout tone="warn" title="A login needs the principal in two places">
+        For a user to log in, the same principal must be in <strong>both</strong> their certificate <em>and</em> this
+        host's <code className="font-mono">/etc/ssh/auth_principals/&lt;account&gt;</code> file. Mapping it here renders
+        that file; deploy it to the host (and click <strong>Mark pushed</strong>). A principal mapped in only one place
+        authenticates but is denied login.
+      </Callout>
+
       {/* Catalog */}
       <div className="rounded-lg border bg-card">
         <div className="p-4 border-b">

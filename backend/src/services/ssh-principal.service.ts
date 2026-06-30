@@ -60,6 +60,25 @@ export class SshPrincipalService {
     return (await ctx.db.select().from(sshPrincipals)).map((r: any) => ({ id: r.id, name: r.name, description: r.description ?? null }));
   }
 
+  /**
+   * Where each principal currently grants login: principal NAME -> the
+   * (host, local account) pairs it is mapped to. Read-only aggregation used to
+   * warn, on the issue-cert form, when a chosen principal is mapped nowhere
+   * (so the cert would authenticate but be denied login — the #1 SSH trap).
+   */
+  async mappingsByPrincipal(ctx: ServiceContext): Promise<Record<string, Array<{ fqdn: string; localAccount: string }>>> {
+    const rows = await ctx.db
+      .select({ name: sshPrincipals.name, fqdn: sshHosts.fqdn, localAccount: sshHostPrincipalMaps.localAccount })
+      .from(sshHostPrincipalMaps)
+      .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
+      .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id));
+    const out: Record<string, Array<{ fqdn: string; localAccount: string }>> = {};
+    for (const r of rows as any[]) {
+      (out[r.name] ??= []).push({ fqdn: r.fqdn, localAccount: r.localAccount });
+    }
+    return out;
+  }
+
   async deletePrincipal(ctx: ServiceContext, id: string): Promise<void> {
     // FK ON DELETE restrict prevents deleting an in-use principal.
     try {
