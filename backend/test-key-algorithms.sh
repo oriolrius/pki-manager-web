@@ -1,112 +1,83 @@
 #!/bin/bash
 
-# Test script to verify different key algorithms work correctly with KMS
+# Smoke test: verify CA creation honors the requested key algorithm AND validity
+# across the supported algorithms. Hits a running backend over tRPC.
+#
+# Every CA created here is tracked and force-deleted on exit (success or failure)
+# so the test never leaves orphaned CAs behind in the instance it runs against.
 
-echo "=== Testing Key Algorithm Fix ==="
-echo ""
+set -u
+BASE_URL="${BASE_URL:-http://localhost:3000}"
+VALIDITY_YEARS=10
+# A CA created with validityYears=N must be ~N*365 days, not the KMS 365-day default.
+MIN_VALID_DAYS=$(( VALIDITY_YEARS * 365 - 30 ))
 
-# Test 1: Create RSA-2048 CA
-echo "Test 1: Creating CA with RSA-2048..."
-RESPONSE_RSA_2048=$(curl -s -X POST "http://localhost:3000/trpc/ca.create" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "subject": {
-      "commonName": "Test RSA-2048 CA",
-      "organization": "Test Org",
-      "country": "US"
-    },
-    "validityYears": 10,
-    "keyAlgorithm": "RSA-2048"
-  }')
+CREATED_CA_IDS=()
+FAILURES=0
 
-if echo "$RESPONSE_RSA_2048" | grep -q "error"; then
-  echo "❌ FAILED: $RESPONSE_RSA_2048"
-else
-  CA_ID_RSA_2048=$(echo "$RESPONSE_RSA_2048" | jq -r '.result.data.id')
-  echo "✓ Created CA: $CA_ID_RSA_2048"
+cleanup() {
+  echo ""
+  echo "=== Cleanup: removing ${#CREATED_CA_IDS[@]} test CA(s) ==="
+  for id in "${CREATED_CA_IDS[@]}"; do
+    [ -z "$id" ] && continue
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${BASE_URL}/trpc/ca.delete" \
+      -H "Content-Type: application/json" \
+      -d "{\"id\":\"${id}\",\"forceDelete\":true}")
+    echo "  deleted ${id} (HTTP ${code})"
+  done
+}
+trap cleanup EXIT
 
-  # Verify key algorithm
-  sleep 2
-  CERT_RSA_2048=$(curl -s "http://localhost:3000/trpc/ca.getById?input=%7B%22id%22%3A%22${CA_ID_RSA_2048}%22%7D" | jq -r '.result.data.certificatePem')
-  KEY_ALG_RSA_2048=$(echo "$CERT_RSA_2048" | openssl x509 -text -noout | grep "Public Key Algorithm" | awk '{print $4}')
-  KEY_SIZE_RSA_2048=$(echo "$CERT_RSA_2048" | openssl x509 -text -noout | grep "Public-Key:" | grep -oP '\d+')
+# create_and_check <label> <keyAlgorithm> <expected openssl key marker>
+create_and_check() {
+  local label="$1" alg="$2" marker="$3"
+  echo "Test: Creating CA with ${label}..."
 
-  if [ "$KEY_SIZE_RSA_2048" = "2048" ]; then
-    echo "✓ Verified: RSA-$KEY_SIZE_RSA_2048"
-  else
-    echo "❌ Expected RSA-2048, got $KEY_ALG_RSA_2048-$KEY_SIZE_RSA_2048"
+  local resp
+  resp=$(curl -s -X POST "${BASE_URL}/trpc/ca.create" \
+    -H "Content-Type: application/json" \
+    -d "{\"subject\":{\"commonName\":\"Test ${label} CA\",\"organization\":\"Test Org\",\"country\":\"US\"},\"validityYears\":${VALIDITY_YEARS},\"keyAlgorithm\":\"${alg}\"}")
+
+  if echo "$resp" | grep -q '"error"'; then
+    echo "❌ FAILED to create: $resp"; FAILURES=$((FAILURES+1)); return
   fi
-fi
 
-echo ""
-
-# Test 2: Create ECDSA-P256 CA
-echo "Test 2: Creating CA with ECDSA-P256..."
-RESPONSE_ECDSA_256=$(curl -s -X POST "http://localhost:3000/trpc/ca.create" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "subject": {
-      "commonName": "Test ECDSA-P256 CA",
-      "organization": "Test Org",
-      "country": "US"
-    },
-    "validityYears": 10,
-    "keyAlgorithm": "ECDSA-P256"
-  }')
-
-if echo "$RESPONSE_ECDSA_256" | grep -q "error"; then
-  echo "❌ FAILED: $RESPONSE_ECDSA_256"
-else
-  CA_ID_ECDSA_256=$(echo "$RESPONSE_ECDSA_256" | jq -r '.result.data.id')
-  echo "✓ Created CA: $CA_ID_ECDSA_256"
-
-  # Verify key algorithm
+  local ca_id
+  ca_id=$(echo "$resp" | jq -r '.result.data.id')
+  CREATED_CA_IDS+=("$ca_id")
+  echo "✓ Created CA: $ca_id"
   sleep 2
-  CERT_ECDSA_256=$(curl -s "http://localhost:3000/trpc/ca.getById?input=%7B%22id%22%3A%22${CA_ID_ECDSA_256}%22%7D" | jq -r '.result.data.certificatePem')
-  KEY_ALG_ECDSA_256=$(echo "$CERT_ECDSA_256" | openssl x509 -text -noout | grep "Public Key Algorithm")
 
-  if echo "$KEY_ALG_ECDSA_256" | grep -q "id-ecPublicKey"; then
-    echo "✓ Verified: ECDSA (elliptic curve)"
-    echo "$CERT_ECDSA_256" | openssl x509 -text -noout | grep -A2 "Public Key Algorithm"
+  local cert
+  cert=$(curl -s "${BASE_URL}/trpc/ca.getById?input=%7B%22id%22%3A%22${ca_id}%22%7D" | jq -r '.result.data.certificatePem')
+
+  # 1) key algorithm
+  if echo "$cert" | openssl x509 -text -noout 2>/dev/null | grep -q "$marker"; then
+    echo "✓ Key algorithm OK ($label)"
   else
-    echo "❌ Expected ECDSA, got $KEY_ALG_ECDSA_256"
+    echo "❌ Wrong key algorithm for $label"; FAILURES=$((FAILURES+1))
   fi
-fi
 
-echo ""
-
-# Test 3: Create ECDSA-P384 CA
-echo "Test 3: Creating CA with ECDSA-P384..."
-RESPONSE_ECDSA_384=$(curl -s -X POST "http://localhost:3000/trpc/ca.create" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "subject": {
-      "commonName": "Test ECDSA-P384 CA",
-      "organization": "Test Org",
-      "country": "US"
-    },
-    "validityYears": 10,
-    "keyAlgorithm": "ECDSA-P384"
-  }')
-
-if echo "$RESPONSE_ECDSA_384" | grep -q "error"; then
-  echo "❌ FAILED: $RESPONSE_ECDSA_384"
-else
-  CA_ID_ECDSA_384=$(echo "$RESPONSE_ECDSA_384" | jq -r '.result.data.id')
-  echo "✓ Created CA: $CA_ID_ECDSA_384"
-
-  # Verify key algorithm
-  sleep 2
-  CERT_ECDSA_384=$(curl -s "http://localhost:3000/trpc/ca.getById?input=%7B%22id%22%3A%22${CA_ID_ECDSA_384}%22%7D" | jq -r '.result.data.certificatePem')
-  KEY_ALG_ECDSA_384=$(echo "$CERT_ECDSA_384" | openssl x509 -text -noout | grep "Public Key Algorithm")
-
-  if echo "$KEY_ALG_ECDSA_384" | grep -q "id-ecPublicKey"; then
-    echo "✓ Verified: ECDSA (elliptic curve)"
-    echo "$CERT_ECDSA_384" | openssl x509 -text -noout | grep -A2 "Public Key Algorithm"
+  # 2) validity — must reflect validityYears, not the KMS 365-day default (regression guard)
+  local nb na nb_s na_s days
+  nb=$(echo "$cert" | openssl x509 -noout -startdate 2>/dev/null | cut -d= -f2)
+  na=$(echo "$cert" | openssl x509 -noout -enddate   2>/dev/null | cut -d= -f2)
+  nb_s=$(date -d "$nb" +%s); na_s=$(date -d "$na" +%s)
+  days=$(( (na_s - nb_s) / 86400 ))
+  if [ "$days" -ge "$MIN_VALID_DAYS" ]; then
+    echo "✓ Validity OK: ${days} days (~$((days/365))y, requested ${VALIDITY_YEARS}y)"
   else
-    echo "❌ Expected ECDSA, got $KEY_ALG_ECDSA_384"
+    echo "❌ Validity too short: ${days} days (expected ≥ ${MIN_VALID_DAYS}); validityYears was ignored"
+    FAILURES=$((FAILURES+1))
   fi
-fi
+  echo ""
+}
 
+echo "=== Testing Key Algorithm + Validity (target: ${BASE_URL}) ==="
 echo ""
-echo "=== Test Complete ==="
+create_and_check "RSA-2048"   "RSA-2048"   "Public-Key: (2048 bit)"
+create_and_check "ECDSA-P256" "ECDSA-P256" "id-ecPublicKey"
+create_and_check "ECDSA-P384" "ECDSA-P384" "id-ecPublicKey"
+
+echo "=== Test Complete: ${FAILURES} failure(s) ==="
+exit $(( FAILURES > 0 ? 1 : 0 ))
