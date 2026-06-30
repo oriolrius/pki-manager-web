@@ -1,192 +1,114 @@
 # PKI Manager - AI Assistant Instructions
 
-## Backlog.md CLI - Task Management
+Web PKI manager: CA hierarchies, X.509 issue/renew/revoke, CRLs, and a cert-manager
+external issuer for Kubernetes. Private keys live in a **Cosmian KMS**; metadata in SQLite.
 
-### Golden Rule
+## Backlog.md CLI — Task Management
 
-**NEVER edit task files directly. Always use `backlog` CLI commands.**
-
-### Core Commands
-
-```bash
-# View/Search (use --plain for AI-readable output)
-backlog task <id> --plain              # View task details
-backlog task list --plain              # List all tasks
-backlog search "keyword" --plain       # Search tasks
-
-# Task Lifecycle
-backlog task create "Title" -d "Description" --ac "Criterion"
-backlog task edit <id> -s "In Progress" -a @myself  # Start work
-backlog task edit <id> --plan $'1. Step\n2. Step'   # Add plan
-backlog task edit <id> --check-ac 1                 # Mark AC complete
-backlog task edit <id> --notes "Done X, Y, Z"       # Add PR description
-backlog task edit <id> -s Done                      # Mark complete
-
-# Multi-line input requires ANSI-C quoting: $'line1\nline2'
-```
-
-### Task Workflow
-
-1. **Start**: `backlog task edit <id> -s "In Progress" -a @myself`
-2. **Plan**: Add implementation plan with `--plan`
-3. **Implement**: Check ACs progressively with `--check-ac <index>`
-4. **Notes**: Add PR-ready description with `--notes` or `--append-notes`
-5. **Complete**: `backlog task edit <id> -s Done`
-
-### Acceptance Criteria Rules
-
-- Must be **outcome-oriented** and **testable** (not implementation steps)
-- Good: "User can login with valid credentials"
-- Bad: "Add handleLogin() function in auth.ts"
-- Use multiple `--check-ac` flags: `--check-ac 1 --check-ac 2 --check-ac 3`
-
-### Quick Reference
-
-| Action | Command |
-|--------|---------|
-| Add AC | `--ac "Criterion"` (multiple flags allowed) |
-| Check AC | `--check-ac <index>` (multiple flags allowed) |
-| Remove AC | `--remove-ac <index>` |
-| Edit title | `-t "New Title"` |
-| Edit description | `-d "Description"` |
-| Change status | `-s "Status"` |
-| Assign | `-a @user` |
-| Add labels | `-l label1,label2` |
-
----
-
-## Codebase Structure
-
-### Architecture
-
-Frontend (React + TanStack Router) ↔ tRPC ↔ Backend (Fastify) ↔ SQLite (Drizzle) ↔ Cosmian KMS
-
-### Tech Stack
-
-**Backend:**
-
-- Fastify 5.2 (HTTP server)
-- tRPC 11.0 (type-safe RPC)
-- Drizzle ORM 0.36 (SQLite)
-- Zod 3.24 (validation)
-- Vitest 2.1 (testing)
-
-**Frontend:**
-
-- React 19.1
-- TanStack Router 1.133 (file-based routing)
-- TanStack Query 5.90 (data fetching)
-- Tailwind CSS 4.1
-- Vite 6.0
-
-### Directory Structure
-
-```
-pki-manager/
-├── backend/src/
-│   ├── server.ts           # Fastify server entry
-│   ├── trpc/
-│   │   ├── router.ts       # Main API router
-│   │   ├── schemas.ts      # Zod validation schemas
-│   │   └── procedures/     # API endpoints by domain
-│   │       ├── ca.ts
-│   │       ├── certificate.ts
-│   │       └── crl.ts
-│   └── db/
-│       └── schema.ts       # Drizzle ORM schema
-├── frontend/src/
-│   ├── main.tsx            # App entry
-│   ├── routes/             # File-based routing
-│   │   ├── __root.tsx      # Layout + nav
-│   │   ├── index.tsx       # Dashboard (/)
-│   │   ├── cas.tsx         # /cas
-│   │   └── certificates.tsx # /certificates
-│   └── lib/
-│       └── trpc.ts         # tRPC client config
-└── backlog/
-    ├── tasks/              # Active tasks
-    └── docs/               # Documentation
-```
-
-### Common Patterns
-
-**Add API Endpoint:**
-
-1. Define schema in `backend/src/trpc/schemas.ts`
-2. Add procedure in `backend/src/trpc/procedures/*.ts`
-3. Use in frontend: `trpc.resource.method.useQuery/useMutation()`
-
-**Add Frontend Route:**
-
-1. Create `frontend/src/routes/filename.tsx` → `/filename`
-2. Use `filename.$id.tsx` for dynamic routes → `/filename/:id`
-
-**Database Changes:**
-```bash
-# Edit backend/src/db/schema.ts, then:
-cd backend && pnpm db:generate && pnpm db:migrate
-```
-
-### Development
+**Golden rule: NEVER edit task files directly — always use the `backlog` CLI.**
+(`AGENTS.md` is the auto-generated long-form of these rules.)
 
 ```bash
-# Terminal 1: Backend
-cd backend && pnpm dev        # http://localhost:3000
-
-# Terminal 2: Frontend
-cd frontend && npm run dev    # http://localhost:5173
-
-# Testing
-cd backend && pnpm test
-
-# Database GUI
-cd backend && pnpm db:studio  # http://localhost:4983
+backlog task <id> --plain                              # view (--plain = AI output)
+backlog task list --plain                              # list
+backlog search "kw" --plain                            # search
+backlog task create "Title" -d "Desc" --ac "Criterion"
+backlog task edit <id> -s "In Progress" -a @myself     # start
+backlog task edit <id> --plan $'1. Step\n2. Step'      # plan (ANSI-C quoting for newlines)
+backlog task edit <id> --check-ac 1                    # tick an AC
+backlog task edit <id> --notes "PR description" -s Done # finish
 ```
 
-### Key Files
+Workflow: start → `--plan` → implement + `--check-ac <i>` → `--notes` → `-s Done`.
+ACs must be **outcome-oriented and testable** ("User can log in"), not implementation steps.
 
-**Backend:**
+| Action | Flag |
+|---|---|
+| Add / check / remove AC | `--ac "..."` / `--check-ac <i>` / `--remove-ac <i>` |
+| Title / desc / status / assignee | `-t` / `-d` / `-s` / `-a` |
+| Labels | `-l a,b` |
 
-- [server.ts](backend/src/server.ts) - Fastify server
-- [router.ts](backend/src/trpc/router.ts) - tRPC router
-- [schemas.ts](backend/src/trpc/schemas.ts) - Zod schemas
-- [schema.ts](backend/src/db/schema.ts) - DB schema
+## Repository Layout
 
-**Frontend:**
+pnpm monorepo (workspaces `frontend`, `backend`) + a standalone Go module + infra dirs.
 
-- [main.tsx](frontend/src/main.tsx) - Entry point
-- [trpc.ts](frontend/src/lib/trpc.ts) - tRPC client
-- [__root.tsx](frontend/src/routes/__root.tsx) - Navigation
+```
+backend/      Fastify: tRPC + REST/OpenAPI API, crypto, KMS, SQLite   → backend/CLAUDE.md
+frontend/     React 19 SPA: TanStack Router/Query + tRPC + OIDC       → frontend/CLAUDE.md
+k8s/issuer/   Go cert-manager external issuer (own go.mod, Helm)      → k8s/issuer/CLAUDE.md
+docker/       Full-stack Compose + Dockerfile          → DEPLOYMENT.md
+keycloak/     Keycloak dev IdP + realm import          → KEYCLOAK.md
+kms/          Cosmian KMS dev stack                    → kms/README.md
+tests/        Playwright E2E (auth, RBAC, screenshots)
+backlog/      Backlog.md tasks / docs / decisions
+```
 
-### Troubleshooting
+Per-directory guides: [backend](backend/CLAUDE.md) · [frontend](frontend/CLAUDE.md) ·
+[k8s/issuer](k8s/issuer/CLAUDE.md). Read the relevant one for verified commands,
+architecture, and gotchas before working in that subsystem.
 
-| Issue | Solution |
-|-------|----------|
-| tRPC type errors | Run `pnpm dev` in backend |
-| Frontend can't connect | Check `VITE_API_URL` |
-| Database locked | Close Drizzle Studio |
-| Port in use | `lsof -ti:3000 \| xargs kill` |
+## Architecture
 
----
+```
+React SPA ──tRPC──┐                 Keycloak (OIDC) ── bearer JWT
+                  ▼
+Backend (Fastify): /trpc · /api/v1 (REST+Swagger) · /api/v1/external (cluster tokens)
+   └ services/ → crypto (node-forge) · Cosmian KMS (KMIP/HTTP, private keys) · SQLite (Drizzle)
+k8s/issuer (Go) ── POST /api/v1/external/sign ──► Backend   (one cluster token = one CA)
+```
 
-## Best Practices
+The `services/` layer is exposed over **two APIs**: typed tRPC (`/trpc`, used by the
+frontend) and REST/OpenAPI (`/api/v1`, Swagger at `/api/docs`), plus a cluster-token
+external-issuer API. **OIDC is optional** — with no `OIDC_ISSUER`/`OIDC_AUDIENCE` set, the
+backend runs fully unauthenticated.
 
-- **Type Safety**: Use Zod for all input validation
-- **State**: tRPC cache for server state, useState for local
-- **Errors**: Try-catch async ops, user-friendly messages
-- **Performance**: Use React Query caching, pagination for lists
-- **Testing**: Write tests in `*.test.ts` files
-- **File References**: Use markdown links `[file.ts](path/file.ts)` or `[file.ts:42](path/file.ts#L42)`
+## Tech Stack
+
+| Area | Stack |
+|---|---|
+| Backend | Fastify 5 · tRPC v11 · Drizzle + better-sqlite3 · Zod · node-forge · jose · Vitest |
+| Frontend | React 19 · TanStack Router/Query · tRPC client · Tailwind 4 · Vite 7 · Vitest+RTL |
+| Issuer | Go 1.23 · controller-runtime 0.20 · cert-manager 1.16 · Helm |
+| Tooling | pnpm workspaces (Node ≥20, pnpm ≥9) · Commitizen conventional commits |
+
+## Root Commands
+
+| Command | Action |
+|---|---|
+| `pnpm dev` | backend + frontend dev servers (`--parallel -r`) |
+| `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
+| `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
+
+Per-workspace commands (DB migrations, ports, build modes) live in the subsystem guides;
+the Go issuer uses `make` from `k8s/issuer/`.
+
+## Local Dev Quick Start
+
+```bash
+cd kms && docker compose up -d          # Cosmian KMS  (:42998)
+cd keycloak && docker compose up -d     # Keycloak     (:42997, admin/admin)
+pnpm install
+cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
+cd backend && pnpm db:migrate
+pnpm dev                                # backend :3000 + frontend
+```
+
+The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` port range — see
+[frontend/CLAUDE.md](frontend/CLAUDE.md) and edit the `.env` files for local-only dev.
+Details: [DEVELOPMENT.md](DEVELOPMENT.md) (dev), [DEPLOYMENT.md](DEPLOYMENT.md) (Docker),
+[KEYCLOAK.md](KEYCLOAK.md) / [OIDC.md](OIDC.md) (auth).
+
+## Conventions
+
+- **New endpoint**: Zod schema → `services/*` method → expose via a tRPC procedure and/or
+  REST route (both delegate to the service).
+- **New frontend route**: add `frontend/src/routes/<name>.tsx`; the router plugin
+  regenerates `routeTree.gen.ts`.
+- **DB change**: edit `backend/src/db/schema.ts` → `pnpm db:generate && pnpm db:migrate`.
+- Write an `audit_log` row for every state-changing operation (success and failure).
 
 ## Certificate Fields
 
-**Types:** server, client, email, code_signing
-
-**Subject Fields (Required):**
-- CN (Common Name)
-- O (Organization)
-- C (Country - 2 letters)
-
-**Optional:** OU, ST, L
-
-**SANs:** DNS names, IP addresses, Email addresses
+- **Types:** `server`, `client`, `email`, `code_signing` (schema also allows `dual`)
+- **Required subject:** CN, O, C (2-letter). **Optional:** OU, ST, L.
+- **SANs:** DNS, IP, email.

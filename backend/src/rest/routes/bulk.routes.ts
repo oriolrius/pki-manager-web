@@ -20,6 +20,10 @@ import {
   JKSKeytoolError,
 } from '../../services/jks.service.js';
 import { buildCertificateExtensions } from '../../services/certificate.service.js';
+import { crlDistributionUrl } from '../../lib/crl-url.js';
+import { getCRLService } from '../../services/crl.service.js';
+import { convertCertificateFormat } from '../../crypto/x509.js';
+import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 
 // Request/Response types
 interface BulkIssueBody {
@@ -407,6 +411,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           sanDns: sanDns.length > 0 ? sanDns : undefined,
           sanIp: sanIp.length > 0 ? sanIp : undefined,
           sanEmail: sanEmail.length > 0 ? sanEmail : undefined,
+          cdpUrl: crlDistributionUrl(caId),
         });
 
         const certInfo = await kmsService.signCertificate({
@@ -593,6 +598,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
     let successful = 0;
     let failed = 0;
+    const affectedCaIds = new Set<string>();
 
     // Process each certificate
     for (const certId of certificateIds) {
@@ -655,6 +661,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           success: true,
         });
 
+        affectedCaIds.add(cert.caId);
         successful++;
       } catch (error) {
         logger.error({ error, certId }, 'Failed to revoke certificate in bulk REST');
@@ -685,6 +692,11 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }),
       ipAddress: request.ip,
     } as any);
+
+    // Regenerate the CRL once per affected CA so revoked serials appear (best-effort).
+    for (const caId of affectedCaIds) {
+      await getCRLService().regenerateForCa({ db, ipAddress: request.ip }, caId);
+    }
 
     logger.info(
       { totalCertificates: certificateIds.length, successful, failed },
@@ -768,6 +780,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
     let successful = 0;
     let failed = 0;
+    const affectedCaIds = new Set<string>();
 
     const kmsService = getKMSService();
 
@@ -853,7 +866,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           logger.info({ newCertId, originalCertId: certId }, 'Creating new key pair for certificate renewal (bulk REST)');
 
           const keyPair = await kmsService.createKeyPair({
-            sizeInBits: 2048,
+            keyAlgorithm: originalParsed.keyAlgorithm,
             tags: [],
             purpose: 'certificate',
             entityId: newCertId,
@@ -882,6 +895,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           sanDns: sanDns || undefined,
           sanIp: sanIp || undefined,
           sanEmail: sanEmail || undefined,
+          cdpUrl: crlDistributionUrl(originalCert.caId),
         });
 
         const certInfo = await kmsService.signCertificate({
@@ -893,6 +907,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           daysValid: effectiveValidityDays,
           tags: [],
           entityId: newCertId,
+          keyAlgorithm: originalParsed.keyAlgorithm,
           x509Extensions,
         });
 
@@ -938,6 +953,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             .where(eq(certificates.id, certId));
 
           logger.info({ originalCertId: certId }, 'Original certificate revoked (superseded by renewal) (bulk REST)');
+          affectedCaIds.add(originalCert.caId);
         }
 
         // Create audit log entry for renewal
@@ -999,6 +1015,11 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
       }),
       ipAddress: request.ip,
     } as any);
+
+    // Regenerate the CRL once per CA whose original cert was revoked on renewal (best-effort).
+    for (const caId of affectedCaIds) {
+      await getCRLService().regenerateForCa({ db, ipAddress: request.ip }, caId);
+    }
 
     logger.info(
       { totalCertificates: certificateIds.length, successful, failed },
@@ -1295,8 +1316,17 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         ca.id
       );
 
-      const forgeCert = forge.pki.certificateFromPem(certificatePem);
-      const forgeCaCert = forge.pki.certificateFromPem(caCertificatePem);
+      // node-forge can't read EC certs; build lazily (null for EC) and use Node/openssl for
+      // EC-capable formats (DER, PKCS#12). PKCS#7 stays forge-only.
+      let forgeCert: any = null;
+      let forgeCaCert: any = null;
+      try {
+        forgeCert = forge.pki.certificateFromPem(certificatePem);
+        forgeCaCert = forge.pki.certificateFromPem(caCertificatePem);
+      } catch {
+        forgeCert = null;
+        forgeCaCert = null;
+      }
 
       switch (targetFormat) {
         case 'pem':
@@ -1305,11 +1335,10 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
         case 'der':
         case 'cer': {
-          const derBytes = forge.asn1.toDer(
-            forge.pki.certificateToAsn1(forgeCert)
-          ).getBytes();
+          // EC-safe DER conversion.
+          const derBase64 = convertCertificateFormat(certificatePem, 'PEM', 'DER');
           return {
-            content: Buffer.from(derBytes, 'binary'),
+            content: Buffer.from(derBase64, 'base64'),
             extension: targetFormat,
             isBinary: true,
           };
@@ -1328,11 +1357,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           const keyContent = encryptPrivateKey && password
-            ? forge.pki.encryptRsaPrivateKey(
-                forge.pki.privateKeyFromPem(privateKeyPem),
-                password,
-                { algorithm: 'aes256' }
-              )
+            ? await encryptPrivateKeyPem(privateKeyPem, password)
             : privateKeyPem;
 
           return {
@@ -1343,6 +1368,9 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
         case 'pkcs7':
         case 'p7b': {
+          if (!forgeCert || !forgeCaCert) {
+            throw new Error('PKCS#7 (p7b) export is not supported for ECDSA certificates');
+          }
           const p7 = forge.pkcs7.createSignedData();
           p7.addCertificate(forgeCert);
           p7.addCertificate(forgeCaCert);
@@ -1364,21 +1392,17 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             certificate.kmsKeyId,
             certificate.id
           );
-          const forgePrivateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-
+          // openssl supports RSA + EC (node-forge cannot encode EC keys).
           const pkcs12Password = encryptPrivateKey ? password! : '';
-          const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
-            forgePrivateKey,
-            [forgeCert, forgeCaCert],
-            pkcs12Password,
-            {
-              algorithm: encryptPrivateKey ? '3des' : undefined,
-              friendlyName: certificate.subjectDn,
-            }
-          );
-          const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+          const p12Buffer = await createPkcs12Bundle({
+            certPem: certificatePem,
+            privateKeyPem,
+            chainPems: [caCertificatePem],
+            password: pkcs12Password,
+            friendlyName: certificate.subjectDn,
+          });
           return {
-            content: Buffer.from(p12Der, 'binary'),
+            content: p12Buffer,
             extension: 'p12',
             isBinary: true,
           };
@@ -1527,11 +1551,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           const keyContent = encryptPrivateKey && password
-            ? forge.pki.encryptRsaPrivateKey(
-                forge.pki.privateKeyFromPem(privateKeyPem),
-                password,
-                { algorithm: 'aes256' }
-              )
+            ? await encryptPrivateKeyPem(privateKeyPem, password)
             : privateKeyPem;
 
           certsFolder.file(`${baseName}.key`, keyContent);

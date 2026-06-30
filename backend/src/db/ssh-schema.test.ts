@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const migrationSql = readFileSync(join(here, "migrations/0004_ssh_certificate_manager.sql"), "utf8");
+const migrationSql = readFileSync(join(here, "migrations/0006_ssh_certificate_manager.sql"), "utf8");
 
 function freshDb(): Database.Database {
   const db = new Database(":memory:");

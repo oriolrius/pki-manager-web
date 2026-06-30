@@ -2,7 +2,7 @@ import { createRootRoute, Outlet, Link } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/router-devtools';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChartLine, faShield, faCertificate, faLayerGroup, faBook, faTerminal } from '@fortawesome/free-solid-svg-icons';
+import { faChartLine, faShield, faCertificate, faLayerGroup, faBook, faTerminal, faServer } from '@fortawesome/free-solid-svg-icons';
 import packageJson from '../../../package.json';
 import { AuthProvider, AuthGuard } from '@/lib/auth';
 import { UserMenu } from '@/components/UserMenu';
@@ -75,6 +75,16 @@ function RootComponent() {
                 >
                   <FontAwesomeIcon icon={faTerminal} className="h-4 w-4" />
                   SSH
+                </Link>
+                <Link
+                  to="/clusters"
+                  className="px-3 py-2 text-sm font-medium rounded-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors flex items-center gap-2"
+                  activeProps={{
+                    className: 'px-3 py-2 text-sm font-medium rounded-md text-primary bg-primary/10 hover:bg-primary/15 transition-colors flex items-center gap-2'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faServer} className="h-4 w-4" />
+                  Clusters
                 </Link>
                 <Link
                   to="/api-docs"

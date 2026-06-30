@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pki-manager-token
+  namespace: pki-manager-issuer
+type: Opaque
+stringData:
+  token: REPLACE_WITH_TOKEN_FROM_PKI_MANAGER_UI
+---
+apiVersion: pki-manager.issuer.io/v1alpha1
+kind: ClusterIssuer
+metadata:
+  name: pki-manager-default
+spec:
+  url: http://pki-manager.example:3000
+  caId: REPLACE_WITH_CA_UUID
+  authSecretRef:
+    name: pki-manager-token
+    key: token
+  certificateType: dual
+  revokeOnDelete: false

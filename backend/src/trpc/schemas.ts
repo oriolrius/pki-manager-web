@@ -14,10 +14,19 @@ export const distinguishedNameSchema = z.object({
   locality: z.string().max(128).optional(),
 });
 
-// Key algorithm schemas (only RSA supported by Cosmian KMS)
+// CA keys are RSA-only: Cosmian KMS cannot self-sign EC keys (certify-from-subject fails with
+// "operation not supported for this keytype"), so CA creation is restricted to RSA.
 export const keyAlgorithmSchema = z.enum([
   'RSA-2048',
   'RSA-4096',
+]);
+
+// Leaf certificates additionally support ECDSA — the KMS issues EC leaves fine under an RSA CA.
+export const leafKeyAlgorithmSchema = z.enum([
+  'RSA-2048',
+  'RSA-4096',
+  'ECDSA-P256',
+  'ECDSA-P384',
 ]);
 
 // Certificate status schema
@@ -87,7 +96,7 @@ export const createCertificateSchema = z.object({
   caId: idSchema,
   subject: distinguishedNameSchema,
   certificateType: certificateTypeSchema,
-  keyAlgorithm: keyAlgorithmSchema.default('RSA-2048'),
+  keyAlgorithm: leafKeyAlgorithmSchema.default('RSA-2048'),
   validityDays: z.number().int().min(1).max(825),
   sanDns: z.array(z.string()).optional(),
   sanIp: z.array(z.string()).optional(),
@@ -103,6 +112,7 @@ export const listCertificatesSchema = z
     certificateType: certificateTypeSchema.optional(),
     domain: z.string().optional(), // Filter by domain (searches in CN and SANs)
     expiryStatus: z.enum(['active', 'expired', 'expiring_soon']).optional(), // Dynamic expiry status
+    sourceType: z.enum(['manual', 'k8s']).optional(),
 
     // Date range filters
     issuedAfter: z.coerce.date().optional(),
@@ -384,4 +394,19 @@ export const certificateDetailSchema = z.object({
   // Timestamps
   createdAt: z.date(),
   updatedAt: z.date(),
+});
+
+// Cluster (k8s external issuer) schemas
+export const registerClusterSchema = z.object({
+  name: z.string().min(1).max(128),
+  description: z.string().max(512).optional(),
+  caId: idSchema,
+});
+
+export const revokeClusterSchema = z.object({
+  id: idSchema,
+});
+
+export const getClusterSchema = z.object({
+  id: idSchema,
 });

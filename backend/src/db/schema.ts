@@ -74,6 +74,15 @@ export const certificates = sqliteTable(
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
 
+    // Source tracking (manual = UI/tRPC, k8s = via external issuer controller)
+    sourceType: text('source_type', { enum: ['manual', 'k8s'] })
+      .notNull()
+      .default('manual'),
+    k8sClusterId: text('k8s_cluster_id'),
+    k8sNamespace: text('k8s_namespace'),
+    k8sResource: text('k8s_resource'),
+    requestUid: text('request_uid'),
+
     // Application state (not in X.509 certificate)
     status: text('status', { enum: ['active', 'revoked', 'expired'] })
       .notNull()
@@ -85,6 +94,9 @@ export const certificates = sqliteTable(
     sanDns: text('san_dns'), // JSON array
     sanIp: text('san_ip'), // JSON array
     sanEmail: text('san_email'), // JSON array
+
+    // Cached PEM (used for offline-signed certs whose KMS object is a placeholder)
+    certificatePem: text('certificate_pem'),
 
     // Certificate renewal tracking
     renewedFromId: text('renewed_from_id').references(() => certificates.id),
@@ -103,6 +115,41 @@ export const certificates = sqliteTable(
     serialIdx: index('idx_certificates_serial').on(table.serialNumber),
     typeIdx: index('idx_certificates_type').on(table.certificateType),
     kmsCertIdx: index('idx_cert_kms_cert').on(table.kmsCertificateId),
+    sourceIdx: index('idx_certificates_source').on(table.sourceType),
+    k8sClusterIdx: index('idx_certificates_k8s_cluster').on(table.k8sClusterId),
+    requestUidIdx: index('idx_certificates_request_uid').on(table.requestUid),
+  })
+);
+
+// K8s clusters registered to consume external issuer API
+export const clusters = sqliteTable(
+  'clusters',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    description: text('description'),
+    caId: text('ca_id')
+      .notNull()
+      .references(() => certificateAuthorities.id, { onDelete: 'restrict' }),
+    // argon2 hash of bearer token. Token shown once on creation.
+    tokenHash: text('token_hash').notNull(),
+    // first 8 chars of plaintext token, for UI display (token_id_xxxx...)
+    tokenPrefix: text('token_prefix').notNull(),
+    createdBy: text('created_by'),
+    lastSeen: integer('last_seen', { mode: 'timestamp' }),
+    revokedAt: integer('revoked_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    nameIdx: index('idx_clusters_name').on(table.name),
+    caIdIdx: index('idx_clusters_ca_id').on(table.caId),
+    prefixIdx: index('idx_clusters_token_prefix').on(table.tokenPrefix),
+    revokedIdx: index('idx_clusters_revoked').on(table.revokedAt),
   })
 );
 
@@ -433,6 +480,9 @@ export type NewCrl = typeof crls.$inferInsert;
 
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
+
+export type Cluster = typeof clusters.$inferSelect;
+export type NewCluster = typeof clusters.$inferInsert;
 
 // --- SSH Certificate Manager types ---
 export type SshCa = typeof sshCas.$inferSelect;

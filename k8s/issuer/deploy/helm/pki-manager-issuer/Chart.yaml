@@ -1,0 +1,14 @@
+apiVersion: v2
+name: pki-manager-issuer
+description: cert-manager external issuer for PKI Manager
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.30.0-0"
+home: https://github.com/oriolrius/pki-manager-web
+sources:
+  - https://github.com/oriolrius/pki-manager-web
+keywords:
+  - cert-manager
+  - pki
+  - kubernetes

@@ -208,16 +208,32 @@ export class KMSClient {
         value: 2097152, // Sign/Verify
       },
       {
-        tag: "KeyFormatType",
-        type: "Enumeration",
-        value: "TransparentRSAPrivateKey",
-      },
-      {
         tag: "ObjectType",
         type: "Enumeration",
         value: "PrivateKey",
       },
     ];
+
+    if (algorithm === "ECDSA") {
+      // EC keys need the curve via CryptographicDomainParameters; do NOT send the RSA
+      // KeyFormatType (that makes Cosmian mint an x25519 key instead of a NIST P-curve).
+      commonAttributes.push({
+        tag: "CryptographicDomainParameters",
+        value: [
+          {
+            tag: "RecommendedCurve",
+            type: "Enumeration",
+            value: sizeInBits >= 384 ? "P384" : "P256",
+          },
+        ],
+      });
+    } else {
+      commonAttributes.push({
+        tag: "KeyFormatType",
+        type: "Enumeration",
+        value: "TransparentRSAPrivateKey",
+      });
+    }
 
     // Add tags if provided
     if (tags.length > 0) {
@@ -408,6 +424,7 @@ export class KMSClient {
     keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
     keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
     x509Extensions?: string; // X.509 extensions in OpenSSL v3_ca format
+    preserveCsrKey?: boolean; // When signing a CSR, keep the CSR's embedded public key (TASK-109.22 option b)
   }): Promise<CertificateInfo> {
     const requestValue: KMIPElement[] = [];
 
@@ -422,12 +439,17 @@ export class KMSClient {
       });
     }
 
-    // Add CSR if provided
+    // Add CSR if provided. The KMIP 2.1 Certify CSR field is "CertificateRequestValue"
+    // (the server reads request.certificate_request_value). We previously sent it under the
+    // tag "CertificateRequest", so the server ignored the CSR and fell back to
+    // "Certify from Subject" mode -> 422. PEM is accepted directly (server does
+    // X509Req::from_pem); in CSR mode the server returns before any key generation, so the
+    // certificate is signed with the CSR's own public key (TASK-109.22 option b).
     if (options.csr) {
       requestValue.push({
-        tag: "CertificateRequest",
+        tag: "CertificateRequestValue",
         type: "ByteString",
-        value: Buffer.from(options.csr).toString("hex"),
+        value: Buffer.from(options.csr, "utf-8").toString("hex"),
       });
       requestValue.push({
         tag: "CertificateRequestType",
@@ -451,18 +473,27 @@ export class KMSClient {
       ? this.parseKeyAlgorithm(options.keyAlgorithm)
       : { algorithm: "RSA", sizeInBits: options.keySizeInBits || 4096 };
 
-    // Add cryptographic algorithm information (required for key pair generation)
-    // When no key links are provided, Cosmian will generate a new key pair
-    attributes.push({
-      tag: "CryptographicAlgorithm",
-      type: "Enumeration",
-      value: algorithm,
-    });
-    attributes.push({
-      tag: "CryptographicLength",
-      type: "Integer",
-      value: sizeInBits,
-    });
+    // CryptographicAlgorithm/Length are the KMIP "generate a new key pair" signal.
+    // Generate-keypair (CA self-signed) and certify-by-publicKeyId modes require them.
+    // BUT when signing a CSR we previously sent them too, which made Cosmian mint a
+    // fresh keypair and ignore the CSR's embedded public key — forcing the offline
+    // node-forge fallback in /api/v1/external/sign. With preserveCsrKey we omit them so
+    // Cosmian signs the CSR's own key (TASK-109.22 option b). The CSR carries its own
+    // algorithm/length, so they are redundant in that mode.
+    const preserveCsrKey =
+      options.preserveCsrKey === true && !!options.csr && !options.publicKeyId;
+    if (!preserveCsrKey) {
+      attributes.push({
+        tag: "CryptographicAlgorithm",
+        type: "Enumeration",
+        value: algorithm,
+      });
+      attributes.push({
+        tag: "CryptographicLength",
+        type: "Integer",
+        value: sizeInBits,
+      });
+    }
 
     // Add Link to issuer certificate (for non-self-signed)
     if (options.issuerCertificateId) {
@@ -886,6 +917,43 @@ export class KMSClient {
     }
 
     return result;
+  }
+
+  /**
+   * Resolve the private-key UniqueIdentifier linked to a certificate via its KMIP
+   * PrivateKeyLink. Needed because certify-from-subject (CA creation) generates the keypair
+   * server-side and does not surface the private-key id in the Certify response — so the CA
+   * record may store the certificate id as a fallback. GetAttributes exposes the link.
+   */
+  async getCertificatePrivateKeyId(certificateId: string): Promise<string> {
+    const request: KMIPRequest = {
+      tag: "GetAttributes",
+      value: [
+        {
+          tag: "UniqueIdentifier",
+          type: "TextString",
+          value: certificateId,
+        },
+      ],
+    };
+
+    const response = await this.sendKMIPRequest(request);
+    const attributes = this.findElement(response.value, "Attributes");
+    if (!attributes || !Array.isArray((attributes as any).value)) {
+      throw new Error(`No attributes returned for certificate ${certificateId}`);
+    }
+
+    for (const attr of (attributes as any).value as KMIPElement[]) {
+      if (attr.tag === "Link" && Array.isArray(attr.value)) {
+        const linkType = this.findElement(attr.value as KMIPElement[], "LinkType");
+        if (linkType && this.getStringValue(linkType) === "PrivateKeyLink") {
+          const linkedId = this.findElement(attr.value as KMIPElement[], "LinkedObjectIdentifier");
+          return this.getStringValue(linkedId);
+        }
+      }
+    }
+
+    throw new Error(`No PrivateKeyLink found for certificate ${certificateId}`);
   }
 
   /**

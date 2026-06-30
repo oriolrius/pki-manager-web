@@ -1,0 +1,67 @@
+image:
+  repository: ghcr.io/oriolrius/pki-manager-issuer
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+leaderElection:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+clusterResourceNamespace: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+networkPolicy:
+  enabled: false
+  pkiManagerEgressCIDR: ""
+
+# cert-manager 1.16+ requires every CertificateRequest to be Approved before an issuer may
+# sign it. cert-manager's built-in approver only auto-approves first-party (cert-manager.io)
+# issuers; external issuers like this one need an explicit grant of the `approve` verb on
+# `signers.cert-manager.io` for their signer names, bound to the cert-manager controller's
+# ServiceAccount. This installs that grant so CertificateRequests for this issuer are
+# auto-approved. Set enabled=false to manage approval yourself (e.g. a custom approver).
+approver:
+  enabled: true
+  # The ServiceAccount that runs cert-manager's approver controller. Match your cert-manager
+  # install (the defaults match a standard `helm install cert-manager` into ns `cert-manager`).
+  certManagerServiceAccount:
+    name: cert-manager
+    namespace: cert-manager
+
+affinity: {}
+tolerations: []
+nodeSelector: {}

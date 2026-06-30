@@ -33,15 +33,29 @@
     {
       "idx": 4,
       "version": "6",
-      "when": 1761680001000,
-      "tag": "0004_ssh_certificate_manager",
+      "when": 1762300800000,
+      "tag": "0004_clusters_and_cert_source",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "6",
-      "when": 1761680002000,
-      "tag": "0005_ssh_fleet_tokens",
+      "when": 1762387200000,
+      "tag": "0005_certificate_pem",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1762387300000,
+      "tag": "0006_ssh_certificate_manager",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1762387400000,
+      "tag": "0007_ssh_fleet_tokens",
       "breakpoints": true
     }
   ]

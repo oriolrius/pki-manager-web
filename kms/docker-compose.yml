@@ -10,6 +10,11 @@ services:
       - ./kms.toml:/etc/cosmian/kms.toml:ro
     environment:
       - RUST_LOG=${RUST_LOG:-info}
+      # Point the entrypoint at the mounted config. Without this, current images detect the
+      # config at the default path AND inject default CLI args, which they now reject with
+      # "Configuration file found at the default path ... but extra command-line arguments
+      # were also provided." Setting COSMIAN_KMS_CONF makes the entrypoint use config-file mode.
+      - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
     networks:
       - pki-manager-network
     healthcheck:

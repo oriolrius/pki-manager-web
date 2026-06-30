@@ -197,6 +197,8 @@ export interface CRLParams {
   signingKey: string;
   /** Signature algorithm */
   signatureAlgorithm?: SignatureAlgorithm;
+  /** Issuing CA certificate (PEM); when provided, an authorityKeyIdentifier matching its SKI is embedded */
+  issuerCertificate?: string;
 }
 
 /**
