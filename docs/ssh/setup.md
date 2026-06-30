@@ -50,13 +50,14 @@ certificates signed by the User CA.
    > If your host key is **not** ed25519, the bundle already adjusts the
    > `HostKey`/`HostCertificate` paths to match (e.g. `ssh_host_ecdsa_key`).
 
-3. **Set up the KRL file** (the `RevokedKeys` directive requires the file to
-   exist, or sshd refuses to start). The bundle's KRL snippet does this:
+3. **Set up the KRL file.** `RevokedKeys` gates *user* logins, so the server
+   serves the **User CA's** KRL (revoked user certificates). The file must exist
+   or sshd refuses to start. The bundle's KRL snippet does this:
 
    ```bash
    sudo install -m 0444 /dev/null /etc/ssh/revoked_keys
    # then refresh on a schedule (cron), replacing YOUR-PKI-HOST:
-   */15 * * * * root curl -fsS -o /etc/ssh/revoked_keys.new "https://YOUR-PKI-HOST/krl/<HostCaId>.bin" \
+   */15 * * * * root curl -fsS -o /etc/ssh/revoked_keys.new "https://YOUR-PKI-HOST/krl/<UserCaId>.bin" \
      && install -m 0444 -o root -g root /etc/ssh/revoked_keys.new /etc/ssh/revoked_keys
    ```
 

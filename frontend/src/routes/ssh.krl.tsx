@@ -35,7 +35,8 @@ function SshKrl() {
 
       <Callout tone="warn" title="Generating a KRL does not deploy it">
         <strong>Generate KRL</strong> and <strong>Mark pushed</strong> only update PKI Manager — nothing is pushed to
-        your servers. Each host must fetch <code className="font-mono">/krl/&lt;caId&gt;.bin</code> into{' '}
+        your servers. A server's <code className="font-mono">RevokedKeys</code> gates user logins, so each server fetches
+        the <strong>User CA's</strong> <code className="font-mono">/krl/&lt;userCaId&gt;.bin</code> into{' '}
         <code className="font-mono">/etc/ssh/revoked_keys</code> (the per-host deploy panel includes a ready cron
         snippet). Short certificate lifetimes are the primary revocation; the KRL is the emergency kill switch.
       </Callout>
@@ -128,8 +129,9 @@ function KrlForCa({ caId }: { caId: string }) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Hosts fetch this CA's KRL from <code className="font-mono">/krl/{caId}.bin</code> into{' '}
-        <code className="font-mono">/etc/ssh/revoked_keys</code>.
+        This CA's KRL is published at <code className="font-mono">/krl/{caId}.bin</code>. Servers fetch the{' '}
+        <strong>User CA's</strong> KRL into <code className="font-mono">/etc/ssh/revoked_keys</code> to reject revoked
+        user logins.
       </p>
 
       {/* Revoke form */}

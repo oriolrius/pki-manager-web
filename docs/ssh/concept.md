@@ -44,9 +44,10 @@ state.
 
 - **Short lifetimes are the primary mechanism**: user certs last ~1 week, host
   certs ~1 year. Expiry *is* the main revocation — just re-issue.
-- The **KRL** (`RevokedKeys`, served at `/krl/<caId>.bin`) is the **emergency
-  kill switch** for a key you must revoke immediately. Each host fetches it into
-  `/etc/ssh/revoked_keys`.
+- The **KRL** is the **emergency kill switch** for a key you must revoke
+  immediately. A server's `RevokedKeys` gates *user* logins, so each server
+  fetches the **User CA's** KRL (`/krl/<userCaId>.bin`) into
+  `/etc/ssh/revoked_keys`. (Host-cert revocation is enforced client-side.)
 
 ## Prerequisite everywhere: an accurate clock
 

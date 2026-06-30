@@ -65,7 +65,8 @@ the manual steps.)
 
 **KRL** → pick a CA → revoke by serial/key/cert → **Generate KRL**.
 
-Generate only updates PKI Manager — each host must fetch `/krl/<caId>.bin` into
+Generate only updates PKI Manager. A server's `RevokedKeys` gates user logins, so
+each server fetches the **User CA's** KRL (`/krl/<userCaId>.bin`) into
 `/etc/ssh/revoked_keys` (the host deploy panel includes a cron snippet). Prefer
 letting the short TTL expire; use the KRL for emergencies.
 

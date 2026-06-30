@@ -60,7 +60,7 @@ function SshLanding() {
   const casQuery = trpc.ssh.ca.list.useQuery();
   const hostsQuery = trpc.ssh.host.list.useQuery();
   const mappingsQuery = trpc.ssh.principal.mappingsByPrincipal.useQuery();
-  const certsQuery = trpc.ssh.user.listCertificates.useQuery();
+  const certsQuery = trpc.ssh.user.listCertificates.useQuery({});
 
   if (casQuery.isLoading) {
     return <div className="text-center py-8 text-muted-foreground">Loading...</div>;

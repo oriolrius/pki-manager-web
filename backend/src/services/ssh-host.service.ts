@@ -66,8 +66,8 @@ export interface HostDeployFile {
 export interface HostDeployBundle {
   fqdn: string;
   hostKeyAlgorithm: SshKeyAlgo;
-  /** Host CA id powering the KRL URL, or null if no CA/cert resolved yet. */
-  hostCaId: string | null;
+  /** Active User CA id powering the RevokedKeys (user-cert) KRL URL, or null. */
+  userCaId: string | null;
   /** False when the host has no issued certificate yet. */
   hasCert: boolean;
   /** Ordered list of files to place on the server. */
@@ -202,18 +202,17 @@ export class SshHostService {
     if (!host) throw new SshHostError(`host ${hostId} not found`);
     const algo = (host.hostKeyAlgorithm as SshKeyAlgo) ?? 'ssh-ed25519';
 
-    // Resolve the current cert (and the CA that signed it, for the KRL URL).
+    // Resolve the current host cert.
     let currentCert: string | null = null;
-    let hostCaId: string | null = null;
     if (host.currentCertId) {
       const c = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.id, host.currentCertId)).limit(1))[0];
       currentCert = c?.certOpenssh ?? null;
-      hostCaId = c?.caId ?? null;
     }
-    if (!hostCaId) {
-      const ca = (await ctx.db.select().from(sshCas).where(and(eq(sshCas.caType, 'host'), eq(sshCas.status, 'active'))).limit(1))[0];
-      hostCaId = ca?.id ?? null;
-    }
+    // sshd's RevokedKeys gates USER logins, so the server must serve the active
+    // USER CA's KRL (revoked user certs) — NOT the Host CA's. Host-cert
+    // revocation is enforced client-side (known_hosts), not here.
+    const userCa = (await ctx.db.select().from(sshCas).where(and(eq(sshCas.caType, 'user'), eq(sshCas.status, 'active'))).limit(1))[0];
+    const userCaId: string | null = userCa?.id ?? null;
 
     // Pull in the User CA trust file and the auth_principals files (the two
     // artifacts the old host page never emitted) from their owning services.
@@ -258,15 +257,16 @@ export class SshHostService {
       });
     }
 
-    const krl = hostCaId
+    const krl = userCaId
       ? {
-          url: `/krl/${hostCaId}.bin`,
+          url: `/krl/${userCaId}.bin`,
           setup: [
-            '# RevokedKeys must exist or sshd refuses to start — create it once:',
+            '# RevokedKeys lists revoked USER certificates (the User CA KRL).',
+            '# It must exist or sshd refuses to start — create it once:',
             `sudo install -m 0444 /dev/null ${REVOKED_KEYS_PATH}`,
             '',
             '# Keep it fresh (cron, every 15 min) — replace YOUR-PKI-HOST:',
-            `*/15 * * * * root curl -fsS -o ${REVOKED_KEYS_PATH}.new "https://YOUR-PKI-HOST/krl/${hostCaId}.bin" && install -m 0444 -o root -g root ${REVOKED_KEYS_PATH}.new ${REVOKED_KEYS_PATH}`,
+            `*/15 * * * * root curl -fsS -o ${REVOKED_KEYS_PATH}.new "https://YOUR-PKI-HOST/krl/${userCaId}.bin" && install -m 0444 -o root -g root ${REVOKED_KEYS_PATH}.new ${REVOKED_KEYS_PATH}`,
             '',
           ].join('\n'),
         }
@@ -275,7 +275,7 @@ export class SshHostService {
     return {
       fqdn: host.fqdn,
       hostKeyAlgorithm: algo,
-      hostCaId,
+      userCaId,
       hasCert: !!currentCert,
       files,
       principalsStale: principals.stale,
