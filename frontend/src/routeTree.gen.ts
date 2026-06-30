@@ -9,18 +9,34 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SshRouteImport } from './routes/ssh'
 import { Route as CertificatesRouteImport } from './routes/certificates'
 import { Route as CasRouteImport } from './routes/cas'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as ApiDocsRouteImport } from './routes/api-docs'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SshUsersRouteImport } from './routes/ssh.users'
+import { Route as SshPrincipalsRouteImport } from './routes/ssh.principals'
+import { Route as SshKrlRouteImport } from './routes/ssh.krl'
+import { Route as SshHostsRouteImport } from './routes/ssh.hosts'
+import { Route as SshCasRouteImport } from './routes/ssh.cas'
 import { Route as CertificatesNewRouteImport } from './routes/certificates.new'
 import { Route as CertificatesBulkRouteImport } from './routes/certificates.bulk'
 import { Route as CertificatesIdRouteImport } from './routes/certificates.$id'
 import { Route as CasNewRouteImport } from './routes/cas.new'
 import { Route as CasIdRouteImport } from './routes/cas.$id'
+import { Route as SshUsersNewRouteImport } from './routes/ssh.users.new'
+import { Route as SshHostsNewRouteImport } from './routes/ssh.hosts.new'
+import { Route as SshHostsIdRouteImport } from './routes/ssh.hosts.$id'
+import { Route as SshCasNewRouteImport } from './routes/ssh.cas.new'
+import { Route as SshCasIdRouteImport } from './routes/ssh.cas.$id'
 
+const SshRoute = SshRouteImport.update({
+  id: '/ssh',
+  path: '/ssh',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CertificatesRoute = CertificatesRouteImport.update({
   id: '/certificates',
   path: '/certificates',
@@ -50,6 +66,31 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SshUsersRoute = SshUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshPrincipalsRoute = SshPrincipalsRouteImport.update({
+  id: '/principals',
+  path: '/principals',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshKrlRoute = SshKrlRouteImport.update({
+  id: '/krl',
+  path: '/krl',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshHostsRoute = SshHostsRouteImport.update({
+  id: '/hosts',
+  path: '/hosts',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshCasRoute = SshCasRouteImport.update({
+  id: '/cas',
+  path: '/cas',
+  getParentRoute: () => SshRoute,
+} as any)
 const CertificatesNewRoute = CertificatesNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -75,6 +116,31 @@ const CasIdRoute = CasIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => CasRoute,
 } as any)
+const SshUsersNewRoute = SshUsersNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => SshUsersRoute,
+} as any)
+const SshHostsNewRoute = SshHostsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => SshHostsRoute,
+} as any)
+const SshHostsIdRoute = SshHostsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => SshHostsRoute,
+} as any)
+const SshCasNewRoute = SshCasNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => SshCasRoute,
+} as any)
+const SshCasIdRoute = SshCasIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => SshCasRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,11 +148,22 @@ export interface FileRoutesByFullPath {
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
+  '/ssh': typeof SshRouteWithChildren
   '/cas/$id': typeof CasIdRoute
   '/cas/new': typeof CasNewRoute
   '/certificates/$id': typeof CertificatesIdRoute
   '/certificates/bulk': typeof CertificatesBulkRoute
   '/certificates/new': typeof CertificatesNewRoute
+  '/ssh/cas': typeof SshCasRouteWithChildren
+  '/ssh/hosts': typeof SshHostsRouteWithChildren
+  '/ssh/krl': typeof SshKrlRoute
+  '/ssh/principals': typeof SshPrincipalsRoute
+  '/ssh/users': typeof SshUsersRouteWithChildren
+  '/ssh/cas/$id': typeof SshCasIdRoute
+  '/ssh/cas/new': typeof SshCasNewRoute
+  '/ssh/hosts/$id': typeof SshHostsIdRoute
+  '/ssh/hosts/new': typeof SshHostsNewRoute
+  '/ssh/users/new': typeof SshUsersNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,11 +171,22 @@ export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
+  '/ssh': typeof SshRouteWithChildren
   '/cas/$id': typeof CasIdRoute
   '/cas/new': typeof CasNewRoute
   '/certificates/$id': typeof CertificatesIdRoute
   '/certificates/bulk': typeof CertificatesBulkRoute
   '/certificates/new': typeof CertificatesNewRoute
+  '/ssh/cas': typeof SshCasRouteWithChildren
+  '/ssh/hosts': typeof SshHostsRouteWithChildren
+  '/ssh/krl': typeof SshKrlRoute
+  '/ssh/principals': typeof SshPrincipalsRoute
+  '/ssh/users': typeof SshUsersRouteWithChildren
+  '/ssh/cas/$id': typeof SshCasIdRoute
+  '/ssh/cas/new': typeof SshCasNewRoute
+  '/ssh/hosts/$id': typeof SshHostsIdRoute
+  '/ssh/hosts/new': typeof SshHostsNewRoute
+  '/ssh/users/new': typeof SshUsersNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -108,11 +196,22 @@ export interface FileRoutesById {
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
+  '/ssh': typeof SshRouteWithChildren
   '/cas/$id': typeof CasIdRoute
   '/cas/new': typeof CasNewRoute
   '/certificates/$id': typeof CertificatesIdRoute
   '/certificates/bulk': typeof CertificatesBulkRoute
   '/certificates/new': typeof CertificatesNewRoute
+  '/ssh/cas': typeof SshCasRouteWithChildren
+  '/ssh/hosts': typeof SshHostsRouteWithChildren
+  '/ssh/krl': typeof SshKrlRoute
+  '/ssh/principals': typeof SshPrincipalsRoute
+  '/ssh/users': typeof SshUsersRouteWithChildren
+  '/ssh/cas/$id': typeof SshCasIdRoute
+  '/ssh/cas/new': typeof SshCasNewRoute
+  '/ssh/hosts/$id': typeof SshHostsIdRoute
+  '/ssh/hosts/new': typeof SshHostsNewRoute
+  '/ssh/users/new': typeof SshUsersNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -122,11 +221,22 @@ export interface FileRouteTypes {
     | '/callback'
     | '/cas'
     | '/certificates'
+    | '/ssh'
     | '/cas/$id'
     | '/cas/new'
     | '/certificates/$id'
     | '/certificates/bulk'
     | '/certificates/new'
+    | '/ssh/cas'
+    | '/ssh/hosts'
+    | '/ssh/krl'
+    | '/ssh/principals'
+    | '/ssh/users'
+    | '/ssh/cas/$id'
+    | '/ssh/cas/new'
+    | '/ssh/hosts/$id'
+    | '/ssh/hosts/new'
+    | '/ssh/users/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -134,11 +244,22 @@ export interface FileRouteTypes {
     | '/callback'
     | '/cas'
     | '/certificates'
+    | '/ssh'
     | '/cas/$id'
     | '/cas/new'
     | '/certificates/$id'
     | '/certificates/bulk'
     | '/certificates/new'
+    | '/ssh/cas'
+    | '/ssh/hosts'
+    | '/ssh/krl'
+    | '/ssh/principals'
+    | '/ssh/users'
+    | '/ssh/cas/$id'
+    | '/ssh/cas/new'
+    | '/ssh/hosts/$id'
+    | '/ssh/hosts/new'
+    | '/ssh/users/new'
   id:
     | '__root__'
     | '/'
@@ -147,11 +268,22 @@ export interface FileRouteTypes {
     | '/callback'
     | '/cas'
     | '/certificates'
+    | '/ssh'
     | '/cas/$id'
     | '/cas/new'
     | '/certificates/$id'
     | '/certificates/bulk'
     | '/certificates/new'
+    | '/ssh/cas'
+    | '/ssh/hosts'
+    | '/ssh/krl'
+    | '/ssh/principals'
+    | '/ssh/users'
+    | '/ssh/cas/$id'
+    | '/ssh/cas/new'
+    | '/ssh/hosts/$id'
+    | '/ssh/hosts/new'
+    | '/ssh/users/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -161,10 +293,18 @@ export interface RootRouteChildren {
   CallbackRoute: typeof CallbackRoute
   CasRoute: typeof CasRouteWithChildren
   CertificatesRoute: typeof CertificatesRouteWithChildren
+  SshRoute: typeof SshRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/ssh': {
+      id: '/ssh'
+      path: '/ssh'
+      fullPath: '/ssh'
+      preLoaderRoute: typeof SshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/certificates': {
       id: '/certificates'
       path: '/certificates'
@@ -207,6 +347,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ssh/users': {
+      id: '/ssh/users'
+      path: '/users'
+      fullPath: '/ssh/users'
+      preLoaderRoute: typeof SshUsersRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/principals': {
+      id: '/ssh/principals'
+      path: '/principals'
+      fullPath: '/ssh/principals'
+      preLoaderRoute: typeof SshPrincipalsRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/krl': {
+      id: '/ssh/krl'
+      path: '/krl'
+      fullPath: '/ssh/krl'
+      preLoaderRoute: typeof SshKrlRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/hosts': {
+      id: '/ssh/hosts'
+      path: '/hosts'
+      fullPath: '/ssh/hosts'
+      preLoaderRoute: typeof SshHostsRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/cas': {
+      id: '/ssh/cas'
+      path: '/cas'
+      fullPath: '/ssh/cas'
+      preLoaderRoute: typeof SshCasRouteImport
+      parentRoute: typeof SshRoute
+    }
     '/certificates/new': {
       id: '/certificates/new'
       path: '/new'
@@ -242,6 +417,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasIdRouteImport
       parentRoute: typeof CasRoute
     }
+    '/ssh/users/new': {
+      id: '/ssh/users/new'
+      path: '/new'
+      fullPath: '/ssh/users/new'
+      preLoaderRoute: typeof SshUsersNewRouteImport
+      parentRoute: typeof SshUsersRoute
+    }
+    '/ssh/hosts/new': {
+      id: '/ssh/hosts/new'
+      path: '/new'
+      fullPath: '/ssh/hosts/new'
+      preLoaderRoute: typeof SshHostsNewRouteImport
+      parentRoute: typeof SshHostsRoute
+    }
+    '/ssh/hosts/$id': {
+      id: '/ssh/hosts/$id'
+      path: '/$id'
+      fullPath: '/ssh/hosts/$id'
+      preLoaderRoute: typeof SshHostsIdRouteImport
+      parentRoute: typeof SshHostsRoute
+    }
+    '/ssh/cas/new': {
+      id: '/ssh/cas/new'
+      path: '/new'
+      fullPath: '/ssh/cas/new'
+      preLoaderRoute: typeof SshCasNewRouteImport
+      parentRoute: typeof SshCasRoute
+    }
+    '/ssh/cas/$id': {
+      id: '/ssh/cas/$id'
+      path: '/$id'
+      fullPath: '/ssh/cas/$id'
+      preLoaderRoute: typeof SshCasIdRouteImport
+      parentRoute: typeof SshCasRoute
+    }
   }
 }
 
@@ -273,6 +483,63 @@ const CertificatesRouteWithChildren = CertificatesRoute._addFileChildren(
   CertificatesRouteChildren,
 )
 
+interface SshCasRouteChildren {
+  SshCasIdRoute: typeof SshCasIdRoute
+  SshCasNewRoute: typeof SshCasNewRoute
+}
+
+const SshCasRouteChildren: SshCasRouteChildren = {
+  SshCasIdRoute: SshCasIdRoute,
+  SshCasNewRoute: SshCasNewRoute,
+}
+
+const SshCasRouteWithChildren =
+  SshCasRoute._addFileChildren(SshCasRouteChildren)
+
+interface SshHostsRouteChildren {
+  SshHostsIdRoute: typeof SshHostsIdRoute
+  SshHostsNewRoute: typeof SshHostsNewRoute
+}
+
+const SshHostsRouteChildren: SshHostsRouteChildren = {
+  SshHostsIdRoute: SshHostsIdRoute,
+  SshHostsNewRoute: SshHostsNewRoute,
+}
+
+const SshHostsRouteWithChildren = SshHostsRoute._addFileChildren(
+  SshHostsRouteChildren,
+)
+
+interface SshUsersRouteChildren {
+  SshUsersNewRoute: typeof SshUsersNewRoute
+}
+
+const SshUsersRouteChildren: SshUsersRouteChildren = {
+  SshUsersNewRoute: SshUsersNewRoute,
+}
+
+const SshUsersRouteWithChildren = SshUsersRoute._addFileChildren(
+  SshUsersRouteChildren,
+)
+
+interface SshRouteChildren {
+  SshCasRoute: typeof SshCasRouteWithChildren
+  SshHostsRoute: typeof SshHostsRouteWithChildren
+  SshKrlRoute: typeof SshKrlRoute
+  SshPrincipalsRoute: typeof SshPrincipalsRoute
+  SshUsersRoute: typeof SshUsersRouteWithChildren
+}
+
+const SshRouteChildren: SshRouteChildren = {
+  SshCasRoute: SshCasRouteWithChildren,
+  SshHostsRoute: SshHostsRouteWithChildren,
+  SshKrlRoute: SshKrlRoute,
+  SshPrincipalsRoute: SshPrincipalsRoute,
+  SshUsersRoute: SshUsersRouteWithChildren,
+}
+
+const SshRouteWithChildren = SshRoute._addFileChildren(SshRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRoute,
@@ -280,6 +547,7 @@ const rootRouteChildren: RootRouteChildren = {
   CallbackRoute: CallbackRoute,
   CasRoute: CasRouteWithChildren,
   CertificatesRoute: CertificatesRouteWithChildren,
+  SshRoute: SshRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -6,6 +6,7 @@ import { caRoutes } from './routes/ca.routes.js';
 import { certificateRoutes } from './routes/certificate.routes.js';
 import { bulkRoutes } from './routes/bulk.routes.js';
 import { utilityRoutes } from './routes/utility.routes.js';
+import { sshRoutes } from './routes/ssh.routes.js';
 import { createAuthPreHandler } from './middleware/auth.js';
 
 /**
@@ -85,6 +86,9 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
 
       // Utility routes - Search, Domains, Dashboard, Audit, Reports
       await api.register(utilityRoutes);
+
+      // SSH Certificate Manager routes
+      await api.register(sshRoutes, { prefix: '/ssh' });
     },
     { prefix: '/api/v1' }
   );

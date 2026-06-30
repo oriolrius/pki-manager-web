@@ -9,3 +9,15 @@ export * from './ca.service.js';
 export * from './certificate.service.js';
 export * from './crl.service.js';
 export * from './jks.service.js';
+
+// SSH Certificate Manager services
+export * from './ssh-ca.service.js';
+export * from './ssh-cert.service.js';
+export * from './ssh-host.service.js';
+export * from './ssh-user.service.js';
+export * from './ssh-principal.service.js';
+export * from './ssh-fleet-token.service.js';
+export * from './ssh-bulk.service.js';
+export * from './ssh-krl.service.js';
+export * from './ssh-mon.service.js';
+export * from './ssh-config.js';

@@ -111,3 +111,26 @@ const adminRoleMiddleware = t.middleware(async ({ ctx, next }) => {
  * ```
  */
 export const adminProcedure = protectedProcedure.use(adminRoleMiddleware);
+
+/**
+ * Fail-closed guard for SSH CA management + signing (SSH-34). When OIDC is
+ * disabled the admin role check is vacuous (adminRoleMiddleware returns next()),
+ * so an unauthenticated caller could forge CAs. This refuses SSH CA/issuance
+ * operations unless OIDC is enabled OR an explicit local-dev opt-in is set.
+ */
+const sshFailClosedMiddleware = t.middleware(async ({ next }) => {
+  if (!isOIDCEnabled() && process.env.ALLOW_UNAUTHENTICATED_SSH_CA !== 'true') {
+    throw new TRPCError({
+      code: 'FORBIDDEN',
+      message:
+        'SSH CA management and certificate signing require OIDC. Enable OIDC, or set ALLOW_UNAUTHENTICATED_SSH_CA=true for local dev only.',
+    });
+  }
+  return next();
+});
+
+/** Admin procedure for SSH CA/signing — admin role AND fail-closed when OIDC is off. */
+export const sshAdminProcedure = adminProcedure.use(sshFailClosedMiddleware);
+
+/** Protected procedure for SSH issuance/reads with the same fail-closed posture. */
+export const sshProtectedProcedure = protectedProcedure.use(sshFailClosedMiddleware);

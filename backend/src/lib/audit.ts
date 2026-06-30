@@ -26,9 +26,47 @@ export type AuditOperation =
   // Audit operations
   | 'audit.list'
   | 'audit.export'
-  | 'audit.generateReport';
+  | 'audit.generateReport'
+  // SSH Certificate Manager operations
+  | 'ssh.ca.create'
+  | 'ssh.ca.import'
+  | 'ssh.ca.rotate'
+  | 'ssh.ca.revoke'
+  | 'ssh.host.register'
+  | 'ssh.host.issue'
+  | 'ssh.host.renew'
+  | 'ssh.host.revoke'
+  | 'ssh.host.offboard'
+  | 'ssh.host.register_pubkey'
+  | 'ssh.identity.create'
+  | 'ssh.identity.disable'
+  | 'ssh.cert.issue'
+  | 'ssh.cert.renew'
+  | 'ssh.cert.revoke'
+  | 'ssh.principal.create'
+  | 'ssh.principal.update'
+  | 'ssh.principal.delete'
+  | 'ssh.principal.map'
+  | 'ssh.krl.generate'
+  | 'ssh.krl.publish'
+  | 'ssh.token.mint'
+  | 'ssh.token.revoke'
+  | 'ssh.external.sign';
 
-export type AuditEntityType = 'ca' | 'certificate' | 'crl' | 'audit' | 'system' | 'report';
+export type AuditEntityType =
+  | 'ca'
+  | 'certificate'
+  | 'crl'
+  | 'audit'
+  | 'system'
+  | 'report'
+  | 'ssh_ca'
+  | 'ssh_host'
+  | 'ssh_identity'
+  | 'ssh_certificate'
+  | 'ssh_principal'
+  | 'ssh_krl'
+  | 'ssh_token';
 
 export interface AuditLogOptions {
   db: BetterSQLite3Database<any>;

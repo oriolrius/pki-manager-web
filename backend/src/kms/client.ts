@@ -987,6 +987,194 @@ export class KMSClient {
   }
 
   /**
+   * Raw ECDSA signature over arbitrary bytes via KMIP `Sign` (decision-011).
+   * The KMS hashes with `hashingAlgorithm` (default SHA-256) and signs; the CA
+   * private key never leaves the KMS. Returns the DER/ASN.1 signature bytes.
+   * Requires the key to be Active (see createEcSigningKeyPair).
+   */
+  async sign(
+    keyId: string,
+    data: Buffer,
+    opts?: { hashingAlgorithm?: string }
+  ): Promise<Buffer> {
+    const request: KMIPRequest = {
+      tag: "Sign",
+      value: [
+        { tag: "UniqueIdentifier", type: "TextString", value: keyId },
+        {
+          tag: "CryptographicParameters",
+          value: [
+            { tag: "CryptographicAlgorithm", type: "Enumeration", value: "ECDSA" },
+            { tag: "HashingAlgorithm", type: "Enumeration", value: opts?.hashingAlgorithm ?? "SHA256" },
+          ],
+        },
+        { tag: "Data", type: "ByteString", value: data.toString("hex") },
+      ],
+    };
+    const response = await this.sendKMIPRequest(request);
+    const sig = this.findElement(response.value, "SignatureData");
+    return Buffer.from(this.getByteStringValue(sig), "hex");
+  }
+
+  /**
+   * Fetch an EC public key's raw uncompressed point Q (65 bytes, 0x04‖X‖Y).
+   * The KMS returns EC public keys as a TransparentECPublicKey whose KeyMaterial
+   * carries `QString` (decision-011 spike) — this is far more reliable than the
+   * SPKI path for converting to an OpenSSH key line.
+   */
+  async getEcPublicPoint(keyId: string): Promise<Buffer> {
+    const response = await this.sendKMIPRequest({
+      tag: "Get",
+      value: [{ tag: "UniqueIdentifier", type: "TextString", value: keyId }],
+    });
+    const pub = this.findElement(response.value, "PublicKey");
+    const keyBlock = this.findElement((pub?.value as KMIPElement[]) ?? [], "KeyBlock");
+    const keyValue = this.findElement((keyBlock?.value as KMIPElement[]) ?? [], "KeyValue");
+    const keyMaterial = this.findElement((keyValue?.value as KMIPElement[]) ?? [], "KeyMaterial");
+    const qstr = this.findElement((keyMaterial?.value as KMIPElement[]) ?? [], "QString");
+    if (!qstr) throw new Error("EC public key QString not found in KMS response");
+    return Buffer.from(this.getByteStringValue(qstr), "hex");
+  }
+
+  /**
+   * Create an EC P-256 keypair for ECIES (SSH-15/SSH-24): usage Encrypt|Decrypt,
+   * tagged, activated. The host's KRL-distribution key (KMS-resident model).
+   */
+  async createEcEncryptionKeyPair(opts?: { tags?: string[] }): Promise<KeyPairIds> {
+    const domain = { tag: 'CryptographicDomainParameters', value: [{ tag: 'RecommendedCurve', type: 'Enumeration', value: 'P256' }] } as KMIPElement;
+    const common: KMIPElement[] = [
+      { tag: 'CryptographicAlgorithm', type: 'Enumeration', value: 'ECDSA' },
+      domain,
+      { tag: 'CryptographicUsageMask', type: 'Integer', value: 12 }, // Encrypt | Decrypt
+      { tag: 'ObjectType', type: 'Enumeration', value: 'PrivateKey' },
+    ];
+    if (opts?.tags?.length) {
+      common.push({
+        tag: 'Attribute',
+        value: [
+          { tag: 'VendorIdentification', type: 'TextString', value: 'cosmian' },
+          { tag: 'AttributeName', type: 'TextString', value: 'tag' },
+          { tag: 'AttributeValue', type: 'TextString', value: JSON.stringify(opts.tags) },
+        ],
+      });
+    }
+    const response = await this.sendKMIPRequest({ tag: 'CreateKeyPair', value: [{ tag: 'CommonAttributes', value: common }] });
+    const privateKeyId = this.getStringValue(this.findElement(response.value, 'PrivateKeyUniqueIdentifier'));
+    const publicKeyId = this.getStringValue(this.findElement(response.value, 'PublicKeyUniqueIdentifier'));
+    await this.activate(privateKeyId);
+    await this.activate(publicKeyId);
+    return { privateKeyId, publicKeyId };
+  }
+
+  /** ECIES-encrypt to an EC public key (KMIP Encrypt). Returns ciphertext bytes. */
+  async ecEncrypt(publicKeyId: string, data: Buffer): Promise<Buffer> {
+    const response = await this.sendKMIPRequest({
+      tag: 'Encrypt',
+      value: [
+        { tag: 'UniqueIdentifier', type: 'TextString', value: publicKeyId },
+        { tag: 'Data', type: 'ByteString', value: data.toString('hex') },
+      ],
+    });
+    return Buffer.from(this.getByteStringValue(this.findElement(response.value, 'Data')), 'hex');
+  }
+
+  /** ECIES-decrypt with an EC private key (KMIP Decrypt). Returns plaintext bytes. */
+  async ecDecrypt(privateKeyId: string, ciphertext: Buffer): Promise<Buffer> {
+    const response = await this.sendKMIPRequest({
+      tag: 'Decrypt',
+      value: [
+        { tag: 'UniqueIdentifier', type: 'TextString', value: privateKeyId },
+        { tag: 'Data', type: 'ByteString', value: ciphertext.toString('hex') },
+      ],
+    });
+    return Buffer.from(this.getByteStringValue(this.findElement(response.value, 'Data')), 'hex');
+  }
+
+  /** Activate a key (KMIP keys are created PreActive and cannot Sign until Active). */
+  async activate(keyId: string): Promise<void> {
+    await this.sendKMIPRequest({
+      tag: "Activate",
+      value: [{ tag: "UniqueIdentifier", type: "TextString", value: keyId }],
+    });
+  }
+
+  /**
+   * Create a NON-exportable ECDSA P-256 signing key pair (decision-011 recipe):
+   * Sensitive=true, RecommendedCurve="P256", CryptographicUsageMask=Sign|Verify,
+   * then Activate both keys so they can sign immediately. Returns the key ids.
+   */
+  async createEcSigningKeyPair(opts?: { tags?: string[]; sensitive?: boolean }): Promise<KeyPairIds> {
+    const sensitive = opts?.sensitive !== false;
+    const domain = { tag: "CryptographicDomainParameters", value: [{ tag: "RecommendedCurve", type: "Enumeration", value: "P256" }] } as KMIPElement;
+
+    // Sensitive applies ONLY to the private key: marking the pair sensitive via
+    // CommonAttributes denies reading the PUBLIC point too (decision-011 spike).
+    const common: KMIPElement[] = [
+      { tag: "CryptographicAlgorithm", type: "Enumeration", value: "ECDSA" },
+      domain,
+      { tag: "CryptographicUsageMask", type: "Integer", value: 3 }, // Sign | Verify
+      { tag: "ObjectType", type: "Enumeration", value: "PrivateKey" },
+    ];
+    if (opts?.tags?.length) {
+      common.push({
+        tag: "Attribute",
+        value: [
+          { tag: "VendorIdentification", type: "TextString", value: "cosmian" },
+          { tag: "AttributeName", type: "TextString", value: "tag" },
+          { tag: "AttributeValue", type: "TextString", value: JSON.stringify(opts.tags) },
+        ],
+      });
+    }
+    const privateAttrs: KMIPElement[] = [
+      { tag: "CryptographicAlgorithm", type: "Enumeration", value: "ECDSA" },
+      domain,
+      { tag: "CryptographicUsageMask", type: "Integer", value: 1 }, // Sign
+      { tag: "Sensitive", type: "Boolean", value: sensitive },
+      { tag: "ObjectType", type: "Enumeration", value: "PrivateKey" },
+    ];
+    const publicAttrs: KMIPElement[] = [
+      { tag: "CryptographicAlgorithm", type: "Enumeration", value: "ECDSA" },
+      domain,
+      { tag: "CryptographicUsageMask", type: "Integer", value: 2 }, // Verify
+      { tag: "ObjectType", type: "Enumeration", value: "PublicKey" },
+    ];
+    const response = await this.sendKMIPRequest({
+      tag: "CreateKeyPair",
+      value: [
+        { tag: "CommonAttributes", value: common },
+        { tag: "PrivateKeyAttributes", value: privateAttrs },
+        { tag: "PublicKeyAttributes", value: publicAttrs },
+      ],
+    });
+    const privateKeyId = this.getStringValue(this.findElement(response.value, "PrivateKeyUniqueIdentifier"));
+    const publicKeyId = this.getStringValue(this.findElement(response.value, "PublicKeyUniqueIdentifier"));
+    await this.activate(privateKeyId);
+    await this.activate(publicKeyId);
+    return { privateKeyId, publicKeyId };
+  }
+
+  /** Verify a DER ECDSA signature server-side via KMIP `SignatureVerify`. */
+  async signatureVerify(publicKeyId: string, data: Buffer, signature: Buffer): Promise<boolean> {
+    const response = await this.sendKMIPRequest({
+      tag: "SignatureVerify",
+      value: [
+        { tag: "UniqueIdentifier", type: "TextString", value: publicKeyId },
+        {
+          tag: "CryptographicParameters",
+          value: [
+            { tag: "CryptographicAlgorithm", type: "Enumeration", value: "ECDSA" },
+            { tag: "HashingAlgorithm", type: "Enumeration", value: "SHA256" },
+          ],
+        },
+        { tag: "Data", type: "ByteString", value: data.toString("hex") },
+        { tag: "SignatureData", type: "ByteString", value: signature.toString("hex") },
+      ],
+    });
+    const indicator = this.findElement(response.value, "ValidityIndicator");
+    return String(indicator?.value ?? "").toLowerCase() === "valid";
+  }
+
+  /**
    * Revoke a key
    */
   async revokeKey(keyId: string, reason?: string): Promise<void> {

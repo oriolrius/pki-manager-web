@@ -4,6 +4,8 @@ import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { registerRestApi } from './rest/index.js';
+import { registerSshPublicRoutes } from './rest/routes/ssh-public.routes.js';
+import { registerSshExternalRoutes } from './rest/routes/ssh-external.routes.js';
 import { externalRoutes } from './rest/routes/external.routes.js';
 import { publicCrlRoutes } from './rest/routes/public-crl.routes.js';
 import { db } from './db/client.js';
@@ -130,6 +132,12 @@ server.get('/cas/:caId.:format', async (req, reply) => {
 
 // Public CRL endpoint - serves Certificate Revocation Lists (extracted plugin, also tested directly)
 await server.register(publicCrlRoutes);
+
+// Public SSH trust-material download endpoints (no auth, like /crl).
+registerSshPublicRoutes(server);
+
+// SSH external/automation signing API (fleet-token auth, bypasses OIDC).
+registerSshExternalRoutes(server);
 
 // Start server
 const start = async () => {
