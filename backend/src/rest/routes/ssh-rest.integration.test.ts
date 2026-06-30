@@ -103,6 +103,26 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     expect(list.json().some((c: any) => c.id === created.id)).toBe(true);
   });
 
+  it('manages principals over REST: create, list, map to a host account, render', async () => {
+    const cp = await app.inject({ method: 'POST', url: '/api/v1/ssh/principals', payload: { name: 'admins', description: 'Admins' } });
+    expect(cp.statusCode).toBe(200);
+    const principal = cp.json();
+    expect(principal.name).toBe('admins');
+
+    const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/principals' });
+    expect(list.json().some((p: any) => p.id === principal.id)).toBe(true);
+
+    const m = await app.inject({ method: 'POST', url: '/api/v1/ssh/principals/map', payload: { hostId, principalId: principal.id, localAccount: 'deploy' } });
+    expect(m.statusCode).toBe(200);
+    expect(m.json().ok).toBe(true);
+
+    const r = await app.inject({ method: 'GET', url: `/api/v1/ssh/hosts/${hostId}/auth-principals` });
+    expect(r.statusCode).toBe(200);
+    const rendered = r.json();
+    expect(rendered.files.deploy.trim()).toBe('admins');
+    expect(rendered.directive).toContain('AuthorizedPrincipalsFile');
+  });
+
   it('rejects an invalid REST body with a 400 {error}', async () => {
     const r = await app.inject({ method: 'POST', url: '/api/v1/ssh/cas', payload: { caType: 'banana' } });
     expect(r.statusCode).toBe(400);
