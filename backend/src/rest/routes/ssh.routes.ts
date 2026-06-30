@@ -21,6 +21,7 @@ import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
+import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
 
 class HttpError extends Error {
@@ -138,6 +139,50 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     return getSshPrincipalService().render(ctx(req), id);
+  });
+
+  // --- Revocation / KRL. A server's RevokedKeys consumes the (User) CA's KRL. ---
+  api.post('/certs/:id/revoke', { schema: { tags: tag, summary: 'Revoke an SSH certificate (rebuilds the CA KRL)' } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    const body = parse(z.object({ reason: z.string().max(256).optional() }), (req.body ?? {}) as unknown);
+    return getSshKrlService().revokeByCert(ctx(req), id, body.reason);
+  });
+
+  api.post('/cas/:caId/krl', { schema: { tags: tag, summary: 'Generate / rebuild the KRL for a CA' } }, async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    return getSshKrlService().generate(ctx(req), caId);
+  });
+
+  api.get('/cas/:caId/revocations', { schema: { tags: tag, summary: 'List revocations for a CA' } }, async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    return getSshKrlService().listRevocations(ctx(req), caId);
+  });
+
+  // The bare KRL bytes — the RevokedKeys file a server fetches. Lazily (re)builds
+  // when missing/stale; serves last-good on signing failure.
+  api.get('/cas/:caId/krl.bin', { schema: { tags: tag, summary: 'Download the bare KRL bytes (RevokedKeys file)' } }, async (req, reply) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    const svc = getSshKrlService();
+    let row = await svc.getLatestRow(ctx(req), caId);
+    if (!row || new Date(row.nextUpdate).getTime() < Date.now()) {
+      try {
+        await svc.generate(ctx(req), caId);
+        row = await svc.getLatestRow(ctx(req), caId);
+      } catch {
+        /* signing unavailable: fall back to last-good bytes if we have them */
+      }
+    }
+    if (!row) {
+      return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'no KRL for this CA' } });
+    }
+    reply.header('Content-Type', 'application/octet-stream');
+    reply.header('Content-Disposition', 'attachment; filename="revoked_keys"');
+    reply.header('ETag', row.versionHash);
+    return reply.send(Buffer.from(row.krlBlob));
   });
 
   // Machine-readable health/metrics for alerting (SSH-MON).
