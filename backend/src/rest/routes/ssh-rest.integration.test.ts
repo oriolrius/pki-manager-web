@@ -13,7 +13,7 @@ import { getKMSService } from '../../kms/service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -101,6 +101,68 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     expect(created.opensshPublicKey).toContain('ecdsa-sha2-nistp256');
     const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/cas' });
     expect(list.json().some((c: any) => c.id === created.id)).toBe(true);
+  });
+
+  it('manages principals over REST: create, list, map to a host account, render', async () => {
+    const cp = await app.inject({ method: 'POST', url: '/api/v1/ssh/principals', payload: { name: 'admins', description: 'Admins' } });
+    expect(cp.statusCode).toBe(200);
+    const principal = cp.json();
+    expect(principal.name).toBe('admins');
+
+    const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/principals' });
+    expect(list.json().some((p: any) => p.id === principal.id)).toBe(true);
+
+    const m = await app.inject({ method: 'POST', url: '/api/v1/ssh/principals/map', payload: { hostId, principalId: principal.id, localAccount: 'deploy' } });
+    expect(m.statusCode).toBe(200);
+    expect(m.json().ok).toBe(true);
+
+    const r = await app.inject({ method: 'GET', url: `/api/v1/ssh/hosts/${hostId}/auth-principals` });
+    expect(r.statusCode).toBe(200);
+    const rendered = r.json();
+    expect(rendered.files.deploy.trim()).toBe('admins');
+    expect(rendered.directive).toContain('AuthorizedPrincipalsFile');
+  });
+
+  it('revokes a user cert over REST, lists it, and serves a KRL that sshd accepts', async () => {
+    // resolve the active user CA
+    const cas = (await app.inject({ method: 'GET', url: '/api/v1/ssh/cas' })).json();
+    const uca = cas.find((c: any) => c.caType === 'user' && c.status === 'active');
+    expect(uca).toBeTruthy();
+
+    // issue a user cert we can revoke
+    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'u'), '-N', '', '-q']);
+    const ident = (await app.inject({ method: 'POST', url: '/api/v1/ssh/identities', payload: { subject: 'revoke-me' } })).json();
+    const issued = (await app.inject({
+      method: 'POST',
+      url: '/api/v1/ssh/users/issue',
+      payload: { identityId: ident.id, sshPublicKey: readFileSync(join(work, 'u.pub'), 'utf8'), principals: ['admins'] },
+    })).json();
+
+    // revoke it -> rebuilds the CA KRL
+    const rev = await app.inject({ method: 'POST', url: `/api/v1/ssh/certs/${issued.cert.id}/revoke`, payload: { reason: 'test' } });
+    expect(rev.statusCode).toBe(200);
+    expect(rev.json().revokedCount).toBeGreaterThanOrEqual(1);
+
+    // it shows up in the revocation list
+    const revs = (await app.inject({ method: 'GET', url: `/api/v1/ssh/cas/${uca.id}/revocations` })).json();
+    expect(revs.some((r: any) => r.serial === issued.cert.serial)).toBe(true);
+
+    // the bare KRL bytes parse and mark this cert REVOKED (what sshd would do)
+    const krl = await app.inject({ method: 'GET', url: `/api/v1/ssh/cas/${uca.id}/krl.bin` });
+    expect(krl.statusCode).toBe(200);
+    expect(krl.headers['content-type']).toContain('application/octet-stream');
+    expect(krl.rawPayload.length).toBeGreaterThan(0);
+
+    writeFileSync(join(work, 'revoked_keys'), krl.rawPayload);
+    writeFileSync(join(work, 'u-cert.pub'), issued.cert.certOpenssh.trim() + '\n');
+    // ssh-keygen -Q exits non-zero when a key IS revoked, printing "...: REVOKED" to stdout.
+    let q = '';
+    try {
+      q = execFileSync('ssh-keygen', ['-Qf', join(work, 'revoked_keys'), join(work, 'u-cert.pub')], { encoding: 'utf8' });
+    } catch (e: any) {
+      q = (e.stdout ?? '').toString();
+    }
+    expect(q).toContain('REVOKED');
   });
 
   it('rejects an invalid REST body with a 400 {error}', async () => {
