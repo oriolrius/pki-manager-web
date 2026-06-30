@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 import { eq, and, desc } from 'drizzle-orm';
 import { sshHosts, sshCas, sshCertificates } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
-import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
+import { parseSshPublicKey, type SshKeyAlgo } from '../crypto/ssh/pubkey.js';
 import { getSshCertService } from './ssh-cert.service.js';
 import { sshdConfigDropIn, isValidHostId } from './ssh-config.js';
 import type { ServiceContext } from './types.js';
@@ -28,6 +28,8 @@ export interface SshHostDto {
   addresses: string[];
   status: 'pending' | 'active' | 'offboarded';
   hasPubkey: boolean;
+  /** Algorithm of the registered host key — drives the cert/key filenames. */
+  hostKeyAlgorithm: SshKeyAlgo;
   currentCertId: string | null;
   kmsPubkeyId: string | null;
   lastKrlVersion: string | null;
@@ -43,6 +45,7 @@ function hostDto(row: any): SshHostDto {
     addresses: row.addresses ? JSON.parse(row.addresses) : [],
     status: row.status,
     hasPubkey: !!row.opensshHostPubkey,
+    hostKeyAlgorithm: (row.hostKeyAlgorithm as SshKeyAlgo) ?? 'ssh-ed25519',
     currentCertId: row.currentCertId ?? null,
     kmsPubkeyId: row.kmsPubkeyId ?? null,
     lastKrlVersion: row.lastKrlVersion ?? null,
@@ -124,7 +127,7 @@ export class SshHostService {
     return {
       host: updated,
       cert: { id: cert.id, serial: cert.serial, keyId: cert.keyId, certOpenssh: cert.certOpenssh, validBefore: cert.validBefore },
-      sshdConfig: sshdConfigDropIn(),
+      sshdConfig: sshdConfigDropIn({ hostKeyAlgorithm: (host.hostKeyAlgorithm as SshKeyAlgo) ?? 'ssh-ed25519' }),
     };
   }
 
@@ -140,7 +143,7 @@ export class SshHostService {
       const c = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.id, row.currentCertId)).limit(1))[0];
       currentCert = c?.certOpenssh ?? null;
     }
-    return { ...hostDto(row), sshdConfig: sshdConfigDropIn(), currentCert };
+    return { ...hostDto(row), sshdConfig: sshdConfigDropIn({ hostKeyAlgorithm: (row.hostKeyAlgorithm as SshKeyAlgo) ?? 'ssh-ed25519' }), currentCert };
   }
 
   /** Mark the host's active cert revoked (eligible for the next KRL build). */
