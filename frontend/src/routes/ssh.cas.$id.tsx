@@ -159,7 +159,7 @@ function SshCaDetail() {
       </div>
 
       {isRotating && successor && (
-        <div className="p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-800 text-sm">
+        <div className="p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-800 text-yellow-900 dark:text-yellow-200 text-sm">
           This CA is rotating. Both the current key and its successor are published as trust anchors during the overlap —
           deploy <strong>both</strong> keys below.
         </div>
