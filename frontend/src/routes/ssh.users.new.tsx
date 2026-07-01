@@ -116,7 +116,7 @@ function IssueUserCert() {
           <ArrowLeft className="h-4 w-4" />
           Back to Users
         </button>
-        <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-800 text-sm">
+        <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-800 text-green-900 dark:text-green-200 text-sm">
           Certificate issued (serial {result.serial}). It grants principals{' '}
           <strong>{result.principals.join(', ') || '—'}</strong> and <strong>expires {expires.toLocaleString()}</strong>{' '}
           (≈1 week — re-issue then, no new key needed). This certificate can log in only where one of its principals is

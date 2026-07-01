@@ -128,7 +128,7 @@ function SshLanding() {
       </Callout>
 
       {allDone ? (
-        <div className="rounded-md border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm flex items-center gap-2">
+        <div className="rounded-md border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-900/20 text-green-900 dark:text-green-200 p-3 text-sm flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
           Setup complete — your dual CA, a host, principal mappings, and a user certificate all exist.
         </div>

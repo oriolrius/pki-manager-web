@@ -159,12 +159,12 @@ function SshHostDetail() {
           title="Files to place on this server"
           description="Everything this host needs, in one place. Place each file at the path shown, then validate and reload sshd. Nothing is pushed automatically."
         >
-          <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800 p-3 text-xs">
+          <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 p-3 text-xs">
             {bundle.prerequisites}
           </div>
 
           {bundle.principalsStale && (
-            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-2.5 text-xs">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-200 p-2.5 text-xs">
               <span>
                 Principal maps changed since the last push — re-deploy the <code className="font-mono">auth_principals</code>{' '}
                 files below, then mark them pushed.
@@ -172,7 +172,7 @@ function SshHostDetail() {
               <button
                 onClick={handleMarkPushed}
                 disabled={markPushedMutation.isPending}
-                className="px-2 py-1 border rounded hover:bg-muted disabled:opacity-50 whitespace-nowrap"
+                className="px-2 py-1 rounded border border-amber-400 dark:border-amber-700 bg-amber-100/60 dark:bg-amber-800/40 text-amber-900 dark:text-amber-100 hover:bg-amber-200/70 dark:hover:bg-amber-700/50 disabled:opacity-50 whitespace-nowrap"
               >
                 Mark pushed
               </button>
