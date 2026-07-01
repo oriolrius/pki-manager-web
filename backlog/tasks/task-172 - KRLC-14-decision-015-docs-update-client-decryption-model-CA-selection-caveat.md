@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-07-01 07:16'
-updated_date: '2026-07-01 07:43'
+updated_date: '2026-07-01 07:45'
 labels:
   - ssh-cert-manager
   - docs
@@ -29,5 +29,4 @@ Write backlog/decisions/decision-015 'SSH KRL Client Decryption Model' via the b
 - [ ] #1 decision-015 exists (status Accepted), mirrors decision-013 format, and records the chosen local-key model, the backend enablement it requires, the rejected KMS-resident alternative, and the client security posture
 - [ ] #2 The decision cross-links decision-013 and lists the KRLC-* related tasks; the CA-selection asymmetry and 304-telemetry caveats are captured as consequences/open questions
 - [ ] #3 doc-007 (anchor) and the README reference decision-015; all decision/doc edits are made via the backlog CLI
-- [ ] #4 doc-007 (anchor) and the README reference decision-015; all decision/doc edits are made via the backlog CLI
 <!-- AC:END -->
