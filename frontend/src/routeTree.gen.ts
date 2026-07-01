@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SshRouteImport } from './routes/ssh'
+import { Route as ClustersRouteImport } from './routes/clusters'
 import { Route as CertificatesRouteImport } from './routes/certificates'
 import { Route as CasRouteImport } from './routes/cas'
 import { Route as CallbackRouteImport } from './routes/callback'
@@ -35,6 +36,11 @@ import { Route as SshCasIdRouteImport } from './routes/ssh.cas.$id'
 const SshRoute = SshRouteImport.update({
   id: '/ssh',
   path: '/ssh',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClustersRoute = ClustersRouteImport.update({
+  id: '/clusters',
+  path: '/clusters',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CertificatesRoute = CertificatesRouteImport.update({
@@ -148,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
+  '/clusters': typeof ClustersRoute
   '/ssh': typeof SshRouteWithChildren
   '/cas/$id': typeof CasIdRoute
   '/cas/new': typeof CasNewRoute
@@ -171,6 +178,7 @@ export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
+  '/clusters': typeof ClustersRoute
   '/ssh': typeof SshRouteWithChildren
   '/cas/$id': typeof CasIdRoute
   '/cas/new': typeof CasNewRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
   '/certificates': typeof CertificatesRouteWithChildren
+  '/clusters': typeof ClustersRoute
   '/ssh': typeof SshRouteWithChildren
   '/cas/$id': typeof CasIdRoute
   '/cas/new': typeof CasNewRoute
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/cas'
     | '/certificates'
+    | '/clusters'
     | '/ssh'
     | '/cas/$id'
     | '/cas/new'
@@ -244,6 +254,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/cas'
     | '/certificates'
+    | '/clusters'
     | '/ssh'
     | '/cas/$id'
     | '/cas/new'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/cas'
     | '/certificates'
+    | '/clusters'
     | '/ssh'
     | '/cas/$id'
     | '/cas/new'
@@ -293,6 +305,7 @@ export interface RootRouteChildren {
   CallbackRoute: typeof CallbackRoute
   CasRoute: typeof CasRouteWithChildren
   CertificatesRoute: typeof CertificatesRouteWithChildren
+  ClustersRoute: typeof ClustersRoute
   SshRoute: typeof SshRouteWithChildren
 }
 
@@ -303,6 +316,13 @@ declare module '@tanstack/react-router' {
       path: '/ssh'
       fullPath: '/ssh'
       preLoaderRoute: typeof SshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clusters': {
+      id: '/clusters'
+      path: '/clusters'
+      fullPath: '/clusters'
+      preLoaderRoute: typeof ClustersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/certificates': {
@@ -547,6 +567,7 @@ const rootRouteChildren: RootRouteChildren = {
   CallbackRoute: CallbackRoute,
   CasRoute: CasRouteWithChildren,
   CertificatesRoute: CertificatesRouteWithChildren,
+  ClustersRoute: ClustersRoute,
   SshRoute: SshRouteWithChildren,
 }
 export const routeTree = rootRouteImport
