@@ -20,6 +20,12 @@ export const TTL_PRESETS = [
   { label: '+1h', seconds: 3600 },
   { label: '+1d', seconds: 24 * 3600 },
   { label: '+1w', seconds: 7 * 24 * 3600 },
+  { label: '+1m', seconds: 30 * 24 * 3600 },
+  { label: '+3m', seconds: 90 * 24 * 3600 },
+  { label: '+6m', seconds: 180 * 24 * 3600 },
+  { label: '+1y', seconds: 365 * 24 * 3600 },
+  { label: '+5y', seconds: 5 * 365 * 24 * 3600 },
+  { label: '+10y', seconds: 10 * 365 * 24 * 3600 },
 ];
 
 export interface SshCapabilityValue {

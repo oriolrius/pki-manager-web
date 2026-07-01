@@ -18,7 +18,9 @@ export const sshExtensionSchema = z.enum([
 // key_id is logged verbatim by sshd — printable, control-char-free.
 const keyIdSchema = z.string().min(1).max(255).regex(/^[\x20-\x7e]+$/, 'key_id must be printable ASCII without control characters');
 const principalNameSchema = z.string().refine(isValidPrincipalName, 'invalid principal name (use letters/digits/._@-)');
-const ttlSecondsSchema = z.number().int().positive().max(3 * 366 * 24 * 3600);
+// Max validity ~10 years (leap-slack) — accommodates the long-lived UI presets
+// (+5y/+10y). Note: short TTLs remain the primary revocation mechanism.
+const ttlSecondsSchema = z.number().int().positive().max(10 * 366 * 24 * 3600);
 const serialSchema = z.string().regex(/^\d+$/, 'serial must be a non-negative integer string');
 
 export const createSshCaSchema = z.object({
