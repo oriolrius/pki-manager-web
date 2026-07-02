@@ -11,6 +11,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/hkdf"
 	"crypto/sha256"
+	"errors"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -28,10 +29,19 @@ const (
 )
 
 // LoadHostKey parses an OpenSSH ecdsa-sha2-nistp256 private key file (e.g.
-// /etc/ssh/ssh_host_ecdsa_key) into an ECDH private key.
+// /etc/ssh/ssh_host_ecdsa_key) into an ECDH private key. A missing file or an
+// ed25519/RSA host key (the "ed25519-only host" case) yields an ACTIONABLE
+// onboarding error naming the exact fix, not a cryptic parse/decrypt failure.
 func LoadHostKey(path string) (*ecdh.PrivateKey, error) {
 	pem, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, exitcodes.New(exitcodes.Usage,
+				"no ecdsa-sha2-nistp256 host key at %q — this host may have only an ed25519 host key. "+
+					"Generate an ecdsa host key (`ssh-keygen -q -N '' -t ecdsa -b 256 -f %s`) and register %s.pub with pki-manager, "+
+					"or create a dedicated ECIES key with `krl-client keygen` and point --host-key at it",
+				path, path, path)
+		}
 		return nil, exitcodes.New(exitcodes.Usage, "read host key %q: %v", path, err)
 	}
 	raw, err := ssh.ParseRawPrivateKey(pem)
@@ -40,7 +50,10 @@ func LoadHostKey(path string) (*ecdh.PrivateKey, error) {
 	}
 	ec, ok := raw.(*ecdsa.PrivateKey)
 	if !ok {
-		return nil, exitcodes.New(exitcodes.Decrypt, "host key %q is %T — ECIES needs an ecdsa-sha2-nistp256 key", path, raw)
+		return nil, exitcodes.New(exitcodes.Decrypt,
+			"host key %q is %T, but ECIES needs an ecdsa-sha2-nistp256 key — register this host's ecdsa host key (%s.pub) "+
+				"with pki-manager, or use `krl-client keygen` for a dedicated ECIES key",
+			path, raw, path)
 	}
 	k, err := ec.ECDH()
 	if err != nil {
@@ -51,7 +64,10 @@ func LoadHostKey(path string) (*ecdh.PrivateKey, error) {
 
 // Open decrypts an ECIES v1 envelope with the host's private key. Any failure
 // (short envelope, bad ephemeral point, AEAD authentication) maps to exit 3.
-func Open(priv *ecdh.PrivateKey, envelope []byte) ([]byte, error) {
+// keyPath is used only to make an AEAD-authentication failure actionable (it
+// almost always means the public key registered with pki-manager is not the one
+// that matches this private key).
+func Open(priv *ecdh.PrivateKey, envelope []byte, keyPath string) ([]byte, error) {
 	if len(envelope) < ephLen+nonceLen+tagLen {
 		return nil, exitcodes.New(exitcodes.Decrypt, "envelope too short: %d bytes", len(envelope))
 	}
@@ -81,7 +97,10 @@ func Open(priv *ecdh.PrivateKey, envelope []byte) ([]byte, error) {
 	}
 	pt, err := gcm.Open(nil, nonce, ctAndTag, nil)
 	if err != nil {
-		return nil, exitcodes.New(exitcodes.Decrypt, "gcm open (authentication failed): %v", err)
+		return nil, exitcodes.New(exitcodes.Decrypt,
+			"KRL decryption failed (AEAD authentication) — the payload was encrypted to a public key that does not match %q; "+
+				"ensure the public key registered with pki-manager is this host's (register %s.pub): %v",
+			keyPath, keyPath, err)
 	}
 	return pt, nil
 }

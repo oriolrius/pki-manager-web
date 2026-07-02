@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -94,6 +95,28 @@ func TestStatusToExitCode(t *testing.T) {
 			t.Errorf("status %d: got exit %v, want %v (err=%v)", tc.status, codeOf(err), tc.want, err)
 		}
 		srv.Close()
+	}
+}
+
+// AC#2 — a 404 (host unknown / no P-256 key on file) carries an actionable
+// onboarding hint (register the ecdsa .pub) rather than a bare status line.
+func TestNotFoundMessageIsActionable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"NOT_FOUND","message":"host not registered for KRL distribution"}}`))
+	}))
+	defer srv.Close()
+
+	c, _ := New(srv.URL, "", false, 5*time.Second, 0)
+	_, err := c.FetchKRL(context.Background(), "web01.example.com", "")
+	if codeOf(err) != exitcodes.NotProvisioned {
+		t.Fatalf("want NotProvisioned, got %v (%v)", codeOf(err), err)
+	}
+	for _, want := range []string{"/etc/ssh/ssh_host_ecdsa_key.pub", "register", "pki-manager"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("404 message missing %q; got: %s", want, err.Error())
+		}
 	}
 }
 

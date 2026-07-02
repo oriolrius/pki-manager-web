@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -95,7 +96,7 @@ func TestLoadHostKeyAndOpenRoundTrip(t *testing.T) {
 	if len(env) != ephLen+nonceLen+len(pt)+tagLen {
 		t.Fatalf("envelope length %d, want %d", len(env), ephLen+nonceLen+len(pt)+tagLen)
 	}
-	got, err := Open(priv, env)
+	got, err := Open(priv, env, path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -109,7 +110,7 @@ func TestOpenRejectsTamper(t *testing.T) {
 	priv, _ := LoadHostKey(path)
 	env := sealV1(t, k.PublicKey(), []byte("secret-krl"))
 	env[len(env)-1] ^= 0x01 // flip a tag bit
-	_, err := Open(priv, env)
+	_, err := Open(priv, env, path)
 	assertDecryptCode(t, err)
 }
 
@@ -118,14 +119,23 @@ func TestOpenRejectsWrongKey(t *testing.T) {
 	pathB, _ := writeHostKey(t)
 	privB, _ := LoadHostKey(pathB)
 	env := sealV1(t, kA.PublicKey(), []byte("x"))
-	_, err := Open(privB, env)
+	_, err := Open(privB, env, pathB)
 	assertDecryptCode(t, err)
+
+	// AC#2 — a wrong-key AEAD failure must be actionable, not cryptic: it names
+	// the offending key path and the exact onboarding fix (register <path>.pub).
+	msg := err.Error()
+	for _, want := range []string{pathB, pathB + ".pub", "register", "pki-manager"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("AEAD-failure message missing %q; got: %s", want, msg)
+		}
+	}
 }
 
 func TestOpenRejectsShortEnvelope(t *testing.T) {
 	path, _ := writeHostKey(t)
 	priv, _ := LoadHostKey(path)
-	_, err := Open(priv, []byte("too short"))
+	_, err := Open(priv, []byte("too short"), path)
 	assertDecryptCode(t, err)
 }
 
@@ -144,4 +154,33 @@ func TestLoadHostKeyRejectsEd25519(t *testing.T) {
 	}
 	_, err = LoadHostKey(path)
 	assertDecryptCode(t, err)
+
+	// AC#2 — an ed25519 host key must yield an actionable fix, not just "wrong type".
+	msg := err.Error()
+	for _, want := range []string{path + ".pub", "register", "keygen"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("ed25519 message missing %q; got: %s", want, msg)
+		}
+	}
+}
+
+// AC#2 — an ed25519-only host has no /etc/ssh/ssh_host_ecdsa_key at all: the
+// missing-file error must name the exact onboarding step (generate an ecdsa key
+// and register its .pub, or use `krl-client keygen`) instead of a bare ENOENT.
+func TestLoadHostKeyMissingFileIsActionable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ssh_host_ecdsa_key") // never created
+	_, err := LoadHostKey(path)
+	if err == nil {
+		t.Fatal("expected an error for a missing host key")
+	}
+	e, ok := err.(*exitcodes.Error)
+	if !ok || e.Code != exitcodes.Usage {
+		t.Fatalf("expected exit code Usage(1), got %v", err)
+	}
+	msg := err.Error()
+	for _, want := range []string{path, path + ".pub", "ed25519", "keygen", "register"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("missing-file message missing %q; got: %s", want, msg)
+		}
+	}
 }

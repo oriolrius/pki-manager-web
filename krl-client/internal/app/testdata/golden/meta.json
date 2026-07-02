@@ -1,0 +1,7 @@
+{
+  "host_id": "web01.example.com",
+  "krl_version": "sha256:4aadc55dbcded3c85da88afb7ec43f7c521ab0a0f457d02930d95f2cb17ee3f7",
+  "krl_number": 42,
+  "valid_until": 9999999999,
+  "krl_sha256": "4aadc55dbcded3c85da88afb7ec43f7c521ab0a0f457d02930d95f2cb17ee3f7"
+}
