@@ -32,6 +32,7 @@ type Result struct {
 	NotModified bool   // 304: the host already holds Version
 	Body        []byte // 200: the raw ECIES ciphertext
 	Version     string // X-KRL-Version response header
+	Status      int    // HTTP status of the terminal response (200 or 304)
 }
 
 // New builds a Client. TLS is verified by default; --ca-bundle pins the roots and
@@ -112,11 +113,17 @@ func handle(resp *http.Response) (res *Result, retry bool, err error) {
 		if e != nil {
 			return nil, true, e // truncated read — retry
 		}
-		return &Result{Body: b, Version: version}, false, nil
+		return &Result{Body: b, Version: version, Status: resp.StatusCode}, false, nil
 	case http.StatusNotModified:
-		return &Result{NotModified: true, Version: version}, false, nil
+		return &Result{NotModified: true, Version: version, Status: resp.StatusCode}, false, nil
 	case http.StatusBadRequest, http.StatusNotFound, http.StatusNotImplemented:
-		return nil, false, exitcodes.New(exitcodes.NotProvisioned, "server %d — %s", resp.StatusCode, serverMsg(resp))
+		hint := ""
+		if resp.StatusCode == http.StatusNotFound {
+			// 404 here means the host is unknown or has no P-256 key on file:
+			// point the operator at the exact onboarding step.
+			hint = " — register this host's ecdsa public key (/etc/ssh/ssh_host_ecdsa_key.pub) with pki-manager so it can encrypt this host's KRL"
+		}
+		return nil, false, exitcodes.New(exitcodes.NotProvisioned, "server %d — %s%s", resp.StatusCode, serverMsg(resp), hint)
 	case http.StatusTooManyRequests:
 		return nil, false, exitcodes.New(exitcodes.RateLimited, "rate limited (429) — back off and retry later")
 	default:
