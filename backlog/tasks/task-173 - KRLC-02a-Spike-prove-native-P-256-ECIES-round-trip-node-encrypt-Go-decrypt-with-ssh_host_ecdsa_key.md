@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-07-02 04:36'
-updated_date: '2026-07-02 07:47'
+updated_date: '2026-07-02 07:59'
 labels:
   - ssh-cert-manager
   - backend
@@ -34,22 +34,22 @@ GATE spike (mirrors decision-013's TASK-144) that must PASS before the KRLC-02 r
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-OUTCOME: GO (feasible). Native local ECIES decrypt PROVEN end-to-end.
+OUTCOME: GO (feasible). Native local ECIES decrypt PROVEN end-to-end. REDONE on the latest toolchain: go 1.26.4 + golang.org/x/crypto v0.53.0, with crypto/hkdf taken from the Go STANDARD LIBRARY (Go 1.24+) so the ONLY external dep is x/crypto/ssh (OpenSSH key parse).
 
-What was validated (krl-client/spike/, reproducible via ./run.sh):
-- Backend side (Node, encrypt.mjs): node:crypto encrypts a payload to a host's OpenSSH ecdsa-sha2-nistp256 PUBLIC key (parsed SSH-wire -> JWK -> KeyObject).
-- Host side (Go, decrypt.go): decrypts LOCALLY with the OpenSSH PRIVATE key /etc/ssh/ssh_host_ecdsa_key via ssh.ParseRawPrivateKey -> *ecdsa.PrivateKey.ECDH() -> crypto/ecdh. NO KMS, NO network, NO cosmian CLI.
-- Round-trip: recovered plaintext is byte-identical (same SHA-256).
+What was validated (krl-client/spike/, reproducible via ./run.sh; go vet clean):
+- Backend side (Node, encrypt.mjs): node:crypto encrypts a payload to a host's OpenSSH ecdsa-sha2-nistp256 PUBLIC key (SSH-wire parse -> JWK -> KeyObject).
+- Host side (Go, decrypt.go): decrypts LOCALLY with the OpenSSH PRIVATE key /etc/ssh/ssh_host_ecdsa_key via ssh.ParseRawPrivateKey -> *ecdsa.PrivateKey.ECDH() -> crypto/ecdh; KDF via stdlib crypto/hkdf. NO KMS, NO network, NO cosmian CLI.
+- Round-trip: recovered plaintext byte-identical (same SHA-256).
 - Negatives (compiled binary, true exit codes): tampered ciphertext -> exit 4; wrong host key -> exit 4; ed25519 key (not P-256) -> exit 3.
 
-PINNED WIRE FORMAT (ECIES v1) — the interop contract for KRLC-02 (backend) and KRLC-04 (client):
-  envelope = ephemeralPub(65B, SEC1 uncompressed 0x04||X||Y) || nonce(12B) || ciphertext(N) || tag(16B)
+PINNED WIRE FORMAT (ECIES v1) - the interop contract for KRLC-02 (backend) and KRLC-04 (client):
+  envelope = ephemeralPub(65B SEC1 uncompressed 0x04||X||Y) || nonce(12B) || ciphertext(N) || tag(16B)
   shared = ECDH(ephemeralPriv, recipientPub)  # 32B X-coordinate only (node crypto.diffieHellman == go ecdh)
   key    = HKDF-SHA256(ikm=shared, salt="pki-manager-krl-ecies-v1", info=ephemeralPub(65B), L=32)
   ct||tag = AES-256-GCM(key, nonce, plaintext, aad=<empty>)
-Hardening TODO for KRLC-02: consider binding host_id/krl_version into GCM AAD (spike used empty AAD).
+Hardening TODO for KRLC-02: bind host_id/krl_version into GCM AAD (spike used empty AAD).
 
-BUILD-COMPAT FINDING (feeds KRLC-01): golang.org/x/crypto v0.50.0 requires Go >= 1.25 (go mod tidy silently bumps the toolchain). Client targets Go 1.23 (like k8s/issuer) -> pin an older line; spike uses x/crypto v0.31.0 (needs Go 1.20), builds clean on 1.23, go vet ok.
+TOOLCHAIN DECISION (feeds KRLC-01/KRLC-12): client targets the LATEST Go (1.26), intentionally diverging from k8s/issuer (1.23). This uses stdlib crypto/hkdf and latest x/crypto (v0.53.0) and avoids the x/crypto>=v0.50 requires-Go>=1.25 constraint.
 
 Artifacts: krl-client/spike/{encrypt.mjs,decrypt.go,run.sh,go.mod,go.sum,README.md}.
 CONCLUSION: KRLC-02 and KRLC-04 are UNBLOCKED; the pinned envelope is the contract to implement on both sides.
