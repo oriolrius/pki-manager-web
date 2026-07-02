@@ -10,7 +10,7 @@ created_date: '2026-07-01 07:16'
 > Human-readable anchor for the **SSH KRL Client Distribution** milestone (15 tasks, TASK-159..173, KRLC-01..KRLC-14 + the KRLC-02a gate spike).
 > Extends: [TASK-145 (SSH-24)](../tasks/task-145%20-%20SSH-24-Stateless-encrypted-KRL-distribution-sidecar-host-side-puller.md) — the host-side puller sketch.
 > Decisions: [decision-013 — SSH KRL Distribution](../decisions/decision-013%20-%20SSH-KRL-Distribution.md) ·
-> decision-015 — SSH KRL Client Decryption Model *(authored by KRLC-14)*.
+> [decision-015 — SSH KRL Client Decryption Model](../decisions/decision-015%20-%20SSH-KRL-Client-Decryption-Model.md) *(authored by KRLC-14; supersedes decision-013's adopted model)*.
 
 ## Goal
 
@@ -183,5 +183,5 @@ Client-owned paths (not pki-manager artifacts) keep their own defaults: `--state
 ## Related decisions
 
 - [decision-013 — SSH KRL Distribution](../decisions/decision-013%20-%20SSH-KRL-Distribution.md) — **KMS-resident model superseded by decision-015**
-- decision-015 — SSH KRL Client Decryption Model *(authored by KRLC-14; supersedes decision-013's adopted model)*
+- [decision-015 — SSH KRL Client Decryption Model](../decisions/decision-015%20-%20SSH-KRL-Client-Decryption-Model.md) *(authored by KRLC-14; supersedes decision-013's adopted model)*
 - [decision-012 — SSH Data Model and KRL State](../decisions/decision-012%20-%20SSH-Data-Model-and-KRL-State.md)
