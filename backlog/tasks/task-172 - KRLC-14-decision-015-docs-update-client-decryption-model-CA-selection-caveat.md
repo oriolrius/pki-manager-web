@@ -3,10 +3,11 @@ id: TASK-172
 title: >-
   KRLC-14: decision-015 + docs update (client decryption model, CA-selection
   caveat)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:16'
-updated_date: '2026-07-02 16:19'
+updated_date: '2026-07-02 16:20'
 labels:
   - ssh-cert-manager
   - docs
