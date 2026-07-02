@@ -1,10 +1,11 @@
 ---
 id: TASK-170
 title: 'KRLC-12: CI/CD workflow - static amd64 build + supply chain + Release artifact'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:15'
-updated_date: '2026-07-02 07:59'
+updated_date: '2026-07-02 16:03'
 labels:
   - ssh-cert-manager
   - automation
@@ -28,3 +29,13 @@ Add .github/workflows/krl-client.yml. Triggers: push branches:[main] paths:['krl
 - [ ] #2 On a vX.Y.Z tag the release job produces krl-client-linux-amd64 (static CGO-disabled amd64, version stamped from GITHUB_REF_NAME), checksums.txt, a cosign .sig+.pem, and an SPDX SBOM, all attached to the GitHub Release for that tag
 - [ ] #3 The workflow mirrors k8s-issuer.yml setup-go/cosign/syft style and reuses docker-build.yml v*.*.* tag trigger; the release binary builds with CGO_ENABLED=0 even though tests use -race
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add .github/workflows/krl-client.yml with push(branches:main+paths, tags:v*.*.*)/pull_request(paths)/workflow_dispatch triggers
+2. ci job: setup-go@v5 (1.26, cache krl-client/go.sum, wd krl-client) -> go mod download, go vet ./..., go test -race -covermode=atomic -coverprofile -count=1 -> upload coverage.out via upload-artifact@v4
+3. release job: needs ci, if refs/tags/v*, permissions contents:write id-token:write -> make build-static VERSION=GITHUB_REF_NAME (CGO_ENABLED=0 static amd64) -> sha256 checksums.txt -> cosign-installer@v3 sign-blob keyless (.sig+.pem) -> anchore/sbom-action@v0 spdx-json SBOM -> softprops/action-gh-release@v2 attach binary+checksums+sig+cert+SBOM
+4. Mirror k8s-issuer.yml setup-go/cosign/syft style; reuse docker-build.yml v*.*.* tag trigger
+5. Validate YAML (actionlint if available) + locally prove go vet/test-race and make build-static succeed
+<!-- SECTION:PLAN:END -->
