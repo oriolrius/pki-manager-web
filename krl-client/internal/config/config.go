@@ -15,18 +15,19 @@ import (
 )
 
 type Config struct {
-	ServerURL string        // PKI-Manager base URL (required)
-	HostID    string        // host FQDN sent in the body (default: hostname)
-	HostKey   string        // host's ecdsa ECIES private key (local decrypt)
-	KRLFile   string        // install target (sshd RevokedKeys)
-	CAPubkey  string        // CA public key for detached-signature verify
-	StateDir  string        // version/state cache
-	CABundle  string        // TLS roots (PEM); empty = system roots
-	Insecure  bool          // disable TLS verification (dev only)
-	Timeout   time.Duration // per-request timeout
-	Retries   int           // network/5xx retries
-	ClockSkew time.Duration // leeway when checking valid_until
-	DryRun    bool          // fetch/decrypt but do not install
+	ServerURL     string        // PKI-Manager base URL (required)
+	HostID        string        // host FQDN sent in the body (default: hostname)
+	HostKey       string        // host's ecdsa ECIES private key (local decrypt)
+	KRLFile       string        // install target (sshd RevokedKeys)
+	CAPubkey      string        // CA public key for detached-signature verify
+	StateDir      string        // version/state cache
+	CABundle      string        // TLS roots (PEM); empty = system roots
+	Insecure      bool          // disable TLS verification (dev only)
+	AllowUnsigned bool          // install even when ca_signature is null
+	Timeout       time.Duration // per-request timeout
+	Retries       int           // network/5xx retries
+	ClockSkew     time.Duration // leeway when checking valid_until
+	DryRun        bool          // fetch/decrypt but do not install
 }
 
 // ErrVersionRequested is returned by Parse when --version is passed.
@@ -45,6 +46,7 @@ func Parse(args []string, version string) (*Config, error) {
 	fs.StringVar(&cfg.StateDir, "state-dir", "/var/lib/krl-client", "version/state cache directory")
 	fs.StringVar(&cfg.CABundle, "ca-bundle", "", "TLS CA bundle (PEM); empty uses system roots")
 	fs.BoolVar(&cfg.Insecure, "insecure", false, "disable TLS certificate verification (DANGEROUS; dev only)")
+	fs.BoolVar(&cfg.AllowUnsigned, "allow-unsigned", false, "install even when the payload ca_signature is null")
 	fs.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "per-request timeout")
 	fs.IntVar(&cfg.Retries, "retries", 3, "retries on network errors / 5xx")
 	fs.DurationVar(&cfg.ClockSkew, "clock-skew", 300*time.Second, "leeway when checking payload valid_until")
