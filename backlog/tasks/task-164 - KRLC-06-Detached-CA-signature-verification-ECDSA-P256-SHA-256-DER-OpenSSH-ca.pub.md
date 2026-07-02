@@ -3,9 +3,11 @@ id: TASK-164
 title: >-
   KRLC-06: Detached CA-signature verification (ECDSA-P256/SHA-256/DER, OpenSSH
   ca.pub)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:14'
+updated_date: '2026-07-02 14:40'
 labels:
   - ssh-cert-manager
   - automation
