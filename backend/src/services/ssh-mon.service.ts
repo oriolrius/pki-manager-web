@@ -4,7 +4,7 @@
  * stopped pulling (last fetch older than 2x the pull interval). With +1w user
  * TTLs and pull-based KRL, a missed renewal or a stalled host must be detectable.
  */
-import { and, eq, lt, isNotNull } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { sshCertificates, sshKrls, sshCas, sshHosts } from '../db/schema.js';
 import type { ServiceContext } from './types.js';
 
@@ -46,11 +46,12 @@ export class SshMonService {
       void latest;
     }
 
-    // Hosts registered for KRL distribution that have stopped pulling.
+    // Hosts eligible for encrypted KRL distribution (ecdsa-nistp256 host key, the
+    // local-decrypt ECIES model — KRLC-02) that have stopped pulling.
     const distHosts = (await ctx.db
       .select()
       .from(sshHosts)
-      .where(and(eq(sshHosts.status, 'active'), isNotNull(sshHosts.kmsPubkeyId)))) as any[];
+      .where(and(eq(sshHosts.status, 'active'), eq(sshHosts.hostKeyAlgorithm, 'ecdsa-sha2-nistp256')))) as any[];
     const staleCutoff = now - 2 * pullInterval * 1000;
     const stalePullingHosts = distHosts.filter((h) => {
       const last = h.lastKrlFetchAt ? new Date(h.lastKrlFetchAt).getTime() : 0;

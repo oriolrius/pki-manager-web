@@ -49,6 +49,7 @@ export type AuditOperation =
   | 'ssh.principal.map'
   | 'ssh.krl.generate'
   | 'ssh.krl.publish'
+  | 'ssh.krl.distribute'
   | 'ssh.token.mint'
   | 'ssh.token.revoke'
   | 'ssh.external.sign';

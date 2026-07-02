@@ -306,28 +306,35 @@ export class SshHostService {
   }
 
   /**
-   * Register a per-host ECIES keypair in the KMS, tagged by host (SSH-15, gated
-   * on the SSH-23 spike which proved ECIES viable). Stores the public key id on
-   * the host (for encryption); returns the private key id for the puller config.
-   * The keypair's fingerprint is NOT the SSH host key — it is a dedicated
-   * KMS-resident distribution key (matches host_puller.sh HOST_PRIV_KEY_ID).
+   * Confirm a host is provisioned for LOCAL-decrypt ECIES KRL distribution
+   * (KRLC-02 / decision-015). The host's OWN ecdsa-sha2-nistp256 SSH host key IS
+   * the ECIES key (already stored as opensshHostPubkey at registration), so NO
+   * KMS keypair is generated and no private key ever leaves the host. Returns
+   * readiness + fingerprint; throws if the host key can't do P-256 ECIES.
    */
-  async registerEciesKey(ctx: ServiceContext, hostId: string): Promise<{ kmsPublicKeyId: string; kmsPrivateKeyId: string }> {
+  async registerEciesKey(
+    ctx: ServiceContext,
+    hostId: string
+  ): Promise<{ hostId: string; ready: boolean; keyAlgorithm: SshKeyAlgo; fingerprint: string }> {
     const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
     if (!host) throw new SshHostError(`host ${hostId} not found`);
-    const { getKMSService } = await import('../kms/service.js');
-    const { publicKeyId, privateKeyId } = await getKMSService().registerHostEciesKey(host.fqdn);
-    await ctx.db.update(sshHosts).set({ kmsPubkeyId: publicKeyId, updatedAt: new Date() }).where(eq(sshHosts.id, hostId));
+    if (!host.opensshHostPubkey) throw new SshHostError('host has no registered public key');
+    const parsed = parseSshPublicKey(host.opensshHostPubkey);
+    if (parsed.algo !== 'ecdsa-sha2-nistp256') {
+      throw new SshHostError(
+        `host key is '${parsed.algo}' — encrypted KRL distribution requires an ecdsa-sha2-nistp256 host key (register /etc/ssh/ssh_host_ecdsa_key.pub)`
+      );
+    }
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.host.register_pubkey',
       entityType: 'ssh_host',
       entityId: hostId,
       status: 'success',
-      details: { kmsPublicKeyId: publicKeyId },
+      details: { keyAlgorithm: parsed.algo, fingerprint: parsed.fingerprintSha256, model: 'local-ecies' },
       ipAddress: ctx.ipAddress ?? undefined,
     });
-    return { kmsPublicKeyId: publicKeyId, kmsPrivateKeyId: privateKeyId };
+    return { hostId, ready: true, keyAlgorithm: parsed.algo, fingerprint: parsed.fingerprintSha256 };
   }
 
   /**

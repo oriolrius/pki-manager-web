@@ -1,12 +1,14 @@
 /**
- * SSH-15 + SSH-24 — register a per-host ECIES key, fetch the encrypted KRL, and
- * decrypt it host-side (via the host's KMS key), confirming the recovered bare
- * KRL revokes the cert (ssh-keygen -Q) and the detached signature verifies.
- * Gated on KMS_AVAILABLE.
+ * KRLC-02 (supersedes SSH-15/SSH-24 KMS-resident model) — fetch the encrypted
+ * per-host KRL and decrypt it LOCALLY with the host's OWN ecdsa host key (no KMS
+ * decrypt), confirming the recovered bare KRL revokes the cert (ssh-keygen -Q)
+ * and the detached CA signature verifies. Gated on KMS_AVAILABLE (CA creation +
+ * KRL signing still use the KMS; only the ECIES en/decrypt is local now).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createPrivateKey } from 'node:crypto';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,6 +17,7 @@ import { registerSshExternalRoutes } from './ssh-external.routes.js';
 import { db } from '../../db/client.js';
 import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
+import { eciesDecryptV1 } from '../../crypto/ssh/ecies.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
@@ -26,19 +29,15 @@ async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
   for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
-  const hosts = await db.select().from(sshHosts);
-  for (const h of hosts as any[]) {
-    if (h.kmsPubkeyId) { try { await kms.destroyKeyPair(String(h.kmsPubkeyId).replace(/_pk$/, ''), h.kmsPubkeyId); } catch { /* */ } }
-  }
   for (const t of [sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
 }
 
-describe.skipIf(!KMS)('SSH-15/24 ECIES per-host KRL distribution', () => {
+describe.skipIf(!KMS)('KRLC-02 local-decrypt per-host KRL distribution', () => {
   let app: FastifyInstance;
   let work: string;
-  let hostPrivKeyId: string;
+  let hostKeyPem: string;
   let certPath: string;
 
   beforeAll(async () => {
@@ -51,14 +50,18 @@ describe.skipIf(!KMS)('SSH-15/24 ECIES per-host KRL distribution', () => {
 
     await getSshCaService().create(ctx, { caType: 'user' });
     await getSshCaService().create(ctx, { caType: 'host' });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'h'), '-N', '', '-q']);
+    // The host's OWN ecdsa host key (like /etc/ssh/ssh_host_ecdsa_key). -m PEM so
+    // we can load the private half in node to stand in for the Go host client.
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-m', 'PEM', '-f', join(work, 'h'), '-N', '', '-q']);
+    hostKeyPem = readFileSync(join(work, 'h'), 'utf8');
     const host = await getSshHostService().register(ctx, { fqdn: 'ecies.lab.local', addresses: ['10.0.0.30'], opensshHostPubkey: readFileSync(join(work, 'h.pub'), 'utf8') });
     const issued = await getSshHostService().issue(ctx, { hostId: host.id });
     certPath = join(work, 'h-cert.pub');
     writeFileSync(certPath, issued.cert.certOpenssh);
-    // register the host's ECIES key
-    const ids = await getSshHostService().registerEciesKey(ctx, host.id);
-    hostPrivKeyId = ids.kmsPrivateKeyId;
+    // The host's own ecdsa key IS the ECIES key — confirm readiness (no KMS keypair).
+    const ready = await getSshHostService().registerEciesKey(ctx, host.id);
+    expect(ready.ready).toBe(true);
+    expect(ready.keyAlgorithm).toBe('ecdsa-sha2-nistp256');
     // revoke the cert so the KRL is non-empty
     await getSshKrlService().revokeByCert(ctx, issued.cert.id, 'rotation');
   }, 60_000);
@@ -70,14 +73,14 @@ describe.skipIf(!KMS)('SSH-15/24 ECIES per-host KRL distribution', () => {
     if (work) rmSync(work, { recursive: true, force: true });
   });
 
-  it('delivers an ECIES-encrypted KRL only the host can decrypt, revoking the cert', async () => {
+  it('delivers an ECIES-encrypted KRL the host decrypts LOCALLY, revoking the cert', async () => {
     const res = await app.inject({ method: 'POST', url: '/api/v1/external/ssh/krl', payload: { host_id: 'ecies.lab.local' } });
     expect(res.statusCode).toBe(200);
     const version = res.headers['x-krl-version'] as string;
     expect(version).toMatch(/^sha256:/);
 
-    // Host-side: decrypt with its KMS private key (the puller path).
-    const plaintext = await getKMSService().eciesDecrypt(hostPrivKeyId, res.rawPayload);
+    // Host-side: decrypt locally with the host's own ecdsa private key. No KMS call.
+    const plaintext = eciesDecryptV1(createPrivateKey(hostKeyPem), Buffer.from(res.rawPayload));
     const payload = JSON.parse(plaintext.toString('utf8'));
     expect(payload.host_id).toBe('ecies.lab.local');
     expect(payload.krl_version).toBe(version);
@@ -90,7 +93,7 @@ describe.skipIf(!KMS)('SSH-15/24 ECIES per-host KRL distribution', () => {
     const q = spawnSync('ssh-keygen', ['-Q', '-f', krlPath, certPath], { encoding: 'utf8' });
     expect(q.status !== 0 && /REVOKED/i.test(q.stdout + q.stderr)).toBe(true);
 
-    // The detached CA signature verifies.
+    // The detached CA signature verifies (CA signing still via KMS — separate from ECIES).
     const caRow = (await db.select().from(sshCas).where(eq(sshCas.caType, 'host')).limit(1))[0] as any;
     const ok = await getKMSService().signatureVerify(caRow.kmsPublicKeyId, krlBytes, Buffer.from(payload.ca_signature, 'base64'));
     expect(ok).toBe(true);
