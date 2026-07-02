@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:16'
-updated_date: '2026-07-02 16:06'
+updated_date: '2026-07-02 16:09'
 labels:
   - ssh-cert-manager
   - automation
@@ -30,3 +30,14 @@ Write krl-client/README.md and packaging/. Enable sequence (REUSING the existing
 - [ ] #2 packaging/ ships a working systemd oneshot .service + jittered .timer (inside the ssh-mon staleness window) and an example crontab line, all relying on the canonical defaults + --log-format json
 - [ ] #3 The README warns that NTP is required and that the encrypted endpoint serves the Host-CA KRL (not the User-CA KRL sshd RevokedKeys expects), cross-linking decision-015
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. packaging/krl-client.service — Type=oneshot, root, hardened (NoNewPrivileges, ProtectSystem=strict, ReadWritePaths=/etc/ssh /var/lib/krl-client, +curated sandbox), ExecStart --systemd (forces json), After time-sync.target
+2. packaging/krl-client.timer — OnUnitActiveSec=15m + RandomizedDelaySec=5m jitter (max ~20m < 30m ssh-mon staleness; ~1 req/15m << 120/60s), Persistent
+3. packaging/krl-client.env.example + packaging/crontab.example (json, jittered, escaped %)
+4. packaging/krl-client.8 man page
+5. README: enable sequence (reuse ecdsa key, SSH_ECIES_ENABLED), usage synopsis, If-None-Match=krl_version (not sha256-of-file), post-install sshd -t && systemctl reload ssh, NTP prerequisite + Host-CA vs User-CA KRL caveat (decision-015), packaging/install section
+6. Verify units parse + go build unchanged; tick ACs; notes; Done
+<!-- SECTION:PLAN:END -->
