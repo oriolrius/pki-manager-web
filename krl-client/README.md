@@ -235,7 +235,7 @@ The **`run_summary`** event carries the full outcome of the run:
 | `outcome` | `up_to_date` (304) · `updated` (verified + installed, or dry-run validated) · `error` |
 | `http_status` | terminal HTTP status (`200`, `304`, or `0` when the request never completed) |
 | `krl_version` | `sha256:<hex>` version token |
-| `krl_number` | monotonic anti-rollback counter (`0` when absent) |
+| `krl_number` | monotonic anti-rollback number read from the **signed KRL header** (`0` when nothing is installed) |
 | `host_id` | the host FQDN sent in the request |
 | `dry_run` | whether `--dry-run` skipped the install |
 | `exit_code` | the process exit code (see below) |

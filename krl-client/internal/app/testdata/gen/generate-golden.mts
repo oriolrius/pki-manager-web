@@ -51,8 +51,10 @@ const hostPubLine = readFileSync(p('ssh_host_ecdsa_key.pub'), 'utf8').trim();
 kg('-t', 'ed25519', '-N', '', '-C', 'revoked@golden', '-f', p('revoked_id'));
 kg('-t', 'ed25519', '-N', '', '-C', 'valid@golden', '-f', p('valid_id'));
 
-// 3. A REAL bare OpenSSH KRL (format 1) revoking revoked_id.pub.
-kg('-k', '-f', p('revoked_keys.krl'), p('revoked_id.pub'));
+// 3. A REAL bare OpenSSH KRL (format 1) revoking revoked_id.pub. `-z KRL_NUMBER`
+//    embeds the monotonic version in the KRL HEADER — the client's anti-rollback
+//    source (TASK-175), so it must equal meta.krl_number below.
+kg('-k', '-z', String(KRL_NUMBER), '-f', p('revoked_keys.krl'), p('revoked_id.pub'));
 const krl = readFileSync(p('revoked_keys.krl'));
 const krlSha256 = createHash('sha256').update(krl).digest('hex');
 const version = `sha256:${krlSha256}`;
@@ -66,12 +68,12 @@ writeFileSync(p('ca.pub'), caPubLine + '\n');
 const caSig = sign('sha256', krl, { key: ca.privateKey, dsaEncoding: 'der' });
 writeFileSync(p('ca_signature.der'), caSig); // the detached DER signature, as a golden artifact
 
-// 5. The decrypted payload (the exact bytes the ciphertext wraps).
+// 5. The decrypted payload (the exact bytes the ciphertext wraps). The monotonic
+//    number is NOT carried here — it lives in the signed KRL header (TASK-175).
 const payload = {
   krl: krl.toString('base64'),
   ca_signature: caSig.toString('base64'),
   krl_version: version,
-  krl_number: KRL_NUMBER,
   valid_until: VALID_UNTIL,
   host_id: HOST_ID,
 };

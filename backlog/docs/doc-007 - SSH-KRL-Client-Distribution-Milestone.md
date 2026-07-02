@@ -58,8 +58,10 @@ documented).
    `ecdsa.VerifyASN1` after converting the OpenSSH `ca.pub` via `ssh.ParseAuthorizedKey` →
    `CryptoPublicKey` — **no `openssl` dependency** (`openssl dgst -verify` can't parse
    `ecdsa-sha2-nistp256 AAAA…` directly).
-3. **Anti-rollback**: reject any `krl_version` / `krl_number` not strictly newer than the installed
-   one (persisted in `--state-dir`), preventing replay/downgrade of an older revocation set.
+3. **Anti-rollback**: reject any KRL whose monotonic number — read from the **CA-signed KRL header**
+   (`krl_version` uint64), not the former unsigned JSON `krl_number` (TASK-175) — is not strictly newer
+   than the installed one (persisted in `--state-dir`), preventing replay/downgrade of an older
+   revocation set even by a compromised server.
 
 ## Placement & layout
 

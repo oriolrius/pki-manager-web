@@ -17,8 +17,9 @@ import (
 )
 
 // validPayload builds a fully valid decrypted-payload map for f, so a case can
-// mutate exactly one field to reach a single failure at its intended stage.
-func validPayload(t *testing.T, f *fixture, number int64) map[string]any {
+// mutate exactly one field to reach a single failure at its intended stage. The
+// anti-rollback number rides f.krl's signed header (set via newFixture), not JSON.
+func validPayload(t *testing.T, f *fixture) map[string]any {
 	t.Helper()
 	sum := sha256.Sum256(f.krl)
 	sig, err := ecdsa.SignASN1(rand.Reader, f.caKey, sum[:])
@@ -29,7 +30,6 @@ func validPayload(t *testing.T, f *fixture, number int64) map[string]any {
 		"krl":          base64.StdEncoding.EncodeToString(f.krl),
 		"ca_signature": base64.StdEncoding.EncodeToString(sig),
 		"krl_version":  f.version,
-		"krl_number":   number,
 		"valid_until":  int64(9999999999),
 		"host_id":      f.hostID,
 	}
@@ -68,9 +68,9 @@ func TestRunPolicyFailureExitCodes(t *testing.T) {
 	}{
 		{
 			name:     "anti_rollback",
-			number:   3,
+			number:   3, // f.krl's signed header carries 3
 			preState: &state.State{Version: "sha256:0000", Number: 10},
-			wantCode: exitcodes.Version, // 8 — krl_number 3 <= installed 10
+			wantCode: exitcodes.Version, // 8 — header number 3 <= installed 10
 		},
 		{
 			name:   "bad_signature",
@@ -108,7 +108,7 @@ func TestRunPolicyFailureExitCodes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t, host, tc.number)
-			m := validPayload(t, f, tc.number)
+			m := validPayload(t, f)
 			if tc.mutate != nil {
 				tc.mutate(f, m)
 			}
@@ -148,7 +148,7 @@ func TestRunPolicyFailureExitCodes(t *testing.T) {
 // the exit-4 rejection above is specifically the policy, not a decode failure.
 func TestRunNullSignatureAllowUnsignedInstalls(t *testing.T) {
 	f := newFixture(t, "web01.example.com", 9)
-	m := validPayload(t, f, 9)
+	m := validPayload(t, f)
 	m["ca_signature"] = nil // unsigned payload
 
 	srv := serveKRL(t, f.version, seal(t, f, m))

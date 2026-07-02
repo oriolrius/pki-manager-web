@@ -85,10 +85,12 @@ KRLC promotes that model to a production `krl-client` Go binary (doc-007).
    **verifies the detached CA signature** (DER ECDSA-P256 over `sha256(krl)`, OpenSSH
    `ca.pub` parsed via `ssh.ParseAuthorizedKey` → `ecdsa.VerifyASN1`; a `null` signature
    installs only under explicit `--allow-unsigned`); enforces **host-id binding**
-   (payload `host_id` must equal this host); enforces **anti-rollback** (reject any
-   `krl_version`/`krl_number` not strictly newer than the installed one, persisted in
-   `--state-dir`); and installs **atomically** `0444 root:root`. Signature is verified
-   **before** install, never after.
+   (payload `host_id` must equal this host); enforces **anti-rollback** by comparing
+   the monotonic version number read from the **CA-signed OpenSSH KRL header** (not
+   the former unsigned JSON `krl_number`, which a compromised server could inflate to
+   replay an old signed KRL — TASK-175) against the installed number persisted in
+   `--state-dir`, rejecting anything not strictly newer; and installs **atomically**
+   `0444 root:root`. Signature is verified **before** install, never after.
 
 ## Consequences
 
