@@ -169,6 +169,7 @@ The env var for a flag is `KRL_CLIENT_` + the flag name upper-cased with `-`→`
 | `--allow-unsigned` | `ALLOW_UNSIGNED` / `allow-unsigned` | `false` | install even when `ca_signature` is null |
 | `--timeout` | `TIMEOUT` / `timeout` | `30s` | per-request timeout |
 | `--retries` | `RETRIES` / `retries` | `3` | retries on network errors / 5xx |
+| `--max-response-bytes` | `MAX_RESPONSE_BYTES` / `max-response-bytes` | `8388608` (8 MiB) | ceiling on the encrypted KRL response body; an oversized response fails closed (exit `2`) instead of being buffered |
 | `--clock-skew` | `CLOCK_SKEW` / `clock-skew` | `300s` | leeway when checking `valid_until` |
 | `--dry-run` | `DRY_RUN` / `dry-run` | `false` | fetch/decrypt but do not install |
 | `--quiet` | `QUIET` / `quiet` | `false` | log warnings and errors only |

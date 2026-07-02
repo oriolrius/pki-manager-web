@@ -177,6 +177,35 @@ func TestTLSVerificationEnforced(t *testing.T) {
 	}
 }
 
+// A 200 body larger than the configured ceiling is rejected (fail-closed) rather
+// than buffered — a hostile/compromised endpoint cannot OOM the client. The read
+// is bounded to maxBytes+1, so the multi-KB body here is never fully consumed.
+func TestOversizeResponseBodyRejected(t *testing.T) {
+	big := strings.Repeat("A", 4096)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-KRL-Version", "sha256:v")
+		_, _ = w.Write([]byte(big))
+	}))
+	defer srv.Close()
+
+	c, _ := New(srv.URL, "", false, 5*time.Second, 0)
+	c.SetMaxResponseBytes(64) // ceiling far below the 4096-byte body
+	r, err := c.FetchKRL(context.Background(), "h", "")
+	if r != nil {
+		t.Fatalf("expected no result for an oversize body, got %+v", r)
+	}
+	if codeOf(err) != exitcodes.Network {
+		t.Fatalf("expected Network exit for oversize body, got %v (%v)", codeOf(err), err)
+	}
+
+	// A body within the ceiling still succeeds through the bounded reader.
+	c.SetMaxResponseBytes(4096)
+	r2, err := c.FetchKRL(context.Background(), "h", "")
+	if err != nil || string(r2.Body) != big {
+		t.Fatalf("in-limit body should pass: err=%v len=%d", err, len(r2.Body))
+	}
+}
+
 func TestServerURLRequired(t *testing.T) {
 	if _, err := New("", "", false, time.Second, 0); codeOf(err) != exitcodes.Usage {
 		t.Fatalf("expected Usage error for empty server-url, got %v", err)

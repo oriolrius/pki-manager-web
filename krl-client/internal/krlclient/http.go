@@ -21,10 +21,17 @@ import (
 
 const krlPath = "/api/v1/external/ssh/krl"
 
+// defaultMaxResponseBytes bounds the 200-response body when the caller does not
+// override it (see SetMaxResponseBytes). A per-host ECIES-wrapped KRL is far
+// smaller; the cap only stops a hostile/compromised endpoint from streaming an
+// unbounded body into memory.
+const defaultMaxResponseBytes int64 = 8 << 20 // 8 MiB
+
 type Client struct {
 	serverURL string
 	http      *http.Client
 	retries   int
+	maxBytes  int64 // ceiling on the accepted response-body size
 }
 
 // Result is the outcome of a KRL fetch.
@@ -59,8 +66,17 @@ func New(serverURL, caBundle string, insecure bool, timeout time.Duration, retri
 	return &Client{
 		serverURL: strings.TrimRight(serverURL, "/"),
 		retries:   retries,
+		maxBytes:  defaultMaxResponseBytes,
 		http:      &http.Client{Timeout: timeout, Transport: &http.Transport{TLSClientConfig: tlsCfg}},
 	}, nil
+}
+
+// SetMaxResponseBytes overrides the accepted response-body ceiling (in bytes).
+// A value <= 0 keeps the default (defaultMaxResponseBytes).
+func (c *Client) SetMaxResponseBytes(n int64) {
+	if n > 0 {
+		c.maxBytes = n
+	}
 }
 
 // FetchKRL POSTs {"host_id":hostID} to the encrypted KRL endpoint. When
@@ -93,7 +109,7 @@ func (c *Client) FetchKRL(ctx context.Context, hostID, ifNoneMatch string) (*Res
 			lastErr = err // transport error — retry
 			continue
 		}
-		res, retry, herr := handle(resp)
+		res, retry, herr := handle(resp, c.maxBytes)
 		if retry {
 			lastErr = herr
 			continue
@@ -104,14 +120,23 @@ func (c *Client) FetchKRL(ctx context.Context, hostID, ifNoneMatch string) (*Res
 }
 
 // handle classifies a response. retry=true means the caller should try again.
-func handle(resp *http.Response) (res *Result, retry bool, err error) {
+// The 200 body is read through a bounded reader (maxBytes) so a hostile or
+// compromised endpoint cannot stream an unbounded body into memory; exceeding
+// the ceiling fails closed (no retry) rather than being silently truncated.
+func handle(resp *http.Response, maxBytes int64) (res *Result, retry bool, err error) {
 	defer resp.Body.Close()
 	version := resp.Header.Get("X-KRL-Version")
 	switch resp.StatusCode {
 	case http.StatusOK:
-		b, e := io.ReadAll(resp.Body)
+		// Read at most maxBytes+1: a full maxBytes+1 read means the body exceeds
+		// the ceiling. The reader stops at the limit, so we never buffer more.
+		b, e := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 		if e != nil {
 			return nil, true, e // truncated read — retry
+		}
+		if int64(len(b)) > maxBytes {
+			return nil, false, exitcodes.New(exitcodes.Network,
+				"response body exceeds the %d-byte limit — raise --max-response-bytes if this host's KRL is legitimately larger", maxBytes)
 		}
 		return &Result{Body: b, Version: version, Status: resp.StatusCode}, false, nil
 	case http.StatusNotModified:

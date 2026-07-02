@@ -13,8 +13,8 @@ var configKeys = map[string]bool{
 	"server-url": true, "host-id": true, "host-key": true, "krl-file": true,
 	"ca-pubkey": true, "state-dir": true, "ca-bundle": true, "insecure": true,
 	"allow-unsigned": true, "timeout": true, "retries": true, "clock-skew": true,
-	"dry-run": true, "quiet": true, "verbose": true, "log-format": true,
-	"systemd": true, "oneshot": true,
+	"max-response-bytes": true, "dry-run": true, "quiet": true, "verbose": true,
+	"log-format": true, "systemd": true, "oneshot": true,
 }
 
 // loadConfigFile reads and parses the config file into a key->raw-scalar map.
