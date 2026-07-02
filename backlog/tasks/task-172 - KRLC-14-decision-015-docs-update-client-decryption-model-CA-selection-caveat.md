@@ -3,7 +3,7 @@ id: TASK-172
 title: >-
   KRLC-14: decision-015 + docs update (client decryption model, CA-selection
   caveat)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:16'
@@ -32,3 +32,13 @@ Write backlog/decisions/decision-015 'SSH KRL Client Decryption Model' via the b
 - [x] #3 doc-007 and the README reference decision-015 and decision-013 is annotated as superseded; all decision/doc edits are made via the backlog CLI
 - [x] #4 The krl-client README's decision-015 reference is a working relative markdown link (file exists at backlog/decisions/decision-015 - SSH-KRL-Client-Decryption-Model.md and the link resolves), not just a textual mention
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Authored decision-015 "SSH KRL Client Decryption Model" (status Accepted) via `backlog decision create`, then filled the CLI-scaffolded body mirroring decision-013 (Context / Decision / Consequences / Related tasks).
+
+Content: (1) decryption is ALWAYS local — the KMS is never used to en/decrypt the KRL; (2) backend encrypts natively (node:crypto) to the host's OWN pubkey, default the reused SSH host key `/etc/ssh/ssh_host_ecdsa_key`, with a table mapping every client on-host default to the ssh-config.ts SSOT constants (hostKeyPathFor / USER_CA_PATH / REVOKED_KEYS_PATH); (3) the pinned standard ECIES envelope (P-256 + HKDF-SHA256 + AES-256-GCM, framing ephemeral-pubkey||nonce||ciphertext||tag) and why a native scheme (not Cosmian's opaque ECIES) is REQUIRED for local decrypt; (4) the KRLC-02 rebuild that retires the KMS-resident path of SSH-15/SSH-24 and migrates existing hosts; (5) the P-256 constraint + SSH-host-key-reuse trade-off (--host-key override); (6) client security posture (signature-before-install, host-id binding, anti-rollback). Open caveats recorded: Host-CA-vs-User-CA KRL asymmetry and telemetry-not-updated-on-304.
+
+Supersession: decision-015 explicitly SUPERSEDES decision-013's KMS-resident adopted model; decision-013 annotated with an IMPORTANT banner + an inline "(SUPERSEDED by decision-015)" note on the Adopted-model paragraph (its guaranteed bare-KRL floor stays in force). doc-007 header + Related-decisions now link decision-015; krl-client/README turns its bare textual mention into a working relative markdown link. All five cross-links verified to resolve to real files on disk.
+<!-- SECTION:NOTES:END -->
