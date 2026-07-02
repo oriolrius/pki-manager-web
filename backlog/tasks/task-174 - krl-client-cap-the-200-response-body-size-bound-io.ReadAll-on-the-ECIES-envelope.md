@@ -3,9 +3,11 @@ id: TASK-174
 title: >-
   krl-client: cap the 200-response body size (bound io.ReadAll on the ECIES
   envelope)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-02 16:43'
+updated_date: '2026-07-02 16:53'
 labels:
   - ssh-cert-manager
   - krl-client
