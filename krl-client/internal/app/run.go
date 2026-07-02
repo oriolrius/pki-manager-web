@@ -1,11 +1,14 @@
-// Package app orchestrates the run. This is the KRLC-01/03/04 slice: fetch (with
-// If-None-Match) -> local decrypt. Payload validation (KRLC-05), CA-signature
-// verification (KRLC-06), atomic install + state cache (KRLC-07), the full CLI
-// (KRLC-08) and structured logging (KRLC-09) extend this pipeline.
+// Package app orchestrates the full run (KRLC-01..07): read state -> fetch (with
+// If-None-Match from the cached version) -> 304 short-circuit -> local decrypt ->
+// parse + validate (host/expiry/version/anti-rollback) -> verify CA signature ->
+// atomic install -> persist state. KRLC-08 adds the env/config surface and KRLC-09
+// structured logging on top of this pipeline.
 package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -13,8 +16,10 @@ import (
 	"github.com/oriolrius/pki-manager-krl-client/internal/config"
 	"github.com/oriolrius/pki-manager-krl-client/internal/decrypt"
 	"github.com/oriolrius/pki-manager-krl-client/internal/exitcodes"
+	"github.com/oriolrius/pki-manager-krl-client/internal/installer"
 	"github.com/oriolrius/pki-manager-krl-client/internal/krlclient"
 	"github.com/oriolrius/pki-manager-krl-client/internal/payload"
+	"github.com/oriolrius/pki-manager-krl-client/internal/state"
 	"github.com/oriolrius/pki-manager-krl-client/internal/verify"
 )
 
@@ -27,8 +32,13 @@ func Run(cfg *config.Config) exitcodes.Code {
 		return report(err)
 	}
 
-	// TODO(KRLC-07): read the cached krl_version from --state-dir to send as If-None-Match.
-	res, err := client.FetchKRL(ctx, cfg.HostID, "")
+	st, err := state.Read(cfg.StateDir)
+	if err != nil {
+		return report(err)
+	}
+
+	// Conditional fetch: the cached krl_version is the If-None-Match token.
+	res, err := client.FetchKRL(ctx, cfg.HostID, st.Version)
 	if err != nil {
 		return report(err)
 	}
@@ -50,28 +60,38 @@ func Run(cfg *config.Config) exitcodes.Code {
 	if err != nil {
 		return report(err)
 	}
-	// TODO(KRLC-07): read the installed krl_number from --state-dir for anti-rollback.
-	if err := p.Validate(cfg.HostID, res.Version, 0, time.Now(), cfg.ClockSkew); err != nil {
+	if err := p.Validate(cfg.HostID, res.Version, st.Number, time.Now(), cfg.ClockSkew); err != nil {
 		return report(err)
 	}
 	if err := verify.Check(cfg.CAPubkey, p.KRL, p.CASig, cfg.AllowUnsigned); err != nil {
 		return report(err)
 	}
 
-	// TODO(KRLC-07): atomically install p.KRL to --krl-file (0444 root:root) + persist state.
-	fmt.Fprintf(os.Stderr, "krl-client: verified KRL version=%s number=%d (%d bytes)\n", p.Version, p.Number, len(p.KRL))
 	if cfg.DryRun {
-		_, _ = os.Stdout.Write(p.KRL)
+		fmt.Fprintf(os.Stderr, "krl-client: dry-run — would install KRL version=%s number=%d (%d bytes) -> %s\n",
+			p.Version, p.Number, len(p.KRL), cfg.KRLFile)
+		return exitcodes.OK
 	}
+
+	if err := installer.Install(cfg.KRLFile, p.KRL); err != nil {
+		return report(err)
+	}
+	sum := sha256.Sum256(p.KRL)
+	if err := state.Write(cfg.StateDir, &state.State{
+		Version:   p.Version,
+		Number:    p.Number,
+		SHA256:    hex.EncodeToString(sum[:]),
+		UpdatedAt: time.Now().Unix(),
+	}); err != nil {
+		return report(err)
+	}
+	fmt.Fprintf(os.Stderr, "krl-client: installed KRL version=%s number=%d (%d bytes) -> %s\n",
+		p.Version, p.Number, len(p.KRL), cfg.KRLFile)
 	return exitcodes.OK
 }
 
 func report(err error) exitcodes.Code {
-	var ce *exitcodes.Error
-	if e, ok := err.(*exitcodes.Error); ok {
-		ce = e
-	}
-	if ce != nil {
+	if ce, ok := err.(*exitcodes.Error); ok {
 		fmt.Fprintln(os.Stderr, "krl-client:", ce.Msg)
 		return ce.Code
 	}
