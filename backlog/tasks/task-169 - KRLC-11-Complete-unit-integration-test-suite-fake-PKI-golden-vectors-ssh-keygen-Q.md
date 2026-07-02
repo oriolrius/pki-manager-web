@@ -3,7 +3,7 @@ id: TASK-169
 title: >-
   KRLC-11: Complete unit + integration test suite (fake PKI + golden vectors +
   ssh-keygen -Q)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:15'
