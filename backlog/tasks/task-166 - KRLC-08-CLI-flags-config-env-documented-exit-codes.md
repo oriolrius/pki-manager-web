@@ -24,10 +24,12 @@ Implement internal/config and wire main.go/internal/app with a full flag set who
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Configuration resolves with documented precedence (flag > env KRL_CLIENT_* > config file > default), verified for at least server-url, host-key, and host-id
-- [ ] #2 All on-host path defaults derive from the ssh-config.ts canonical constants - --host-key=/etc/ssh/ssh_host_ecdsa_key, --ca-pubkey=/etc/ssh/ssh-user-ca.pub, --krl-file=/etc/ssh/revoked_keys, --host-id=hostname -f - so a host set up from the generated 60-ssh-ca.conf runs with ONLY --server-url (asserted by a defaults test)
-- [ ] #3 Each terminal condition returns its documented exit code (updated/up-to-date=0, network=2, decrypt=3, verify=4, expired=5, host-mismatch=6, install=7, version/anti-rollback=8, not-provisioned/disabled=9, rate-limited=10)
+- [x] #1 Configuration resolves with documented precedence (flag > env KRL_CLIENT_* > config file > default), verified for at least server-url, host-key, and host-id
+- [x] #2 All on-host path defaults derive from the ssh-config.ts canonical constants - --host-key=/etc/ssh/ssh_host_ecdsa_key, --ca-pubkey=/etc/ssh/ssh-user-ca.pub, --krl-file=/etc/ssh/revoked_keys, --host-id=hostname -f - so a host set up from the generated 60-ssh-ca.conf runs with ONLY --server-url (asserted by a defaults test)
+- [x] #3 Each terminal condition returns its documented exit code (updated/up-to-date=0, network=2, decrypt=3, verify=4, expired=5, host-mismatch=6, install=7, version/anti-rollback=8, not-provisioned/disabled=9, rate-limited=10)
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
