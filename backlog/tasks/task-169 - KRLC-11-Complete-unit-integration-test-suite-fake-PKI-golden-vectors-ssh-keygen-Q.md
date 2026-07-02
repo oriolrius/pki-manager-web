@@ -34,8 +34,6 @@ Author the full Go test suite: table-driven unit tests per package plus an end-t
 - [x] #3 An ssh-keygen -Q check against the installed golden KRL reports the revoked test key as revoked (byte-compatibility with real OpenSSH tooling)
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -46,3 +44,20 @@ Author the full Go test suite: table-driven unit tests per package plus an end-t
 5. ssh-keygen -Q check (AC3): after install, revoked.pub reports REVOKED (exit1), valid.pub reports ok (exit0); skip if ssh-keygen absent.
 6. Run go test ./... -race -covermode=atomic; document vectors in testdata README; check ACs; notes; Done.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Completed the krl-client test suite (KRLC-11).
+
+Added — all under internal/app/:
+- testdata/golden/: a self-consistent, BACKEND-PRODUCED interop bundle. ciphertext.bin is emitted by the real backend eciesEncryptV1 (node:crypto), ca.pub by the backend spkiToOpenSshEcdsa, ca_signature.der is a real ECDSA-P256/DER sig over sha256(krl), and revoked_keys.krl is a real `ssh-keygen -k` bare KRL. Committing them turns the Go tests into a cross-implementation wire-contract guard.
+- testdata/gen/generate-golden.mts: reproducible generator (imports the backend crypto verbatim); testdata/README.md documents the bundle + regen command.
+- golden_test.go:
+  - TestGoldenBackendInteropAndSshKeygenQ (AC#1+AC#3): full fetch->local-decrypt(backend ct)->validate->verify->install cycle against an httptest fake PKI; asserts installed KRL byte-for-byte, mode 0444, and persisted state (version/number/sha256). Then `ssh-keygen -Q` reports revoked_id.pub REVOKED (exit 1) and valid_id.pub ok (exit 0) — byte-compat with real OpenSSH tooling. Skips the ssh-keygen leg only if the binary is absent.
+  - TestGoldenDecryptInterop: backend ciphertext -> Go decrypt.Open == committed payload.json (plaintext-level interop), and the embedded DER sig verifies under ca.pub.
+- exitcodes_run_test.go (AC#2): TestRunPolicyFailureExitCodes table — anti-rollback=8, bad-signature=4, expired=5, host-mismatch=6, null-signature-without-allow-unsigned=4; each re-seals a mutated payload to the host key, asserts the exit code + one ERROR run_summary + that nothing is installed. Plus TestRunNullSignatureAllowUnsignedInstalls (the --allow-unsigned complement installs at exit 0).
+- run_test.go: exposed hostPub/caKey on the fixture and factored out serveKRL() so custom ciphertext/version pairs can be served (existing 304 no-op / redaction / actionable-error tests retained).
+
+Verification: `go test ./... -race -covermode=atomic` = 80 pass across 12 packages (was 71), 78.5% total; go build, go vet, gofmt all clean. Negative sanity: flipping one byte of the golden ciphertext fails both golden tests with AEAD auth failure (exit 3) and restoring passes — the interop guard is not vacuous.
+<!-- SECTION:NOTES:END -->
