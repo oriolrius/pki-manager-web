@@ -3,10 +3,11 @@ id: TASK-160
 title: >-
   KRLC-02: Rebuild per-host KRL encryption for LOCAL host decryption (retire
   KMS-resident ECIES)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:14'
-updated_date: '2026-07-02 04:36'
+updated_date: '2026-07-02 08:05'
 labels:
   - ssh-cert-manager
   - backend
@@ -31,3 +32,13 @@ Rebuild the SSH-24 encrypted KRL distribution so decryption is ALWAYS local on t
 - [ ] #2 A host decrypts the payload ENTIRELY locally with its private key - no network or KMS call - and recovers the exact plaintext; a backend-encrypt -> Go-client-decrypt vector test proves cross-implementation interop of the pinned envelope
 - [ ] #3 The KMS-resident path is retired: registerHostEciesKey KMS keypair generation and kms_pubkey_id encryption are removed/repurposed, existing hosts are migrated, and decision-013's KMS-resident model is marked superseded by decision-015
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add backend/src/crypto/ssh/ecies.ts: native ECIES v1 (encrypt to OpenSSH ecdsa-sha2-nistp256 pubkey; decrypt for tests) matching the KRLC-02a pinned envelope.
+2. Rewrite POST /api/v1/external/ssh/krl to encrypt natively to host.opensshHostPubkey (require ecdsa nistp256; clear NOT_PROVISIONED for ed25519); drop KMS eciesEncrypt.
+3. Retire KMS-resident keypair gen: repurpose /register-host-pubkey + registerEciesKey (no KMS CreateKeyPair); stop using kms_pubkey_id for encryption.
+4. Pin the wire format in a checked-in doc; write ecies unit tests + update ssh-ecies integration test to decrypt with the host SSH key.
+5. pnpm -C backend typecheck + test.
+<!-- SECTION:PLAN:END -->
