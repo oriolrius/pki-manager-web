@@ -25,6 +25,7 @@ type Config struct {
 	Insecure  bool          // disable TLS verification (dev only)
 	Timeout   time.Duration // per-request timeout
 	Retries   int           // network/5xx retries
+	ClockSkew time.Duration // leeway when checking valid_until
 	DryRun    bool          // fetch/decrypt but do not install
 }
 
@@ -46,6 +47,7 @@ func Parse(args []string, version string) (*Config, error) {
 	fs.BoolVar(&cfg.Insecure, "insecure", false, "disable TLS certificate verification (DANGEROUS; dev only)")
 	fs.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "per-request timeout")
 	fs.IntVar(&cfg.Retries, "retries", 3, "retries on network errors / 5xx")
+	fs.DurationVar(&cfg.ClockSkew, "clock-skew", 300*time.Second, "leeway when checking payload valid_until")
 	fs.BoolVar(&cfg.DryRun, "dry-run", false, "fetch/decrypt but do not write the KRL file")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 

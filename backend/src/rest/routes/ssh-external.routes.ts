@@ -224,6 +224,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         krl: Buffer.from(row.krlBlob).toString('base64'),
         ca_signature: row.caSignature ? Buffer.from(row.caSignature).toString('base64') : null,
         krl_version: version,
+        krl_number: row.krlNumber, // monotonic per-CA counter — client anti-rollback (KRLC-05)
         valid_until: Math.floor(Date.now() / 1000) + KRL_VALID_FOR_SECONDS,
         host_id: hostId,
       })
