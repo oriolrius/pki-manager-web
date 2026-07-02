@@ -1,10 +1,11 @@
 ---
 id: TASK-159
 title: 'KRLC-01: Scaffold krl-client Go module, flat layout, Makefile'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:13'
-updated_date: '2026-07-02 07:59'
+updated_date: '2026-07-02 08:44'
 labels:
   - ssh-cert-manager
   - automation
@@ -22,7 +23,13 @@ Create the new top-level Go module krl-client/ (module github.com/oriolrius/pki-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 make build and make vet succeed from inside krl-client/, producing a binary whose --version prints the value injected via -ldflags -X main.version=... (dev/empty when unset)
-- [ ] #2 make build-static emits dist/krl-client-linux-amd64 that file(1) reports as a statically linked ELF amd64 executable with no dynamic dependencies
-- [ ] #3 go.mod declares module github.com/oriolrius/pki-manager-krl-client at go 1.26 (latest), the only external dependency is golang.org/x/crypto (for x/crypto/ssh; hkdf/ecdh/ecdsa/aes are stdlib), and every internal/* package skeleton compiles
+- [x] #1 make build and make vet succeed from inside krl-client/, producing a binary whose --version prints the value injected via -ldflags -X main.version=... (dev/empty when unset)
+- [x] #2 make build-static emits dist/krl-client-linux-amd64 that file(1) reports as a statically linked ELF amd64 executable with no dynamic dependencies
+- [x] #3 go.mod declares module github.com/oriolrius/pki-manager-krl-client at go 1.26 (latest), the only external dependency is golang.org/x/crypto (for x/crypto/ssh; hkdf/ecdh/ecdsa/aes are stdlib), and every internal/* package skeleton compiles
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Scaffolded krl-client/ Go module (github.com/oriolrius/pki-manager-krl-client, go 1.26, flat layout: main.go + internal/{config,krlclient,decrypt,app,exitcodes}, Makefile). make build/vet ok; --version prints the -ldflags injected value; make build-static -> statically linked ELF x86-64 (confirmed by file(1)). Only external dep is golang.org/x/crypto (x/crypto/ssh); hkdf/ecdh/ecdsa/aes are stdlib (go 1.26). Committed 59fcbb3 on feat/krl-client.
+<!-- SECTION:NOTES:END -->
