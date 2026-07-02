@@ -44,6 +44,11 @@ const (
 	DefaultRetries    = 3
 	DefaultClockSkew  = 300 * time.Second
 	DefaultLogFormat  = "text"
+	// DefaultMaxResponseBytes caps the encrypted KRL response body. A per-host
+	// ECIES-wrapped KRL is orders of magnitude smaller; the ceiling only exists to
+	// stop a hostile/compromised endpoint from streaming an unbounded body into
+	// memory (krl-client runs as root from cron/systemd).
+	DefaultMaxResponseBytes = 8 << 20 // 8 MiB
 )
 
 // envPrefix is prepended to the UPPER_SNAKE_CASE of each flag name to form the
@@ -51,19 +56,20 @@ const (
 const envPrefix = "KRL_CLIENT_"
 
 type Config struct {
-	ServerURL     string        // PKI-Manager base URL (required)
-	HostID        string        // host FQDN sent in the body (default: `hostname -f`)
-	HostKey       string        // host's ecdsa ECIES private key (local decrypt)
-	KRLFile       string        // install target (sshd RevokedKeys)
-	CAPubkey      string        // CA public key for detached-signature verify
-	StateDir      string        // version/state cache
-	CABundle      string        // TLS roots (PEM); empty = system roots
-	Insecure      bool          // disable TLS verification (dev only)
-	AllowUnsigned bool          // install even when ca_signature is null
-	Timeout       time.Duration // per-request timeout
-	Retries       int           // network/5xx retries
-	ClockSkew     time.Duration // leeway when checking valid_until
-	DryRun        bool          // fetch/decrypt but do not install
+	ServerURL        string        // PKI-Manager base URL (required)
+	HostID           string        // host FQDN sent in the body (default: `hostname -f`)
+	HostKey          string        // host's ecdsa ECIES private key (local decrypt)
+	KRLFile          string        // install target (sshd RevokedKeys)
+	CAPubkey         string        // CA public key for detached-signature verify
+	StateDir         string        // version/state cache
+	CABundle         string        // TLS roots (PEM); empty = system roots
+	Insecure         bool          // disable TLS verification (dev only)
+	AllowUnsigned    bool          // install even when ca_signature is null
+	Timeout          time.Duration // per-request timeout
+	Retries          int           // network/5xx retries
+	MaxResponseBytes int           // max accepted size (bytes) of the encrypted KRL response body
+	ClockSkew        time.Duration // leeway when checking valid_until
+	DryRun           bool          // fetch/decrypt but do not install
 
 	// Observability + run-mode surface (behaviour wired in KRLC-09).
 	Quiet     bool   // warnings+errors only (cron-friendly)
@@ -104,6 +110,7 @@ func parse(args []string, version string, getenv func(string) string, readFile f
 	fs.BoolVar(&raw.AllowUnsigned, "allow-unsigned", false, "install even when the payload ca_signature is null")
 	fs.DurationVar(&raw.Timeout, "timeout", DefaultTimeout, "per-request timeout")
 	fs.IntVar(&raw.Retries, "retries", DefaultRetries, "retries on network errors / 5xx")
+	fs.IntVar(&raw.MaxResponseBytes, "max-response-bytes", DefaultMaxResponseBytes, "maximum accepted size in bytes of the encrypted KRL response body")
 	fs.DurationVar(&raw.ClockSkew, "clock-skew", DefaultClockSkew, "leeway when checking payload valid_until")
 	fs.BoolVar(&raw.DryRun, "dry-run", false, "fetch/decrypt but do not write the KRL file")
 	fs.BoolVar(&raw.Quiet, "quiet", false, "log warnings and errors only (cron-friendly)")
@@ -200,25 +207,26 @@ func parse(args []string, version string, getenv func(string) string, readFile f
 	}
 
 	cfg := &Config{
-		ConfigPath:    configPath,
-		ServerURL:     str("server-url", "server-url", raw.ServerURL, ""),
-		HostID:        str("host-id", "host-id", raw.HostID, ""),
-		HostKey:       str("host-key", "host-key", raw.HostKey, DefaultHostKey),
-		KRLFile:       str("krl-file", "krl-file", raw.KRLFile, DefaultKRLFile),
-		CAPubkey:      str("ca-pubkey", "ca-pubkey", raw.CAPubkey, DefaultCAPubkey),
-		StateDir:      str("state-dir", "state-dir", raw.StateDir, DefaultStateDir),
-		CABundle:      str("ca-bundle", "ca-bundle", raw.CABundle, ""),
-		Insecure:      boolean("insecure", "insecure", raw.Insecure, false),
-		AllowUnsigned: boolean("allow-unsigned", "allow-unsigned", raw.AllowUnsigned, false),
-		Timeout:       dur("timeout", "timeout", raw.Timeout, DefaultTimeout),
-		Retries:       integer("retries", "retries", raw.Retries, DefaultRetries),
-		ClockSkew:     dur("clock-skew", "clock-skew", raw.ClockSkew, DefaultClockSkew),
-		DryRun:        boolean("dry-run", "dry-run", raw.DryRun, false),
-		Quiet:         boolean("quiet", "quiet", raw.Quiet, false),
-		Verbose:       boolean("verbose", "verbose", raw.Verbose, false),
-		LogFormat:     str("log-format", "log-format", raw.LogFormat, DefaultLogFormat),
-		Systemd:       boolean("systemd", "systemd", raw.Systemd, false),
-		Oneshot:       boolean("oneshot", "oneshot", raw.Oneshot, false),
+		ConfigPath:       configPath,
+		ServerURL:        str("server-url", "server-url", raw.ServerURL, ""),
+		HostID:           str("host-id", "host-id", raw.HostID, ""),
+		HostKey:          str("host-key", "host-key", raw.HostKey, DefaultHostKey),
+		KRLFile:          str("krl-file", "krl-file", raw.KRLFile, DefaultKRLFile),
+		CAPubkey:         str("ca-pubkey", "ca-pubkey", raw.CAPubkey, DefaultCAPubkey),
+		StateDir:         str("state-dir", "state-dir", raw.StateDir, DefaultStateDir),
+		CABundle:         str("ca-bundle", "ca-bundle", raw.CABundle, ""),
+		Insecure:         boolean("insecure", "insecure", raw.Insecure, false),
+		AllowUnsigned:    boolean("allow-unsigned", "allow-unsigned", raw.AllowUnsigned, false),
+		Timeout:          dur("timeout", "timeout", raw.Timeout, DefaultTimeout),
+		Retries:          integer("retries", "retries", raw.Retries, DefaultRetries),
+		MaxResponseBytes: integer("max-response-bytes", "max-response-bytes", raw.MaxResponseBytes, DefaultMaxResponseBytes),
+		ClockSkew:        dur("clock-skew", "clock-skew", raw.ClockSkew, DefaultClockSkew),
+		DryRun:           boolean("dry-run", "dry-run", raw.DryRun, false),
+		Quiet:            boolean("quiet", "quiet", raw.Quiet, false),
+		Verbose:          boolean("verbose", "verbose", raw.Verbose, false),
+		LogFormat:        str("log-format", "log-format", raw.LogFormat, DefaultLogFormat),
+		Systemd:          boolean("systemd", "systemd", raw.Systemd, false),
+		Oneshot:          boolean("oneshot", "oneshot", raw.Oneshot, false),
 	}
 
 	// host-id defaults to the machine FQDN (`hostname -f`) only when no source set it.
@@ -253,6 +261,9 @@ func parse(args []string, version string, getenv func(string) string, readFile f
 	}
 	if cfg.Retries < 0 {
 		addErr("--retries must be >= 0 (got %d)", cfg.Retries)
+	}
+	if cfg.MaxResponseBytes <= 0 {
+		addErr("--max-response-bytes must be > 0 (got %d)", cfg.MaxResponseBytes)
 	}
 	if cfg.Timeout <= 0 {
 		addErr("--timeout must be > 0 (got %s)", cfg.Timeout)

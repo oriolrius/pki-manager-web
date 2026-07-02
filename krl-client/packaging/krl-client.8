@@ -95,6 +95,13 @@ Per-request timeout. Default:
 Retries on network errors / 5xx. Default:
 .BR 3 .
 .TP
+.BI \-\-max-response-bytes " N"
+Maximum accepted size, in bytes, of the encrypted KRL response body. An oversized
+response fails closed (exit
+.BR 2 )
+rather than being buffered into memory. Default:
+.BR 8388608 " (8 MiB)."
+.TP
 .BI \-\-clock-skew " DUR"
 Leeway when checking payload
 .IR valid_until .
