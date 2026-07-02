@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:15'
-updated_date: '2026-07-02 15:44'
+updated_date: '2026-07-02 15:52'
 labels:
   - ssh-cert-manager
   - automation
@@ -29,10 +29,12 @@ Author the full Go test suite: table-driven unit tests per package plus an end-t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 go test ./... -race passes; the integration test drives a full fetch->local-decrypt->validate->verify->install cycle against the fake PKI and asserts a 0444 file plus the correct persisted state
-- [ ] #2 A second poll with the cached version returns 304 and performs no write; anti-rollback, bad-signature, expired, host-mismatch, and null-signature-without-allow-unsigned cases each assert their exit codes (8,4,5,6,4)
-- [ ] #3 An ssh-keygen -Q check against the installed golden KRL reports the revoked test key as revoked (byte-compatibility with real OpenSSH tooling)
+- [x] #1 go test ./... -race passes; the integration test drives a full fetch->local-decrypt->validate->verify->install cycle against the fake PKI and asserts a 0444 file plus the correct persisted state
+- [x] #2 A second poll with the cached version returns 304 and performs no write; anti-rollback, bad-signature, expired, host-mismatch, and null-signature-without-allow-unsigned cases each assert their exit codes (8,4,5,6,4)
+- [x] #3 An ssh-keygen -Q check against the installed golden KRL reports the revoked test key as revoked (byte-compatibility with real OpenSSH tooling)
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
