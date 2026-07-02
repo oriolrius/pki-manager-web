@@ -1,7 +1,7 @@
 ---
 id: TASK-166
 title: 'KRLC-08: CLI/flags/config/env + documented exit codes'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:14'
@@ -29,8 +29,6 @@ Implement internal/config and wire main.go/internal/app with a full flag set who
 - [x] #3 Each terminal condition returns its documented exit code (updated/up-to-date=0, network=2, decrypt=3, verify=4, expired=5, host-mismatch=6, install=7, version/anti-rollback=8, not-provisioned/disabled=9, rate-limited=10)
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -42,3 +40,22 @@ Implement internal/config and wire main.go/internal/app with a full flag set who
 6. Wire main.go to honor coded config errors; README with flag + exit-code tables
 7. Tests: config precedence/validation, exit-code contract, CLI smoke
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+KRLC-08: full CLI/flags/config/env surface + documented exit codes.
+
+What changed:
+- internal/config rewritten: layered precedence flag > env KRL_CLIENT_* > config file > default, implemented via flag.Visit (only explicitly-set flags override lower layers) + typed resolvers (str/bool/int/dur). Injectable getenv/readFile for hermetic tests.
+- New flags: --quiet --verbose --log-format(text|json) --systemd --oneshot --config --version, on top of the existing set. --systemd forces json (conflicting explicit --log-format=text is rejected).
+- internal/config/configfile.go: strict flat-YAML parser (key: value, # line/inline comments, quoted scalars); rejects unknown/duplicate keys, nesting, sequences, missing colon, unterminated quotes.
+- Path defaults derive from backend/src/services/ssh-config.ts canonical constants (host-key=/etc/ssh/ssh_host_ecdsa_key, ca-pubkey=/etc/ssh/ssh-user-ca.pub, krl-file=/etc/ssh/revoked_keys); host-id defaults to `hostname -f`. Net: a host from the generated 60-ssh-ca.conf runs with ONLY --server-url.
+- Validation: required server-url + host-id; mutually-exclusive --quiet/--verbose, --insecure/--ca-bundle, --systemd/--log-format=text; log-format enum; retries>=0/timeout>0/clock-skew>=0. All config failures return exitcodes.Usage(1); no secret on argv.
+- main.go honors coded *exitcodes.Error from config.
+- README.md: flag reference (flag/env/config-key/default), precedence, config-file example, and the documented 0..10 exit-code table.
+
+Exit codes (AC#3) already emitted across packages; pinned by exitcodes_test.go to 0 ok,1 usage,2 net,3 decrypt,4 verify,5 expired,6 host-mismatch,7 install,8 version/anti-rollback,9 not-provisioned,10 rate-limited.
+
+Tests: internal/config/config_test.go (defaults-from-canonical, precedence for server-url/host-key/host-id, typed env, config-file valid+6 rejections, required+mutual-exclusion, systemd->json, version, explicit-missing-config). 55 client tests pass -race; go vet + gofmt clean. CLI smoke: --version=0, missing/mx/bad-format=1, network=2.
+<!-- SECTION:NOTES:END -->
