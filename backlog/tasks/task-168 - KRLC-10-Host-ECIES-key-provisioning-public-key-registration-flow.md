@@ -3,10 +3,11 @@ id: TASK-168
 title: >-
   KRLC-10: Reuse the SSH host key for ECIES + ensure an ecdsa-nistp256 host
   pubkey is registered
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:15'
-updated_date: '2026-07-01 07:44'
+updated_date: '2026-07-02 15:31'
 labels:
   - ssh-cert-manager
   - automation
@@ -31,3 +32,13 @@ In the default model the client decrypts with the host's EXISTING SSH host key (
 - [ ] #2 For a host without a registered P-256 public key, onboarding surfaces a clear, actionable step (register /etc/ssh/ssh_host_ecdsa_key.pub) instead of a cryptic decrypt failure
 - [ ] #3 An optional dedicated-ECIES-key mode is available via --host-key (key kept 0600, never transmitted) for operators who prefer not to reuse the SSH host key
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. keygen subcommand (internal/keygen) + wire into main.go; own default path (never clobber ssh_host_ecdsa_key), 0600 priv + 0644 .pub, print pubkey + register instructions (AC#3)
+2. Actionable errors: decrypt.LoadHostKey (missing/ed25519 fallback), decrypt.Open (AEAD mismatch -> register .pub), krlclient 404 hint (AC#2)
+3. Tests: keygen round-trip + refuse-overwrite; decrypt message assertions; dedicated-key end-to-end run; 404 actionable message
+4. README: dedicated-ECIES-key mode + ed25519 fallback docs
+5. go test ./... -race + go vet
+<!-- SECTION:PLAN:END -->
