@@ -1,0 +1,108 @@
+name: krl-client
+
+# Mirrors k8s-issuer.yml (setup-go / cosign / syft style) and reuses the
+# docker-build.yml v*.*.* tag trigger. Branch pushes are path-gated; tag pushes
+# fire regardless of paths (GitHub ignores path filters for tag pushes) so the
+# release job always runs for a vX.Y.Z tag.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'krl-client/**'
+      - '.github/workflows/krl-client.yml'
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    paths:
+      - 'krl-client/**'
+      - '.github/workflows/krl-client.yml'
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: krl-client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: krl-client/go.sum
+
+      - run: go mod download
+      - run: go vet ./...
+      - run: go test ./... -race -covermode=atomic -coverprofile=coverage.out -count=1
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: krl-client-coverage
+          path: krl-client/coverage.out
+          if-no-files-found: error
+
+  release:
+    needs: ci
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub Release + upload assets
+      id-token: write    # keyless cosign OIDC (Fulcio/Rekor)
+    defaults:
+      run:
+        working-directory: krl-client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: krl-client/go.sum
+
+      # Static, CGO-disabled linux/amd64 binary (tests above use -race, this
+      # release build does not). Version rides the cz-bump vX.Y.Z tag.
+      - name: Build static linux/amd64 binary
+        run: make build-static VERSION="${GITHUB_REF_NAME}"
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          sha256sum krl-client-linux-amd64 | tee checksums.txt
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign binary (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          cosign sign-blob --yes \
+            --output-signature dist/krl-client-linux-amd64.sig \
+            --output-certificate dist/krl-client-linux-amd64.pem \
+            dist/krl-client-linux-amd64
+
+      - name: Generate SBOM (SPDX) with syft
+        uses: anchore/sbom-action@v0
+        with:
+          file: krl-client/dist/krl-client-linux-amd64
+          format: spdx-json
+          output-file: krl-client/dist/krl-client-linux-amd64.spdx.json
+          upload-artifact: false
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: |
+            krl-client/dist/krl-client-linux-amd64
+            krl-client/dist/checksums.txt
+            krl-client/dist/krl-client-linux-amd64.sig
+            krl-client/dist/krl-client-linux-amd64.pem
+            krl-client/dist/krl-client-linux-amd64.spdx.json
