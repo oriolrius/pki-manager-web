@@ -224,7 +224,9 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         krl: Buffer.from(row.krlBlob).toString('base64'),
         ca_signature: row.caSignature ? Buffer.from(row.caSignature).toString('base64') : null,
         krl_version: version,
-        krl_number: row.krlNumber, // monotonic per-CA counter — client anti-rollback (KRLC-05)
+        // Anti-rollback (KRLC-05 / TASK-175) reads the monotonic number from the
+        // SIGNED KRL header (buildKrl embeds row.krlNumber as krl_version), not from
+        // an unsigned JSON field — so a compromised server cannot inflate it.
         valid_until: Math.floor(Date.now() / 1000) + KRL_VALID_FOR_SECONDS,
         host_id: hostId,
       })

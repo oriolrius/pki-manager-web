@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -52,6 +53,20 @@ type fixture struct {
 	caKey       *ecdsa.PrivateKey // signer for re-signing custom payloads (AC#2 cases)
 }
 
+// testKRL wraps trailer in a minimal but structurally-valid OpenSSH KRL header
+// (PROTOCOL.krl) carrying `number` as the krl_version. The client reads the
+// anti-rollback number from these signed bytes, never from the JSON (TASK-175).
+func testKRL(number int64, trailer []byte) []byte {
+	b := []byte{0x53, 0x53, 0x48, 0x4b, 0x52, 0x4c, 0x0a, 0x00} // "SSHKRL\n\0"
+	b = binary.BigEndian.AppendUint32(b, 1)                     // format_version
+	b = binary.BigEndian.AppendUint64(b, uint64(number))        // krl_version
+	b = binary.BigEndian.AppendUint64(b, 0)                     // generated_date
+	b = binary.BigEndian.AppendUint64(b, 0)                     // flags
+	b = binary.BigEndian.AppendUint32(b, 0)                     // reserved (empty string)
+	b = binary.BigEndian.AppendUint32(b, 0)                     // comment (empty string)
+	return append(b, trailer...)
+}
+
 // newFixture generates keys, signs a KRL, and seals the payload to the host key.
 func newFixture(t *testing.T, hostID string, krlNumber int64) *fixture {
 	t.Helper()
@@ -90,8 +105,9 @@ func newFixture(t *testing.T, hostID string, krlNumber int64) *fixture {
 		t.Fatal(err)
 	}
 
-	// KRL blob + version + detached CA signature (ECDSA-P256 DER over sha256(krl)).
-	krl := []byte("SSHKRL-SECRET-REVOCATION-BLOB-0123456789abcdef")
+	// KRL blob (real OpenSSH KRL header carrying krlNumber) + version + detached
+	// CA signature (ECDSA-P256 DER over sha256(krl)).
+	krl := testKRL(krlNumber, []byte("REVOCATION-BLOB-0123456789abcdef"))
 	sum := sha256.Sum256(krl)
 	version := "sha256:" + hex.EncodeToString(sum[:])
 	sig, err := ecdsa.SignASN1(rand.Reader, caEC, sum[:])
@@ -104,7 +120,6 @@ func newFixture(t *testing.T, hostID string, krlNumber int64) *fixture {
 		"krl":          base64.StdEncoding.EncodeToString(krl),
 		"ca_signature": sigB64,
 		"krl_version":  version,
-		"krl_number":   krlNumber,
 		"valid_until":  int64(9999999999),
 		"host_id":      hostID,
 	})
