@@ -23,10 +23,3 @@ ordinal: 2
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Rebuild the SSH-24 encrypted KRL distribution so decryption is ALWAYS local on the host and the KMS is NEVER involved in en/decrypting the KRL. Replace the current KMS-resident model (registerHostEciesKey -> KMIP CreateKeyPair inside the KMS; POST /api/v1/external/ssh/krl -> KMIP Encrypt to ssh_hosts.kms_pubkey_id; host decrypts by CALLING the KMS) with a NATIVE backend implementation (node:crypto) that encrypts the payload to the host's OWN public key: by default the host's already-registered ECDSA nistp256 SSH host public key (ssh_hosts.opensshHostPubkey), or a host-supplied dedicated ECIES pubkey. Pin a standard, cross-implementation ECIES envelope (P-256 + HKDF-SHA256 + AES-256-GCM; framing ephemeral-pubkey || nonce || ciphertext || tag) as the interop contract the Go client implements. Remove the KMS Encrypt/Decrypt/CreateKeyPair calls from this path, drop/repurpose ssh_hosts.kms_pubkey_id, and migrate existing hosts (re-derive from opensshHostPubkey or re-register). No cosmian/KMS dependency anywhere in the KRL en/decrypt path. This SUPERSEDES the KMS-resident 'adopted model' of decision-013 and the KMS-decrypt parts of SSH-15 (TASK-133) and SSH-24 (TASK-145). The detached CA signature over the KRL is unchanged (separate from ECIES). Write audit_log rows.
 <!-- SECTION:DESCRIPTION:END -->
-
-## Acceptance Criteria
-<!-- AC:BEGIN -->
-- [ ] #1 POST /api/v1/external/ssh/krl for an ecdsa-sha2-nistp256 host encrypts to that host's ALREADY-REGISTERED opensshHostPubkey; the ciphertext decrypts with the host's local /etc/ssh/ssh_host_ecdsa_key with NO new key material or registration step
-- [ ] #2 The ECIES envelope (P-256, HKDF-SHA256, AES-256-GCM, framing ephemeral-pubkey||nonce||ciphertext||tag) is specified in a checked-in wire-format doc and covered by an encrypt->decrypt vector test, independent of Cosmian's opaque ECIES
-- [ ] #3 A host whose registered key is ed25519 (no P-256) is handled explicitly - it can register its ecdsa host pubkey for the ECIES path, else the fetch returns a clear NOT_PROVISIONED error; registration and each KRL fetch write an audit_log row
-<!-- AC:END -->
