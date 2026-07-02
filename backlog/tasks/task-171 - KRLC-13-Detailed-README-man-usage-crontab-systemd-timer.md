@@ -1,10 +1,11 @@
 ---
 id: TASK-171
 title: 'KRLC-13: Detailed README + man/usage + crontab + systemd timer'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:16'
-updated_date: '2026-07-01 07:44'
+updated_date: '2026-07-02 16:06'
 labels:
   - ssh-cert-manager
   - automation
