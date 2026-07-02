@@ -3,9 +3,11 @@ id: TASK-163
 title: >-
   KRLC-05: Payload validation - host_id / valid_until / version + sha256 +
   anti-rollback
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:14'
+updated_date: '2026-07-02 14:37'
 labels:
   - ssh-cert-manager
   - automation
