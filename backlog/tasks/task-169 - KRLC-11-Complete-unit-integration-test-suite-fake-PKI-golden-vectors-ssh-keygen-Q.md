@@ -33,3 +33,14 @@ Author the full Go test suite: table-driven unit tests per package plus an end-t
 - [ ] #2 A second poll with the cached version returns 304 and performs no write; anti-rollback, bad-signature, expired, host-mismatch, and null-signature-without-allow-unsigned cases each assert their exit codes (8,4,5,6,4)
 - [ ] #3 An ssh-keygen -Q check against the installed golden KRL reports the revoked test key as revoked (byte-compatibility with real OpenSSH tooling)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Generate backend-produced golden vectors in testdata/golden (Node eciesEncryptV1 + real ssh-keygen KRL): host key, ca.pub, DER CA sig, ciphertext.bin, real KRL, revoked/valid pubkeys, meta.
+2. Commit a reproducible generator script under testdata/gen.
+3. Golden integration test (AC1): full fetch->decrypt(backend ct)->validate->verify->install cycle; assert 0444 file + persisted state (version/number/sha256).
+4. Exit-code table test (AC2): anti-rollback=8, bad-sig=4, expired=5, host-mismatch=6, null-sig=4 (+ allow-unsigned happy path), each asserting summary outcome=error and exit code.
+5. ssh-keygen -Q check (AC3): after install, revoked.pub reports REVOKED (exit1), valid.pub reports ok (exit0); skip if ssh-keygen absent.
+6. Run go test ./... -race -covermode=atomic; document vectors in testdata README; check ACs; notes; Done.
+<!-- SECTION:PLAN:END -->
