@@ -26,3 +26,6 @@ pki/
 
 # Database files
 *.db
+
+# Engram local tooling state
+.engram/
