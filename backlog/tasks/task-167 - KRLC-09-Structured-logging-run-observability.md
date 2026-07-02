@@ -1,7 +1,7 @@
 ---
 id: TASK-167
 title: 'KRLC-09: Structured logging + run observability'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:14'
