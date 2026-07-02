@@ -191,6 +191,10 @@ caught in CI.
 Mutually-exclusive combinations are rejected (`--quiet`+`--verbose`,
 `--insecure`+`--ca-bundle`, `--systemd`+`--log-format=text`).
 
+`--insecure` disables TLS verification and is for development only; when it is in
+effect the client emits a `WARN` (`event=insecure_tls`) on **every** run — it
+surfaces even under `--quiet` — so a host is never silently left unverified.
+
 ### Config file
 
 A deliberately small flat subset of YAML — one `key: value` per line, `#`

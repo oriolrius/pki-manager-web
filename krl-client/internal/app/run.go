@@ -82,6 +82,14 @@ func (s *summary) execute(cfg *config.Config, log *slog.Logger) exitcodes.Code {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 
+	// Surface a disabled-TLS run on EVERY cycle. Warn level so it appears even
+	// under --quiet (which keeps warnings and errors) — an operator must never
+	// silently run without verifying the server's identity.
+	if cfg.Insecure {
+		log.Warn("TLS certificate verification is DISABLED (--insecure) — the server's identity is not verified; use only in development",
+			"event", "insecure_tls", "insecure", true)
+	}
+
 	log.Debug("run starting", "host_id", cfg.HostID, "server_url", cfg.ServerURL,
 		"krl_file", cfg.KRLFile, "dry_run", cfg.DryRun)
 

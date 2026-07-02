@@ -81,6 +81,13 @@ TLS CA bundle (PEM) pinning the server. Default: system roots.
 .B \-\-insecure
 Disable TLS verification (DANGEROUS; dev only). Mutually exclusive with
 .BR \-\-ca-bundle .
+While in effect, a
+.B WARN
+event
+.RB ( event=insecure_tls )
+is logged on every run \(em surfacing even under
+.B \-\-quiet
+\(em so the host is never silently left unverified.
 .TP
 .B \-\-allow-unsigned
 Install even when the payload
