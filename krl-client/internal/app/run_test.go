@@ -379,6 +379,40 @@ func TestQuietSilentOnSuccessVerboseAddsSteps(t *testing.T) {
 	}
 }
 
+// TASK-176 — with TLS verification disabled the run emits a WARN on every cycle
+// (it surfaces even under --quiet), so an operator can never silently run without
+// verifying the server; a verified run emits no such warning.
+func TestInsecureTLSEmitsWarning(t *testing.T) {
+	f := newFixture(t, "web01.example.com", 5)
+	srv := f.serve(t)
+	defer srv.Close()
+
+	// Insecure + --quiet: the warning must still surface.
+	cfg := f.cfg(srv.URL, "json")
+	cfg.Insecure = true
+	var buf bytes.Buffer
+	if code := run(cfg, bufLogger(&buf, logx.Options{Quiet: true})); code != exitcodes.OK {
+		t.Fatalf("insecure run exit = %d\n%s", code, buf.String())
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"event":"insecure_tls"`) ||
+		!strings.Contains(strings.ToLower(out), "verification is disabled") {
+		t.Errorf("expected an insecure-TLS WARN event under --quiet, got:\n%s", out)
+	}
+
+	// A verified run (Insecure=false) emits no insecure warning.
+	g := newFixture(t, "web02.example.com", 3)
+	gsrv := g.serve(t)
+	defer gsrv.Close()
+	var buf2 bytes.Buffer
+	if code := run(g.cfg(gsrv.URL, "json"), bufLogger(&buf2, logx.Options{Verbose: true})); code != exitcodes.OK {
+		t.Fatalf("verified run exit = %d\n%s", code, buf2.String())
+	}
+	if strings.Contains(buf2.String(), "insecure_tls") {
+		t.Errorf("verified run must not emit an insecure warning, got:\n%s", buf2.String())
+	}
+}
+
 func assertField(t *testing.T, obj map[string]any, key, want string) {
 	t.Helper()
 	if got, _ := obj[key].(string); got != want {
