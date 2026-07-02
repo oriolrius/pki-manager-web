@@ -3,9 +3,11 @@ id: TASK-169
 title: >-
   KRLC-11: Complete unit + integration test suite (fake PKI + golden vectors +
   ssh-keygen -Q)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:15'
+updated_date: '2026-07-02 15:44'
 labels:
   - ssh-cert-manager
   - automation
