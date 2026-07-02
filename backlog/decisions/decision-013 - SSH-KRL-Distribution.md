@@ -4,6 +4,16 @@ title: SSH KRL Distribution
 date: '2026-06-29 15:48'
 status: Accepted
 ---
+> [!IMPORTANT]
+> **Partially SUPERSEDED by [decision-015 — SSH KRL Client Decryption Model](decision-015%20-%20SSH-KRL-Client-Decryption-Model.md).**
+> The KMS-resident ECIES *adopted model* below — the host's ECIES key living inside the
+> Cosmian KMS and the host decrypting **via the KMS** — is retired by the KRL Client
+> Distribution milestone (doc-007, KRLC-02) in favour of **local-key** decryption: the
+> backend encrypts natively (`node:crypto`) to the host's own SSH host key and the host
+> decrypts in-process, never calling the KMS. **Still in force:** the GUARANTEED bare
+> CA-signed + TLS-served public KRL (SSH-22 / TASK-142) below is unchanged and remains the
+> primary revocation mechanism.
+
 ## Spike outcome (TASK-144, reproducible — `KMS_URL=… npx tsx src/kms/spike-ssh-ecies.ts`)
 
 ECIES is **VIABLE** against the live Cosmian KMS for nistp256 — all probes PASS:
@@ -15,7 +25,7 @@ ECIES is **VIABLE** against the live Cosmian KMS for nistp256 — all probes PAS
 | `ec encrypt` → `ec decrypt` round-trip | PASS (plaintext recovered exactly) |
 | KMIP-JSON `Encrypt`/`Decrypt` (no CLI dependency) | PASS — ECIES round-trips via pure KMIP |
 
-**Adopted model:** the host's ECIES key is a **KMS-resident** EC P-256 keypair tagged
+**Adopted model** *(SUPERSEDED by decision-015 — local-key decryption; retained for history)***:** the host's ECIES key is a **KMS-resident** EC P-256 keypair tagged
 by host (matching `host_puller.sh` `HOST_PRIV_KEY_ID`); the backend stores the public
 key id on `ssh_hosts.kms_pubkey_id` at registration, so no locate-by-tag is needed at
 distribution time. The backend ECIES-encrypts via KMIP `Encrypt` (no CLI dependency);
