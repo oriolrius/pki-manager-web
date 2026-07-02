@@ -4,6 +4,7 @@ title: 'KRLC-01: Scaffold krl-client Go module, flat layout, Makefile'
 status: To Do
 assignee: []
 created_date: '2026-07-01 07:13'
+updated_date: '2026-07-02 07:59'
 labels:
   - ssh-cert-manager
   - automation
@@ -16,7 +17,7 @@ ordinal: 1
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Create the new top-level Go module krl-client/ (module github.com/oriolrius/pki-manager-krl-client, go 1.23.0), a peer to k8s/issuer/. Flat layout: main.go at the module root (no cmd/), plus internal/{config,krlclient,decrypt,payload,verify,installer,state,logx,app} package skeletons, and a Makefile mirroring k8s/issuer/Makefile (build, test, fmt, vet, tidy, and build-static: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags '-s -w -X main.version=$(VERSION)'). main.go exposes a -ldflags-injected `var version string` and a working --version flag. This is the productionization of the SSH-24 host-side puller (TASK-145) into a standalone, shippable single-binary agent.
+Create the new top-level Go module krl-client/ (module github.com/oriolrius/pki-manager-krl-client, go 1.26) with a flat layout: main.go at root (no cmd/), empty internal/{config,krlclient,decrypt,payload,verify,installer,state,logx,app} package skeletons, and a Makefile mirroring k8s/issuer/Makefile (build, test, fmt, vet, tidy, build-static with CGO_ENABLED=0 GOOS=linux GOARCH=amd64 -trimpath -ldflags '-s -w -X main.version=$(VERSION)'). main.go exposes a -ldflags-injected `var version string` and a working --version flag. Target the LATEST Go (1.26) - an intentional divergence from k8s/issuer (Go 1.23), validated by the KRLC-02a spike; this lets the client use stdlib crypto/hkdf (Go 1.24+) and the latest golang.org/x/crypto (the only external dep is x/crypto/ssh, for OpenSSH host-key parsing). No cmd/ dir (matches the issuer convention).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
