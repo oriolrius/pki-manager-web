@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:15'
-updated_date: '2026-07-02 16:03'
+updated_date: '2026-07-02 16:04'
 labels:
   - ssh-cert-manager
   - automation
@@ -25,10 +25,12 @@ Add .github/workflows/krl-client.yml. Triggers: push branches:[main] paths:['krl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 On push/PR touching krl-client/**, CI runs go vet and go test -race with coverage and uploads coverage.out as an artifact
-- [ ] #2 On a vX.Y.Z tag the release job produces krl-client-linux-amd64 (static CGO-disabled amd64, version stamped from GITHUB_REF_NAME), checksums.txt, a cosign .sig+.pem, and an SPDX SBOM, all attached to the GitHub Release for that tag
-- [ ] #3 The workflow mirrors k8s-issuer.yml setup-go/cosign/syft style and reuses docker-build.yml v*.*.* tag trigger; the release binary builds with CGO_ENABLED=0 even though tests use -race
+- [x] #1 On push/PR touching krl-client/**, CI runs go vet and go test -race with coverage and uploads coverage.out as an artifact
+- [x] #2 On a vX.Y.Z tag the release job produces krl-client-linux-amd64 (static CGO-disabled amd64, version stamped from GITHUB_REF_NAME), checksums.txt, a cosign .sig+.pem, and an SPDX SBOM, all attached to the GitHub Release for that tag
+- [x] #3 The workflow mirrors k8s-issuer.yml setup-go/cosign/syft style and reuses docker-build.yml v*.*.* tag trigger; the release binary builds with CGO_ENABLED=0 even though tests use -race
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
