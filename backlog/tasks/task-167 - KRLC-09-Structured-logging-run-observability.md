@@ -1,9 +1,11 @@
 ---
 id: TASK-167
 title: 'KRLC-09: Structured logging + run observability'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:14'
+updated_date: '2026-07-02 15:20'
 labels:
   - ssh-cert-manager
   - automation
