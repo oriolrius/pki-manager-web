@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:14'
-updated_date: '2026-07-02 15:21'
+updated_date: '2026-07-02 15:25'
 labels:
   - ssh-cert-manager
   - automation
@@ -24,10 +24,12 @@ Implement internal/logx over log/slog: --log-format text (human, default) or jso
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 --log-format json emits parseable JSON (each line a valid object) with a single summary event including outcome, http_status, krl_version, host_id, and exit_code for the run
-- [ ] #2 --quiet suppresses info/debug (only warnings/errors surface) while --verbose adds per-step debug; --systemd implies json output with no ANSI escapes
-- [ ] #3 Secrets are never emitted: key material and raw ciphertext do not appear at any log level (verified by scanning captured output)
+- [x] #1 --log-format json emits parseable JSON (each line a valid object) with a single summary event including outcome, http_status, krl_version, host_id, and exit_code for the run
+- [x] #2 --quiet suppresses info/debug (only warnings/errors surface) while --verbose adds per-step debug; --systemd implies json output with no ANSI escapes
+- [x] #3 Secrets are never emitted: key material and raw ciphertext do not appear at any log level (verified by scanning captured output)
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
