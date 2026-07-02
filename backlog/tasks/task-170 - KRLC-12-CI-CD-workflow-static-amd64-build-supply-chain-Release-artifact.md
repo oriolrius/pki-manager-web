@@ -1,11 +1,11 @@
 ---
 id: TASK-170
 title: 'KRLC-12: CI/CD workflow - static amd64 build + supply chain + Release artifact'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:15'
-updated_date: '2026-07-02 16:04'
+updated_date: '2026-07-02 16:05'
 labels:
   - ssh-cert-manager
   - automation
@@ -30,8 +30,6 @@ Add .github/workflows/krl-client.yml. Triggers: push branches:[main] paths:['krl
 - [x] #3 The workflow mirrors k8s-issuer.yml setup-go/cosign/syft style and reuses docker-build.yml v*.*.* tag trigger; the release binary builds with CGO_ENABLED=0 even though tests use -race
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -41,3 +39,17 @@ Add .github/workflows/krl-client.yml. Triggers: push branches:[main] paths:['krl
 4. Mirror k8s-issuer.yml setup-go/cosign/syft style; reuse docker-build.yml v*.*.* tag trigger
 5. Validate YAML (actionlint if available) + locally prove go vet/test-race and make build-static succeed
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added .github/workflows/krl-client.yml (KRLC-12 CI/CD).
+
+Triggers: push branches:[main]+paths(krl-client/**, workflow) & tags:[v*.*.*]; pull_request(same paths); workflow_dispatch. Confirmed GitHub ignores path filters on tag pushes, so declaring branches+paths+tags together path-gates branch runs while letting every vX.Y.Z tag fire the release job (community #26273).
+
+ci job (wd krl-client, permissions contents:read): actions/setup-go@v5 go 1.26 + cache on krl-client/go.sum -> go mod download, go vet ./..., go test ./... -race -covermode=atomic -coverprofile=coverage.out -count=1 -> actions/upload-artifact@v4 (krl-client-coverage, if-no-files-found:error).
+
+release job (needs: ci, if startsWith(github.ref,'refs/tags/v'), permissions contents:write id-token:write): make build-static VERSION=${GITHUB_REF_NAME} (CGO_ENABLED=0 GOOS=linux GOARCH=amd64 -trimpath -ldflags '-s -w -X main.version=...') -> sha256sum checksums.txt -> sigstore/cosign-installer@v3 + cosign sign-blob --yes keyless (.sig + .pem) -> anchore/sbom-action@v0 spdx-json SBOM of the binary -> softprops/action-gh-release@v2 (fail_on_unmatched_files) attaching binary+checksums+.sig+.pem+.spdx.json. Reuses Makefile build-static (annotated 'KRLC-12 CI builds this'); mirrors k8s-issuer.yml setup-go/cosign/syft style.
+
+Local verification: YAML parses; actionlint@v1.7.12 clean (exit 0); go vet clean; go test -race 80/80 pass (12 pkgs); make build-static -> ELF x86-64 statically linked/stripped, 'not a dynamic executable' (CGO off), main.version stamped from tag. Cloud-only steps (cosign keyless OIDC, SBOM gen, release attach) first exercise on a real tag push; usage mirrors the proven k8s-issuer.yml.
+<!-- SECTION:NOTES:END -->
