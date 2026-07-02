@@ -1,0 +1,19 @@
+# /etc/cron.d/krl-client — refresh the OpenSSH KRL every 15 minutes (jittered).
+#
+# Prefer the systemd timer (packaging/krl-client.timer) where available; this is
+# the cron fallback. Install:  install -Dm0644 packaging/crontab.example /etc/cron.d/krl-client
+#
+# Prerequisites (see README):
+#   * /usr/local/bin/krl-client installed and executable
+#   * a CLOCK SYNCED VIA NTP — the client rejects a payload whose valid_until is in
+#     the past; a machine whose clock has drifted will fail every run
+#   * server URL in /etc/krl-client/config.yaml (server-url:) or KRL_CLIENT_SERVER_URL below
+#
+# bash provides $RANDOM for the jitter; dash/sh do not, so pin the shell.
+SHELL=/bin/bash
+KRL_CLIENT_SERVER_URL=https://pki.example.com
+
+# The '\%' is REQUIRED: cron turns an unescaped '%' into a newline. --quiet keeps a
+# successful run silent (no cron mail); a failure still emits its JSON run_summary
+# at ERROR on stderr, which cron mails to root (or MAILTO).
+*/15 * * * * root sleep $((RANDOM \% 300)); /usr/local/bin/krl-client --log-format json --quiet

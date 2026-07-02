@@ -1,0 +1,70 @@
+# /etc/systemd/system/krl-client.service
+#
+# Oneshot unit: fetch, decrypt, verify and atomically install this host's OpenSSH
+# KRL (/etc/ssh/revoked_keys) from PKI Manager. Driven by krl-client.timer.
+#
+# Runs as ROOT: it reads the host private key (/etc/ssh/ssh_host_ecdsa_key, 0600
+# root) to decrypt locally and writes the KRL (0444 root:root). Everything else is
+# locked down by the sandbox directives below.
+#
+# A host provisioned from pki-manager's generated 60-ssh-ca.conf drop-in already
+# has the host key, the User-CA pubkey and the RevokedKeys path in their canonical
+# locations, so only the server URL is needed — drop it in
+# /etc/krl-client/krl-client.env (KRL_CLIENT_SERVER_URL=...) or
+# /etc/krl-client/config.yaml (server-url: ...).
+#
+# Install:
+#   install -m0755 dist/krl-client-linux-amd64 /usr/local/bin/krl-client
+#   install -Dm0644 packaging/krl-client.service /etc/systemd/system/krl-client.service
+#   install -Dm0644 packaging/krl-client.timer   /etc/systemd/system/krl-client.timer
+#   install -Dm0644 packaging/krl-client.env.example /etc/krl-client/krl-client.env  # then edit
+#   systemctl daemon-reload && systemctl enable --now krl-client.timer
+
+[Unit]
+Description=Fetch and install the OpenSSH KRL (revoked_keys) from PKI Manager
+Documentation=https://github.com/oriolrius/pki-manager/blob/main/krl-client/README.md
+# The client validates payload valid_until against the wall clock — a synced clock
+# is a HARD prerequisite (see README "NTP is required"). Order after time-sync so a
+# freshly-booted host does not run before NTP has stepped the clock.
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=oneshot
+# --server-url (and any overrides) come from this env file or /etc/krl-client/config.yaml.
+# The leading '-' makes a missing file non-fatal (config.yaml can supply everything).
+EnvironmentFile=-/etc/krl-client/krl-client.env
+# --systemd forces --log-format=json with no ANSI (journal-friendly, log-shipper ready).
+ExecStart=/usr/local/bin/krl-client --systemd
+
+# --- Sandbox / hardening -----------------------------------------------------
+# Only /etc/ssh (RevokedKeys install target) and the state dir are writable; the
+# rest of the filesystem is read-only. StateDirectory creates+owns /var/lib/krl-client.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/etc/ssh /var/lib/krl-client
+StateDirectory=krl-client
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# The client needs no privilege beyond file ownership (it runs as root); drop all
+# capabilities so a compromise cannot, e.g., load a module or change host time.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

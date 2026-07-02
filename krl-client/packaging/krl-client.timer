@@ -1,0 +1,30 @@
+# /etc/systemd/system/krl-client.timer
+#
+# Fire krl-client.service roughly every 15 minutes, with up to 5 minutes of
+# per-host jitter. Two bounds shape these numbers:
+#
+#   * ssh-mon staleness window: the backend flags a host as "stale pulling" once
+#     2 x its 15m pull interval (= 30 minutes) elapses without a KRL fetch. A 15m
+#     interval + <=5m jitter keeps the worst-case gap around 20m — comfortably
+#     inside the 30m window.
+#   * Server rate limit: the /krl endpoint allows 120 requests / 60s per source
+#     IP. One request every ~15m is orders of magnitude under that, so a fleet
+#     behind one NAT egress IP will not trip it.
+#
+# RandomizedDelaySec spreads a fleet's requests so they don't stampede the server
+# on the same wall-clock boundary. Persistent=true runs a missed cycle once after
+# the machine comes back from being off/asleep.
+
+[Unit]
+Description=Periodically refresh the OpenSSH KRL from PKI Manager
+Documentation=https://github.com/oriolrius/pki-manager/blob/main/krl-client/README.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+RandomizedDelaySec=300
+Persistent=true
+Unit=krl-client.service
+
+[Install]
+WantedBy=timers.target
