@@ -4,6 +4,7 @@ title: 'KRLC-04: Native-Go local ECIES decrypt against the host-held private key
 status: To Do
 assignee: []
 created_date: '2026-07-01 07:14'
+updated_date: '2026-07-02 04:36'
 labels:
   - ssh-cert-manager
   - automation
@@ -12,6 +13,7 @@ milestone: SSH KRL Client Distribution
 dependencies:
   - TASK-160
   - TASK-161
+  - TASK-173
 priority: high
 ordinal: 4
 ---
