@@ -3,9 +3,11 @@ id: TASK-161
 title: >-
   KRLC-03: HTTP client - POST /krl with If-None-Match/304, retries, timeouts,
   TLS
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:14'
+updated_date: '2026-07-02 08:44'
 labels:
   - ssh-cert-manager
   - automation
@@ -24,7 +26,13 @@ Implement internal/krlclient: POST {server-url}/api/v1/external/ssh/krl with Con
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Against a fake server, a first request sends NO If-None-Match and yields the 200 body + X-KRL-Version; a follow-up echoes that exact 'sha256:...' token as If-None-Match and yields a 304 with no body
-- [ ] #2 The client maps 400->exit9, 404->exit9, 429->exit10, 501->exit9, 503->exit2, 500->exit2, and retries transport/5xx up to --retries with backoff before failing exit2
-- [ ] #3 TLS verification is enforced by default (an untrusted cert fails), pinnable via --ca-bundle or bypassable only with --insecure; --timeout aborts a hung request
+- [x] #1 Against a fake server, a first request sends NO If-None-Match and yields the 200 body + X-KRL-Version; a follow-up echoes that exact 'sha256:...' token as If-None-Match and yields a 304 with no body
+- [x] #2 The client maps 400->exit9, 404->exit9, 429->exit10, 501->exit9, 503->exit2, 500->exit2, and retries transport/5xx up to --retries with backoff before failing exit2
+- [x] #3 TLS verification is enforced by default (an untrusted cert fails), pinnable via --ca-bundle or bypassable only with --insecure; --timeout aborts a hung request
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+internal/krlclient: POST /api/v1/external/ssh/krl with body {host_id}, If-None-Match set to the cached krl_version token (not a file hash), reads X-KRL-Version. TLS verified by default; --ca-bundle pins roots, --insecure bypasses; per-request --timeout; bounded --retries with exponential backoff on transport errors + 5xx. Status mapping: 200 body, 304 no-op, 400/404/501->exit9, 429->exit10, 5xx/503/500->exit2 after retries. Tests (httptest): 200-then-304 conditional, status->code table, 5xx-retry-then-success, exhausted-5xx->Network, TLS verification enforced + insecure bypass, --ca-bundle pinning, --timeout abort, server-url required. 13 pkg tests pass with -race. Committed 59fcbb3.
+<!-- SECTION:NOTES:END -->
