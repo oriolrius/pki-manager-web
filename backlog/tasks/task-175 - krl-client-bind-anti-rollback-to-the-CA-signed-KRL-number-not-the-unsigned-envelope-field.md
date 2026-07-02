@@ -3,9 +3,11 @@ id: TASK-175
 title: >-
   krl-client: bind anti-rollback to the CA-signed KRL number, not the unsigned
   envelope field
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-02 16:43'
+updated_date: '2026-07-02 17:11'
 labels:
   - ssh-cert-manager
   - krl-client
