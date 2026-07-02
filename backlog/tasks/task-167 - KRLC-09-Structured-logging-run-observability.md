@@ -29,8 +29,6 @@ Implement internal/logx over log/slog: --log-format text (human, default) or jso
 - [x] #3 Secrets are never emitted: key material and raw ciphertext do not appear at any log level (verified by scanning captured output)
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -40,3 +38,19 @@ Implement internal/logx over log/slog: --log-format text (human, default) or jso
 4. Tests: logx_test.go (levels/format/JSON-parseable/no-ANSI) and app/run_test.go (304 up_to_date summary, error summary, quiet suppresses info, verbose adds debug, full happy-path decrypt+install with output scanned for secrets)
 5. README: document logging/observability + the run_summary schema
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented internal/logx over log/slog and wired structured observability into the run pipeline.
+
+**internal/logx**: Options{Format,Quiet,Verbose,Writer} -> *slog.Logger. Level() maps --quiet->Warn, default->Info, --verbose->Debug (quiet wins if both). text|json handlers; neither emits ANSI (satisfies --systemd no-ANSI, which also forces json at the config layer, already present from KRLC-08).
+
+**internal/app/run.go**: builds the logger from cfg and accumulates a `summary` struct across the pipeline, emitting exactly ONE `run_summary` event per run — INFO on up_to_date|updated (suppressed by --quiet), ERROR on failure (always surfaces). Fields: outcome, http_status, krl_version, krl_number, host_id, dry_run, exit_code (+error on failure). Per-step DEBUG events (fetch/decrypt/validate/verify/install) carry only redacted metadata (byte lengths, versions) — never key material, ciphertext, or plaintext.
+
+**krlclient.Result**: added Status int (200/304) so the summary reports http_status.
+
+**Tests**: internal/logx/logx_test.go (level selection, quiet/verbose gating, JSON-parseable, no-ANSI, text default); internal/app/run_test.go (full happy-path decrypt+verify+install with output scanned for plaintext/base64-KRL/ciphertext/host-key = AC#3; 304 up_to_date summary; error summary surfaces under --quiet; quiet silent on success + verbose adds steps). 65 tests pass, go vet clean, gofmt clean. README documents the logging matrix + run_summary schema.
+
+No change to main.go (app.Run signature unchanged).
+<!-- SECTION:NOTES:END -->
