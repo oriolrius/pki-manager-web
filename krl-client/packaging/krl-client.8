@@ -1,0 +1,189 @@
+.\" Manpage for krl-client. Render:  man ./packaging/krl-client.8
+.\" Install:  install -Dm0644 packaging/krl-client.8 /usr/local/share/man/man8/krl-client.8
+.TH KRL-CLIENT 8 "2026-07-02" "krl-client" "System Administration"
+.SH NAME
+krl-client \- fetch, decrypt, verify and install this host's OpenSSH KRL from PKI Manager
+.SH SYNOPSIS
+.B krl-client
+.B \-\-server-url
+.I URL
+[\fIoptions\fR]
+.br
+.B krl-client keygen
+[\fB\-\-out\fR \fIPATH\fR] [\fB\-\-comment\fR \fIC\fR] [\fB\-\-force\fR]
+.br
+.B krl-client \-\-version
+.SH DESCRIPTION
+.B krl-client
+keeps a machine's OpenSSH key-revocation list current. Each run POSTs the
+per-host encrypted endpoint
+.RB ( /api/v1/external/ssh/krl ),
+decrypts the payload
+.B locally
+with the host's own
+.B ecdsa-sha2-nistp256
+key (the private key never leaves the box; the KMS is never contacted),
+verifies the CA's detached signature, checks the payload's host_id, expiry and
+anti-rollback counter, and
+.B atomically
+installs the KRL at the sshd
+.B RevokedKeys
+path (0444 root:root). It is a oneshot: it runs one cycle and exits with a code
+that a cron or systemd-timer wrapper can alert on.
+.PP
+A conditional request is made with
+.BR If-None-Match :
+the token is the server's
+.I krl_version
+(the value cached from the previous run's
+.B X-KRL-Version
+response header), not a hash of the local file. When the host already holds the
+current KRL the server returns 304 and the run is a no-op (exit 0).
+.PP
+On a host provisioned from PKI Manager's generated
+.B 60-ssh-ca.conf
+sshd drop-in, every on-host path default already matches, so the only required
+flag is
+.BR \-\-server-url .
+.SH OPTIONS
+Each option may also be set via an environment variable
+.RB ( KRL_CLIENT_ " + the flag name upper-cased, " \- " to " _ )
+or a flat-YAML config-file key (the flag name verbatim). Precedence, highest
+first: flag > environment > config file > built-in default.
+.TP
+.BI \-\-server-url " URL"
+PKI Manager base URL.
+.BR Required .
+.TP
+.BI \-\-host-id " FQDN"
+Host FQDN sent in the request body. Default:
+.BR "hostname \-f" .
+.TP
+.BI \-\-host-key " PATH"
+ECDSA private key used for local ECIES decryption. Default:
+.IR /etc/ssh/ssh_host_ecdsa_key .
+.TP
+.BI \-\-ca-pubkey " PATH"
+User-CA public key for detached-signature verification. Default:
+.IR /etc/ssh/ssh-user-ca.pub .
+.TP
+.BI \-\-krl-file " PATH"
+Install target (sshd RevokedKeys). Default:
+.IR /etc/ssh/revoked_keys .
+.TP
+.BI \-\-state-dir " PATH"
+Version/state cache directory. Default:
+.IR /var/lib/krl-client .
+.TP
+.BI \-\-ca-bundle " PATH"
+TLS CA bundle (PEM) pinning the server. Default: system roots.
+.TP
+.B \-\-insecure
+Disable TLS verification (DANGEROUS; dev only). Mutually exclusive with
+.BR \-\-ca-bundle .
+.TP
+.B \-\-allow-unsigned
+Install even when the payload
+.I ca_signature
+is null.
+.TP
+.BI \-\-timeout " DUR"
+Per-request timeout. Default:
+.BR 30s .
+.TP
+.BI \-\-retries " N"
+Retries on network errors / 5xx. Default:
+.BR 3 .
+.TP
+.BI \-\-clock-skew " DUR"
+Leeway when checking payload
+.IR valid_until .
+Default:
+.BR 300s .
+.TP
+.B \-\-dry-run
+Fetch, decrypt and verify but do not write the KRL file.
+.TP
+.B \-\-quiet
+Log warnings and errors only; a successful run is silent (cron-friendly).
+.TP
+.B \-\-verbose
+Log per-step debug detail. Mutually exclusive with
+.BR \-\-quiet .
+.TP
+.BI \-\-log-format " text|json"
+Log format. Default:
+.BR text .
+.TP
+.B \-\-systemd
+systemd integration; implies
+.BR \-\-log-format=json " with no ANSI."
+.TP
+.B \-\-oneshot
+Run one cycle and exit (the current default behaviour).
+.TP
+.BI \-\-config " PATH"
+Config-file path. Default:
+.IR /etc/krl-client/config.yaml .
+.RB "(env: " KRL_CLIENT_CONFIG )
+.TP
+.B \-\-version
+Print the version to stdout and exit.
+.SH EXIT STATUS
+.TS
+l l.
+0	up-to-date (304) or a newer KRL verified and installed
+1	usage / configuration error
+2	network \(en DNS/connect/TLS/timeout, retries exhausted, or 5xx
+3	local ECIES decryption failed
+4	CA signature verification failed
+5	payload expired (valid_until in the past beyond clock-skew)
+6	host mismatch (payload host_id != our host-id)
+7	atomic install of the KRL file failed
+8	version / integrity / anti-rollback failure
+9	not provisioned / feature disabled (400/404/501)
+10	rate limited (429) \(en back off and retry later
+.TE
+.SH ENVIRONMENT
+.TP
+.B KRL_CLIENT_SERVER_URL
+Equivalent to
+.BR \-\-server-url .
+Every other flag has the same
+.BR KRL_CLIENT_ *
+form.
+.SH FILES
+.TP
+.I /etc/ssh/ssh_host_ecdsa_key
+Default ECIES decryption key (read only; never transmitted).
+.TP
+.I /etc/ssh/ssh-user-ca.pub
+Default CA public key for signature verification.
+.TP
+.I /etc/ssh/revoked_keys
+Default install target (sshd RevokedKeys).
+.TP
+.I /var/lib/krl-client
+Version/anti-rollback state cache.
+.TP
+.I /etc/krl-client/config.yaml
+Optional flat-YAML config file.
+.SH NOTES
+.B A synced clock is a hard prerequisite.
+The client rejects a payload whose
+.I valid_until
+is in the past beyond
+.BR \-\-clock-skew ;
+a machine whose clock has drifted will fail every run. Keep NTP running.
+.PP
+After the KRL is installed, sshd picks up the new
+.B RevokedKeys
+on its next config read; to apply immediately run
+.B sshd \-t && systemctl reload ssh\fR.
+.SH SEE ALSO
+.BR sshd_config (5)
+.RB ( RevokedKeys ),
+.BR ssh-keygen (1)
+.RB ( \-k / \-Q " KRL tooling), " systemd.timer (5).
+The full README ships at
+.IR krl-client/README.md .
