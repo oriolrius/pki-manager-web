@@ -15,7 +15,7 @@ import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
-import { getKMSService } from '../../kms/service.js';
+import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 
@@ -159,7 +159,11 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     }
   });
 
-  // ---- POST /register-host-pubkey (SSH-15; ECIES path, gated by SSH_ECIES_ENABLED) ----
+  // ---- POST /register-host-pubkey (KRLC-02; readiness for local-decrypt ECIES) ----
+  // Local-key model (decision-015): the host's OWN ecdsa-sha2-nistp256 SSH host
+  // key IS the ECIES key (already stored at host registration as opensshHostPubkey).
+  // No KMS keypair is generated; this only confirms the host is eligible for
+  // encrypted KRL distribution (its host key is a usable P-256 key).
   server.post(`${base}/register-host-pubkey`, async (req, reply) => {
     const token = await authn(req, reply, 'register-host-pubkey');
     if (!token) return reply;
@@ -169,10 +173,9 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, fqdn)).limit(1))[0];
     if (!host) return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
     try {
-      const ids = await getSshHostService().registerEciesKey({ db, ipAddress: req.ip }, host.id);
-      return { hostId: host.id, kmsPublicKeyId: ids.kmsPublicKeyId, hostPrivKeyId: ids.kmsPrivateKeyId };
+      return await getSshHostService().registerEciesKey({ db, ipAddress: req.ip }, host.id);
     } catch (e: any) {
-      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'registration failed');
+      return err(reply, 409, 'ECIES_KEY_UNSUPPORTED', e?.message ?? 'host not eligible for ECIES KRL');
     }
   });
 
@@ -185,7 +188,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const hostId = (req.body as any)?.host_id;
     if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');
     const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId)).limit(1))[0];
-    if (!host || !host.kmsPubkeyId) return err(reply, 404, 'NOT_FOUND', 'host not registered for KRL distribution');
+    if (!host || !host.opensshHostPubkey) return err(reply, 404, 'NOT_FOUND', 'host not registered for KRL distribution');
 
     // Resolve the host's CA (via its current cert, else the active host CA).
     let caId: string | undefined;
@@ -225,15 +228,23 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         host_id: hostId,
       })
     );
+    // Encrypt NATIVELY to the host's own ecdsa-sha2-nistp256 public key so the
+    // host decrypts locally with /etc/ssh/ssh_host_ecdsa_key — no KMS (KRLC-02).
+    let ciphertext: Buffer;
     try {
-      const ciphertext = await getKMSService().eciesEncrypt(host.kmsPubkeyId, payload);
-      await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version } as any).where(eqcol(sshHosts.id, host.id));
-      reply.header('X-KRL-Version', version);
-      reply.header('Content-Type', 'application/octet-stream');
-      return ciphertext;
+      ciphertext = eciesEncryptV1(host.opensshHostPubkey, payload);
     } catch (e: any) {
+      // Host key is ed25519 (or otherwise not P-256): operator must provision an ecdsa host key.
+      const unsupported = e instanceof EciesError;
+      await createAuditLog({ db, operation: 'ssh.krl.distribute', entityType: 'ssh_host', entityId: host.id, status: 'failure', details: { host_id: hostId, error: unsupported ? 'ECIES_KEY_UNSUPPORTED' : 'ENCRYPT_FAILED', message: e?.message }, ipAddress: req.ip });
+      if (unsupported) return err(reply, 404, 'ECIES_KEY_UNSUPPORTED', e.message);
       return err(reply, 500, 'ENCRYPT_FAILED', e?.message ?? 'ECIES encryption failed');
     }
+    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version } as any).where(eqcol(sshHosts.id, host.id));
+    await createAuditLog({ db, operation: 'ssh.krl.distribute', entityType: 'ssh_host', entityId: host.id, status: 'success', details: { host_id: hostId, krl_version: version, envelope_bytes: ciphertext.length, model: 'local-ecies' }, ipAddress: req.ip });
+    reply.header('X-KRL-Version', version);
+    reply.header('Content-Type', 'application/octet-stream');
+    return ciphertext;
   });
   void desccol;
 }
