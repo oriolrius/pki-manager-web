@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:15'
-updated_date: '2026-07-02 15:31'
+updated_date: '2026-07-02 15:36'
 labels:
   - ssh-cert-manager
   - automation
@@ -28,10 +28,12 @@ In the default model the client decrypts with the host's EXISTING SSH host key (
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A host with an ecdsa-sha2-nistp256 host key whose public key is registered fetches+decrypts its KRL using only /etc/ssh/ssh_host_ecdsa_key - no dedicated-key generation and no KMS access
-- [ ] #2 For a host without a registered P-256 public key, onboarding surfaces a clear, actionable step (register /etc/ssh/ssh_host_ecdsa_key.pub) instead of a cryptic decrypt failure
-- [ ] #3 An optional dedicated-ECIES-key mode is available via --host-key (key kept 0600, never transmitted) for operators who prefer not to reuse the SSH host key
+- [x] #1 A host with an ecdsa-sha2-nistp256 host key whose public key is registered fetches+decrypts its KRL using only /etc/ssh/ssh_host_ecdsa_key - no dedicated-key generation and no KMS access
+- [x] #2 For a host without a registered P-256 public key, onboarding surfaces a clear, actionable step (register /etc/ssh/ssh_host_ecdsa_key.pub) instead of a cryptic decrypt failure
+- [x] #3 An optional dedicated-ECIES-key mode is available via --host-key (key kept 0600, never transmitted) for operators who prefer not to reuse the SSH host key
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
