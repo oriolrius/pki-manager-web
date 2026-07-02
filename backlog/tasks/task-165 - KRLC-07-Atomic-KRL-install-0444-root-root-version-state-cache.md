@@ -1,9 +1,11 @@
 ---
 id: TASK-165
 title: 'KRLC-07: Atomic KRL install (0444 root:root) + version/state cache'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-01 07:14'
+updated_date: '2026-07-02 14:43'
 labels:
   - ssh-cert-manager
   - automation
