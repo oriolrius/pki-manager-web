@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-01 07:16'
-updated_date: '2026-07-02 16:20'
+updated_date: '2026-07-02 16:24'
 labels:
   - ssh-cert-manager
   - docs
@@ -27,8 +27,8 @@ Write backlog/decisions/decision-015 'SSH KRL Client Decryption Model' via the b
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 decision-015 exists (status Accepted), mirrors decision-013's format, and explicitly SUPERSEDES decision-013's KMS-resident adopted model; it records local-only decryption, native backend encryption to the host's own key, and the ssh-config.ts path-default alignment
-- [ ] #2 The decision documents the KRLC-02 rebuild that retires the KMS-resident path of SSH-15/SSH-24 (with host migration), the P-256/ed25519 constraint, and the SSH-host-key-reuse trade-off; it cross-links decision-013 and lists the KRLC-* tasks
-- [ ] #3 doc-007 and the README reference decision-015 and decision-013 is annotated as superseded; all decision/doc edits are made via the backlog CLI
-- [ ] #4 The krl-client README's decision-015 reference is a working relative markdown link (file exists at backlog/decisions/decision-015 - SSH-KRL-Client-Decryption-Model.md and the link resolves), not just a textual mention
+- [x] #1 decision-015 exists (status Accepted), mirrors decision-013's format, and explicitly SUPERSEDES decision-013's KMS-resident adopted model; it records local-only decryption, native backend encryption to the host's own key, and the ssh-config.ts path-default alignment
+- [x] #2 The decision documents the KRLC-02 rebuild that retires the KMS-resident path of SSH-15/SSH-24 (with host migration), the P-256/ed25519 constraint, and the SSH-host-key-reuse trade-off; it cross-links decision-013 and lists the KRLC-* tasks
+- [x] #3 doc-007 and the README reference decision-015 and decision-013 is annotated as superseded; all decision/doc edits are made via the backlog CLI
+- [x] #4 The krl-client README's decision-015 reference is a working relative markdown link (file exists at backlog/decisions/decision-015 - SSH-KRL-Client-Decryption-Model.md and the link resolves), not just a textual mention
 <!-- AC:END -->
