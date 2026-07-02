@@ -15,6 +15,7 @@ import (
 	"github.com/oriolrius/pki-manager-krl-client/internal/exitcodes"
 	"github.com/oriolrius/pki-manager-krl-client/internal/krlclient"
 	"github.com/oriolrius/pki-manager-krl-client/internal/payload"
+	"github.com/oriolrius/pki-manager-krl-client/internal/verify"
 )
 
 func Run(cfg *config.Config) exitcodes.Code {
@@ -53,10 +54,12 @@ func Run(cfg *config.Config) exitcodes.Code {
 	if err := p.Validate(cfg.HostID, res.Version, 0, time.Now(), cfg.ClockSkew); err != nil {
 		return report(err)
 	}
+	if err := verify.Check(cfg.CAPubkey, p.KRL, p.CASig, cfg.AllowUnsigned); err != nil {
+		return report(err)
+	}
 
-	// TODO(KRLC-06/07): verify the detached CA signature over p.KRL, then atomically
-	// install p.KRL to --krl-file (0444 root:root) and persist state.
-	fmt.Fprintf(os.Stderr, "krl-client: validated KRL version=%s number=%d (%d bytes)\n", p.Version, p.Number, len(p.KRL))
+	// TODO(KRLC-07): atomically install p.KRL to --krl-file (0444 root:root) + persist state.
+	fmt.Fprintf(os.Stderr, "krl-client: verified KRL version=%s number=%d (%d bytes)\n", p.Version, p.Number, len(p.KRL))
 	if cfg.DryRun {
 		_, _ = os.Stdout.Write(p.KRL)
 	}
