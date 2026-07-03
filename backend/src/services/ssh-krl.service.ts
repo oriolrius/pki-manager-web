@@ -8,6 +8,7 @@
 import { randomUUID } from 'crypto';
 import { eq, and, desc } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshRevocations, sshKrls } from '../db/schema.js';
+import { allocateKrlNumber } from '../db/krl-seq.js';
 import { getKMSService } from '../kms/service.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
@@ -35,7 +36,7 @@ export interface SshKrlDto {
   hasSignature: boolean;
 }
 
-function fingerprintToHash(fp: string): Buffer | null {
+export function fingerprintToHash(fp: string): Buffer | null {
   // "SHA256:<base64-nopad>" -> 32 raw bytes
   const m = /^SHA256:(.+)$/.exec(fp.trim());
   if (!m) return null;
@@ -125,10 +126,10 @@ export class SshKrlService {
       }
     }
 
-    const krlNumberRow = (
-      await ctx.db.select().from(sshKrls).where(eq(sshKrls.caId, caId)).orderBy(desc(sshKrls.krlNumber)).limit(1)
-    )[0];
-    const krlNumber = krlNumberRow ? krlNumberRow.krlNumber + 1 : 1;
+    // BLK-03: numbers come from the GLOBAL allocator shared with the per-host
+    // lineage (pinned req #4) — read-max-then-insert raced across concurrent
+    // regen triggers and restarted per lineage.
+    const krlNumber = await allocateKrlNumber(ctx.db);
     const now = Math.floor(Date.now() / 1000);
 
     const blob = buildKrl({

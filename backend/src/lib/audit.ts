@@ -50,6 +50,7 @@ export type AuditOperation =
   | 'ssh.krl.generate'
   | 'ssh.krl.publish'
   | 'ssh.krl.distribute'
+  | 'ssh.host_krl.generate'
   | 'ssh.token.mint'
   | 'ssh.token.revoke'
   | 'ssh.external.sign';
@@ -67,6 +68,7 @@ export type AuditEntityType =
   | 'ssh_certificate'
   | 'ssh_principal'
   | 'ssh_krl'
+  | 'ssh_host_krl'
   | 'ssh_token';
 
 export interface AuditLogOptions {
