@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:24'
-updated_date: '2026-07-03 22:36'
+updated_date: '2026-07-03 22:42'
 labels:
   - ssh-host-blocks
   - backend
@@ -37,11 +37,13 @@ SIGNING: Host-CA kmsKeyId via signRaw (pinned req #1 — trust-anchor reconcilia
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Unit: composed blob contains the host-CA serial section, every user-CA section, block serials grouped per issuing CA including a retired-CA case, and fingerprint entries — verified by decoding (ssh-keygen -Q cross-check where available)
-- [ ] #2 Concurrency test: parallel per-CA + per-host generations yield strictly increasing unique numbers; first per-host number > max per-CA number
-- [ ] #3 signRaw failure: row persists unsigned, failure audited, subsequent successful generate() produces a signed row
-- [ ] #4 block_count persisted; ssh.host_krl.generate audited on success and failure
+- [x] #1 Unit: composed blob contains the host-CA serial section, every user-CA section, block serials grouped per issuing CA including a retired-CA case, and fingerprint entries — verified by decoding (ssh-keygen -Q cross-check where available)
+- [x] #2 Concurrency test: parallel per-CA + per-host generations yield strictly increasing unique numbers; first per-host number > max per-CA number
+- [x] #3 signRaw failure: row persists unsigned, failure audited, subsequent successful generate() produces a signed row
+- [x] #4 block_count persisted; ssh.host_krl.generate audited on success and failure
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
