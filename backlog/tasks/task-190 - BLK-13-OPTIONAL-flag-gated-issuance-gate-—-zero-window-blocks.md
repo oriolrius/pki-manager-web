@@ -1,9 +1,11 @@
 ---
 id: TASK-190
 title: 'BLK-13: OPTIONAL flag-gated issuance gate — zero-window blocks'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:27'
+updated_date: '2026-07-03 23:28'
 labels:
   - ssh-host-blocks
   - backend
