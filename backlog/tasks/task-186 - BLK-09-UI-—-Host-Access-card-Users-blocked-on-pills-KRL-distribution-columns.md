@@ -3,7 +3,7 @@ id: TASK-186
 title: >-
   BLK-09: UI — Host Access card + Users blocked-on pills + KRL distribution
   columns
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
@@ -44,3 +44,9 @@ The admin never sees serials, fingerprints, or KRL mechanics.
 - [x] #2 State pills + honest tooltip; Lifting shown after unblock until version match; superseded-by-offboard annotation visible
 - [x] #3 Component tests: state pill derivation, confirm flows, warnings, query invalidation after block/unblock
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+New frontend/src/components/ssh/: host-krl-state.ts (stateLabel/statePillClasses/stateTooltip - green Effective, yellow Pending/Lifting, gray Unknown, unsigned cause appended), HostKrlStatePill.tsx (title tooltip with pinned honesty copy), block-flows.ts (DI blockFlow/unblockFlow holding the EXACT decision confirm copy + over-block + hard channel warnings; optional prompt reason; alert feedback naming Pending/Lifting), HostAccessCard.tsx (access table identity/via-as/by-when/state, red blocked rows, superseded-by-offboard + disabled annotations, pre-emptive dropdown). Routes: ssh.hosts.$id.tsx renders HostAccessCard between header and DeployPanel (hidden for offboarded); ssh.users.tsx IdentityCard expanded shows Blocked-on pills (fqdn + state, superseded tag) + Block-on-host select using fleet state for the channel warning; ssh.krl.tsx HostDistribution switched to ssh.block.fleetDistribution with Blocks + State columns. Backend: ssh.block.collisions tRPC query + GET /identities/:id/collisions REST twin (pre-confirm over-block check). Tests: host-access.test.tsx 10/10 (pill derivation incl. render, tooltip honesty/unsigned, exact confirm copy, both warnings, block flow with collision-in-confirm + reason + invalidation, declined confirm, cancelled prompt still blocks, API failure path, symmetric unblock). Frontend typecheck clean; frontend suite 37/37; backend typecheck clean.
+<!-- SECTION:NOTES:END -->
