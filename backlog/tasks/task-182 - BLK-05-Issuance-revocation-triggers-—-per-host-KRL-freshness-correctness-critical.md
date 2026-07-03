@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-07-03 21:25'
+updated_date: '2026-07-03 22:51'
 labels:
   - ssh-host-blocks
   - backend
@@ -35,8 +36,8 @@ Regeneration stays OFF the issuance hot path (pinned req #3).
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 New user cert to a blocked identity triggers async regen of affected host KRLs on ALL paths (UI issue, bulkRenew, external sign-user); issuance never blocked by regen failure; failure audited
-- [ ] #2 Every revocation entry point clamps next_update on all per-host rows; hosts with active blocks regenerate eagerly; test asserts revocation-to-served latency is bounded by one pull, not the 1h nextUpdate
-- [ ] #3 Identity resolution for user certs provably ignores keyId (test: forged keyId cannot dodge block resolution)
-- [ ] #4 Offboard loops coalesce invalidation (no O(certs x hosts) regen storm)
+- [x] #1 New user cert to a blocked identity triggers async regen of affected host KRLs on ALL paths (UI issue, bulkRenew, external sign-user); issuance never blocked by regen failure; failure audited
+- [x] #2 Every revocation entry point clamps next_update on all per-host rows; hosts with active blocks regenerate eagerly; test asserts revocation-to-served latency is bounded by one pull, not the 1h nextUpdate
+- [x] #3 Identity resolution for user certs provably ignores keyId (test: forged keyId cannot dodge block resolution)
+- [x] #4 Offboard loops coalesce invalidation (no O(certs x hosts) regen storm)
 <!-- AC:END -->
