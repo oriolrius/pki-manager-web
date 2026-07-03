@@ -3,9 +3,11 @@ id: TASK-186
 title: >-
   BLK-09: UI — Host Access card + Users blocked-on pills + KRL distribution
   columns
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:26'
+updated_date: '2026-07-03 23:14'
 labels:
   - ssh-host-blocks
   - frontend
