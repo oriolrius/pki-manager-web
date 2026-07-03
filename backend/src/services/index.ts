@@ -20,5 +20,6 @@ export * from './ssh-fleet-token.service.js';
 export * from './ssh-bulk.service.js';
 export * from './ssh-krl.service.js';
 export * from './ssh-host-krl.service.js';
+export * from './ssh-block.service.js';
 export * from './ssh-mon.service.js';
 export * from './ssh-config.js';
