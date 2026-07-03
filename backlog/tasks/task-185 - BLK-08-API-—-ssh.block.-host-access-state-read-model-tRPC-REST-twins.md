@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
-updated_date: '2026-07-03 23:07'
+updated_date: '2026-07-03 23:12'
 labels:
   - ssh-host-blocks
   - backend
@@ -37,8 +37,8 @@ Update docs/ssh-api-contract.md: block ops, read-model endpoints, GET /krl/hosts
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ssh.block.block/unblock tRPC + REST twins with Zod parity; audit verified through the API path
-- [ ] #2 SSH-34 fail-closed test: OIDC disabled => FORBIDDEN on both transports; ALLOW_UNAUTHENTICATED_SSH_CA dev bypass honored
-- [ ] #3 ssh.host.access returns identity / via-roles / local-accounts + blocked rows with state in one query; fleet query returns per-host blockCount + state without N+1
-- [ ] #4 docs/ssh-api-contract.md updated for all new endpoints and env gates
+- [x] #1 ssh.block.block/unblock tRPC + REST twins with Zod parity; audit verified through the API path
+- [x] #2 SSH-34 fail-closed test: OIDC disabled => FORBIDDEN on both transports; ALLOW_UNAUTHENTICATED_SSH_CA dev bypass honored
+- [x] #3 ssh.host.access returns identity / via-roles / local-accounts + blocked rows with state in one query; fleet query returns per-host blockCount + state without N+1
+- [x] #4 docs/ssh-api-contract.md updated for all new endpoints and env gates
 <!-- AC:END -->
