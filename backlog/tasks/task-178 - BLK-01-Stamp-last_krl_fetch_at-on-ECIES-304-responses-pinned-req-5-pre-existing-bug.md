@@ -3,7 +3,7 @@ id: TASK-178
 title: >-
   BLK-01: Stamp last_krl_fetch_at on ECIES 304 responses (pinned req #5,
   pre-existing bug)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:24'
@@ -33,8 +33,6 @@ Everything downstream (BLK-07 state pills, stalePullingHosts in ssh-mon.service.
 - [x] #2 Test: a conditional fetch returning 304 refreshes the timestamp; a healthy 304-only puller is no longer flagged by stalePullingHosts
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -42,3 +40,9 @@ Everything downstream (BLK-07 state pills, stalePullingHosts in ssh-mon.service.
 2. Contract tests: 304 refreshes timestamp, 200 behavior unchanged
 3. Test stalePullingHosts no longer flags a healthy 304-only puller
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Stamped lastKrlFetchAt in the 304 branch of POST /api/v1/external/ssh/krl (ssh-external.routes.ts); lastKrlVersion deliberately 200-only (records what was SERVED). New no-KMS contract suite src/rest/routes/ssh-external.routes.test.ts: 200 stamps both fields (unchanged), 304 refreshes fetch time without touching version, order-independence guard, and stalePullingHosts drops 1->0 after a 304-only pull. 4/4 green; strict typecheck clean.
+<!-- SECTION:NOTES:END -->
