@@ -1,9 +1,11 @@
 ---
 id: TASK-191
 title: Restore clean backend typecheck baseline + gate it in CI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:53'
+updated_date: '2026-07-03 21:53'
 labels:
   - ci
   - tech-debt
@@ -31,3 +33,13 @@ Note: distinct from TASK-104 (Done, v1.5.1-era lockfile + TS7030 fixes); this is
 - [ ] #2 Backend test suite fully green after the fixes (no behavior change)
 - [ ] #3 CI test.yml typecheck job gates backend + frontend (root pnpm typecheck)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Full error inventory grouped by file (119 errors / 23 files)
+2. Parallel fix fan-out across disjoint file groups (zero behavior change; remove unused code, fix test context typing, AnySQLiteColumn for schema self-reference, ?? undefined for null-vs-undefined)
+3. Verify: pnpm typecheck 0 errors both workspaces + full backend test suite green
+4. Extend CI test.yml typecheck job to root pnpm typecheck (backend + frontend)
+5. Commit, push, Done
+<!-- SECTION:PLAN:END -->
