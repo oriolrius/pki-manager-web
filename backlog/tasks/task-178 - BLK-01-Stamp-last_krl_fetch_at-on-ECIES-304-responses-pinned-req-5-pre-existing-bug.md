@@ -32,3 +32,11 @@ Everything downstream (BLK-07 state pills, stalePullingHosts in ssh-mon.service.
 - [ ] #1 ECIES 304 branch stamps last_krl_fetch_at; 200 behavior unchanged (contract test for both branches)
 - [ ] #2 Test: a conditional fetch returning 304 refreshes the timestamp; a healthy 304-only puller is no longer flagged by stalePullingHosts
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Stamp last_krl_fetch_at (NOT last_krl_version) on the 304 branch of POST /api/v1/external/ssh/krl
+2. Contract tests: 304 refreshes timestamp, 200 behavior unchanged
+3. Test stalePullingHosts no longer flags a healthy 304-only puller
+<!-- SECTION:PLAN:END -->
