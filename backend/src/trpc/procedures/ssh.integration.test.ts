@@ -19,7 +19,7 @@ import {
   sshUserPrincipals,
   sshHostPrincipalMaps,
   sshRevocations,
-  sshKrls,
+  sshKrls, sshHostKrls, sshHostBlocks,
 } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
 
@@ -39,7 +39,7 @@ async function wipe() {
       /* best effort */
     }
   }
-  for (const t of [sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
+  for (const t of [sshHostKrls, sshHostBlocks, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
 }

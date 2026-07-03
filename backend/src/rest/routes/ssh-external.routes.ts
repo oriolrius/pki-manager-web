@@ -14,12 +14,17 @@ import { isValidHostId, validateCidrList, isValidPrincipalName } from '../../ser
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
+import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
 import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 
 const eciesEnabled = () => process.env.SSH_ECIES_ENABLED === 'true';
+// BLK-06 cutover gate: default ON. The off-switch is SAFE because KRL numbers
+// are globally monotonic across lineages (BLK-02/03) — per-CA rows generated
+// after per-host rows still carry higher numbers, so pullers accept them.
+const hostKrlServeEnabled = () => process.env.SSH_HOST_KRL_SERVE !== 'false';
 const KRL_VALID_FOR_SECONDS = parseInt(process.env.KRL_VALID_FOR_SECONDS || '1800', 10);
 
 const signHostBody = z.object({
@@ -190,27 +195,52 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId)).limit(1))[0];
     if (!host || !host.opensshHostPubkey) return err(reply, 404, 'NOT_FOUND', 'host not registered for KRL distribution');
 
-    // Resolve the host's CA (via its current cert, else the active host CA).
-    let caId: string | undefined;
-    if (host.currentCertId) {
-      const c = (await db.select().from(sshCertificates).where(eqcol(sshCertificates.id, host.currentCertId)).limit(1))[0];
-      caId = c?.caId;
-    }
-    if (!caId) {
-      const ca = (await db.select().from(sshCas).where(andcol(eqcol(sshCas.caType, 'host'), eqcol(sshCas.status, 'active'))).limit(1))[0];
-      caId = ca?.id;
-    }
-    if (!caId) return err(reply, 503, 'NO_CA', 'no host CA available');
+    let row: any | null = null;
+    if (hostKrlServeEnabled()) {
+      // BLK-06: the payload source is the freshest COMPOSED per-host row.
+      const svc = getSshHostKrlService();
+      row = await svc.getLatestRow({ db, ipAddress: req.ip }, host.id);
+      if (!row) {
+        // First fetch / cutover: synchronously generate the first composed row
+        // (globally-seeded number, so it exceeds any per-CA number the host has
+        // installed). On failure: not-initialized — NO per-CA fallback (doc-008
+        // finding #4); pullers fail-stale on last-good and retry next interval.
+        try {
+          await svc.generate({ db, ipAddress: req.ip }, host.id);
+          row = await svc.getLatestRow({ db, ipAddress: req.ip }, host.id);
+        } catch { /* fall through to NO_KRL */ }
+        if (!row) return err(reply, 503, 'NO_KRL', 'per-host KRL not initialized');
+      } else if (new Date(row.nextUpdate).getTime() < Date.now()) {
+        // Stale: lazy regen (the BLK-05 invalidation backstop); keep last-good on failure.
+        try {
+          await svc.generate({ db, ipAddress: req.ip }, host.id);
+          row = await svc.getLatestRow({ db, ipAddress: req.ip }, host.id);
+        } catch { /* keep last-good */ }
+      }
+    } else {
+      // Legacy per-CA path (SSH_HOST_KRL_SERVE=false roll-back switch).
+      // Resolve the host's CA (via its current cert, else the active host CA).
+      let caId: string | undefined;
+      if (host.currentCertId) {
+        const c = (await db.select().from(sshCertificates).where(eqcol(sshCertificates.id, host.currentCertId)).limit(1))[0];
+        caId = c?.caId;
+      }
+      if (!caId) {
+        const ca = (await db.select().from(sshCas).where(andcol(eqcol(sshCas.caType, 'host'), eqcol(sshCas.status, 'active'))).limit(1))[0];
+        caId = ca?.id;
+      }
+      if (!caId) return err(reply, 503, 'NO_CA', 'no host CA available');
 
-    const svc = getSshKrlService();
-    let row = await svc.getLatestRow({ db, ipAddress: req.ip }, caId);
-    if (!row || new Date(row.nextUpdate).getTime() < Date.now()) {
-      try {
-        await svc.generate({ db, ipAddress: req.ip }, caId);
-        row = await svc.getLatestRow({ db, ipAddress: req.ip }, caId);
-      } catch { /* keep last-good */ }
+      const svc = getSshKrlService();
+      row = await svc.getLatestRow({ db, ipAddress: req.ip }, caId);
+      if (!row || new Date(row.nextUpdate).getTime() < Date.now()) {
+        try {
+          await svc.generate({ db, ipAddress: req.ip }, caId);
+          row = await svc.getLatestRow({ db, ipAddress: req.ip }, caId);
+        } catch { /* keep last-good */ }
+      }
+      if (!row) return err(reply, 503, 'NO_KRL', 'no KRL available');
     }
-    if (!row) return err(reply, 503, 'NO_KRL', 'no KRL available');
 
     const version = row.versionHash as string;
     const inm = (req.headers['if-none-match'] as string | undefined)?.trim();
