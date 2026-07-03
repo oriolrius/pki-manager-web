@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../init.js';
 import { z } from 'zod';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
-import { like, or, sql } from 'drizzle-orm';
+import { like, or } from 'drizzle-orm';
 import { logger } from '../../lib/logger.js';
 
 const globalSearchSchema = z.object({

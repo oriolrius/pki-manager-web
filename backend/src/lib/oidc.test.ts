@@ -5,7 +5,7 @@
  * Integration tests require Keycloak to be running.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initializeOIDC,
   getOIDCConfig,

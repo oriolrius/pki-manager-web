@@ -9,14 +9,14 @@
  * 5. Error handling for validation errors
  */
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import { registerRestApi } from '../index.js';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import forge from 'node-forge';
 import { generateCertificate } from '../../crypto/x509.js';

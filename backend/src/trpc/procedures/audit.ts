@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../init.js';
 import { listAuditLogSchema, generateReportSchema } from '../schemas.js';
-import { auditLog, certificates, certificateAuthorities } from '../../db/schema.js';
-import { eq, and, gte, lte, like, sql, desc } from 'drizzle-orm';
+import { auditLog, certificates } from '../../db/schema.js';
+import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
 import { createAuditLog } from '../../lib/audit.js';
 import { createHash } from 'crypto';
 
@@ -96,7 +96,7 @@ export const auditRouter = router({
           resultCount: formattedLogs.length,
         },
         ipAddress: ctx.req.ip,
-      }).catch((err) => {
+      }).catch(() => {
         // Ignore audit log errors to prevent recursion
       });
 

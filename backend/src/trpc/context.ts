@@ -19,7 +19,10 @@ export interface ContextUser {
   roles: string[];
 }
 
-export async function createContext({ req, res }: CreateFastifyContextOptions) {
+// Narrowed to the two options we actually use: tRPC v11 added a required `info`
+// field to CreateFastifyContextOptions that tests don't (and shouldn't) fabricate.
+// Contravariance keeps this assignable where the fastify plugin expects the full type.
+export async function createContext({ req, res }: Pick<CreateFastifyContextOptions, 'req' | 'res'>) {
   return {
     req,
     res,

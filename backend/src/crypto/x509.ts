@@ -23,7 +23,6 @@ import type {
   GeneratedCertificate,
   X509Extensions,
   SubjectAlternativeNames,
-  ExtendedKeyUsage,
   CertificateFormat,
 } from './types.js';
 
@@ -69,16 +68,6 @@ function addExtensions(cert: forge.pki.Certificate, extensions?: X509Extensions)
 
   // Extended Key Usage
   if (extensions.extendedKeyUsage && extensions.extendedKeyUsage.length > 0) {
-    // EKU OID mapping (kept for future reference)
-    const _ekuMap: Record<ExtendedKeyUsage, string> = {
-      serverAuth: '1.3.6.1.5.5.7.3.1',
-      clientAuth: '1.3.6.1.5.5.7.3.2',
-      codeSigning: '1.3.6.1.5.5.7.3.3',
-      emailProtection: '1.3.6.1.5.5.7.3.4',
-      timeStamping: '1.3.6.1.5.5.7.3.8',
-      OCSPSigning: '1.3.6.1.5.5.7.3.9',
-    };
-
     certExtensions.push({
       name: 'extKeyUsage',
       critical: false,
@@ -445,13 +434,9 @@ export function verifyCertificateSignature(
   try {
     const cert = forge.pki.certificateFromPem(certificatePem);
 
-    let verifyPublicKey: forge.pki.PublicKey;
-
     if (issuerPublicKeyPem) {
-      verifyPublicKey = pemToForgeKey(issuerPublicKeyPem, 'public') as forge.pki.PublicKey;
-    } else {
-      // Use the certificate's own public key for self-signed certs
-      verifyPublicKey = cert.publicKey as forge.pki.rsa.PublicKey;
+      // Parse the issuer key so an invalid PEM still fails verification (throw → catch → false)
+      pemToForgeKey(issuerPublicKeyPem, 'public');
     }
 
     const caStore = forge.pki.createCaStore();

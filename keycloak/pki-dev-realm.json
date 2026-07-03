@@ -50,7 +50,7 @@
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "rootUrl": "http://localhost:5173",
       "baseUrl": "/",
@@ -90,7 +90,10 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["admin", "default-roles-pki-dev"]
+      "realmRoles": [
+        "admin",
+        "default-roles-pki-dev"
+      ]
     },
     {
       "username": "user",
@@ -106,13 +109,19 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["user", "default-roles-pki-dev"]
+      "realmRoles": [
+        "user",
+        "default-roles-pki-dev"
+      ]
     }
   ],
   "scopeMappings": [
     {
       "clientScope": "roles",
-      "roles": ["admin", "user"]
+      "roles": [
+        "admin",
+        "user"
+      ]
     }
   ]
 }

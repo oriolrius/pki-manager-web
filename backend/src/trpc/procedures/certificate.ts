@@ -1338,7 +1338,6 @@ export const certificateRouter = router({
             // Create TAR file using tar-stream
             const { pack } = await import('tar-stream');
             const { PassThrough } = await import('stream');
-            const { promisify } = await import('util');
             const streamToBuffer = async (stream: any): Promise<Buffer> => {
               const chunks: Buffer[] = [];
               for await (const chunk of stream) {
@@ -1831,7 +1830,6 @@ export const certificateRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { TRPCError } = await import('@trpc/server');
       const { randomUUID } = await import('crypto');
       const { certificates, auditLog } = await import('../../db/schema.js');
       const { logger } = await import('../../lib/logger.js');
@@ -1976,7 +1974,6 @@ export const certificateRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { TRPCError } = await import('@trpc/server');
       const { randomUUID } = await import('crypto');
       const { certificateAuthorities, certificates, auditLog } = await import('../../db/schema.js');
       const { getKMSService } = await import('../../kms/service.js');
@@ -2264,7 +2261,6 @@ export const certificateRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { TRPCError } = await import('@trpc/server');
       const { randomUUID } = await import('crypto');
       const { certificates, auditLog } = await import('../../db/schema.js');
       const { getKMSService } = await import('../../kms/service.js');
@@ -2601,7 +2597,7 @@ export const certificateRouter = router({
           // Collect all unique CA certificates for chain inclusion
           const caMap = new Map<string, { ca: any; pem: string }>();
 
-          for (const { certificate, ca } of certResults) {
+          for (const { ca } of certResults) {
             if (!ca) continue;
             if (!caMap.has(ca.id)) {
               try {
@@ -2850,7 +2846,7 @@ export const certificateRouter = router({
 
         // First, collect all unique CA certificates
         const caMap = new Map<string, { ca: any; pem: string }>();
-        for (const { certificate, ca } of certResults) {
+        for (const { ca } of certResults) {
           if (!ca) continue;
           if (!caMap.has(ca.id)) {
             try {

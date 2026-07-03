@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from '../init.js';
 import { z } from 'zod';
-import { certificates, certificateAuthorities } from '../../db/schema.js';
-import { eq, like, sql, desc } from 'drizzle-orm';
+import { certificates } from '../../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { logger } from '../../lib/logger.js';
 
 const listDomainsSchema = z
