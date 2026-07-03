@@ -101,3 +101,15 @@ export const revokeSshCertSchema = z.object({
 });
 
 export const renderPrincipalsSchema = z.object({ hostId: z.string().min(1) });
+
+// BLK-08 (decision-016): per-host user access blocks.
+export const blockHostSchema = z.object({
+  hostId: z.string().min(1),
+  identityId: z.string().min(1),
+  reason: z.string().max(512).optional(),
+});
+
+export const unblockHostSchema = z.object({
+  hostId: z.string().min(1),
+  identityId: z.string().min(1),
+});
