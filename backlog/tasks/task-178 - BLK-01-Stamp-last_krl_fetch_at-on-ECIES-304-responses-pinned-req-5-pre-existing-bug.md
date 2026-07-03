@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:24'
-updated_date: '2026-07-03 22:29'
+updated_date: '2026-07-03 22:31'
 labels:
   - ssh-host-blocks
   - backend
@@ -29,9 +29,11 @@ Everything downstream (BLK-07 state pills, stalePullingHosts in ssh-mon.service.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ECIES 304 branch stamps last_krl_fetch_at; 200 behavior unchanged (contract test for both branches)
-- [ ] #2 Test: a conditional fetch returning 304 refreshes the timestamp; a healthy 304-only puller is no longer flagged by stalePullingHosts
+- [x] #1 ECIES 304 branch stamps last_krl_fetch_at; 200 behavior unchanged (contract test for both branches)
+- [x] #2 Test: a conditional fetch returning 304 refreshes the timestamp; a healthy 304-only puller is no longer flagged by stalePullingHosts
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
