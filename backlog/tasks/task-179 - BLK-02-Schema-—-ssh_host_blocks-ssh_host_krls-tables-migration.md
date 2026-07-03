@@ -1,10 +1,11 @@
 ---
 id: TASK-179
 title: 'BLK-02: Schema — ssh_host_blocks + ssh_host_krls tables (+ migration)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:24'
-updated_date: '2026-07-03 21:53'
+updated_date: '2026-07-03 22:32'
 labels:
   - ssh-host-blocks
   - backend
