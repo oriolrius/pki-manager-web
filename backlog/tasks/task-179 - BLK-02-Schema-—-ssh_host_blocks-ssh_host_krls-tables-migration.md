@@ -4,13 +4,14 @@ title: 'BLK-02: Schema — ssh_host_blocks + ssh_host_krls tables (+ migration)'
 status: To Do
 assignee: []
 created_date: '2026-07-03 21:24'
-updated_date: '2026-07-03 21:42'
+updated_date: '2026-07-03 21:53'
 labels:
   - ssh-host-blocks
   - backend
   - schema
 milestone: SSH Host Access Blocks
-dependencies: []
+dependencies:
+  - TASK-191
 references:
   - backlog/decisions/decision-016 - Per-Host-User-Access-Blocks-SSH.md
 priority: medium
