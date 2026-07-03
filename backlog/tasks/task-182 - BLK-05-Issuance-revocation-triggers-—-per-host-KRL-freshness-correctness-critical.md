@@ -1,0 +1,42 @@
+---
+id: TASK-182
+title: >-
+  BLK-05: Issuance + revocation triggers — per-host KRL freshness
+  (correctness-critical)
+status: To Do
+assignee: []
+created_date: '2026-07-03 21:25'
+labels:
+  - ssh-host-blocks
+  - backend
+  - revocation
+milestone: SSH Host Access Blocks
+dependencies:
+  - TASK-180
+references:
+  - backend/src/services/ssh-cert.service.ts
+priority: high
+ordinal: 9014
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Regeneration stays OFF the issuance hot path (pinned req #3).
+
+1. ISSUANCE hook in SshCertService.sign (type=user) — verified the single choke point: UI issue (ssh-user.service.ts -> sign), bulkRenew (SshBulkService -> renew -> sign), external sign-user; all pass identityId. If the identity has active blocks: ASYNC regen of those hosts' KRLs (small affected set). Regen failure never fails issuance (failure audited).
+
+2. REVOCATION: EVERY revoke entry point (revokeByCert for BOTH cert types, revokeBySerial, revokeByKeyFingerprint — ssh-krl.service.ts:56-104 — plus identity/host offboard loops) invalidates ALL per-host lineages CHEAPLY: clamp ssh_host_krls.next_update to now so the next pull lazily regenerates a fresh composition; eager regen ONLY for hosts holding active blocks. NOT an O(fleet) KMS signRaw loop on the revoke hot path. Without this, the BLK-06 cutover regresses revocation latency from sync-regen + <=15-min pull to the 1h nextUpdate backstop — violating pinned req #2's intent. Identity offboard (SSH-32c) loops revokeByCert per cert: invalidation must coalesce, not multiply.
+
+3. HARDENING (decision-016 data-model note): forbid keyId-based identity resolution for user certs — block resolution keys off ssh_certificates.identity_id ONLY (keyId stays caller-settable).
+
+4. Lazy regen-on-fetch (nextUpdate past) remains the backstop.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 New user cert to a blocked identity triggers async regen of affected host KRLs on ALL paths (UI issue, bulkRenew, external sign-user); issuance never blocked by regen failure; failure audited
+- [ ] #2 Every revocation entry point clamps next_update on all per-host rows; hosts with active blocks regenerate eagerly; test asserts revocation-to-served latency is bounded by one pull, not the 1h nextUpdate
+- [ ] #3 Identity resolution for user certs provably ignores keyId (test: forged keyId cannot dodge block resolution)
+- [ ] #4 Offboard loops coalesce invalidation (no O(certs x hosts) regen storm)
+<!-- AC:END -->
