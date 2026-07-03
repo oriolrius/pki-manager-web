@@ -1,9 +1,11 @@
 ---
 id: TASK-177
 title: 'BLK-00: Milestone baseline — fleet/puller inventory + preconditions pinned'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:23'
+updated_date: '2026-07-03 22:27'
 labels:
   - ssh-host-blocks
   - docs
