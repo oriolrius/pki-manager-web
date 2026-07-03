@@ -29,3 +29,15 @@ ssh_host_cert_sshd_service: ssh
 # When true, also register the host's ECIES key and install the KRL puller.
 ssh_host_cert_ecies_enabled: false
 ssh_ca_krl_url: "{{ ssh_ca_api_url }}/krl"
+
+# --- Optional public-path KRL fetch cron (BLK-12) ----------------------------
+# For hosts NOT on the encrypted (ECIES) channel: a cron that refreshes
+# RevokedKeys from the public KRL endpoint. Default URL is the legacy per-CA
+# KRL (set ssh_host_cert_user_ca_id). To receive PER-HOST ACCESS BLOCKS
+# (decision-016) switch this ONE line — and the deployment must run with
+# SSH_HOST_KRL_PUBLIC=true:
+#   ssh_host_cert_krl_fetch_url: "{{ ssh_ca_base_url }}/krl/hosts/{{ ansible_fqdn }}.bin"
+ssh_host_cert_krl_cron_enabled: false
+ssh_host_cert_user_ca_id: ""
+ssh_host_cert_krl_fetch_url: "{{ ssh_ca_base_url }}/krl/{{ ssh_host_cert_user_ca_id }}.bin"
+ssh_host_cert_krl_cron_minutes: 15

@@ -130,3 +130,18 @@
   become: false
   no_log: true
   when: ssh_host_cert_ecies_enabled | bool
+
+# ── PHASE 6 (optional): public-path KRL refresh cron (BLK-12) ───────────────
+# Only for hosts NOT using the encrypted channel (host_puller.sh / krl-client).
+# The atomic mv keeps sshd's fail-closed RevokedKeys consistent at all times.
+- name: Install the public KRL refresh cron (RevokedKeys)
+  ansible.builtin.copy:
+    dest: /etc/cron.d/pki-manager-krl
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by pki-manager ssh_host_cert (BLK-12). Refreshes RevokedKeys.
+      */{{ ssh_host_cert_krl_cron_minutes }} * * * * root curl -fsS --max-time 30 -o {{ ssh_host_cert_revoked_keys }}.tmp "{{ ssh_host_cert_krl_fetch_url }}" && install -m 0444 -o root -g root {{ ssh_host_cert_revoked_keys }}.tmp {{ ssh_host_cert_revoked_keys }} && rm -f {{ ssh_host_cert_revoked_keys }}.tmp
+  become: true
+  when: ssh_host_cert_krl_cron_enabled | bool
