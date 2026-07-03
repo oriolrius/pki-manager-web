@@ -3,9 +3,11 @@ id: TASK-188
 title: >-
   BLK-11: E2E — composed-KRL block matrix vs real sshd + real krl-client
   anti-rollback
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:27'
+updated_date: '2026-07-03 23:19'
 labels:
   - ssh-host-blocks
   - backend
