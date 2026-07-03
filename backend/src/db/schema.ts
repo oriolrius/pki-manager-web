@@ -436,6 +436,81 @@ export const sshKrls = sqliteTable(
   })
 );
 
+// Per-host user access blocks (BLK-02, decision-016) — "block THIS identity on
+// THIS host". NOT revocations: the blocked identity's certs stay active (valid
+// everywhere else); resolution into deny entries happens at per-host KRL build
+// time. Lifted rows are kept for audit; FKs are RESTRICT because hosts and
+// identities are soft-state (offboarded/disabled), never hard-deleted while
+// referenced.
+export const sshHostBlocks = sqliteTable(
+  'ssh_host_blocks',
+  {
+    id: text('id').primaryKey(),
+    hostId: text('host_id')
+      .notNull()
+      .references(() => sshHosts.id, { onDelete: 'restrict' }),
+    identityId: text('identity_id')
+      .notNull()
+      .references(() => sshIdentities.id, { onDelete: 'restrict' }),
+    reason: text('reason'),
+    status: text('status', { enum: ['active', 'lifted'] }).notNull().default('active'),
+    createdBy: text('created_by'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    liftedBy: text('lifted_by'),
+    liftedAt: integer('lifted_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    hostIdx: index('idx_ssh_host_blocks_host').on(table.hostId),
+    identityIdx: index('idx_ssh_host_blocks_identity').on(table.identityId),
+    // One ACTIVE block per (host, identity); lifted history preserved
+    // (uq_ssh_cas_active_type partial-unique pattern).
+    oneActivePair: uniqueIndex('uq_ssh_host_blocks_active_pair')
+      .on(table.hostId, table.identityId)
+      .where(sql`status = 'active'`),
+  })
+);
+
+// Per-host composed KRL lineage (BLK-02, decision-016) — mirrors ssh_krls but
+// keyed by host: host-CA set ∪ user-CA sets ∪ resolved active blocks.
+// krl_number comes from the GLOBAL ssh_krl_seq allocator (shared with the
+// per-CA lineage) so a host switched between lineages always sees strictly
+// increasing signed header numbers (pinned req #4). The UNIQUE index is a
+// tripwire behind the allocator, not the allocation mechanism.
+export const sshHostKrls = sqliteTable(
+  'ssh_host_krls',
+  {
+    id: text('id').primaryKey(),
+    hostId: text('host_id')
+      .notNull()
+      .references(() => sshHosts.id, { onDelete: 'restrict' }),
+    krlNumber: integer('krl_number').notNull(),
+    versionHash: text('version_hash').notNull(), // 'sha256:<hex>' (ETag)
+    krlBlob: blob('krl_blob', { mode: 'buffer' }).notNull(), // bare unsigned OpenSSH KRL
+    caSignature: blob('ca_signature', { mode: 'buffer' }), // detached DER sig (Host-CA key; puller-only)
+    thisUpdate: integer('this_update', { mode: 'timestamp' }).notNull(),
+    nextUpdate: integer('next_update', { mode: 'timestamp' }).notNull(),
+    revokedCount: integer('revoked_count').notNull().default(0),
+    blockCount: integer('block_count').notNull().default(0),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    hostNumberUq: uniqueIndex('uq_ssh_host_krls_host_number').on(table.hostId, table.krlNumber),
+    versionIdx: index('idx_ssh_host_krls_version').on(table.versionHash),
+    hostIdx: index('idx_ssh_host_krls_host').on(table.hostId),
+  })
+);
+
+// Single-row global KRL-number allocator shared by BOTH lineages (per-CA and
+// per-host). Seeded by the migration from max(ssh_krls.krl_number); allocation
+// is one atomic UPDATE ... RETURNING (src/db/krl-seq.ts). Immune to future
+// pruning of old KRL rows (a max()-based allocator would regress and the
+// client would reject the next KRL as rollback). Gaps are harmless — the
+// puller only requires strictly-newer.
+export const sshKrlSeq = sqliteTable('ssh_krl_seq', {
+  id: integer('id').primaryKey(),
+  value: integer('value').notNull(),
+});
+
 // SSH automation fleet tokens (SSH-19) — bearer tokens for the Ansible/CI
 // external signing API. Stored only as a SHA-256 hash; one token scoped to a
 // CA pair + op-set. Plaintext (pkimg_…) is shown exactly once at mint time.
@@ -505,3 +580,7 @@ export type SshKrl = typeof sshKrls.$inferSelect;
 export type NewSshKrl = typeof sshKrls.$inferInsert;
 export type SshFleetToken = typeof sshFleetTokens.$inferSelect;
 export type NewSshFleetToken = typeof sshFleetTokens.$inferInsert;
+export type SshHostBlock = typeof sshHostBlocks.$inferSelect;
+export type NewSshHostBlock = typeof sshHostBlocks.$inferInsert;
+export type SshHostKrl = typeof sshHostKrls.$inferSelect;
+export type NewSshHostKrl = typeof sshHostKrls.$inferInsert;
