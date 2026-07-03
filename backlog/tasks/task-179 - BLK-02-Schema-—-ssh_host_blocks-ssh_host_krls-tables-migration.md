@@ -4,6 +4,7 @@ title: 'BLK-02: Schema — ssh_host_blocks + ssh_host_krls tables (+ migration)'
 status: To Do
 assignee: []
 created_date: '2026-07-03 21:24'
+updated_date: '2026-07-03 21:42'
 labels:
   - ssh-host-blocks
   - backend
@@ -23,7 +24,9 @@ New tables per the decision-016 data model, with EXPLICIT columns (not a blind m
 
 ssh_host_blocks: id, host_id FK -> ssh_hosts ON DELETE RESTRICT, identity_id FK -> ssh_identities ON DELETE RESTRICT, reason, status in {active,lifted}, created_by/created_at, lifted_by/lifted_at. PARTIAL-UNIQUE (host_id, identity_id) WHERE status='active' — follow the existing uq_ssh_cas_active_type pattern (schema.ts:243-248) — so lifted rows are kept for audit and re-block-after-lift works.
 
-ssh_host_krls: id, host_id FK RESTRICT, krl_number, version_hash, krl_blob, ca_signature (nullable), this_update, next_update, revoked_count, block_count (mandated by decision-016 — ssh_krls has only revoked_count), created_at. UNIQUE index on (host_id, krl_number) — uniqueIndex(), NOT index() like idx_ssh_krls_ca_number (schema.ts:434): per-host generation has four concurrent triggers (sync block/unblock, async sign() hook, lazy regen on ECIES fetch, lazy regen on public fetch) and a duplicate header number is silently rejected by the client as rollback. Index on version_hash.
+ssh_host_krls: id, host_id FK RESTRICT, krl_number, version_hash, krl_blob, ca_signature (nullable), this_update, next_update, revoked_count, block_count (mandated by decision-016 — ssh_krls has only revoked_count), created_at. UNIQUE index on (host_id, krl_number) — uniqueIndex(), NOT index() like idx_ssh_krls_ca_number (schema.ts:434) — kept as a tripwire behind the allocator. Index on version_hash.
+
+ssh_krl_seq: single-row global KRL-number allocator (id=1, value integer) shared by BOTH lineages (per-CA and per-host). The migration seeds it: INSERT INTO ssh_krl_seq VALUES (1, COALESCE((SELECT MAX(krl_number) FROM ssh_krls), 0)). Allocation is one atomic statement (UPDATE ... SET value = value + 1 RETURNING value — better-sqlite3 is synchronous single-writer, so this cannot race). Rationale vs max()+1: immune to future pruning of old KRL rows (a max()-based allocator regresses the day krl_blob cleanup lands → client rejects as rollback); no 2-table scan; and one shared number space makes cutover AND switch-back monotonic by construction (pinned req #4). Gaps from failed generations are harmless — the client only requires strictly-newer.
 
 Migration number = next after current head read from meta/_journal.json.
 <!-- SECTION:DESCRIPTION:END -->
@@ -34,4 +37,5 @@ Migration number = next after current head read from meta/_journal.json.
 - [ ] #2 UNIQUE (host_id, krl_number) proven by a duplicate-insert test
 - [ ] #3 Partial-unique on active (host_id, identity_id): second active block rejected; block -> lift -> re-block succeeds and keeps the lifted row
 - [ ] #4 FKs ON DELETE RESTRICT verified: host/identity rows cannot be hard-deleted while referenced by blocks or host KRLs
+- [ ] #5 ssh_krl_seq exists, seeded from max(ssh_krls.krl_number); allocation via atomic UPDATE...RETURNING proven monotonic under parallel calls
 <!-- AC:END -->
