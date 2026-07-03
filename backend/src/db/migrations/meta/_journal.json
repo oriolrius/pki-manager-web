@@ -57,6 +57,13 @@
       "when": 1762387400000,
       "tag": "0007_ssh_fleet_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783118001147,
+      "tag": "0008_ssh_host_blocks",
+      "breakpoints": true
     }
   ]
 }
