@@ -3,9 +3,11 @@ id: TASK-178
 title: >-
   BLK-01: Stamp last_krl_fetch_at on ECIES 304 responses (pinned req #5,
   pre-existing bug)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:24'
+updated_date: '2026-07-03 22:29'
 labels:
   - ssh-host-blocks
   - backend
