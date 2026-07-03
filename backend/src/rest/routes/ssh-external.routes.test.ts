@@ -39,6 +39,10 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
 
   beforeAll(async () => {
     process.env.SSH_ECIES_ENABLED = 'true';
+    // Pin the legacy per-CA branch: this suite seeds a per-CA row and tests the
+    // stamping semantics both branches share after row resolution. The per-host
+    // branch (SSH_HOST_KRL_SERVE, default on) has its own BLK-06 suite.
+    process.env.SSH_HOST_KRL_SERVE = 'false';
     work = mkdtempSync(join(tmpdir(), 'ssh-304-'));
     await wipe();
     app = Fastify();
@@ -89,6 +93,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
     await app?.close();
     await wipe();
     delete process.env.SSH_ECIES_ENABLED;
+    delete process.env.SSH_HOST_KRL_SERVE;
     if (work) rmSync(work, { recursive: true, force: true });
   });
 

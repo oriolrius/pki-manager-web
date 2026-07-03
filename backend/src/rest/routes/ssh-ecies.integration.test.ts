@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { registerSshExternalRoutes } from './ssh-external.routes.js';
 import { db } from '../../db/client.js';
-import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../../db/schema.js';
+import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshHostKrls, sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
 import { eciesDecryptV1 } from '../../crypto/ssh/ecies.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
@@ -29,7 +29,7 @@ async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
   for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
-  for (const t of [sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
+  for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
 }
