@@ -1,7 +1,7 @@
 ---
 id: TASK-181
 title: 'BLK-04: SshBlockService — block/unblock + lifecycle interactions + audit'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:25'
@@ -39,8 +39,6 @@ Lifecycle (per decision-016): blocking a DISABLED identity is allowed (pre-empti
 - [x] #5 Lifecycle tests: disabled identity blockable; identity offboard marks blocks superseded; host offboard retires the lineage and keeps rows
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -49,3 +47,9 @@ Lifecycle (per decision-016): blocking a DISABLED identity is allowed (pre-empti
 3. Guard SshHostKrlService.generate against offboarded hosts (lineage retirement)
 4. Tests: round-trip + numbering, audit success/failure, list annotations, fingerprint collision, lifecycle (disabled/identity-offboard/host-offboard)
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+New src/services/ssh-block.service.ts: block/unblock/listForHost/listForIdentity/sharedKeyCollisions. Both mutations sync-regen via SshHostKrlService.generate (caught + logged on failure, krl:null in result; generate audits its own failure). Audit ssh.host.block / ssh.host.unblock {identityId,hostId,reason} success+failure (AuditOperation extended). Lists join subject/fqdn and derive supersededByOffboard = identity disabled AND no active unexpired cert (SSH-32c global revocation covers every host). Blocks on offboarded hosts rejected (could never be enforced); SshHostKrlService.generate now refuses offboarded hosts (lineage retirement). Tests 7/7 (KMS mocked): round-trip with strictly increasing krlNumbers + blockCount, dup->friendly error, audit rows both ops/both statuses, collision warning (alice/carol shared key), lists, disabled blockable, identity offboard flips annotation without deleting rows, host offboard retires lineage + keeps rows + rejects new blocks. Strict typecheck clean.
+<!-- SECTION:NOTES:END -->
