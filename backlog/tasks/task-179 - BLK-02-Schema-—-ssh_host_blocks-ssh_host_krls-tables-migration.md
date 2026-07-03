@@ -1,0 +1,37 @@
+---
+id: TASK-179
+title: 'BLK-02: Schema — ssh_host_blocks + ssh_host_krls tables (+ migration)'
+status: To Do
+assignee: []
+created_date: '2026-07-03 21:24'
+labels:
+  - ssh-host-blocks
+  - backend
+  - schema
+milestone: SSH Host Access Blocks
+dependencies: []
+references:
+  - backlog/decisions/decision-016 - Per-Host-User-Access-Blocks-SSH.md
+priority: medium
+ordinal: 6014
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+New tables per the decision-016 data model, with EXPLICIT columns (not a blind mirror of ssh_krls).
+
+ssh_host_blocks: id, host_id FK -> ssh_hosts ON DELETE RESTRICT, identity_id FK -> ssh_identities ON DELETE RESTRICT, reason, status in {active,lifted}, created_by/created_at, lifted_by/lifted_at. PARTIAL-UNIQUE (host_id, identity_id) WHERE status='active' — follow the existing uq_ssh_cas_active_type pattern (schema.ts:243-248) — so lifted rows are kept for audit and re-block-after-lift works.
+
+ssh_host_krls: id, host_id FK RESTRICT, krl_number, version_hash, krl_blob, ca_signature (nullable), this_update, next_update, revoked_count, block_count (mandated by decision-016 — ssh_krls has only revoked_count), created_at. UNIQUE index on (host_id, krl_number) — uniqueIndex(), NOT index() like idx_ssh_krls_ca_number (schema.ts:434): per-host generation has four concurrent triggers (sync block/unblock, async sign() hook, lazy regen on ECIES fetch, lazy regen on public fetch) and a duplicate header number is silently rejected by the client as rollback. Index on version_hash.
+
+Migration number = next after current head read from meta/_journal.json.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Both tables migrate up cleanly from head; pnpm db:generate && pnpm db:migrate green; Drizzle types exported
+- [ ] #2 UNIQUE (host_id, krl_number) proven by a duplicate-insert test
+- [ ] #3 Partial-unique on active (host_id, identity_id): second active block rejected; block -> lift -> re-block succeeds and keeps the lifted row
+- [ ] #4 FKs ON DELETE RESTRICT verified: host/identity rows cannot be hard-deleted while referenced by blocks or host KRLs
+<!-- AC:END -->
