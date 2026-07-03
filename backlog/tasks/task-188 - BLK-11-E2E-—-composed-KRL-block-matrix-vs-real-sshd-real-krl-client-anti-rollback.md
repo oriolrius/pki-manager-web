@@ -3,7 +3,7 @@ id: TASK-188
 title: >-
   BLK-11: E2E — composed-KRL block matrix vs real sshd + real krl-client
   anti-rollback
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:27'
@@ -44,3 +44,9 @@ Scenarios:
 - [x] #2 Lineage-switch exercised against real krl-client validation code (binary or Go payload test), not DB assertions
 - [x] #3 Composition-coverage assertions decode the served blob; ssh-keygen -Q cross-check where available
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+New backend/src/crypto/ssh/e2e-blocks.test.ts, two describes: (1) block matrix vs TWO real sshds (KMS+sshd gated) - scenarios 1+2 (deny cert+raw key on Y via serial+fingerprint entries, allow on Z simultaneously, sshd log asserts revoked-by-file), 3 (structural decode of served blob: host-CA serial group for revoked host cert + user-CA group for revoked unblocked user cert, -Q cross-check, real denial on Z), 5 (reissue-to-blocked denied after async BLK-05 regen, vi.waitFor over the fire-and-forget hook), 6 (unblock symmetric, access restored). (2) lineage-switch vs the REAL krl-client binary (KMS+go gated): go build + live Fastify with registerSshExternalRoutes; async spawn (spawnSync would deadlock the in-process server); per-CA at N accepted -> first per-host > N accepted -> naive switch-back rejected exit 8 keeping last-good -> regenerated per-CA accepted (global monotonic makes rollback safe) -> unsigned row exit 4 without --allow-unsigned, installed with it; installed header numbers decoded per step. 5/5 green vs real KMS/sshd/krl-client; full backend suite 568 passed / 56 files.
+<!-- SECTION:NOTES:END -->
