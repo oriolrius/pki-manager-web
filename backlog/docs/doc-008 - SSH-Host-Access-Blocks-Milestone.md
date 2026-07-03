@@ -188,6 +188,36 @@ over-block a second identity sharing the same public key (warned at block time) 
 offline/never-pulling host keeps its last KRL (visible via `stalePullingHosts`, never
 shown Effective).
 
+## Baseline (BLK-00, verified 2026-07-04)
+
+Pinned starting state the correctness-critical tasks depend on:
+
+- **Base branch**: `feat/ssh-host-blocks` off `main`.
+- **Migration head** (from `backend/src/db/migrations/meta/_journal.json`):
+  `0007_ssh_fleet_tokens` (idx 7). BLK-02's migration is the next index after this
+  head — read the journal again at generation time, never hard-code the number.
+- **Fleet precondition (pinned req #4)**: all deployed `krl-client` hosts MUST run a
+  post-TASK-175 build — anti-rollback is the **strict monotonic check on the CA-signed
+  OpenSSH KRL header number** (`krl-client/internal/payload/payload.go:120-124`,
+  rejection at `:123`); the sha256-equality state file is no longer read. Pre-TASK-175
+  builds must be upgraded before the BLK-06 cutover.
+
+**Puller inventory** (client type → trust anchor each verifies KRL signatures against):
+
+| Client | Where | Trust anchor (verify) | Unsigned-KRL posture |
+|---|---|---|---|
+| `krl-client` (Go) | `krl-client/`, packaged | DEFAULT `--ca-pubkey /etc/ssh/ssh-user-ca.pub` = **USER CA** (`internal/config/config.go:39`) — the BLK-10 critical mismatch vs the Host-CA-signed composed KRL | **Rejects** unsigned (exit 4) unless `--allow-unsigned`; fail-stales on last-good |
+| `host_puller.sh` | `services/krl-distributor/host_puller.sh` | `CA_PUBLIC_KEY_ID` env = **Host CA** KMS key id (`host_puller.sh:20`, verified via `cosmian kms ec sign-verify`, `:72-73`) | **Installs** unsigned KRLs (verifies only when a signature is present) |
+| Ansible `ssh_host_cert` role | `ansible/roles/ssh_host_cert/` | Installs cert + User-CA trust bundle only — **no KRL puller and no Host-CA trust anchor yet** (added by BLK-10/BLK-12); `ssh_ca_krl_url` default `{{ ssh_ca_api_url }}/krl` | n/a |
+
+- **Enrolled fleet in this deployment**: dev DB (`backend/data/pki.db`) has **0 rows** in
+  `ssh_cas`, `ssh_hosts`, `ssh_krls` — no already-enrolled hosts to migrate here; the
+  cutover-ordering requirements still hold for any real deployment and are exercised by
+  the BLK-11 lineage-switch test.
+- **Per-CA `ssh_krls.krl_number` high-water marks** (cutover-test inputs): none — table
+  empty, high-water mark **0** for every lineage. The BLK-02 global allocator
+  (`ssh_krl_seq`) therefore seeds at `COALESCE(MAX(krl_number), 0) = 0`.
+
 ## Related decisions
 
 - [decision-016 — Per-Host User Access Blocks (SSH)](../decisions/decision-016%20-%20Per-Host-User-Access-Blocks-SSH.md) — **the contract**
