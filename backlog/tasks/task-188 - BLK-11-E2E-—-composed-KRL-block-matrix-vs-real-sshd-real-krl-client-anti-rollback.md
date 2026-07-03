@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:27'
-updated_date: '2026-07-03 23:19'
+updated_date: '2026-07-03 23:25'
 labels:
   - ssh-host-blocks
   - backend
@@ -40,7 +40,7 @@ Scenarios:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All six scenarios green under the existing KMS_AVAILABLE gating (skip semantics preserved)
-- [ ] #2 Lineage-switch exercised against real krl-client validation code (binary or Go payload test), not DB assertions
-- [ ] #3 Composition-coverage assertions decode the served blob; ssh-keygen -Q cross-check where available
+- [x] #1 All six scenarios green under the existing KMS_AVAILABLE gating (skip semantics preserved)
+- [x] #2 Lineage-switch exercised against real krl-client validation code (binary or Go payload test), not DB assertions
+- [x] #3 Composition-coverage assertions decode the served blob; ssh-keygen -Q cross-check where available
 <!-- AC:END -->
