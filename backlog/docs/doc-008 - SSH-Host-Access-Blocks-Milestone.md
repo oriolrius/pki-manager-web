@@ -62,11 +62,12 @@ The task breakdown was grounded against the actual code and adversarially critiq
    hooks EVERY revoke entry point with cheap invalidation (`next_update` clamp; eager
    regen only for hosts with active blocks — never O(fleet) KMS signs) and therefore
    **must land before or with the BLK-06 cutover**.
-4. **Cutover first-fetch fallback (major → BLK-06).** At cutover `ssh_host_krls` is
-   empty for every host; if the first composed generation fails there is no per-host
-   last-good and the fleet would 503. BLK-06 falls back to the per-CA row — but ONLY
-   while no per-host row has ever existed (afterwards a lower number = client rollback
-   rejection).
+4. **Cutover first-fetch (simplified, per Oriol 2026-07-03).** At cutover
+   `ssh_host_krls` is empty for every host; the route synchronously generates the
+   first composed row. If that generation fails, respond **not-initialized**
+   (NO_KRL-style) — **no per-CA fallback**: pullers fail-stale on their last-good
+   installed KRL and retry on the next interval. Accepted trade-off for simplicity;
+   avoids any risk of serving a lower per-CA number a client would later reject.
 
 Also surfaced: krl-client **rejects unsigned KRLs** by default (`--allow-unsigned`
 false) — a KMS outage means krl-client hosts fail-stale on last-good while
@@ -161,8 +162,9 @@ confirmation of install"*.
   rejected as rollback (BLK-02 unique index + BLK-03 global monotonic + concurrency
   test); host not on a per-host channel (BLK-07 Unknown state + BLK-09 hard warning at
   block time + BLK-12 Ansible switch).
-- **Fleet 503 / fail-stale at cutover** — BLK-06 first-fetch fallback (pre-first-row
-  only) + `SSH_HOST_KRL_SERVE` canary gate + BLK-12 runbook ordering.
+- **Fail-stale at cutover** — BLK-06 first-fetch generates synchronously; a failed
+  generation returns not-initialized and hosts keep last-good (accepted, no per-CA
+  fallback) + `SSH_HOST_KRL_SERVE` canary gate + BLK-12 runbook ordering.
 - **Revocation latency regression post-cutover** — BLK-05 invalidation hooks on every
   revoke entry point, latency test bounded by pull interval; sequencing constraint
   BLK-05 ⊑ BLK-06.
