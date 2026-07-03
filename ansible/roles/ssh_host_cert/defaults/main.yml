@@ -17,6 +17,10 @@ ssh_host_cert_dirname: /etc/ssh
 ssh_host_cert_key_path: "{{ ssh_host_cert_dirname }}/ssh_host_ed25519_key"
 ssh_host_cert_cert_path: "{{ ssh_host_cert_key_path }}-cert.pub"
 ssh_host_cert_user_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-user-ca.pub"
+# Host CA public key — the KRL puller's signature trust anchor (BLK-10).
+# Composed per-host KRLs are signed with the HOST CA key; krl-client's default
+# --ca-pubkey is this path. MUST be installed BEFORE the per-host KRL cutover.
+ssh_host_cert_host_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-host-ca.pub"
 ssh_host_cert_revoked_keys: "{{ ssh_host_cert_dirname }}/revoked_keys"
 ssh_host_cert_dropin: "{{ ssh_host_cert_dirname }}/sshd_config.d/60-ssh-ca.conf"
 ssh_host_cert_sshd_service: ssh

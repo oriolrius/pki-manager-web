@@ -64,8 +64,9 @@ ECDSA private key used for local ECIES decryption. Default:
 .IR /etc/ssh/ssh_host_ecdsa_key .
 .TP
 .BI \-\-ca-pubkey " PATH"
-User-CA public key for detached-signature verification. Default:
-.IR /etc/ssh/ssh-user-ca.pub .
+Host-CA public key for detached-signature verification (the server signs the
+composed per-host KRL with the Host-CA key). Default:
+.IR /etc/ssh/ssh-host-ca.pub .
 .TP
 .BI \-\-krl-file " PATH"
 Install target (sshd RevokedKeys). Default:
@@ -171,8 +172,9 @@ form.
 .I /etc/ssh/ssh_host_ecdsa_key
 Default ECIES decryption key (read only; never transmitted).
 .TP
-.I /etc/ssh/ssh-user-ca.pub
-Default CA public key for signature verification.
+.I /etc/ssh/ssh-host-ca.pub
+Default CA public key for signature verification (the Host CA trust anchor
+installed by the pki-manager Ansible role).
 .TP
 .I /etc/ssh/revoked_keys
 Default install target (sshd RevokedKeys).

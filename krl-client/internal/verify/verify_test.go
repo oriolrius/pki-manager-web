@@ -118,3 +118,27 @@ func TestVerifyEd25519CAKey(t *testing.T) {
 		t.Fatal("expected Verify(4) on wrong message")
 	}
 }
+
+// TestHostCaTrustAnchorReconciliation (BLK-10, decision-016 pinned req #1):
+// the composed per-host KRL is signed with the HOST-CA key and the shipped
+// default --ca-pubkey is the Host-CA trust anchor (/etc/ssh/ssh-host-ca.pub,
+// served by GET /ssh/host-ca-keys). A Host-CA-signed KRL must verify against
+// that anchor — and must NOT verify against the User-CA file that was the
+// pre-BLK-10 default (the exact misconfiguration that made blocks silently
+// never land).
+func TestHostCaTrustAnchorReconciliation(t *testing.T) {
+	hostCA, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	userCA, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	krl := []byte("composed-per-host-krl-bytes")
+	sig := ecdsaSign(t, hostCA, krl) // ECDSA-P256 / SHA-256 / DER — the backend signRaw scheme
+
+	hostAnchor := writeOpenSSHPub(t, &hostCA.PublicKey) // what /ssh/host-ca-keys serves
+	userAnchor := writeOpenSSHPub(t, &userCA.PublicKey) // TrustedUserCAKeys — the WRONG anchor
+
+	if err := Check(hostAnchor, krl, sig, false); err != nil {
+		t.Fatalf("Host-CA-signed KRL must verify against the Host-CA trust anchor: %v", err)
+	}
+	if codeOf(Check(userAnchor, krl, sig, false)) != exitcodes.Verify {
+		t.Fatal("Host-CA-signed KRL must FAIL verification against the User-CA anchor (exit 4)")
+	}
+}

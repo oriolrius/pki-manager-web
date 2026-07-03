@@ -101,6 +101,16 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     return anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : '');
   });
 
+  // Host CA public key(s) — the KRL puller trust anchor (BLK-10). Installed at
+  // HOST_CA_PATH (/etc/ssh/ssh-host-ca.pub) by the Ansible role; krl-client's
+  // default --ca-pubkey. Composed per-host KRLs are signed with the Host-CA
+  // key (decision-016 pinned req #1) — NOT the User CA.
+  server.get('/ssh/host-ca-keys', async (_req, reply) => {
+    const anchors = await getSshCaService().getTrustAnchors(ctx);
+    text(reply, 'ssh-host-ca.pub');
+    return anchors.hostCaKeys.map((k) => k.trim()).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
+  });
+
   // @cert-authority known_hosts lines for the Host CA(s), for a pattern.
   server.get('/ssh/cert-authority', async (req, reply) => {
     const pattern = ((req.query as any)?.pattern as string) || '*';

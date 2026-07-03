@@ -10,10 +10,8 @@ Decryption is **always local** — the host's private key never leaves the box a
 there is no KMS mode.
 
 > [!IMPORTANT]
-> **A clock synced via NTP is a hard prerequisite**, and the encrypted endpoint
-> currently serves the **Host-CA** KRL while sshd's `RevokedKeys` semantically
-> wants the **User-CA** KRL. Read [Operational caveats](#operational-caveats)
-> before deploying.
+> **A clock synced via NTP is a hard prerequisite.** Read
+> [Operational caveats](#operational-caveats) before deploying.
 
 ## Contents
 
@@ -34,8 +32,10 @@ make test          # go test ./... -race
 ## Quick start
 
 A host provisioned from pki-manager's generated `60-ssh-ca.conf` sshd drop-in
-already has the host key, the User-CA public key, and the `RevokedKeys` path in
-their canonical locations, so it needs only the server URL:
+already has the host key, the User-CA public key, the Host-CA trust anchor
+(`/etc/ssh/ssh-host-ca.pub`, fetched from `GET /ssh/host-ca-keys` — the key KRL
+signatures are verified against), and the `RevokedKeys` path in their canonical
+locations, so it needs only the server URL:
 
 ```bash
 krl-client --server-url https://pki.example.com
@@ -161,7 +161,7 @@ The env var for a flag is `KRL_CLIENT_` + the flag name upper-cased with `-`→`
 | `--server-url` | `SERVER_URL` / `server-url` | — (**required**) | PKI-Manager base URL |
 | `--host-id` | `HOST_ID` / `host-id` | `hostname -f` | host FQDN sent in the request body |
 | `--host-key` | `HOST_KEY` / `host-key` | `/etc/ssh/ssh_host_ecdsa_key` | ECDSA key used to decrypt locally (host key by default; a dedicated `keygen` key otherwise — see [above](#decryption-key-ecies)) |
-| `--ca-pubkey` | `CA_PUBKEY` / `ca-pubkey` | `/etc/ssh/ssh-user-ca.pub` | User-CA public key for signature verify |
+| `--ca-pubkey` | `CA_PUBKEY` / `ca-pubkey` | `/etc/ssh/ssh-host-ca.pub` | Host-CA public key for signature verify (composed KRLs are Host-CA-signed — BLK-10) |
 | `--krl-file` | `KRL_FILE` / `krl-file` | `/etc/ssh/revoked_keys` | install target (sshd `RevokedKeys`) |
 | `--state-dir` | `STATE_DIR` / `state-dir` | `/var/lib/krl-client` | version/state cache |
 | `--ca-bundle` | `CA_BUNDLE` / `ca-bundle` | system roots | TLS CA bundle (PEM) to pin the server |
@@ -344,15 +344,14 @@ sshd -t && systemctl reload ssh
 > daemon (`chrony`/`systemd-timesyncd`) running; the systemd unit already orders
 > itself after `time-sync.target`.
 
-> [!WARNING]
-> **Host-CA vs User-CA KRL mismatch.** The encrypted `/krl` endpoint currently
-> resolves the host's **Host CA** and serves *that* CA's KRL. But sshd checks
-> `RevokedKeys` against the **user** certificates presented at login, so it
-> semantically needs the **User-CA** KRL. Until this is reconciled, the installed
-> KRL revokes host-CA-signed material, not the user certificates sshd authenticates
-> — do not rely on this path alone to revoke user access. The guaranteed revocation
-> mechanism remains the bare, TLS-served public KRL plus short certificate TTLs
-> (see [decision-013](../backlog/decisions/decision-013%20-%20SSH-KRL-Distribution.md)).
+> [!NOTE]
+> **Host-CA vs User-CA asymmetry — resolved (BLK-10, decision-016).** The
+> encrypted `/krl` endpoint serves a **composed per-host KRL** (host-CA set ∪
+> all user-CA sets ∪ per-host access blocks), signed with the **Host-CA** key.
+> The client's default `--ca-pubkey` is therefore the Host-CA trust anchor
+> `/etc/ssh/ssh-host-ca.pub` (`GET /ssh/host-ca-keys`, installed by the Ansible
+> role BEFORE cutover). Short certificate TTLs remain the primary revocation
+> mechanism (see [decision-016](../backlog/decisions/decision-016%20-%20Per-Host-User-Access-Blocks-SSH.md)).
 > This client-decryption model and the CA-selection caveat are recorded in
 > [decision-015 — SSH KRL Client Decryption Model](../backlog/decisions/decision-015%20-%20SSH-KRL-Client-Decryption-Model.md),
 > which supersedes decision-013's KMS-resident model.

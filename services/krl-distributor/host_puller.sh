@@ -8,6 +8,11 @@
 # sshd re-reads RevokedKeys per auth, so no restart is needed. The puller holds
 # no secrets: decryption/verification are delegated to Cosmian KMS.
 #
+# BLK-10 (decision-016): the served KRL is the COMPOSED per-host artifact
+# (host-CA ∪ user-CA revocations ∪ per-host access blocks), signed with the
+# HOST CA key — CA_PUBLIC_KEY_ID must be the Host CA public key id (matching
+# the /etc/ssh/ssh-host-ca.pub trust anchor krl-client verifies against).
+#
 set -euo pipefail
 
 KRL_API_URL="${KRL_API_URL:-https://pki.internal/api/v1/external/ssh/krl}"

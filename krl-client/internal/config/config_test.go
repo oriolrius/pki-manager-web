@@ -52,7 +52,7 @@ func TestDefaultsDeriveFromCanonicalPaths(t *testing.T) {
 		name, got, want string
 	}{
 		{"host-key", cfg.HostKey, "/etc/ssh/ssh_host_ecdsa_key"}, // hostKeyPathFor('ecdsa-sha2-nistp256')
-		{"ca-pubkey", cfg.CAPubkey, "/etc/ssh/ssh-user-ca.pub"},  // USER_CA_PATH
+		{"ca-pubkey", cfg.CAPubkey, "/etc/ssh/ssh-host-ca.pub"},  // HOST_CA_PATH (BLK-10)
 		{"krl-file", cfg.KRLFile, "/etc/ssh/revoked_keys"},       // REVOKED_KEYS_PATH
 		{"state-dir", cfg.StateDir, "/var/lib/krl-client"},
 	}

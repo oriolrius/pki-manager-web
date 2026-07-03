@@ -1,7 +1,9 @@
 // Package verify checks the detached CA signature over the bare KRL (KRLC-06).
-// The signing key is loaded from --ca-pubkey, which is the file pki-manager
-// already deploys as TrustedUserCAKeys (/etc/ssh/ssh-user-ca.pub) and may hold
-// several CA keys (rotation) — any one that verifies is accepted.
+// The signing key is loaded from --ca-pubkey, whose default is the HOST CA
+// trust anchor pki-manager deploys at /etc/ssh/ssh-host-ca.pub (BLK-10:
+// composed per-host KRLs are signed with the Host-CA key, decision-016 pinned
+// req #1). The file may hold several CA keys (rotation) — any one that
+// verifies is accepted.
 //
 // ecdsa CA keys: ECDSA-P256 DER signature over sha256(krl) (the pinned scheme).
 // ed25519 CA keys: ed25519 over the raw krl bytes. Verification precedes install.

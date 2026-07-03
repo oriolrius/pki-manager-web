@@ -30,13 +30,13 @@ import (
 // backend/src/services/ssh-config.ts:
 //
 //	DefaultHostKey  = hostKeyPathFor('ecdsa-sha2-nistp256')  (ECIES decrypt key)
-//	DefaultCAPubkey = USER_CA_PATH                            (TrustedUserCAKeys)
+//	DefaultCAPubkey = HOST_CA_PATH                            (KRL signature trust anchor)
 //	DefaultKRLFile  = REVOKED_KEYS_PATH                       (sshd RevokedKeys)
 //
 // A defaults test asserts these exact strings so a drift is caught in CI.
 const (
 	DefaultHostKey    = "/etc/ssh/ssh_host_ecdsa_key" // hostKeyPathFor('ecdsa-sha2-nistp256')
-	DefaultCAPubkey   = "/etc/ssh/ssh-user-ca.pub"    // USER_CA_PATH
+	DefaultCAPubkey   = "/etc/ssh/ssh-host-ca.pub"    // HOST_CA_PATH (BLK-10: composed KRLs are HOST-CA-signed)
 	DefaultKRLFile    = "/etc/ssh/revoked_keys"       // REVOKED_KEYS_PATH
 	DefaultStateDir   = "/var/lib/krl-client"
 	DefaultConfigPath = "/etc/krl-client/config.yaml"
