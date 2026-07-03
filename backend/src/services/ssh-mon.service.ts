@@ -5,7 +5,7 @@
  * TTLs and pull-based KRL, a missed renewal or a stalled host must be detectable.
  */
 import { and, eq, lt } from 'drizzle-orm';
-import { sshCertificates, sshKrls, sshCas, sshHosts } from '../db/schema.js';
+import { sshCertificates, sshKrls, sshCas, sshHosts, sshHostKrls } from '../db/schema.js';
 import type { ServiceContext } from './types.js';
 
 export interface SshMetrics {
@@ -13,6 +13,10 @@ export interface SshMetrics {
   expiringSoonWindowSeconds: number;
   krlsPastNextUpdate: number;
   casWithoutKrl: number;
+  // Per-host composed lineage (BLK-07): after the BLK-06 cutover hosts install
+  // the per-host artifact, so per-CA staleness alone is misleading.
+  hostKrlsPastNextUpdate: number;
+  hostsWithoutHostKrl: number;
   stalePullingHosts: number;
   pullIntervalSeconds: number;
   generatedAt: string;
@@ -46,12 +50,25 @@ export class SshMonService {
       void latest;
     }
 
+    // Per-host composed KRL lineage health (BLK-07).
+    const activeHosts = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.status, 'active'))) as any[];
+    const hostRows = (await ctx.db.select().from(sshHostKrls)) as any[];
+    const latestByHost = new Map<string, any>();
+    for (const r of hostRows) {
+      const cur = latestByHost.get(r.hostId);
+      if (!cur || r.krlNumber > cur.krlNumber) latestByHost.set(r.hostId, r);
+    }
+    let hostKrlsPastNextUpdate = 0;
+    let hostsWithoutHostKrl = 0;
+    for (const h of activeHosts) {
+      const latest = latestByHost.get(h.id);
+      if (!latest) hostsWithoutHostKrl += 1;
+      else if (new Date(latest.nextUpdate).getTime() < now) hostKrlsPastNextUpdate += 1;
+    }
+
     // Hosts eligible for encrypted KRL distribution (ecdsa-nistp256 host key, the
     // local-decrypt ECIES model — KRLC-02) that have stopped pulling.
-    const distHosts = (await ctx.db
-      .select()
-      .from(sshHosts)
-      .where(and(eq(sshHosts.status, 'active'), eq(sshHosts.hostKeyAlgorithm, 'ecdsa-sha2-nistp256')))) as any[];
+    const distHosts = activeHosts.filter((h) => h.hostKeyAlgorithm === 'ecdsa-sha2-nistp256');
     const staleCutoff = now - 2 * pullInterval * 1000;
     const stalePullingHosts = distHosts.filter((h) => {
       const last = h.lastKrlFetchAt ? new Date(h.lastKrlFetchAt).getTime() : 0;
@@ -63,6 +80,8 @@ export class SshMonService {
       expiringSoonWindowSeconds: ttlWindow,
       krlsPastNextUpdate,
       casWithoutKrl,
+      hostKrlsPastNextUpdate,
+      hostsWithoutHostKrl,
       stalePullingHosts,
       pullIntervalSeconds: pullInterval,
       generatedAt: new Date(now).toISOString(),
