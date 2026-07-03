@@ -3,7 +3,7 @@ id: TASK-180
 title: >-
   BLK-03: SshHostKrlService — composed per-host KRL + global monotonic numbering
   + Host-CA signing
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:24'
@@ -43,8 +43,6 @@ SIGNING: Host-CA kmsKeyId via signRaw (pinned req #1 — trust-anchor reconcilia
 - [x] #4 block_count persisted; ssh.host_krl.generate audited on success and failure
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -53,3 +51,9 @@ SIGNING: Host-CA kmsKeyId via signRaw (pinned req #1 — trust-anchor reconcilia
 3. Extend AuditOperation
 4. Unit tests: composition decode (ssh-keygen -Q), retired-CA serial scoping, concurrency numbering, signRaw failure path
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+New src/services/ssh-host-krl.service.ts: generate(hostId) composes union sets (non-retired host+user CAs: revoked cert serials + serial/key_fingerprint directives) plus resolve(active blocks): unexpired cert serials grouped per ISSUING CA regardless of CA status (retired-CA case tested) + deduped SHA256 fingerprints of every key ever certified. Numbering: allocateKrlNumber (global ssh_krl_seq) in both per-host generate and the per-CA SshKrlService.generate (replaced read-max-then-insert at :128-131); allocated BEFORE buildKrl. Signing: resolved Host-CA (currentCert lineage else active host CA) via signRaw; failure -> row persists ca_signature null + ssh.host_krl.generate failure audit with signError; success audit carries blockCount. AuditOperation + ssh_host_krl entity type extended. Tests (5/5, KMS mocked, real ssh-keygen certs): -Q cross-check of all four composition members + fingerprint entry + negative controls; structural decode proves per-CA serial scoping, expired-serial exclusion, fingerprint dedupe; concurrent per-CA+per-host generations strictly monotonic/unique with first per-host > prior per-CA; unsigned persistence + recovery; unknown-host failure audit. Strict typecheck clean; per-CA KRL integration suite green vs real KMS.
+<!-- SECTION:NOTES:END -->
