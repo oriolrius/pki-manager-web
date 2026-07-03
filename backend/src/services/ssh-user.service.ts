@@ -206,6 +206,9 @@ export class SshUserService {
       .update(sshCertificates)
       .set({ status: 'revoked', revocationDate: new Date(), revocationReason: reason ?? null, updatedAt: new Date() })
       .where(eq(sshCertificates.id, certId));
+    // BLK-05: this status flip feeds composed per-host KRLs — invalidate them.
+    const { getSshHostKrlService } = await import('./ssh-host-krl.service.js');
+    await getSshHostKrlService().onRevocation(ctx);
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.cert.revoke',

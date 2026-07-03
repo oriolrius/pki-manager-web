@@ -22,7 +22,7 @@
  * krl-client fail-stales on last-good until a signed row lands).
  */
 import { randomUUID } from 'crypto';
-import { eq, and, desc, inArray, ne } from 'drizzle-orm';
+import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshRevocations, sshHosts, sshHostBlocks, sshHostKrls } from '../db/schema.js';
 import { allocateKrlNumber } from '../db/krl-seq.js';
 import { getKMSService } from '../kms/service.js';
@@ -252,6 +252,102 @@ export class SshHostKrlService {
       .limit(1))[0];
     if (!active) throw new SshHostKrlError('no non-retired host CA available to sign the composed KRL');
     return active;
+  }
+
+  // ---- BLK-05: revocation invalidation + coalesced eager regeneration ----
+  //
+  // Revocation must NOT loop O(fleet) KMS signs on the hot path. Instead:
+  // every revoke entry point clamps next_update on all fresh per-host rows
+  // (one UPDATE — the lazy regen-on-fetch backstop then rebuilds on the next
+  // pull) and hosts that hold ACTIVE blocks are regenerated eagerly in the
+  // background, coalesced so an offboard loop revoking N certs does not
+  // trigger N regens per host.
+
+  private dirtyHosts = new Set<string>();
+  private drainScheduled = false;
+  private drainPromise: Promise<void> | null = null;
+  /** Trailing debounce so revocation loops (identity/host offboard) coalesce. */
+  private static DRAIN_DELAY_MS = 100;
+
+  /** Cheap invalidation: clamp every fresh per-host row's next_update to now. */
+  async invalidateAll(ctx: ServiceContext): Promise<void> {
+    const now = new Date();
+    await ctx.db.update(sshHostKrls).set({ nextUpdate: now }).where(gt(sshHostKrls.nextUpdate, now));
+  }
+
+  /**
+   * Hook for every revocation entry point: clamp all lineages, then schedule a
+   * coalesced background regen of the hosts holding active blocks. Never
+   * throws and never blocks the caller on KMS work.
+   */
+  async onRevocation(ctx: ServiceContext): Promise<void> {
+    await this.invalidateAll(ctx);
+    try {
+      const rows = (await ctx.db
+        .selectDistinct({ hostId: sshHostBlocks.hostId })
+        .from(sshHostBlocks)
+        .innerJoin(sshHosts, eq(sshHostBlocks.hostId, sshHosts.id))
+        .where(and(eq(sshHostBlocks.status, 'active'), ne(sshHosts.status, 'offboarded')))) as any[];
+      this.scheduleEagerRegen(ctx, rows.map((r) => r.hostId));
+    } catch (e) {
+      logger.warn({ error: String(e) }, 'failed to schedule eager per-host KRL regeneration');
+    }
+  }
+
+  /**
+   * Issuance trigger (pinned req #3): a new user cert for an identity with
+   * active blocks regenerates the affected hosts' KRLs asynchronously —
+   * issuance never waits on or fails from this.
+   */
+  async onUserCertIssued(ctx: ServiceContext, identityId: string): Promise<void> {
+    try {
+      const rows = (await ctx.db
+        .selectDistinct({ hostId: sshHostBlocks.hostId })
+        .from(sshHostBlocks)
+        .innerJoin(sshHosts, eq(sshHostBlocks.hostId, sshHosts.id))
+        .where(
+          and(
+            eq(sshHostBlocks.identityId, identityId),
+            eq(sshHostBlocks.status, 'active'),
+            ne(sshHosts.status, 'offboarded')
+          )
+        )) as any[];
+      if (rows.length) this.scheduleEagerRegen(ctx, rows.map((r) => r.hostId));
+    } catch (e) {
+      logger.warn({ identityId, error: String(e) }, 'failed to schedule post-issuance per-host KRL regeneration');
+    }
+  }
+
+  private scheduleEagerRegen(ctx: ServiceContext, hostIds: string[]): void {
+    for (const h of hostIds) this.dirtyHosts.add(h);
+    if (!this.dirtyHosts.size || this.drainScheduled) return;
+    this.drainScheduled = true;
+    this.drainPromise = new Promise((resolve) => {
+      const t = setTimeout(async () => {
+        const hosts = [...this.dirtyHosts];
+        this.dirtyHosts.clear();
+        this.drainScheduled = false;
+        for (const hostId of hosts) {
+          try {
+            await this.generate(ctx, hostId);
+          } catch (e) {
+            // Non-fatal: the clamp already guarantees lazy regen on next fetch.
+            logger.warn({ hostId, error: String(e) }, 'eager per-host KRL regeneration failed');
+          }
+        }
+        resolve();
+      }, SshHostKrlService.DRAIN_DELAY_MS);
+      t.unref?.();
+    });
+  }
+
+  /** Test/shutdown hook: wait for a pending eager-regen drain to finish. */
+  async flushEagerRegen(): Promise<void> {
+    while (this.drainScheduled || this.drainPromise) {
+      const p = this.drainPromise;
+      await p;
+      if (this.drainPromise === p) this.drainPromise = null;
+    }
   }
 
   /** Latest per-host KRL row (or null). Used by the serving endpoints and state derivation. */

@@ -70,6 +70,7 @@ export class SshKrlService {
       reason: reason ?? null,
       revokedBy: ctx.ipAddress ?? null,
     } as any);
+    await this.invalidateHostLineages(ctx);
     return this.generate(ctx, cert.caId);
   }
 
@@ -85,6 +86,7 @@ export class SshKrlService {
       reason: reason ?? null,
       revokedBy: ctx.ipAddress ?? null,
     } as any);
+    await this.invalidateHostLineages(ctx);
     return this.generate(ctx, caId);
   }
 
@@ -100,7 +102,18 @@ export class SshKrlService {
       reason: reason ?? null,
       revokedBy: ctx.ipAddress ?? null,
     } as any);
+    await this.invalidateHostLineages(ctx);
     return this.generate(ctx, caId);
+  }
+
+  /**
+   * BLK-05: every revocation invalidates the per-host lineages (cheap
+   * next_update clamp; eager coalesced regen only where blocks exist).
+   * Dynamic import — ssh-host-krl.service statically imports from this module.
+   */
+  private async invalidateHostLineages(ctx: ServiceContext): Promise<void> {
+    const { getSshHostKrlService } = await import('./ssh-host-krl.service.js');
+    await getSshHostKrlService().onRevocation(ctx);
   }
 
   /** Build + persist the bare KRL and its detached signature for a CA. */
