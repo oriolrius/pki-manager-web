@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:23'
-updated_date: '2026-07-03 22:27'
+updated_date: '2026-07-03 22:29'
 labels:
   - ssh-host-blocks
   - docs
@@ -29,10 +29,12 @@ Pin the verified starting state the correctness-critical tasks depend on:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 doc-008 records base branch + migration head (from _journal.json) + the krl-client >= TASK-175 fleet precondition
-- [ ] #2 Puller inventory documented: client type per host + trust-anchor path/value each verifies KRL signatures against
-- [ ] #3 Per-CA krl_number high-water marks recorded as cutover-test inputs
+- [x] #1 doc-008 records base branch + migration head (from _journal.json) + the krl-client >= TASK-175 fleet precondition
+- [x] #2 Puller inventory documented: client type per host + trust-anchor path/value each verifies KRL signatures against
+- [x] #3 Per-CA krl_number high-water marks recorded as cutover-test inputs
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
