@@ -43,3 +43,11 @@ Extend SshMonService (ssh-mon.service.ts:36-58): per-host lineage metrics (hostK
 - [ ] #2 Unknown rule pinned to ECIES-registration absence and tested
 - [ ] #3 ssh-mon exposes hostKrlsPastNextUpdate + hostsWithoutHostKrl with tests; stalePullingHosts remains accurate for 304-only pullers (BLK-01)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. New ssh-host-state.ts: pure deriveHostKrlState (effective/pending/lifting/unknown + unsignedLatest cause, ECIES-registration Unknown rule) + loader
+2. Extend SshMonService: hostKrlsPastNextUpdate + hostsWithoutHostKrl
+3. Unit tests for all states + transitions + metrics; keep stalePullingHosts 304 accuracy
+<!-- SECTION:PLAN:END -->
