@@ -1,9 +1,11 @@
 ---
 id: TASK-189
 title: 'BLK-12: Ansible role + operator docs + cutover runbook'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:27'
+updated_date: '2026-07-03 23:25'
 labels:
   - ssh-host-blocks
   - ansible
