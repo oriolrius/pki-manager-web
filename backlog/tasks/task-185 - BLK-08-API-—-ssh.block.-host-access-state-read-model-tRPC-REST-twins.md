@@ -1,7 +1,7 @@
 ---
 id: TASK-185
 title: 'BLK-08: API — ssh.block.* + host-access/state read model (tRPC + REST twins)'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
@@ -42,3 +42,9 @@ Update docs/ssh-api-contract.md: block ops, read-model endpoints, GET /krl/hosts
 - [x] #3 ssh.host.access returns identity / via-roles / local-accounts + blocked rows with state in one query; fleet query returns per-host blockCount + state without N+1
 - [x] #4 docs/ssh-api-contract.md updated for all new endpoints and env gates
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+tRPC: new blockRouter (block/unblock/listForHost/listForIdentity/fleetDistribution) + ssh.host.access; actor (createdBy/liftedBy) from OIDC claims when present; SshBlockError wired into mapSshError. REST twins in ssh.routes.ts share the same Zod schemas (blockHostSchema/unblockHostSchema in ssh-schemas.ts) and ensureSshAllowed. Read model in SshBlockService: stateForHosts batch helper (latest per-host rows + block events in 2 queries), hostAccess entitlement join (ssh_host_principal_maps x ssh_user_principals x ssh_identities in 1 query; pre-emptively blocked non-entitled identities batched in), listForIdentityWithState, fleetDistribution (hosts + blocks + latest numbers, grouped in JS). docs/ssh-api-contract.md: block ops table, composed-payload semantics + first-fetch NO_KRL, host-ca-keys + public per-host endpoints, SSH_HOST_KRL_SERVE/SSH_HOST_KRL_PUBLIC gates, state glossary. Tests 6/6 (src/trpc/procedures/ssh-block-api.test.ts, KMS mocked): fail-closed on BOTH transports (tRPC FORBIDDEN + REST 403; opt-in honored by the functional suite), round-trip with warnings + audit through API path, REST Zod parity (400 on bad body), access join (alice admins->root unblocked, carol blocked-not-entitled), tuples + fleet with state. Strict typecheck clean.
+<!-- SECTION:NOTES:END -->
