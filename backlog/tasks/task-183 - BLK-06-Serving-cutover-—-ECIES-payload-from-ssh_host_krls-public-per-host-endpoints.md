@@ -3,7 +3,7 @@ id: TASK-183
 title: >-
   BLK-06: Serving cutover — ECIES payload from ssh_host_krls + public per-host
   endpoints
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:25'
@@ -43,8 +43,6 @@ Public GET /krl/hosts/:hostId.bin|.json beside /krl/:caId.bin with identical ETa
 - [x] #4 First-fetch with empty ssh_host_krls synchronously generates + serves a seeded row; generation failure returns the not-initialized/NO_KRL error (no per-CA fallback — pullers fail-stale on last-good and retry); post-first-row failure serves last-good per-host
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -53,3 +51,9 @@ Public GET /krl/hosts/:hostId.bin|.json beside /krl/:caId.bin with identical ETa
 3. .env.example; adjust BLK-01 test to pin legacy branch
 4. Contract tests: first-fetch, NO_KRL, last-good, gate off->per-CA, ECIES_KEY_UNSUPPORTED intact, public endpoints
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-external.routes.ts: hostKrlServeEnabled gate (default ON); per-host branch skips CA resolution, serves freshest ssh_host_krls row, first-fetch sync generate -> 503 NO_KRL on failure (no per-CA fallback), stale lazy regen keeps last-good; legacy per-CA branch verbatim behind SSH_HOST_KRL_SERVE=false; 304/200 stamping, envelope fields, ECIES_KEY_UNSUPPORTED and 404 semantics unchanged. ssh-public.routes.ts: GET /krl/hosts/:hostId.bin|.json (id or fqdn), SSH_HOST_KRL_PUBLIC default OFF, full header/ETag/304/lazy-regen/last-good/rate-limit parity with /krl/:caId. backend/.env.example documents SSH_ECIES_ENABLED, KRL_VALID_FOR_SECONDS, SSH_HOST_KRL_SERVE, SSH_HOST_KRL_PUBLIC. Contract suite src/rest/routes/ssh-host-krl-serving.test.ts (7 tests): first-fetch seeds row with header number > prior per-CA number and byte-compatible payload field set; 304+stamping parity; last-good after first row; NO_KRL on first-fetch failure; gate-off serves per-CA; ed25519/unregistered unchanged; public endpoints off-by-default + parity when on. BLK-01 suite pinned to the legacy branch. 9 older integration suites: wipe lists gained sshHostKrls/sshHostBlocks (RESTRICT). Full backend suite 550 passed / 53 files vs real KMS; strict typecheck clean.
+<!-- SECTION:NOTES:END -->
