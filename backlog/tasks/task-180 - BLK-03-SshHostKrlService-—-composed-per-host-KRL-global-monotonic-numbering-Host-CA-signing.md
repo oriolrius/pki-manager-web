@@ -42,3 +42,12 @@ SIGNING: Host-CA kmsKeyId via signRaw (pinned req #1 — trust-anchor reconcilia
 - [ ] #3 signRaw failure: row persists unsigned, failure audited, subsequent successful generate() produces a signed row
 - [ ] #4 block_count persisted; ssh.host_krl.generate audited on success and failure
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Export fingerprintToHash from ssh-krl.service; switch per-CA generate() numbering to allocateKrlNumber
+2. New ssh-host-krl.service.ts: generate(hostId) composing CA sets + resolved blocks; allocate number BEFORE build; Host-CA signRaw with null-signature fallback; block_count; ssh.host_krl.generate audit success+failure
+3. Extend AuditOperation
+4. Unit tests: composition decode (ssh-keygen -Q), retired-CA serial scoping, concurrency numbering, signRaw failure path
+<!-- SECTION:PLAN:END -->
