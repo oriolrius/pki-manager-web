@@ -76,6 +76,9 @@ export class SshHostKrlService {
   private async generateInner(ctx: ServiceContext, hostId: string): Promise<SshHostKrlDto> {
     const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
     if (!host) throw new SshHostKrlError(`SSH host ${hostId} not found`);
+    // Host offboard retires this host's KRL lineage (decision-016 lifecycle);
+    // its block rows stay for audit but no new artifacts are produced.
+    if (host.status === 'offboarded') throw new SshHostKrlError(`host ${hostId} is offboarded — per-host KRL lineage retired`);
 
     const allCas = (await ctx.db.select().from(sshCas)) as any[];
     const caById = new Map<string, any>(allCas.map((c) => [c.id, c]));

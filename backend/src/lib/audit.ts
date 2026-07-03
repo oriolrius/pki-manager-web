@@ -38,6 +38,8 @@ export type AuditOperation =
   | 'ssh.host.revoke'
   | 'ssh.host.offboard'
   | 'ssh.host.register_pubkey'
+  | 'ssh.host.block'
+  | 'ssh.host.unblock'
   | 'ssh.identity.create'
   | 'ssh.identity.disable'
   | 'ssh.cert.issue'
