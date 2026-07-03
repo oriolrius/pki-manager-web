@@ -66,6 +66,16 @@ export const SSHD_DROPIN_FILENAME = '60-ssh-ca.conf';
 export const SSHD_DROPIN_PATH = `/etc/ssh/sshd_config.d/${SSHD_DROPIN_FILENAME}`;
 /** Where each server installs the User CA public key (TrustedUserCAKeys). */
 export const USER_CA_PATH = '/etc/ssh/ssh-user-ca.pub';
+/**
+ * Where each host installs the HOST CA public key — the trust anchor KRL
+ * pullers verify detached KRL signatures against (decision-016 pinned req #1,
+ * BLK-10). Served by GET /ssh/host-ca-keys; installed by the Ansible role and
+ * consumed as krl-client's --ca-pubkey DEFAULT. The composed per-host KRL is
+ * signed with the Host-CA key, NOT the User CA — pointing a puller at
+ * USER_CA_PATH makes every pull fail verification (exit 4) and blocks
+ * silently never land.
+ */
+export const HOST_CA_PATH = '/etc/ssh/ssh-host-ca.pub';
 /** Where sshd reads the bare KRL (RevokedKeys). */
 export const REVOKED_KEYS_PATH = '/etc/ssh/revoked_keys';
 /** AuthorizedPrincipalsFile pattern (per local account via %u). */
