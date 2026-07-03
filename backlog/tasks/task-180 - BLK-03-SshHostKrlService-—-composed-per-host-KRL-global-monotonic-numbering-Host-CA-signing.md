@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-07-03 21:24'
+updated_date: '2026-07-03 21:43'
 labels:
   - ssh-host-blocks
   - backend
@@ -28,9 +29,9 @@ generate(hostId) composes: KRL(host) = host-CA revocation set UNION all user-CA 
 
 resolve(identity) at build time = (a) serials of all not-yet-expired certs of that identity, grouped by EACH cert's issuing-CA key blob REGARDLESS of CA status (a blocked cert issued by a since-retired/rotated CA must keep its serial section; fingerprints are only belt-and-braces), + (b) SHA256 fingerprints of every pubkey ever certified for it (ssh_certificates.subject_pubkey_fingerprint via fingerprintToHash, ssh-krl.service.ts:38-46).
 
-NUMBERING — load-bearing (pinned req #4 + TASK-175): allocation is GLOBALLY MONOTONIC and transactional: number = max(all ssh_krls lineages, all ssh_host_krls lineages) + 1, allocated inside a better-sqlite3 transaction (or insert-retry on the BLK-02 unique index). This (a) guarantees the first per-host KRL exceeds any per-CA number a host has installed (cutover accept), (b) removes the cross-lineage read-then-insert race (two rows with the same header number = client rejects the later one as rollback = silent block loss), (c) makes switch-back/rollback monotonic by construction. Apply the same global seeding to per-CA generate() (ssh-krl.service.ts:128-131).
+NUMBERING — load-bearing (pinned req #4 + TASK-175): draw from the BLK-02 ssh_krl_seq global allocator — one atomic UPDATE ... SET value = value + 1 RETURNING value — in BOTH generate() paths (per-host AND the existing per-CA generate(), replacing the read-max-then-insert at ssh-krl.service.ts:128-131). Allocate BEFORE building (the number is embedded in the signed OpenSSH header, krl.ts:42). Serving picks MAX(krl_number) per lineage; gaps from failed generations are harmless (client requires strictly-newer only). One shared number space guarantees: first per-host KRL > any per-CA number a host has installed (cutover accept), no cross-lineage race, and switch-back stays monotonic by construction.
 
-SIGNING: Host-CA kmsKeyId via signRaw (pinned req #1 — trust-anchor reconciliation with krl-client is BLK-10). On signRaw failure: row persists with ca_signature null per decision req #3 (host_puller.sh installs it; krl-client fail-stales on last-good until re-signed — surfaced as a distinct state by BLK-07, documented by BLK-12). block_count persisted from the resolved active-block set. Audit ssh.host_krl.generate on success AND failure (project convention); AuditOperation type extension lands here.
+SIGNING: Host-CA kmsKeyId via signRaw (pinned req #1 — trust-anchor reconciliation with krl-client is BLK-10; direction confirmed 2026-07-03: Host-CA stays, the ssh-user-ca client default is the mistake). On signRaw failure: row persists with ca_signature null per decision req #3 (host_puller.sh installs it; krl-client fail-stales on last-good until re-signed — surfaced as a distinct state by BLK-07, documented by BLK-12). block_count persisted from the resolved active-block set. Audit ssh.host_krl.generate on success AND failure (project convention); AuditOperation type extension lands here.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
