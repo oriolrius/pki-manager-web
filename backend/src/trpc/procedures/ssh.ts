@@ -22,6 +22,8 @@ import {
   mapPrincipalSchema,
   revokeSshCertSchema,
   renderPrincipalsSchema,
+  blockHostSchema,
+  unblockHostSchema,
 } from '../ssh-schemas.js';
 import { getSshCaService, SshCaExistsError, SshCaAlgorithmError, SshCaNotFoundError } from '../../services/ssh-ca.service.js';
 import { getSshHostService, SshHostError } from '../../services/ssh-host.service.js';
@@ -30,6 +32,7 @@ import { getSshPrincipalService, SshPrincipalError } from '../../services/ssh-pr
 import { getSshFleetTokenService, SshTokenError } from '../../services/ssh-fleet-token.service.js';
 import { getSshBulkService } from '../../services/ssh-bulk.service.js';
 import { getSshKrlService, SshKrlError } from '../../services/ssh-krl.service.js';
+import { getSshBlockService, SshBlockError } from '../../services/ssh-block.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
 import {
   SshSignCaNotFoundError,
@@ -43,7 +46,7 @@ function mapSshError(error: unknown): never {
     throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
   if (error instanceof SshCaAlgorithmError || error instanceof SshCaUnusableError || error instanceof SshCertTypeMismatchError)
     throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
-  if (error instanceof SshHostError || error instanceof SshUserError || error instanceof SshPrincipalError || error instanceof SshTokenError || error instanceof SshKrlError) {
+  if (error instanceof SshHostError || error instanceof SshUserError || error instanceof SshPrincipalError || error instanceof SshTokenError || error instanceof SshKrlError || error instanceof SshBlockError) {
     const code = /not found/i.test(error.message) ? 'NOT_FOUND' : 'BAD_REQUEST';
     throw new TRPCError({ code, message: error.message });
   }
@@ -106,6 +109,15 @@ const caRouter = router({
 
 const hostRouter = router({
   list: sshProtectedProcedure.query(async ({ ctx }) => getSshHostService().list(svcCtx(ctx))),
+  // BLK-08 read model: who can reach this host (entitlement join + blocks + state).
+  access: sshProtectedProcedure.input(hostIdSchema).query(async ({ ctx, input }) => {
+    try {
+      const { getSshBlockService } = await import('../../services/ssh-block.service.js');
+      return await getSshBlockService().hostAccess(svcCtx(ctx), input.id);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
   get: sshProtectedProcedure.input(hostIdSchema).query(async ({ ctx, input }) => {
     try {
       return await getSshHostService().get(svcCtx(ctx), input.id);
@@ -364,6 +376,46 @@ const krlRouter = router({
     }),
 });
 
+// Per-host user access blocks (BLK-08, decision-016). Deliberately
+// sshProtectedProcedure — the same tier as host revoke/offboard; CA-level
+// actions stay admin-only. The actor (createdBy/liftedBy) is the OIDC subject
+// when present.
+const actorOf = (ctx: any): string | undefined =>
+  ctx.user?.preferredUsername ?? ctx.user?.preferred_username ?? ctx.user?.email ?? ctx.user?.sub ?? undefined;
+
+const blockRouter = router({
+  block: sshProtectedProcedure.input(blockHostSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshBlockService().block(svcCtx(ctx), {
+        hostId: input.hostId,
+        identityId: input.identityId,
+        reason: input.reason,
+        createdBy: actorOf(ctx),
+      });
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  unblock: sshProtectedProcedure.input(unblockHostSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshBlockService().unblock(svcCtx(ctx), {
+        hostId: input.hostId,
+        identityId: input.identityId,
+        liftedBy: actorOf(ctx),
+      });
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  listForHost: sshProtectedProcedure.input(z.object({ hostId: z.string().min(1) })).query(async ({ ctx, input }) =>
+    getSshBlockService().listForHost(svcCtx(ctx), input.hostId)
+  ),
+  listForIdentity: sshProtectedProcedure.input(identityIdSchema).query(async ({ ctx, input }) =>
+    getSshBlockService().listForIdentityWithState(svcCtx(ctx), input.id)
+  ),
+  fleetDistribution: sshProtectedProcedure.query(async ({ ctx }) => getSshBlockService().fleetDistribution(svcCtx(ctx))),
+});
+
 const monRouter = router({
   metrics: sshProtectedProcedure
     .input(z.object({ ttlWindowSeconds: z.number().int().positive().optional(), pullIntervalSeconds: z.number().int().positive().optional() }).optional())
@@ -378,5 +430,6 @@ export const sshRouter = router({
   token: tokenRouter,
   bulk: bulkRouter,
   krl: krlRouter,
+  block: blockRouter,
   mon: monRouter,
 });

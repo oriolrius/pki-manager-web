@@ -14,10 +14,11 @@
  */
 import { randomUUID } from 'crypto';
 import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';
-import { sshHosts, sshIdentities, sshCertificates, sshHostBlocks } from '../db/schema.js';
+import { sshHosts, sshIdentities, sshCertificates, sshHostBlocks, sshHostKrls, sshPrincipals, sshUserPrincipals, sshHostPrincipalMaps } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { getSshHostKrlService, type SshHostKrlDto } from './ssh-host-krl.service.js';
+import { deriveHostKrlState, type HostKrlStateInfo, type BlockEvent } from './ssh-host-state.js';
 import type { ServiceContext } from './types.js';
 
 export class SshBlockError extends Error {
@@ -216,6 +217,190 @@ export class SshBlockService {
         )
       )) as any[];
     return others.map((r) => ({ identityId: r.identityId, subject: r.subject, fingerprint: r.fingerprint }));
+  }
+
+  // ---- BLK-08 read model (no N+1: fixed query count, grouped in JS) ----
+
+  /** Batch per-host state derivation for a set of host rows. */
+  private async stateForHosts(ctx: ServiceContext, hosts: any[]): Promise<Map<string, HostKrlStateInfo>> {
+    const out = new Map<string, HostKrlStateInfo>();
+    if (!hosts.length) return out;
+    const hostIds = hosts.map((h) => h.id);
+    const krlRows = (await ctx.db.select().from(sshHostKrls).where(inArray(sshHostKrls.hostId, hostIds))) as any[];
+    const latestByHost = new Map<string, any>();
+    for (const r of krlRows) {
+      const cur = latestByHost.get(r.hostId);
+      if (!cur || r.krlNumber > cur.krlNumber) latestByHost.set(r.hostId, r);
+    }
+    const events = (await ctx.db
+      .select({ hostId: sshHostBlocks.hostId, status: sshHostBlocks.status, createdAt: sshHostBlocks.createdAt, liftedAt: sshHostBlocks.liftedAt })
+      .from(sshHostBlocks)
+      .where(inArray(sshHostBlocks.hostId, hostIds))) as any[];
+    const eventsByHost = new Map<string, BlockEvent[]>();
+    for (const e of events) {
+      if (!eventsByHost.has(e.hostId)) eventsByHost.set(e.hostId, []);
+      eventsByHost.get(e.hostId)!.push(e);
+    }
+    for (const h of hosts) {
+      out.set(h.id, deriveHostKrlState(h, latestByHost.get(h.id) ?? null, eventsByHost.get(h.id) ?? []));
+    }
+    return out;
+  }
+
+  /**
+   * "Who can currently reach this host" (decision-016 Access card): the
+   * entitlement join whoCanBecome() discards — identity / via-roles / local
+   * accounts — merged with active block rows and the per-host state.
+   */
+  async hostAccess(
+    ctx: ServiceContext,
+    hostId: string
+  ): Promise<{
+    hostId: string;
+    fqdn: string;
+    state: HostKrlStateInfo;
+    entries: Array<{
+      identityId: string;
+      subject: string;
+      identityStatus: string;
+      viaRoles: string[];
+      localAccounts: string[];
+      blocked: boolean;
+      block: SshHostBlockDto | null;
+    }>;
+  }> {
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
+    if (!host) throw new SshBlockError(`host ${hostId} not found`);
+
+    const entitled = (await ctx.db
+      .select({
+        identityId: sshUserPrincipals.identityId,
+        subject: sshIdentities.subject,
+        identityStatus: sshIdentities.status,
+        role: sshPrincipals.name,
+        localAccount: sshHostPrincipalMaps.localAccount,
+      })
+      .from(sshHostPrincipalMaps)
+      .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
+      .innerJoin(sshUserPrincipals, eq(sshUserPrincipals.principalId, sshHostPrincipalMaps.principalId))
+      .innerJoin(sshIdentities, eq(sshUserPrincipals.identityId, sshIdentities.id))
+      .where(eq(sshHostPrincipalMaps.hostId, hostId))) as any[];
+
+    const entries = new Map<
+      string,
+      { identityId: string; subject: string; identityStatus: string; viaRoles: Set<string>; localAccounts: Set<string>; blocked: boolean; block: SshHostBlockDto | null }
+    >();
+    for (const row of entitled) {
+      if (!entries.has(row.identityId)) {
+        entries.set(row.identityId, {
+          identityId: row.identityId,
+          subject: row.subject,
+          identityStatus: row.identityStatus,
+          viaRoles: new Set(),
+          localAccounts: new Set(),
+          blocked: false,
+          block: null,
+        });
+      }
+      const e = entries.get(row.identityId)!;
+      e.viaRoles.add(row.role);
+      e.localAccounts.add(row.localAccount);
+    }
+
+    // Blocked identities render even when not currently entitled (pre-emptive).
+    const blocks = await this.listForHost(ctx, hostId);
+    const active = blocks.filter((b) => b.status === 'active');
+    const unlisted = active.filter((b) => !entries.has(b.identityId)).map((b) => b.identityId);
+    const statusById = new Map<string, string>();
+    if (unlisted.length) {
+      const idents = (await ctx.db.select().from(sshIdentities).where(inArray(sshIdentities.id, unlisted))) as any[];
+      for (const i of idents) statusById.set(i.id, i.status);
+    }
+    for (const b of active) {
+      if (!entries.has(b.identityId)) {
+        entries.set(b.identityId, {
+          identityId: b.identityId,
+          subject: b.subject ?? b.identityId,
+          identityStatus: statusById.get(b.identityId) ?? 'active',
+          viaRoles: new Set(),
+          localAccounts: new Set(),
+          blocked: true,
+          block: b,
+        });
+      } else {
+        const e = entries.get(b.identityId)!;
+        e.blocked = true;
+        e.block = b;
+      }
+    }
+
+    const state = (await this.stateForHosts(ctx, [host])).get(host.id)!;
+    return {
+      hostId: host.id,
+      fqdn: host.fqdn,
+      state,
+      entries: [...entries.values()]
+        .map((e) => ({ ...e, viaRoles: [...e.viaRoles].sort(), localAccounts: [...e.localAccounts].sort() }))
+        .sort((a, b) => a.subject.localeCompare(b.subject)),
+    };
+  }
+
+  /** Users-page pills: the identity's ACTIVE blocks as {hostId, fqdn, state} tuples. */
+  async listForIdentityWithState(
+    ctx: ServiceContext,
+    identityId: string
+  ): Promise<Array<SshHostBlockDto & { state: HostKrlStateInfo }>> {
+    const blocks = (await this.listForIdentity(ctx, identityId)).filter((b) => b.status === 'active');
+    if (!blocks.length) return [];
+    const hosts = (await ctx.db
+      .select()
+      .from(sshHosts)
+      .where(inArray(sshHosts.id, [...new Set(blocks.map((b) => b.hostId))]))) as any[];
+    const states = await this.stateForHosts(ctx, hosts);
+    return blocks.map((b) => ({ ...b, state: states.get(b.hostId)! }));
+  }
+
+  /** KRL-page fleet propagation view: per-host {blockCount, state} in fixed queries. */
+  async fleetDistribution(
+    ctx: ServiceContext
+  ): Promise<
+    Array<{
+      hostId: string;
+      fqdn: string;
+      status: string;
+      blockCount: number;
+      state: HostKrlStateInfo;
+      krlNumber: number | null;
+      lastKrlVersion: string | null;
+      lastKrlFetchAt: string | null;
+    }>
+  > {
+    const hosts = (await ctx.db.select().from(sshHosts).where(ne(sshHosts.status, 'offboarded'))) as any[];
+    if (!hosts.length) return [];
+    const states = await this.stateForHosts(ctx, hosts);
+    const activeBlocks = (await ctx.db
+      .select({ hostId: sshHostBlocks.hostId })
+      .from(sshHostBlocks)
+      .where(eq(sshHostBlocks.status, 'active'))) as any[];
+    const blockCount = new Map<string, number>();
+    for (const b of activeBlocks) blockCount.set(b.hostId, (blockCount.get(b.hostId) ?? 0) + 1);
+    const krlRows = (await ctx.db.select().from(sshHostKrls).where(inArray(sshHostKrls.hostId, hosts.map((h) => h.id)))) as any[];
+    const latestNumber = new Map<string, number>();
+    for (const r of krlRows) {
+      if ((latestNumber.get(r.hostId) ?? -1) < r.krlNumber) latestNumber.set(r.hostId, r.krlNumber);
+    }
+    return hosts
+      .map((h) => ({
+        hostId: h.id,
+        fqdn: h.fqdn,
+        status: h.status,
+        blockCount: blockCount.get(h.id) ?? 0,
+        state: states.get(h.id)!,
+        krlNumber: latestNumber.get(h.id) ?? null,
+        lastKrlVersion: h.lastKrlVersion ?? null,
+        lastKrlFetchAt: h.lastKrlFetchAt ? new Date(h.lastKrlFetchAt).toISOString() : null,
+      }))
+      .sort((a, b) => a.fqdn.localeCompare(b.fqdn));
   }
 
   private async regenerate(ctx: ServiceContext, hostId: string): Promise<SshHostKrlDto | null> {

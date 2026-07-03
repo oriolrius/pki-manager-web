@@ -16,12 +16,15 @@ import {
   createIdentitySchema,
   createPrincipalSchema,
   mapPrincipalSchema,
+  blockHostSchema,
+  unblockHostSchema,
 } from '../../trpc/ssh-schemas.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
+import { getSshBlockService } from '../../services/ssh-block.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
 
 class HttpError extends Error {
@@ -186,6 +189,42 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // Machine-readable health/metrics for alerting (SSH-MON).
+  // ── Per-host user access blocks (BLK-08, decision-016) — tRPC twins ───────
+  api.post('/blocks', { schema: { tags: tag, summary: 'Block an identity on a host (per-host KRL deny; certs stay valid elsewhere)' } }, async (req) => {
+    ensureSshAllowed();
+    const input = parse(blockHostSchema, req.body);
+    return getSshBlockService().block(ctx(req), input);
+  });
+
+  api.post('/blocks/unblock', { schema: { tags: tag, summary: 'Lift a block (symmetric: enforced on the next host pull)' } }, async (req) => {
+    ensureSshAllowed();
+    const input = parse(unblockHostSchema, req.body);
+    return getSshBlockService().unblock(ctx(req), input);
+  });
+
+  api.get('/hosts/:id/access', { schema: { tags: tag, summary: 'Who can reach this host (entitlements + blocks + distribution state)' } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshBlockService().hostAccess(ctx(req), id);
+  });
+
+  api.get('/hosts/:id/blocks', { schema: { tags: tag, summary: 'Block history for a host (active + lifted, audit-retained)' } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshBlockService().listForHost(ctx(req), id);
+  });
+
+  api.get('/identities/:id/blocks', { schema: { tags: tag, summary: "An identity's active blocks with per-host distribution state" } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshBlockService().listForIdentityWithState(ctx(req), id);
+  });
+
+  api.get('/blocks/fleet', { schema: { tags: tag, summary: 'Fleet-wide per-host block counts + KRL distribution state' } }, async (req) => {
+    ensureSshAllowed();
+    return getSshBlockService().fleetDistribution(ctx(req));
+  });
+
   api.get('/metrics', { schema: { tags: tag, summary: 'SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts)' } }, async (req) => {
     ensureSshAllowed();
     return getSshMonService().metrics(ctx(req));
