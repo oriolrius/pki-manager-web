@@ -1,7 +1,7 @@
 ---
 id: TASK-184
 title: 'BLK-07: Host KRL state derivation + per-host ssh-mon metrics'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
@@ -44,8 +44,6 @@ Extend SshMonService (ssh-mon.service.ts:36-58): per-host lineage metrics (hostK
 - [x] #3 ssh-mon exposes hostKrlsPastNextUpdate + hostsWithoutHostKrl with tests; stalePullingHosts remains accurate for 304-only pullers (BLK-01)
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -53,3 +51,9 @@ Extend SshMonService (ssh-mon.service.ts:36-58): per-host lineage metrics (hostK
 2. Extend SshMonService: hostKrlsPastNextUpdate + hostsWithoutHostKrl
 3. Unit tests for all states + transitions + metrics; keep stalePullingHosts 304 accuracy
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+src/services/ssh-host-state.ts: deriveHostKrlState pure function (host telemetry + latest row + block events) returning {state, unsignedLatest, lastKrlVersion, servedAt, currentVersionHash}; hasUsableEciesRegistration pins Unknown to opensshHostPubkey null or key type != ecdsa-sha2-nistp256; lifting wins when max(liftedAt) > max(createdAt); getHostKrlState DB loader for the BLK-08 read model. ssh-mon.service.ts: hostKrlsPastNextUpdate (latest per-host row past next_update, active hosts) + hostsWithoutHostKrl (active hosts with no row); stalePullingHosts logic unchanged (304 accuracy re-verified by the BLK-01 suite in same run). Tests: ssh-host-state.test.ts 6/6 covering all four states, lifting->effective transition, re-block flips lifting->pending, Unknown ONLY from registration absence, unsigned-latest surfaced in pending AND effective; ssh-mon.test.ts BLK-07 case (in-memory DB now applies migration 0008) proves only-latest-row counts and offboarded ignored. Strict typecheck clean.
+<!-- SECTION:NOTES:END -->
