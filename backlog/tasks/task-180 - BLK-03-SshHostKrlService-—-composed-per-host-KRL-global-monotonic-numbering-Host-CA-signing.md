@@ -3,10 +3,11 @@ id: TASK-180
 title: >-
   BLK-03: SshHostKrlService — composed per-host KRL + global monotonic numbering
   + Host-CA signing
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:24'
-updated_date: '2026-07-03 21:43'
+updated_date: '2026-07-03 22:36'
 labels:
   - ssh-host-blocks
   - backend
