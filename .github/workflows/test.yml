@@ -94,8 +94,8 @@ jobs:
           path: backend/coverage/
           retention-days: 7
 
-  frontend-typecheck:
-    name: Frontend Typecheck
+  typecheck:
+    name: Typecheck (backend + frontend)
     runs-on: ubuntu-latest
 
     steps:
@@ -125,10 +125,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
-      - name: Install frontend dependencies
-        working-directory: ./frontend
+      - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      # Root typecheck fans out to BOTH workspaces (backend + frontend).
+      # The job previously checked only ./frontend, which let 119 backend
+      # strict-mode errors accumulate unnoticed (fixed in TASK-191).
       - name: Run typecheck
-        working-directory: ./frontend
         run: pnpm typecheck

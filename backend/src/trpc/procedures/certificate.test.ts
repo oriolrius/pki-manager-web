@@ -22,7 +22,6 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 
 describe('certificate.renew', () => {
   let caId: string;
-  let certId: string;
   let caKeyPair: { publicKeyPem: string; privateKeyPem: string };
 
   beforeAll(async () => {
@@ -928,10 +927,11 @@ describe('certificate.issue - Code Signing Certificates', () => {
       caller.certificate.issue({
         caId,
         certificateType: 'code_signing',
+        // organization deliberately omitted; cast lets Zod's runtime "Required" check fire
         subject: {
           commonName: 'Code Signer',
           country: 'US',
-        },
+        } as { commonName: string; organization: string; country: string },
         validityDays: 730,
       })
     ).rejects.toThrow('Required');

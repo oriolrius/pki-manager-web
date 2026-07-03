@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { certificates, certificateAuthorities } from '../../db/schema.js';
+import { certificateAuthorities } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
 import {
   getCertificateService,
@@ -810,7 +810,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
       },
     },
   }, async (request, reply) => {
-    const { format, password, encryptPrivateKey, includeChain } = request.query;
+    const { format, password } = request.query;
 
     // Validate password requirement for encrypted formats
     // Note: JKS formats use 'changeit' as default if no password provided

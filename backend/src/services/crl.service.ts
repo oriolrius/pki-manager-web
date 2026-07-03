@@ -266,7 +266,7 @@ export class CRLService {
           nextUpdate: nextUpdate.toISOString(),
           signatureAlgorithm,
         },
-        ipAddress: ctx.ipAddress,
+        ipAddress: ctx.ipAddress ?? undefined,
       });
 
       logger.info(
@@ -300,7 +300,7 @@ export class CRLService {
           error: error instanceof Error ? error.message : String(error),
           caId: caId,
         },
-        ipAddress: ctx.ipAddress,
+        ipAddress: ctx.ipAddress ?? undefined,
       });
 
       throw new CRLOperationError('generate', error);

@@ -10,6 +10,11 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 // Store created CA IDs for cleanup
 const createdCaIds: string[] = [];
 
+// node-forge extension objects reach the tRPC caller loosely typed as {};
+// narrow just the flags the assertions below read.
+type BasicConstraintsExt = { cA?: boolean };
+type KeyUsageExt = { keyCertSign?: boolean; cRLSign?: boolean };
+
 /**
  * Integration test for CA creation
  * This test replicates what happens when the user clicks "Generate Sample Data" and then "Create"
@@ -145,18 +150,19 @@ describe("CA Creation", () => {
     // Verify basicConstraints extension is present with CA:TRUE
     // Per RFC 5280, CA certificates MUST have basicConstraints with cA=true
     expect(caDetails.extensions).toBeDefined();
-    expect(caDetails.extensions?.basicConstraints).toBeDefined();
-    expect(caDetails.extensions?.basicConstraints?.cA).toBe(true);
+    const basicConstraints = caDetails.extensions?.basicConstraints as BasicConstraintsExt | undefined;
+    expect(basicConstraints).toBeDefined();
+    expect(basicConstraints?.cA).toBe(true);
 
     // Verify keyUsage extension includes keyCertSign and cRLSign
     // Per RFC 5280, if keyUsage is present for CA certificates, keyCertSign SHOULD be set
     expect(caDetails.extensions?.keyUsage).toBeDefined();
-    const keyUsage = caDetails.extensions?.keyUsage;
+    const keyUsage = caDetails.extensions?.keyUsage as KeyUsageExt | undefined;
     expect(keyUsage?.keyCertSign).toBe(true);
     expect(keyUsage?.cRLSign).toBe(true);
 
     console.log("✅ CA created with proper X.509 extensions!");
-    console.log(`   basicConstraints.cA: ${caDetails.extensions?.basicConstraints?.cA}`);
+    console.log(`   basicConstraints.cA: ${basicConstraints?.cA}`);
     console.log(`   keyUsage.keyCertSign: ${keyUsage?.keyCertSign}`);
     console.log(`   keyUsage.cRLSign: ${keyUsage?.cRLSign}`);
   });

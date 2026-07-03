@@ -99,7 +99,7 @@ export const certificates = sqliteTable(
     certificatePem: text('certificate_pem'),
 
     // Certificate renewal tracking
-    renewedFromId: text('renewed_from_id').references(() => certificates.id),
+    renewedFromId: text('renewed_from_id').references((): AnySQLiteColumn => certificates.id),
 
     // Metadata
     createdAt: integer('created_at', { mode: 'timestamp' })

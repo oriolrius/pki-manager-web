@@ -68,7 +68,7 @@ async function getAccessToken(
     throw new Error(`Failed to get token: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as { access_token: string };
   return data.access_token;
 }
 
