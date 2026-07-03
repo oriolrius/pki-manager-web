@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
-updated_date: '2026-07-03 23:05'
+updated_date: '2026-07-03 23:07'
 labels:
   - ssh-host-blocks
   - backend
@@ -39,10 +39,12 @@ Extend SshMonService (ssh-mon.service.ts:36-58): per-host lineage metrics (hostK
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 State function unit-tested for Effective/Pending/Lifting/Unknown + the Lifting transition + the unsigned-latest cause
-- [ ] #2 Unknown rule pinned to ECIES-registration absence and tested
-- [ ] #3 ssh-mon exposes hostKrlsPastNextUpdate + hostsWithoutHostKrl with tests; stalePullingHosts remains accurate for 304-only pullers (BLK-01)
+- [x] #1 State function unit-tested for Effective/Pending/Lifting/Unknown + the Lifting transition + the unsigned-latest cause
+- [x] #2 Unknown rule pinned to ECIES-registration absence and tested
+- [x] #3 ssh-mon exposes hostKrlsPastNextUpdate + hostsWithoutHostKrl with tests; stalePullingHosts remains accurate for 304-only pullers (BLK-01)
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
