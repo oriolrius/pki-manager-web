@@ -33,3 +33,12 @@ Pin the verified starting state the correctness-critical tasks depend on:
 - [ ] #2 Puller inventory documented: client type per host + trust-anchor path/value each verifies KRL signatures against
 - [ ] #3 Per-CA krl_number high-water marks recorded as cutover-test inputs
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Read migration head from backend/src/db/migrations/meta/_journal.json
+2. Inventory puller clients (krl-client vs host_puller.sh) + trust anchors from repo/ansible + dev DB
+3. Record per-CA ssh_krls.krl_number high-water marks from dev DB
+4. Append baseline section to doc-008
+<!-- SECTION:PLAN:END -->
