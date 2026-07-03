@@ -1,7 +1,7 @@
 ---
 id: TASK-177
 title: 'BLK-00: Milestone baseline — fleet/puller inventory + preconditions pinned'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:23'
@@ -34,8 +34,6 @@ Pin the verified starting state the correctness-critical tasks depend on:
 - [x] #3 Per-CA krl_number high-water marks recorded as cutover-test inputs
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -44,3 +42,9 @@ Pin the verified starting state the correctness-critical tasks depend on:
 3. Record per-CA ssh_krls.krl_number high-water marks from dev DB
 4. Append baseline section to doc-008
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Baseline section appended to doc-008: base branch feat/ssh-host-blocks, migration head 0007_ssh_fleet_tokens (idx 7), krl-client >= TASK-175 precondition (strict monotonic signed-header anti-rollback, payload.go:120-124). Puller inventory table: krl-client default trust anchor /etc/ssh/ssh-user-ca.pub (USER CA, config.go:39 - BLK-10 mismatch), host_puller.sh CA_PUBLIC_KEY_ID = Host CA (verify via cosmian sign-verify), ansible role installs no puller/anchor yet. Dev DB empty (0 ssh_cas/ssh_hosts/ssh_krls) => per-CA krl_number high-water marks all 0; ssh_krl_seq seeds at 0.
+<!-- SECTION:NOTES:END -->
