@@ -3,7 +3,7 @@ id: TASK-182
 title: >-
   BLK-05: Issuance + revocation triggers — per-host KRL freshness
   (correctness-critical)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-03 21:25'
 updated_date: '2026-07-03 22:51'
@@ -41,3 +41,9 @@ Regeneration stays OFF the issuance hot path (pinned req #3).
 - [x] #3 Identity resolution for user certs provably ignores keyId (test: forged keyId cannot dodge block resolution)
 - [x] #4 Offboard loops coalesce invalidation (no O(certs x hosts) regen storm)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+SshHostKrlService gains invalidateAll (single UPDATE clamping fresh next_update rows), onRevocation (clamp + schedule eager regen of distinct active-block hosts, excluding offboarded), onUserCertIssued(identityId) (eager regen of hosts blocking that identity), all through a 100ms debounced coalescing drain (dirtyHosts set + flushEagerRegen test hook). Hooks: ssh-krl.service revokeByCert/revokeBySerial/revokeByKeyFingerprint call onRevocation via dynamic import (avoids static cycle); SshUserService.revoke (tRPC ssh.user.revoke path, flips status without regen) also hooks; offboard loops covered transitively. Issuance: SshCertService.sign fires void onUserCertIssued for type=user with identityId (single choke point: UI issue, bulkRenew, external sign-user); catch-all so regen failure never propagates. Tests 6/6 (src/services/ssh-krl-triggers.test.ts, KMS mocked): clamp-all + eager-only-blocked with new serial present in eager row; all three entry points clamp; offboard of 5 certs coalesces to <=2 regens with all serials present; async post-issuance regen (vi.waitFor); unblocked issuance untouched + trigger failure never fails issuance; forged keyId cannot dodge (9502 in, 9501 out). decodeKrl extracted to src/test/krl-decode.ts. Prior BLK suites 16/16 green; strict typecheck clean.
+<!-- SECTION:NOTES:END -->
