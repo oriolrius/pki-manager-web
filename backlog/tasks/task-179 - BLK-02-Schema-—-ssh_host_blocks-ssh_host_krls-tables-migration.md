@@ -1,7 +1,7 @@
 ---
 id: TASK-179
 title: 'BLK-02: Schema — ssh_host_blocks + ssh_host_krls tables (+ migration)'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:24'
@@ -42,8 +42,6 @@ Migration number = next after current head read from meta/_journal.json.
 - [x] #5 ssh_krl_seq exists, seeded from max(ssh_krls.krl_number); allocation via atomic UPDATE...RETURNING proven monotonic under parallel calls
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -52,3 +50,9 @@ Migration number = next after current head read from meta/_journal.json.
 3. Allocator helper (atomic UPDATE...RETURNING) in src/db/krl-seq.ts
 4. Schema tests: dup-insert, partial-unique block lifecycle, FK RESTRICT, allocator monotonic under parallel calls
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+schema.ts: sshHostBlocks (partial-unique uq_ssh_host_blocks_active_pair WHERE status=active, FK RESTRICT both sides), sshHostKrls (explicit columns incl. block_count, uniqueIndex uq_ssh_host_krls_host_number, version_hash index), sshKrlSeq single-row allocator + type exports. Migration 0008_ssh_host_blocks hand-authored (repo convention; snapshots 0002-0007 never existed) and seeds ssh_krl_seq from COALESCE(MAX(ssh_krls.krl_number),0); kept the regenerated meta/0008_snapshot.json so db:generate is a clean no-op again. src/db/krl-seq.ts allocateKrlNumber() = atomic UPDATE...RETURNING. Tests (src/db/ssh-host-blocks.schema.test.ts, 4/4): dup (host,krl_number) rejected + same number ok on another lineage; second active block rejected, block->lift->re-block keeps history; FK RESTRICT on host+identity; allocator seeded and 25 parallel allocations strictly monotonic/unique. db:migrate green on dev DB; strict typecheck clean.
+<!-- SECTION:NOTES:END -->
