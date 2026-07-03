@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
-updated_date: '2026-07-03 22:51'
+updated_date: '2026-07-03 22:55'
 labels:
   - ssh-host-blocks
   - krl-client
@@ -39,11 +39,13 @@ BLK-00's puller inventory feeds the fleet migration: existing hosts need the new
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ssh-config.ts gains the Host-CA pubkey canonical path; drop-in generator + Ansible role install it
-- [ ] #2 krl-client default --ca-pubkey points at the Host-CA pubkey; README/man/packaging + tests updated
-- [ ] #3 Round-trip test: backend-signed composed KRL passes krl-client verify.Check on defaults
-- [ ] #4 host_puller.sh docs/vars aligned; trust-anchor-before-cutover ordering documented
+- [x] #1 ssh-config.ts gains the Host-CA pubkey canonical path; drop-in generator + Ansible role install it
+- [x] #2 krl-client default --ca-pubkey points at the Host-CA pubkey; README/man/packaging + tests updated
+- [x] #3 Round-trip test: backend-signed composed KRL passes krl-client verify.Check on defaults
+- [x] #4 host_puller.sh docs/vars aligned; trust-anchor-before-cutover ordering documented
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
