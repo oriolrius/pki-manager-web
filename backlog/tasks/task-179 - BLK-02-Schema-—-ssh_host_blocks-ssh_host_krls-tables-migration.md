@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:24'
-updated_date: '2026-07-03 22:32'
+updated_date: '2026-07-03 22:35'
 labels:
   - ssh-host-blocks
   - backend
@@ -35,12 +35,14 @@ Migration number = next after current head read from meta/_journal.json.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Both tables migrate up cleanly from head; pnpm db:generate && pnpm db:migrate green; Drizzle types exported
-- [ ] #2 UNIQUE (host_id, krl_number) proven by a duplicate-insert test
-- [ ] #3 Partial-unique on active (host_id, identity_id): second active block rejected; block -> lift -> re-block succeeds and keeps the lifted row
-- [ ] #4 FKs ON DELETE RESTRICT verified: host/identity rows cannot be hard-deleted while referenced by blocks or host KRLs
-- [ ] #5 ssh_krl_seq exists, seeded from max(ssh_krls.krl_number); allocation via atomic UPDATE...RETURNING proven monotonic under parallel calls
+- [x] #1 Both tables migrate up cleanly from head; pnpm db:generate && pnpm db:migrate green; Drizzle types exported
+- [x] #2 UNIQUE (host_id, krl_number) proven by a duplicate-insert test
+- [x] #3 Partial-unique on active (host_id, identity_id): second active block rejected; block -> lift -> re-block succeeds and keeps the lifted row
+- [x] #4 FKs ON DELETE RESTRICT verified: host/identity rows cannot be hard-deleted while referenced by blocks or host KRLs
+- [x] #5 ssh_krl_seq exists, seeded from max(ssh_krls.krl_number); allocation via atomic UPDATE...RETURNING proven monotonic under parallel calls
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
