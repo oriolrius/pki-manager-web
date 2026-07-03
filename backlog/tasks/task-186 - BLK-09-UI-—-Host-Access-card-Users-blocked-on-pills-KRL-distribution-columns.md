@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:26'
-updated_date: '2026-07-03 23:14'
+updated_date: '2026-07-03 23:17'
 labels:
   - ssh-host-blocks
   - frontend
@@ -40,7 +40,7 @@ The admin never sees serials, fingerprints, or KRL mechanics.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All three surfaces implemented per decision-016 UI spec, including exact confirm copy, optional reason prompt, over-block warning, and the non-enforceable-channel hard warning
-- [ ] #2 State pills + honest tooltip; Lifting shown after unblock until version match; superseded-by-offboard annotation visible
-- [ ] #3 Component tests: state pill derivation, confirm flows, warnings, query invalidation after block/unblock
+- [x] #1 All three surfaces implemented per decision-016 UI spec, including exact confirm copy, optional reason prompt, over-block warning, and the non-enforceable-channel hard warning
+- [x] #2 State pills + honest tooltip; Lifting shown after unblock until version match; superseded-by-offboard annotation visible
+- [x] #3 Component tests: state pill derivation, confirm flows, warnings, query invalidation after block/unblock
 <!-- AC:END -->
