@@ -35,3 +35,13 @@ Cost (why it is flag-gated, default OFF): render() must pre-provision dual P + P
 - [ ] #2 render() emits dual-form principal lines; markPushed/drift flows intact; the one-time fleet re-push documented
 - [ ] #3 Narrowed certs surfaced in the UI; E2E: post-block cert denied on the blocked host within TTL even with a never-pulling host
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. render(): dual P + P@<fqdn> lines (unconditional pre-provisioning)
+2. SshCertService.sign: SSH_BLOCK_ISSUANCE_GATE narrowing via the single choke point; empty-result guard; audit detail
+3. Unit tests (flag off = zero change, narrowing, all-blocked error, renew path, render dual lines)
+4. E2E: post-block cert denied on never-pulling blocked host, allowed elsewhere
+5. Document flag + one-time re-push (runbook/env)
+<!-- SECTION:PLAN:END -->
