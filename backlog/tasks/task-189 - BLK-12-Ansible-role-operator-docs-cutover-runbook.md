@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:27'
-updated_date: '2026-07-03 23:25'
+updated_date: '2026-07-03 23:27'
 labels:
   - ssh-host-blocks
   - ansible
@@ -34,8 +34,8 @@ Final cross-references: decision-016 Related-tasks section + doc-008 anchor reco
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Role supports per-host URL + trust-anchor install with documented ordering
-- [ ] #2 Runbook covers canary, cutover, rollback/recovery, and the --allow-unsigned posture per client type
-- [ ] #3 All residual limitations including the new-key race documented in operator docs; .env.example complete
-- [ ] #4 decision-016 and doc-008 cross-references final
+- [x] #1 Role supports per-host URL + trust-anchor install with documented ordering
+- [x] #2 Runbook covers canary, cutover, rollback/recovery, and the --allow-unsigned posture per client type
+- [x] #3 All residual limitations including the new-key race documented in operator docs; .env.example complete
+- [x] #4 decision-016 and doc-008 cross-references final
 <!-- AC:END -->
