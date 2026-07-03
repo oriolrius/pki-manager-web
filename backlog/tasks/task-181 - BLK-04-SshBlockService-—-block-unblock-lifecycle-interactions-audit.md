@@ -38,3 +38,12 @@ Lifecycle (per decision-016): blocking a DISABLED identity is allowed (pre-empti
 - [ ] #4 Shared-fingerprint detection returns colliding identities for the over-block warning
 - [ ] #5 Lifecycle tests: disabled identity blockable; identity offboard marks blocks superseded; host offboard retires the lineage and keeps rows
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add ssh.host.block/ssh.host.unblock AuditOperations
+2. ssh-block.service.ts: block/unblock (sync regen, friendly dup error), listForHost/listForIdentity with superseded-by-offboard annotation, shared-fingerprint detection
+3. Guard SshHostKrlService.generate against offboarded hosts (lineage retirement)
+4. Tests: round-trip + numbering, audit success/failure, list annotations, fingerprint collision, lifecycle (disabled/identity-offboard/host-offboard)
+<!-- SECTION:PLAN:END -->
