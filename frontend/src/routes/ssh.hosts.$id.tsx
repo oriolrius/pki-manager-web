@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { ArrowLeft, RefreshCw, XCircle, LogOut } from 'lucide-react';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
+import { HostAccessCard } from '@/components/ssh/HostAccessCard';
 
 export const Route = createFileRoute('/ssh/hosts/$id')({
   component: SshHostDetail,
@@ -153,6 +154,9 @@ function SshHostDetail() {
           </div>
         </div>
       </div>
+
+      {/* Per-host user access blocks (decision-016) — between header and deploy panel. */}
+      {host.status !== 'offboarded' && <HostAccessCard hostId={id} />}
 
       {bundle && (
         <DeployPanel

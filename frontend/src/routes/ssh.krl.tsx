@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
 import { RefreshCw, Ban } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
+import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
 
 export const Route = createFileRoute('/ssh/krl')({
   component: SshKrl,
@@ -225,8 +226,9 @@ function KrlForCa({ caId }: { caId: string }) {
 }
 
 function HostDistribution() {
-  const hostsQuery = trpc.ssh.host.list.useQuery();
-  const hosts = (hostsQuery.data ?? []).filter((h) => h.status === 'active');
+  // BLK-09: the fleet-wide propagation view — per-host blocks + distribution state.
+  const fleetQuery = trpc.ssh.block.fleetDistribution.useQuery();
+  const rows = (fleetQuery.data ?? []).filter((h) => h.status === 'active');
 
   return (
     <div className="space-y-2">
@@ -236,21 +238,27 @@ function HostDistribution() {
           <thead className="border-b bg-muted/50">
             <tr>
               <th className="px-3 py-2 text-left font-medium">Host</th>
+              <th className="px-3 py-2 text-left font-medium">Blocks</th>
+              <th className="px-3 py-2 text-left font-medium">State</th>
               <th className="px-3 py-2 text-left font-medium">Last KRL version</th>
               <th className="px-3 py-2 text-left font-medium">Last fetch</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {hosts.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
                   No active hosts.
                 </td>
               </tr>
             ) : (
-              hosts.map((h) => (
-                <tr key={h.id}>
+              rows.map((h) => (
+                <tr key={h.hostId}>
                   <td className="px-3 py-2 font-medium">{h.fqdn}</td>
+                  <td className="px-3 py-2">{h.blockCount || '—'}</td>
+                  <td className="px-3 py-2">
+                    <HostKrlStatePill state={h.state} />
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs">{h.lastKrlVersion ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
                     {h.lastKrlFetchAt ? new Date(h.lastKrlFetchAt).toLocaleString() : 'never'}
