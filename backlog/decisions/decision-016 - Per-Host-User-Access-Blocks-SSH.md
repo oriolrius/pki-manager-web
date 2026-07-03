@@ -158,6 +158,13 @@ implementation fails without these):
 1. **The composed KRL MUST be signed with the Host-CA key**: `host_puller.sh` verifies
    the detached signature against a fixed `CA_PUBLIC_KEY_ID` (the Host CA). Signing
    with a user-CA key makes every puller fail verification and go fail-stale.
+   **Caveat (found at milestone grounding, 2026-07-03): the production `krl-client`'s
+   DEFAULT `--ca-pubkey` is `/etc/ssh/ssh-user-ca.pub` — the USER CA
+   (`krl-client/internal/config/config.go:39`)** — so on defaults it fails verify
+   (exit 4) against a Host-CA-signed KRL and blocks never land. This is decision-015's
+   open "Host-CA vs User-CA asymmetry" caveat; the milestone reconciles it end-to-end
+   (BLK-10 / TASK-187: canonical Host-CA pubkey path shipped to hosts, client default
+   flipped, round-trip verify test) while keeping this requirement as pinned.
 2. **It MUST union the host-CA revocation set** it displaces (see Bonus fix — dropping
    it would regress host-cert revocation).
 3. **Regeneration stays off the issuance hot path**: block/unblock regenerate
@@ -279,6 +286,10 @@ blocks. The two mechanisms are independent layers — either enforces alone.
 
 ## Related tasks
 
+- **doc-008 — SSH Host Access Blocks milestone (TASK-177..190, BLK-00..BLK-13)** —
+  implements this decision on branch `feat/ssh-host-blocks`; the task breakdown was
+  grounded against the code and adversarially critiqued (trust-anchor reconciliation,
+  global monotonic KRL numbering, revocation-trigger sequencing, cutover fallback).
 - TASK-140/141/142 (SSH-20/21/22) — KRL builder, revoke ops, public serving: reused
   verbatim by the per-host composition. **Done.**
 - TASK-145 (SSH-24) — ECIES sidecar + host_puller.sh: the unchanged distribution
