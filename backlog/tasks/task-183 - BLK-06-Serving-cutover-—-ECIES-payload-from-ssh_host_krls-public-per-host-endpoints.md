@@ -3,10 +3,11 @@ id: TASK-183
 title: >-
   BLK-06: Serving cutover — ECIES payload from ssh_host_krls + public per-host
   endpoints
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:25'
-updated_date: '2026-07-03 21:39'
+updated_date: '2026-07-03 22:56'
 labels:
   - ssh-host-blocks
   - backend
