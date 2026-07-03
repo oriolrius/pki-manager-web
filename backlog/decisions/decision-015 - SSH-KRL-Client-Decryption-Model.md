@@ -21,8 +21,9 @@ KMS-resident *confidentiality* path is retired here.
 SSH revocation ships in two layers. The floor (decision-013, unchanged) is the **bare
 CA-signed + TLS-served public KRL** (SSH-22 / TASK-142): sshd reads `RevokedKeys` bytes
 directly and verifies no KRL signature, so integrity rests on TLS + `0444 root:root` perms
+
 + short cert TTLs. The second layer adds **confidentiality** of the revocation set by
-encrypting a per-host KRL payload to each host.
+  encrypting a per-host KRL payload to each host.
 
 decision-013 built that second layer as **KMS-resident ECIES**: `registerHostEciesKey`
 generated the host's ECIES keypair *inside* the Cosmian KMS, the backend encrypted to that
@@ -46,41 +47,34 @@ KRLC promotes that model to a production `krl-client` Go binary (doc-007).
 1. **Decryption is ALWAYS local.** The KMS is **never** used to en/decrypt the KRL. The
    host decrypts entirely in-process with a host-held private key — no per-host KMS access,
    no `cosmian`/`openssl` shell-outs.
-
 2. **The backend encrypts NATIVELY (`node:crypto`) to the host's OWN public key.** By
    default that key is the **reused SSH host key** at pki-manager's canonical path
    `/etc/ssh/ssh_host_ecdsa_key` (an ECDSA nistp256 key), whose public half is already
    stored as `ssh_hosts.opensshHostPubkey` — so **no new key registration** is needed for
    hosts that registered with an ecdsa key. A dedicated ECIES key remains available via the
    client's `--host-key` override (trade-off in §Consequences).
-
 3. **All client on-host path defaults derive from `backend/src/services/ssh-config.ts`**,
    the declared single source of truth for every on-host path, so the client, the generated
    `60-ssh-ca.conf` drop-in, and the Ansible role can never disagree:
-
-   | Client flag | Default | `ssh-config.ts` constant |
-   |---|---|---|
+   | Client flag                           | Default                         | `ssh-config.ts` constant                |
+   | ------------------------------------- | ------------------------------- | ----------------------------------------- |
    | `--host-key` (ECIES = SSH host key) | `/etc/ssh/ssh_host_ecdsa_key` | `hostKeyPathFor('ecdsa-sha2-nistp256')` |
-   | `--ca-pubkey` (KRL-sig trust) | `/etc/ssh/ssh-user-ca.pub` | `USER_CA_PATH` |
-   | `--krl-file` (install target) | `/etc/ssh/revoked_keys` | `REVOKED_KEYS_PATH` |
-
+   | `--ca-pubkey` (KRL-sig trust)       | `/etc/ssh/ssh-user-ca.pub`    | `USER_CA_PATH`                          |
+   | `--krl-file` (install target)       | `/etc/ssh/revoked_keys`       | `REVOKED_KEYS_PATH`                     |
 4. **The envelope is a pinned, standard, cross-impl ECIES scheme:** P-256 ECDH +
    HKDF-SHA256 + AES-256-GCM, framing `ephemeral-pubkey || nonce || ciphertext || tag`.
    A **native, documented** scheme (not Cosmian's opaque ECIES) is **REQUIRED** because
    local decryption means a std-lib Go client must byte-match the backend's output; the
    contract is pinned by encrypt→decrypt golden vectors (KRLC-02a gate spike, KRLC-11).
-
 5. **This is a rebuild, not an add-on (KRLC-02, blocking).** KRLC-02 replaces the
    KMS-resident encrypt path with a native backend encrypt-to-`opensshHostPubkey`, and
    **retires** the KMS `CreateKeyPair`/`Encrypt`/`Decrypt` path plus `ssh_hosts.kms_pubkey_id`,
    **migrating existing hosts** off the KMS-resident model. This retires the KMS-decrypt
    parts of SSH-15 (TASK-133) and SSH-24 (TASK-145), which shipped Done under decision-013.
-
 6. **P-256 constraint.** ECIES here needs P-256, so the host must have an ecdsa host key
    (`sshd` generates one by default). An ed25519-cert host registers its
    `/etc/ssh/ssh_host_ecdsa_key.pub` so it can still decrypt. Reusing the SSH host key for
    ECIES is a deliberate trade-off (below), overridable with `--host-key`.
-
 7. **Client security posture (fail-closed).** Before installing, the client:
    **verifies the detached CA signature** (DER ECDSA-P256 over `sha256(krl)`, OpenSSH
    `ca.pub` parsed via `ssh.ParseAuthorizedKey` → `ecdsa.VerifyASN1`; a `null` signature
