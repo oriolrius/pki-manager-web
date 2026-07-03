@@ -3,9 +3,11 @@ id: TASK-187
 title: >-
   BLK-10: Puller trust-anchor reconciliation — krl-client default vs Host-CA
   signer
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:26'
+updated_date: '2026-07-03 22:51'
 labels:
   - ssh-host-blocks
   - krl-client
