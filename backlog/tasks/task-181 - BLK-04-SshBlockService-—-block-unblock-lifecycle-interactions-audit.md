@@ -1,9 +1,11 @@
 ---
 id: TASK-181
 title: 'BLK-04: SshBlockService — block/unblock + lifecycle interactions + audit'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:25'
+updated_date: '2026-07-03 22:43'
 labels:
   - ssh-host-blocks
   - backend
