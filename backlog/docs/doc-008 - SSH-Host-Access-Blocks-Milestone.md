@@ -12,6 +12,8 @@ created_date: '2026-07-03 21:27'
 > [decision-015 — SSH KRL Client Decryption Model](../decisions/decision-015%20-%20SSH-KRL-Client-Decryption-Model.md) *(whose Host-CA/User-CA open caveat BLK-10 forces to resolution)* ·
 > decisions 011-014 *(preserved verbatim — this milestone is purely additive)*.
 > Branch: `feat/ssh-host-blocks` off `main`.
+> **Status: implemented 2026-07-04** (TASK-177..190; BLK-13 shipped flag-gated, default OFF).
+> Operator guide / cutover runbook: [`docs/ssh/host-blocks-runbook.md`](../../docs/ssh/host-blocks-runbook.md).
 
 ## Goal
 

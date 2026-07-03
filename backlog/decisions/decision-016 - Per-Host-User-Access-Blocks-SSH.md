@@ -173,8 +173,11 @@ implementation fails without these):
    also covers `bulkRenew` and external `sign-user`), with the existing lazy
    regen-on-fetch (`nextUpdate` past) as backstop. KMS `signRaw` failure stays
    non-fatal (`ssh-krl.service.ts:144-149`, KRL persisted with `ca_signature: null`) —
-   note the puller then *skips* verification and installs the unsigned KRL anyway
+   note `host_puller.sh` then *skips* verification and installs the unsigned KRL anyway
    (`host_puller.sh:69-87`); it fail-stales only on a present-but-invalid signature.
+   **`krl-client` however REJECTS unsigned KRLs by default (`--allow-unsigned` false)
+   and fail-stales on last-good** — surfaced as a distinct state (BLK-07), documented
+   per client type (BLK-12).
    Deny availability wins over signature coverage — acceptable, since the bare-KRL
    integrity story already rests on TLS (decision-012), and here the ECIES envelope
    still binds host and freshness.
