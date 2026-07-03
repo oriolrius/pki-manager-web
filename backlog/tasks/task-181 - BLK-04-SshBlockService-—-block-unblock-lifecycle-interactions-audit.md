@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:25'
-updated_date: '2026-07-03 22:43'
+updated_date: '2026-07-03 22:46'
 labels:
   - ssh-host-blocks
   - backend
@@ -32,12 +32,14 @@ Lifecycle (per decision-016): blocking a DISABLED identity is allowed (pre-empti
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 block/unblock round-trip: active partial-unique enforced; lift keeps the row; re-block after lift works; each mutation synchronously produces a new per-host KRL row with a higher number
-- [ ] #2 Audit rows written on success and failure for both operations
-- [ ] #3 listForHost/listForIdentity return reason/by/when/status + superseded-by-offboard annotation
-- [ ] #4 Shared-fingerprint detection returns colliding identities for the over-block warning
-- [ ] #5 Lifecycle tests: disabled identity blockable; identity offboard marks blocks superseded; host offboard retires the lineage and keeps rows
+- [x] #1 block/unblock round-trip: active partial-unique enforced; lift keeps the row; re-block after lift works; each mutation synchronously produces a new per-host KRL row with a higher number
+- [x] #2 Audit rows written on success and failure for both operations
+- [x] #3 listForHost/listForIdentity return reason/by/when/status + superseded-by-offboard annotation
+- [x] #4 Shared-fingerprint detection returns colliding identities for the over-block warning
+- [x] #5 Lifecycle tests: disabled identity blockable; identity offboard marks blocks superseded; host offboard retires the lineage and keeps rows
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
