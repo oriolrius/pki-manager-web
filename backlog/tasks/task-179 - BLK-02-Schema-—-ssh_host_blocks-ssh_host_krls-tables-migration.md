@@ -41,3 +41,12 @@ Migration number = next after current head read from meta/_journal.json.
 - [ ] #4 FKs ON DELETE RESTRICT verified: host/identity rows cannot be hard-deleted while referenced by blocks or host KRLs
 - [ ] #5 ssh_krl_seq exists, seeded from max(ssh_krls.krl_number); allocation via atomic UPDATE...RETURNING proven monotonic under parallel calls
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add ssh_host_blocks, ssh_host_krls (uniqueIndex host_id+krl_number), ssh_krl_seq to schema.ts
+2. pnpm db:generate; append allocator seed INSERT to the migration; pnpm db:migrate
+3. Allocator helper (atomic UPDATE...RETURNING) in src/db/krl-seq.ts
+4. Schema tests: dup-insert, partial-unique block lifecycle, FK RESTRICT, allocator monotonic under parallel calls
+<!-- SECTION:PLAN:END -->
