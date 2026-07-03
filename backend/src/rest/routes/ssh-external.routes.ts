@@ -215,6 +215,10 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const version = row.versionHash as string;
     const inm = (req.headers['if-none-match'] as string | undefined)?.trim();
     if (inm && inm === version) {
+      // BLK-01 (pinned req #5): a 304 is a successful conditional pull — stamp the
+      // fetch time or a healthy 15-min puller reads as stale between hourly regens.
+      // last_krl_version stays 200-only (it records what was SERVED, not confirmed).
+      await db.update(sshHosts).set({ lastKrlFetchAt: new Date() } as any).where(eqcol(sshHosts.id, host.id));
       reply.header('X-KRL-Version', version);
       return reply.code(304).send();
     }
