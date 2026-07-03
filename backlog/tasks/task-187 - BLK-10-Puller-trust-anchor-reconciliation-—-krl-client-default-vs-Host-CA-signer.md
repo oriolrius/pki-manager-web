@@ -44,3 +44,12 @@ BLK-00's puller inventory feeds the fleet migration: existing hosts need the new
 - [ ] #3 Round-trip test: backend-signed composed KRL passes krl-client verify.Check on defaults
 - [ ] #4 host_puller.sh docs/vars aligned; trust-anchor-before-cutover ordering documented
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. HOST_CA_PATH constant in ssh-config.ts + drop-in @cert-authority guidance; check drop-in generator/Ansible install path
+2. Flip krl-client DefaultCAPubkey to /etc/ssh/ssh-host-ca.pub; update comments/tests/README/man/env example/service files
+3. host_puller.sh CA_PUBLIC_KEY_ID guidance aligned
+4. Go round-trip test: backend-format detached sig verifies via verify.Check with shipped default path
+<!-- SECTION:PLAN:END -->
