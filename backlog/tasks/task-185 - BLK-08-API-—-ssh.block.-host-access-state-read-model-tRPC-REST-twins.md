@@ -1,9 +1,11 @@
 ---
 id: TASK-185
 title: 'BLK-08: API — ssh.block.* + host-access/state read model (tRPC + REST twins)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-03 21:26'
+updated_date: '2026-07-03 23:07'
 labels:
   - ssh-host-blocks
   - backend
