@@ -220,6 +220,12 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshBlockService().listForIdentityWithState(ctx(req), id);
   });
 
+  api.get('/identities/:id/collisions', { schema: { tags: tag, summary: 'Identities sharing a certified public key with this one (over-block pre-check)' } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshBlockService().sharedKeyCollisions(ctx(req), id);
+  });
+
   api.get('/blocks/fleet', { schema: { tags: tag, summary: 'Fleet-wide per-host block counts + KRL distribution state' } }, async (req) => {
     ensureSshAllowed();
     return getSshBlockService().fleetDistribution(ctx(req));

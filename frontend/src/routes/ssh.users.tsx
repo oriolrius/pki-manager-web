@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/r
 import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, UserX } from 'lucide-react';
+import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
+import { blockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
 
 export const Route = createFileRoute('/ssh/users')({
   component: SshUsers,
@@ -141,11 +143,38 @@ function IdentityCard({
   onIssue: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const utils = trpc.useUtils();
   const certsQuery = trpc.ssh.user.listCertificates.useQuery(
     { identityId: identity.id },
     { enabled: open }
   );
   const certs = certsQuery.data ?? [];
+
+  // BLK-09: "Blocked on:" host pills + pre-emptive "Block on host…" select.
+  const blocksQuery = trpc.ssh.block.listForIdentity.useQuery({ id: identity.id }, { enabled: open });
+  const hostsQuery = trpc.ssh.host.list.useQuery(undefined, { enabled: open });
+  const fleetQuery = trpc.ssh.block.fleetDistribution.useQuery(undefined, { enabled: open });
+  const blockMutation = trpc.ssh.block.block.useMutation();
+  const unblockMutation = trpc.ssh.block.unblock.useMutation();
+  const [blockHostId, setBlockHostId] = useState('');
+  const blocks = blocksQuery.data ?? [];
+  const blockableHosts = (hostsQuery.data ?? []).filter(
+    (h) => h.status !== 'offboarded' && !blocks.some((b) => b.hostId === h.id)
+  );
+
+  const deps: BlockFlowDeps = {
+    confirmFn: (m) => confirm(m),
+    promptFn: (m) => prompt(m),
+    alertFn: (m) => alert(m),
+    fetchCollisions: (identityId) => utils.client.ssh.block.collisions.query({ id: identityId }),
+    block: (input) => blockMutation.mutateAsync(input),
+    unblock: (input) => unblockMutation.mutateAsync(input),
+    invalidate: () => {
+      utils.ssh.block.listForIdentity.invalidate({ id: identity.id });
+      utils.ssh.block.fleetDistribution.invalidate();
+      utils.ssh.host.access.invalidate();
+    },
+  };
 
   return (
     <div className="rounded-lg border bg-card">
@@ -186,7 +215,58 @@ function IdentityCard({
       </div>
 
       {open && (
-        <div className="border-t px-4 py-3">
+        <div className="border-t px-4 py-3 space-y-3">
+          <div className="flex items-center flex-wrap gap-2 text-sm">
+            <span className="text-muted-foreground">Blocked on:</span>
+            {blocks.length === 0 ? (
+              <span className="text-xs text-muted-foreground">no hosts</span>
+            ) : (
+              blocks.map((b) => (
+                <span
+                  key={b.id}
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                >
+                  {b.fqdn}
+                  <HostKrlStatePill state={b.state} />
+                  {b.supersededByOffboard && <span className="text-muted-foreground">(superseded)</span>}
+                </span>
+              ))
+            )}
+            <span className="ml-auto flex items-center gap-1.5">
+              <select
+                value={blockHostId}
+                onChange={(e) => setBlockHostId(e.target.value)}
+                className="px-2 py-1 border rounded-md bg-background text-xs"
+              >
+                <option value="">Block on host…</option>
+                {blockableHosts.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.fqdn}
+                  </option>
+                ))}
+              </select>
+              <button
+                disabled={!blockHostId || blockMutation.isPending}
+                onClick={async () => {
+                  const host = blockableHosts.find((h) => h.id === blockHostId);
+                  if (!host) return;
+                  const fleetState = fleetQuery.data?.find((r) => r.hostId === host.id)?.state.state;
+                  const ok = await blockFlow(deps, {
+                    hostId: host.id,
+                    fqdn: host.fqdn,
+                    identityId: identity.id,
+                    subject: identity.subject,
+                    hostState: fleetState ?? 'unknown',
+                  });
+                  if (ok) setBlockHostId('');
+                }}
+                className="px-2 py-1 text-xs border rounded-md hover:bg-muted disabled:opacity-50"
+              >
+                Block
+              </button>
+            </span>
+          </div>
+
           {certsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading certificates...</p>
           ) : certs.length === 0 ? (

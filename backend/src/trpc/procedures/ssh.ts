@@ -413,6 +413,11 @@ const blockRouter = router({
   listForIdentity: sshProtectedProcedure.input(identityIdSchema).query(async ({ ctx, input }) =>
     getSshBlockService().listForIdentityWithState(svcCtx(ctx), input.id)
   ),
+  // Pre-block check so the UI confirm can warn about fingerprint over-blocking
+  // BEFORE the block is placed (decision-016 pinned confirm copy).
+  collisions: sshProtectedProcedure.input(identityIdSchema).query(async ({ ctx, input }) =>
+    getSshBlockService().sharedKeyCollisions(svcCtx(ctx), input.id)
+  ),
   fleetDistribution: sshProtectedProcedure.query(async ({ ctx }) => getSshBlockService().fleetDistribution(svcCtx(ctx))),
 });
 
