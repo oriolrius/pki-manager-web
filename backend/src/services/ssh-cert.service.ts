@@ -149,6 +149,18 @@ export class SshCertService {
 
     logger.info({ id, caId: params.caId, type: params.type, serial: serial.toString() }, 'Signed SSH certificate');
     void nonce;
+
+    // BLK-05 issuance trigger — sign() is the single choke point (UI issue,
+    // bulkRenew, external sign-user all land here with identityId): a new user
+    // cert for a blocked identity regenerates the affected hosts' KRLs
+    // asynchronously. Identity resolution keys off params.identityId ONLY —
+    // keyId is caller-settable and MUST NOT resolve identity (decision-016).
+    if (params.type === 'user' && params.identityId) {
+      const identityId = params.identityId;
+      void import('./ssh-host-krl.service.js')
+        .then(({ getSshHostKrlService }) => getSshHostKrlService().onUserCertIssued(ctx, identityId))
+        .catch((e) => logger.warn({ identityId, error: String(e) }, 'post-issuance per-host KRL trigger failed'));
+    }
     return {
       id,
       caId: params.caId,
