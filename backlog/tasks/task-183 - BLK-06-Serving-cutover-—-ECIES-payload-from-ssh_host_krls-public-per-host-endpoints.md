@@ -39,4 +39,5 @@ Public GET /krl/hosts/:hostId.bin|.json beside /krl/:caId.bin with identical ETa
 - [ ] #1 ECIES serves the per-host row; 200/304/telemetry semantics unchanged (contract tests); payload fields byte-compatible for existing pullers
 - [ ] #2 SSH_HOST_KRL_SERVE=false serves per-CA (documented); SSH_HOST_KRL_PUBLIC default OFF; when ON, per-host public endpoints have ETag/lazy-regen/last-good/rate-limit parity
 - [ ] #3 ed25519-only / unregistered-ECIES hosts unchanged (ECIES_KEY_UNSUPPORTED path intact)
+- [ ] #4 First-fetch with empty ssh_host_krls synchronously generates + serves a seeded row; generation failure returns the not-initialized/NO_KRL error (no per-CA fallback — pullers fail-stale on last-good and retry); post-first-row failure serves last-good per-host
 <!-- AC:END -->
