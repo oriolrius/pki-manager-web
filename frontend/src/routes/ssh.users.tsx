@@ -3,7 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, UserX } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
-import { blockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
+import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
 
 export const Route = createFileRoute('/ssh/users')({
   component: SshUsers,
@@ -229,6 +229,22 @@ function IdentityCard({
                   {b.fqdn}
                   <HostKrlStatePill state={b.state} />
                   {b.supersededByOffboard && <span className="text-muted-foreground">(superseded)</span>}
+                  <button
+                    onClick={() =>
+                      unblockFlow(deps, {
+                        hostId: b.hostId,
+                        fqdn: b.fqdn ?? b.hostId,
+                        identityId: identity.id,
+                        subject: identity.subject,
+                      })
+                    }
+                    disabled={unblockMutation.isPending}
+                    title={`Unblock ${identity.subject} on ${b.fqdn ?? b.hostId}`}
+                    aria-label={`Unblock ${identity.subject} on ${b.fqdn ?? b.hostId}`}
+                    className="ml-0.5 rounded-full hover:bg-red-200 dark:hover:bg-red-800 leading-none px-1 disabled:opacity-50"
+                  >
+                    ×
+                  </button>
                 </span>
               ))
             )}
