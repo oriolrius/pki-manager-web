@@ -1,10 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    // Relax strictness temporarily for production builds
+    // Full strict (inherited): Drizzle's $inferInsert and Zod's inference
+    // compute wrong types without strictNullChecks, so the historical
+    // `strict: false` relaxation silently mistyped insert/service calls.
+    // Only unused-symbol checks stay relaxed (tests are excluded here, so
+    // test-only helpers would otherwise flag as unused).
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "strict": false,
     "skipLibCheck": true
   },
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
