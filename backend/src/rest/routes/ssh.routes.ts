@@ -198,13 +198,22 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   api.post('/blocks', { schema: { tags: tag, summary: 'Block an identity on a host (per-host KRL deny; certs stay valid elsewhere)' } }, async (req) => {
     ensureSshAllowed();
     const input = parse(blockHostSchema, req.body);
-    return getSshBlockService().block(ctx(req), { ...input, createdBy: actorOf(req) });
+    return getSshBlockService().block(ctx(req), {
+      hostId: input.hostId,
+      identityId: input.identityId,
+      reason: input.reason,
+      createdBy: actorOf(req),
+    });
   });
 
   api.post('/blocks/unblock', { schema: { tags: tag, summary: 'Lift a block (symmetric: enforced on the next host pull)' } }, async (req) => {
     ensureSshAllowed();
     const input = parse(unblockHostSchema, req.body);
-    return getSshBlockService().unblock(ctx(req), { ...input, liftedBy: actorOf(req) });
+    return getSshBlockService().unblock(ctx(req), {
+      hostId: input.hostId,
+      identityId: input.identityId,
+      liftedBy: actorOf(req),
+    });
   });
 
   api.get('/hosts/:id/access', { schema: { tags: tag, summary: 'Who can reach this host (entitlements + blocks + distribution state)' } }, async (req) => {
