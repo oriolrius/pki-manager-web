@@ -242,19 +242,40 @@ export class SshCertService {
     if (!blocks.length) return requested;
     const blockedHostIds = new Set(blocks.map((b) => b.hostId));
 
-    const maps = (await ctx.db
-      .select({ name: sshPrincipals.name, hostId: sshHosts.id, fqdn: sshHosts.fqdn })
-      .from(sshHostPrincipalMaps)
-      .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
-      .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id))
-      .where(and(inArray(sshPrincipals.name, requested), ne(sshHosts.status, 'offboarded')))) as any[];
-
+    // IDEMPOTENT over already-scoped forms: renewals (notably bulkRenew) feed a
+    // cert's STORED principals back through sign(), so `P@<fqdn>` inputs must
+    // re-narrow (kept when the host is fine, dropped when it is blocked or
+    // offboarded) rather than match nothing and refuse the renewal.
+    const hostByFqdn = new Map<string, any>(
+      ((await ctx.db.select().from(sshHosts)) as any[]).map((h) => [h.fqdn, h])
+    );
+    const bareNames = new Set<string>();
     const narrowed = new Set<string>();
-    for (const p of requested) {
-      for (const m of maps) {
-        if (m.name === p && !blockedHostIds.has(m.hostId)) narrowed.add(`${p}@${m.fqdn}`);
+    const scopedInput: Array<{ form: string; bare: string; host: any }> = [];
+    for (const r of requested) {
+      const at = r.lastIndexOf('@');
+      const maybeHost = at > 0 ? hostByFqdn.get(r.slice(at + 1)) : undefined;
+      if (maybeHost) scopedInput.push({ form: r, bare: r.slice(0, at), host: maybeHost });
+      else bareNames.add(r);
+    }
+    for (const s of scopedInput) {
+      if (!blockedHostIds.has(s.host.id) && s.host.status !== 'offboarded') narrowed.add(s.form);
+    }
+
+    if (bareNames.size) {
+      const maps = (await ctx.db
+        .select({ name: sshPrincipals.name, hostId: sshHosts.id, fqdn: sshHosts.fqdn })
+        .from(sshHostPrincipalMaps)
+        .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
+        .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id))
+        .where(and(inArray(sshPrincipals.name, [...bareNames]), ne(sshHosts.status, 'offboarded')))) as any[];
+      for (const p of bareNames) {
+        for (const m of maps) {
+          if (m.name === p && !blockedHostIds.has(m.hostId)) narrowed.add(`${p}@${m.fqdn}`);
+        }
       }
     }
+
     if (!narrowed.size) throw new SshPrincipalsNarrowedEmptyError(`identity ${identityId}`);
     logger.info({ identityId, requested, narrowed: [...narrowed] }, 'issuance gate narrowed principals for blocked identity');
     return [...narrowed].sort();

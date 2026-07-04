@@ -194,6 +194,10 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');
     const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId)).limit(1))[0];
     if (!host || !host.opensshHostPubkey) return err(reply, 404, 'NOT_FOUND', 'host not registered for KRL distribution');
+    // Offboard is terminal: the per-host lineage is retired, so keep-alive
+    // serving would hand a decommissioned host a frozen KRL with a fresh
+    // valid_until on every pull (and audit-spam failed regens).
+    if (host.status === 'offboarded') return err(reply, 404, 'NOT_FOUND', 'host is offboarded');
 
     let row: any | null = null;
     if (hostKrlServeEnabled()) {

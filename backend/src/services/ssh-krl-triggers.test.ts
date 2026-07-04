@@ -140,7 +140,7 @@ describe('BLK-05 issuance + revocation triggers', () => {
     expect(decoded.serialsByCaHex.get(caUBlobHex)).toContain(9001n);
   });
 
-  it('every revocation entry point invalidates: revokeByCert, revokeByKeyFingerprint, user.revoke', async () => {
+  it('every revocation entry point invalidates: revokeByCert, revokeByKeyFingerprint, user.revoke, bulkRevoke, host.revokeCurrent', async () => {
     const entryPoints: Array<() => Promise<unknown>> = [
       async () => {
         const c = certRow({ identityId: ids.mallory, serial: '7101', keyId: 'ep1' });
@@ -157,6 +157,26 @@ describe('BLK-05 issuance + revocation triggers', () => {
         const c = certRow({ identityId: ids.mallory, serial: '7103', keyId: 'ep3' });
         await db.insert(sshCertificates).values(c as any);
         return getSshUserService().revoke(ctx, c.id, 'ep');
+      },
+      async () => {
+        const c = certRow({ identityId: ids.mallory, serial: '7104', keyId: 'ep4' });
+        await db.insert(sshCertificates).values(c as any);
+        const { getSshBulkService } = await import('./ssh-bulk.service.js');
+        return getSshBulkService().bulkRevoke(ctx, [c.id], 'ep');
+      },
+      async () => {
+        // host.revokeCurrent: give the plain host a current HOST cert to revoke.
+        const c = {
+          ...certRow({ identityId: ids.mallory, serial: '7105', keyId: 'ep5' }),
+          certType: 'host',
+          identityId: null,
+          hostId: ids.hostPlain,
+          caId: ids.caHost,
+        };
+        await db.insert(sshCertificates).values(c as any);
+        await db.update(sshHosts).set({ currentCertId: c.id } as any).where(eq(sshHosts.id, ids.hostPlain));
+        const { getSshHostService } = await import('./ssh-host.service.js');
+        return getSshHostService().revokeCurrent(ctx, ids.hostPlain, 'ep');
       },
     ];
     for (const fire of entryPoints) {

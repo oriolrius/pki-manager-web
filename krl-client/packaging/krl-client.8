@@ -40,10 +40,10 @@ the token is the server's
 response header), not a hash of the local file. When the host already holds the
 current KRL the server returns 304 and the run is a no-op (exit 0).
 .PP
-On a host provisioned from PKI Manager's generated
-.B 60-ssh-ca.conf
-sshd drop-in, every on-host path default already matches, so the only required
-flag is
+On a host provisioned from PKI Manager's per-host deploy bundle (or the
+Ansible role) — which installs the Host-CA trust anchor at
+.I /etc/ssh/ssh-host-ca.pub
+— every on-host path default already matches, so the only required flag is
 .BR \-\-server-url .
 .SH OPTIONS
 Each option may also be set via an environment variable
@@ -192,10 +192,9 @@ is in the past beyond
 .BR \-\-clock-skew ;
 a machine whose clock has drifted will fail every run. Keep NTP running.
 .PP
-After the KRL is installed, sshd picks up the new
+After the KRL is installed it is effective immediately: sshd re-reads
 .B RevokedKeys
-on its next config read; to apply immediately run
-.B sshd \-t && systemctl reload ssh\fR.
+on every authentication attempt — no reload or restart is needed.
 .SH SEE ALSO
 .BR sshd_config (5)
 .RB ( RevokedKeys ),

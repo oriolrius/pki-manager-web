@@ -154,6 +154,22 @@ describe('BLK-13 issuance gate', () => {
     await expect(signAlice(['dev'])).rejects.toThrow(SshPrincipalsNarrowedEmptyError); // dev maps only on blocked Y
   });
 
+  it('flag ON: narrowing is IDEMPOTENT — renewals feeding stored P@fqdn forms back re-narrow instead of failing', async () => {
+    process.env.SSH_BLOCK_ISSUANCE_GATE = 'true';
+    // Steady-state renewal: the stored principals of a previously-narrowed cert.
+    const renewed = await signAlice(['admin@z.lab']);
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, renewed.id)))[0] as any;
+    expect(JSON.parse(row.principals)).toEqual(['admin@z.lab']); // kept — host not blocked
+
+    // A scoped form pointing at the BLOCKED host is dropped on renewal.
+    const mixed = await signAlice(['admin@z.lab', 'admin@y.lab']);
+    const mixedRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, mixed.id)))[0] as any;
+    expect(JSON.parse(mixedRow.principals)).toEqual(['admin@z.lab']);
+
+    // Only-blocked scoped forms → refuse, same as the bare all-blocked case.
+    await expect(signAlice(['admin@y.lab'])).rejects.toThrow(SshPrincipalsNarrowedEmptyError);
+  });
+
   it('render() pre-provisions dual P + P@<fqdn> lines unconditionally; drift flow intact', async () => {
     delete process.env.SSH_BLOCK_ISSUANCE_GATE; // dual lines are NOT flag-gated
     const rendered = await getSshPrincipalService().render(ctx, ids.hostY);

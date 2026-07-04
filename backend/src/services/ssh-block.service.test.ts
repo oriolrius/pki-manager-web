@@ -173,6 +173,26 @@ describe('BLK-04 SshBlockService', () => {
     expect(forIdent.every((b) => b.fqdn !== null)).toBe(true);
   });
 
+  it('a failed synchronous regen clamps the host lineage so the lazy backstop fires on the next pull', async () => {
+    // Fresh baseline row, then break generation (no CAs at all).
+    await getSshHostKrlService().generate(ctx, ids.hostZ);
+    const before = await getSshHostKrlService().getLatestRow(ctx, ids.hostZ);
+    expect(new Date(before.nextUpdate).getTime()).toBeGreaterThan(Date.now());
+
+    const cas = await db.select().from(sshCas);
+    await db.delete(sshCas);
+    try {
+      const res = await svc.block(ctx, { hostId: ids.hostZ, identityId: ids.carol, reason: 'regen-fail' });
+      expect(res.krl).toBeNull(); // sync regen failed, block row persisted
+      const after = await getSshHostKrlService().getLatestRow(ctx, ids.hostZ);
+      expect(after.id).toBe(before.id); // no new row ...
+      expect(new Date(after.nextUpdate).getTime()).toBeLessThanOrEqual(Date.now()); // ... but clamped
+    } finally {
+      await db.insert(sshCas).values(cas as any);
+      await svc.unblock(ctx, { hostId: ids.hostZ, identityId: ids.carol });
+    }
+  });
+
   it('lifecycle: a disabled identity is blockable (pre-emptive)', async () => {
     const res = await svc.block(ctx, { hostId: ids.hostY, identityId: ids.bob, reason: 'pre-emptive' });
     expect(res.block.status).toBe('active');

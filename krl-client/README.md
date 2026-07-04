@@ -31,8 +31,8 @@ make test          # go test ./... -race
 
 ## Quick start
 
-A host provisioned from pki-manager's generated `60-ssh-ca.conf` sshd drop-in
-already has the host key, the User-CA public key, the Host-CA trust anchor
+A host provisioned from pki-manager's per-host deploy bundle (or the Ansible
+role) already has the host key, the User-CA public key, the Host-CA trust anchor
 (`/etc/ssh/ssh-host-ca.pub`, fetched from `GET /ssh/host-ca-keys` — the key KRL
 signatures are verified against), and the `RevokedKeys` path in their canonical
 locations, so it needs only the server URL:
@@ -182,7 +182,7 @@ The env var for a flag is `KRL_CLIENT_` + the flag name upper-cased with `-`→`
 
 The path defaults derive from the backend's canonical constants in
 `backend/src/services/ssh-config.ts` (`hostKeyPathFor('ecdsa-sha2-nistp256')`,
-`USER_CA_PATH`, `REVOKED_KEYS_PATH`) so the client, the sshd drop-in, and the
+`HOST_CA_PATH`, `REVOKED_KEYS_PATH`) so the client, the deploy bundle, and the
 Ansible role never disagree. **A host set up from the generated `60-ssh-ca.conf`
 therefore runs with only `--server-url`** — every other default already points at
 the right on-host file. A defaults test asserts these exact strings so drift is
