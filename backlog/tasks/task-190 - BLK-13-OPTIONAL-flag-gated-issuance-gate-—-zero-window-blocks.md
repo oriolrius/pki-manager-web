@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:27'
-updated_date: '2026-07-03 23:28'
+updated_date: '2026-07-04 08:03'
 labels:
   - ssh-host-blocks
   - backend
@@ -31,10 +31,12 @@ Cost (why it is flag-gated, default OFF): render() must pre-provision dual P + P
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Flag ON: a cert issued to a blocked identity carries no principal resolving to the blocked host, on ALL issuance paths; flag OFF: zero behavior change
-- [ ] #2 render() emits dual-form principal lines; markPushed/drift flows intact; the one-time fleet re-push documented
-- [ ] #3 Narrowed certs surfaced in the UI; E2E: post-block cert denied on the blocked host within TTL even with a never-pulling host
+- [x] #1 Flag ON: a cert issued to a blocked identity carries no principal resolving to the blocked host, on ALL issuance paths; flag OFF: zero behavior change
+- [x] #2 render() emits dual-form principal lines; markPushed/drift flows intact; the one-time fleet re-push documented
+- [x] #3 Narrowed certs surfaced in the UI; E2E: post-block cert denied on the blocked host within TTL even with a never-pulling host
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
