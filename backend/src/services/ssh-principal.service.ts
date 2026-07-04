@@ -158,7 +158,12 @@ export class SshPrincipalService {
     }
     const files: Record<string, string> = {};
     for (const [account, names] of Object.entries(byAccount)) {
-      files[account] = names.sort().join('\n') + '\n';
+      // BLK-13: dual-form lines — bare `P` (today's certs) plus host-scoped
+      // `P@<fqdn>`. Pre-provisioned UNCONDITIONALLY so the one-time fleet
+      // re-push can happen BEFORE the SSH_BLOCK_ISSUANCE_GATE flag is enabled;
+      // the extra lines are inert until a cert carries a scoped principal.
+      const lines = [...new Set(names.flatMap((n) => [n, `${n}@${host.fqdn}`]))];
+      files[account] = lines.sort().join('\n') + '\n';
     }
 
     const lastPush = host.lastPrincipalPushAt ? new Date(host.lastPrincipalPushAt).getTime() : 0;
