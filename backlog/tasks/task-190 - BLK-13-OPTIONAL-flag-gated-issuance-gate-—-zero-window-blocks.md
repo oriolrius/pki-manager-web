@@ -1,7 +1,7 @@
 ---
 id: TASK-190
 title: 'BLK-13: OPTIONAL flag-gated issuance gate — zero-window blocks'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-03 21:27'
@@ -36,8 +36,6 @@ Cost (why it is flag-gated, default OFF): render() must pre-provision dual P + P
 - [x] #3 Narrowed certs surfaced in the UI; E2E: post-block cert denied on the blocked host within TTL even with a never-pulling host
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -47,3 +45,9 @@ Cost (why it is flag-gated, default OFF): render() must pre-provision dual P + P
 4. E2E: post-block cert denied on never-pulling blocked host, allowed elsewhere
 5. Document flag + one-time re-push (runbook/env)
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-cert.service.ts: SSH_BLOCK_ISSUANCE_GATE gate + narrowPrincipalsForBlocks (active blocks -> blocked host set; principal->host maps join excluding offboarded; P@fqdn forms; SshPrincipalsNarrowedEmptyError when empty; sorted/deduped; audit gains narrowedByIssuanceGate+requestedPrincipals); flows through sign/renew/bulkRenew/external by construction. ssh-principal.service.ts render(): dual P + P@fqdn lines unconditional (inert until scoped certs exist; enables re-push BEFORE flag). Unit tests 6/6 (ssh-issuance-gate.test.ts, KMS mocked): flag OFF zero change with active block; flag ON no blocks untouched; narrowing excludes blocked+offboarded and drops Y-only principals with UI listing surfacing; renew path narrowed; all-blocked refusal; render dual lines + markPushed/stale intact. E2E 1/1 (e2e-issuance-gate.test.ts, real KMS+sshd): post-block cert born admin@z-only, DENIED on blocked Y holding an empty never-refreshed KRL, accepted on Z. .env.example + runbook document the flag and the one-time fleet re-push (also fixed SSH-18 REST render assertion for dual lines). Full backend suite 575 passed / 58 files; strict typecheck clean.
+<!-- SECTION:NOTES:END -->
