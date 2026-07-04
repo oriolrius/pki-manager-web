@@ -181,6 +181,17 @@ describe('BLK-06 serving cutover', () => {
     }
   });
 
+  it('offboarded hosts get 404 — no frozen last-good serving with fresh valid_until', async () => {
+    await db.update(sshHosts).set({ status: 'offboarded' } as any).where(eq(sshHosts.id, hostId));
+    try {
+      const res = await fetchKrl();
+      expect(res.statusCode).toBe(404);
+      expect(JSON.parse(res.body).error.message).toMatch(/offboarded/);
+    } finally {
+      await db.update(sshHosts).set({ status: 'active' } as any).where(eq(sshHosts.id, hostId));
+    }
+  });
+
   it('ed25519-only hosts keep the ECIES_KEY_UNSUPPORTED path', async () => {
     const res = await app.inject({ method: 'POST', url: URL_KRL, payload: { host_id: 'ed.lab.local' } });
     expect(res.statusCode).toBe(404);

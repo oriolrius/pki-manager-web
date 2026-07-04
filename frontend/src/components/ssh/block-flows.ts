@@ -57,11 +57,21 @@ export async function blockFlow(deps: BlockFlowDeps, target: BlockTarget): Promi
   if (!deps.confirmFn(buildBlockConfirmMessage(target, collisions))) return false;
   const reason = deps.promptFn('Optional reason for the block:') ?? undefined;
   try {
-    await deps.block({ hostId: target.hostId, identityId: target.identityId, reason: reason?.trim() || undefined });
+    const result = (await deps.block({
+      hostId: target.hostId,
+      identityId: target.identityId,
+      reason: reason?.trim() || undefined,
+    })) as { warnings?: { sharedKeyCollisions?: SharedKeyCollision[] } } | undefined;
     deps.invalidate();
-    deps.alertFn(
-      `${target.subject} blocked on ${target.fqdn}. The host enforces it on its next KRL pull (shown as Pending until then).`
-    );
+    let msg = `${target.subject} blocked on ${target.fqdn}. The host enforces it on its next KRL pull (shown as Pending until then).`;
+    // Backstop: the block RESPONSE re-reports collisions, so the over-block
+    // warning is never silently lost when the pre-check query failed.
+    const confirmed = result?.warnings?.sharedKeyCollisions ?? [];
+    if (confirmed.length && !collisions.length) {
+      const others = [...new Set(confirmed.map((c) => c.subject))].join(', ');
+      msg += `\n\nWarning: this key is also certified for ${others} — they are ALSO denied on this host.`;
+    }
+    deps.alertFn(msg);
     return true;
   } catch (e) {
     deps.alertFn(`Block failed: ${e instanceof Error ? e.message : String(e)}`);

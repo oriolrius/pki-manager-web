@@ -17,6 +17,7 @@ import {
   SSHD_DROPIN_PATH,
   SSHD_DROPIN_FILENAME,
   USER_CA_PATH,
+  HOST_CA_PATH,
   REVOKED_KEYS_PATH,
 } from './ssh-config.js';
 import type { ServiceContext } from './types.js';
@@ -239,6 +240,15 @@ export class SshHostService {
       content: anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : ''),
       mode: '0444',
     });
+    if (anchors.hostCaKeys.length) {
+      files.push({
+        name: 'Host CA public key (KRL signature trust anchor)',
+        path: HOST_CA_PATH,
+        filename: 'ssh-host-ca.pub',
+        content: anchors.hostCaKeys.map((k) => k.trim()).join('\n') + '\n',
+        mode: '0444',
+      });
+    }
     files.push({
       name: `sshd drop-in (${SSHD_DROPIN_FILENAME})`,
       path: SSHD_DROPIN_PATH,
@@ -266,7 +276,7 @@ export class SshHostService {
             `sudo install -m 0444 /dev/null ${REVOKED_KEYS_PATH}`,
             '',
             '# Keep it fresh (cron, every 15 min) — replace YOUR-PKI-HOST:',
-            `*/15 * * * * root curl -fsS -o ${REVOKED_KEYS_PATH}.new "https://YOUR-PKI-HOST/krl/${userCaId}.bin" && install -m 0444 -o root -g root ${REVOKED_KEYS_PATH}.new ${REVOKED_KEYS_PATH}`,
+            `*/15 * * * * root curl -fsS -o ${REVOKED_KEYS_PATH}.new "https://YOUR-PKI-HOST/krl/${userCaId}.bin" && chmod 0444 ${REVOKED_KEYS_PATH}.new && mv -f ${REVOKED_KEYS_PATH}.new ${REVOKED_KEYS_PATH}`,
             '',
           ].join('\n'),
         }
@@ -294,6 +304,9 @@ export class SshHostService {
       .update(sshCertificates)
       .set({ status: 'revoked', revocationDate: new Date(), revocationReason: reason ?? null, updatedAt: new Date() })
       .where(eq(sshCertificates.id, row.currentCertId));
+    // BLK-05: this status flip feeds composed per-host KRLs — invalidate them.
+    const { getSshHostKrlService } = await import('./ssh-host-krl.service.js');
+    await getSshHostKrlService().onRevocation(ctx);
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.host.revoke',

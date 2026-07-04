@@ -111,6 +111,17 @@ describe('blockFlow / unblockFlow', () => {
     expect(failing.invalidate).not.toHaveBeenCalled();
   });
 
+  it('over-block warning is never silently lost: a failed pre-check is backstopped by the block response', async () => {
+    const deps = makeDeps({
+      fetchCollisions: vi.fn(async () => Promise.reject(new Error('network blip'))),
+      block: vi.fn(async () => ({ warnings: { sharedKeyCollisions: [collision] } })),
+    });
+    const ok = await blockFlow(deps, target);
+    expect(ok).toBe(true);
+    expect(deps.calls.confirms[0]).not.toContain('bob@corp'); // pre-check failed — no warning in confirm
+    expect(deps.calls.alerts[0]).toContain('bob@corp'); // ... so the response backstop surfaces it
+  });
+
   it('unblock is symmetric: warns about Lifting, unblocks, invalidates', async () => {
     const deps = makeDeps();
     const ok = await unblockFlow(deps, target);

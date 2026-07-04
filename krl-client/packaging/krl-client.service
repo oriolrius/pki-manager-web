@@ -8,7 +8,7 @@
 # locked down by the sandbox directives below.
 #
 # A host provisioned from pki-manager's generated 60-ssh-ca.conf drop-in already
-# has the host key, the User-CA pubkey and the RevokedKeys path in their canonical
+# has the host key, the Host-CA trust anchor (/etc/ssh/ssh-host-ca.pub) and the RevokedKeys path in their canonical
 # locations, so only the server URL is needed — drop it in
 # /etc/krl-client/krl-client.env (KRL_CLIENT_SERVER_URL=...) or
 # /etc/krl-client/config.yaml (server-url: ...).

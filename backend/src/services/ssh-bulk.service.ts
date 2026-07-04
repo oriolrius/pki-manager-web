@@ -52,6 +52,12 @@ export class SshBulkService {
         results.push({ certId, ok: false, error: e?.message });
       }
     }
+    // BLK-05: these status flips feed composed per-host KRLs — one coalesced
+    // invalidation for the whole batch (clamp + eager regen of blocked hosts).
+    if (results.some((r) => r.ok)) {
+      const { getSshHostKrlService } = await import('./ssh-host-krl.service.js');
+      await getSshHostKrlService().onRevocation(ctx);
+    }
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.cert.revoke',

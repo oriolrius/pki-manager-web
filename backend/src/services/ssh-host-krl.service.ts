@@ -275,14 +275,24 @@ export class SshHostKrlService {
     await ctx.db.update(sshHostKrls).set({ nextUpdate: now }).where(gt(sshHostKrls.nextUpdate, now));
   }
 
+  /** Clamp ONE host's fresh rows so the next fetch lazily regenerates. */
+  async invalidateHost(ctx: ServiceContext, hostId: string): Promise<void> {
+    const now = new Date();
+    await ctx.db
+      .update(sshHostKrls)
+      .set({ nextUpdate: now })
+      .where(and(eq(sshHostKrls.hostId, hostId), gt(sshHostKrls.nextUpdate, now)));
+  }
+
   /**
    * Hook for every revocation entry point: clamp all lineages, then schedule a
    * coalesced background regen of the hosts holding active blocks. Never
-   * throws and never blocks the caller on KMS work.
+   * throws and never blocks the caller on KMS work — the cert status flip is
+   * already committed, so a failed clamp must not abort the caller's audit.
    */
   async onRevocation(ctx: ServiceContext): Promise<void> {
-    await this.invalidateAll(ctx);
     try {
+      await this.invalidateAll(ctx);
       const rows = (await ctx.db
         .selectDistinct({ hostId: sshHostBlocks.hostId })
         .from(sshHostBlocks)
@@ -290,7 +300,7 @@ export class SshHostKrlService {
         .where(and(eq(sshHostBlocks.status, 'active'), ne(sshHosts.status, 'offboarded')))) as any[];
       this.scheduleEagerRegen(ctx, rows.map((r) => r.hostId));
     } catch (e) {
-      logger.warn({ error: String(e) }, 'failed to schedule eager per-host KRL regeneration');
+      logger.warn({ error: String(e) }, 'per-host KRL invalidation after revocation failed (lazy backstop still applies at next_update)');
     }
   }
 

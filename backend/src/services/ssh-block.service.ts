@@ -407,10 +407,16 @@ export class SshBlockService {
     try {
       return await getSshHostKrlService().generate(ctx, hostId);
     } catch (e) {
-      // Non-fatal: the block/lift row is authoritative; the lazy regen-on-fetch
-      // backstop (and BLK-05 invalidation) picks it up. generate() audited its
-      // own failure.
+      // Non-fatal: the block/lift row is authoritative and generate() audited
+      // its own failure — but the last-good row may still look FRESH, which
+      // would delay the lazy backstop by up to next_update. Clamp this host so
+      // the next pull regenerates immediately.
       logger.warn({ hostId, error: String(e) }, 'synchronous per-host KRL regeneration failed after block mutation');
+      try {
+        await getSshHostKrlService().invalidateHost(ctx, hostId);
+      } catch (clampErr) {
+        logger.warn({ hostId, error: String(clampErr) }, 'failed to clamp per-host KRL after regen failure');
+      }
       return null;
     }
   }
