@@ -119,7 +119,8 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     const r = await app.inject({ method: 'GET', url: `/api/v1/ssh/hosts/${hostId}/auth-principals` });
     expect(r.statusCode).toBe(200);
     const rendered = r.json();
-    expect(rendered.files.deploy.trim()).toBe('admins');
+    // BLK-13: render() pre-provisions dual-form lines (P + P@<fqdn>).
+    expect(rendered.files.deploy.trim().split('\n')).toEqual(['admins', 'admins@rest.lab.local']);
     expect(rendered.directive).toContain('AuthorizedPrincipalsFile');
   });
 

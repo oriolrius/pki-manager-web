@@ -5,8 +5,8 @@
  * host-only notBefore backdate, and persists the verbatim signed cert.
  */
 import { randomUUID } from 'crypto';
-import { eq, sql } from 'drizzle-orm';
-import { sshCas, sshCertificates } from '../db/schema.js';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { sshCas, sshCertificates, sshHostBlocks, sshHosts, sshHostPrincipalMaps, sshPrincipals } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
@@ -65,6 +65,17 @@ export class SshCertTypeMismatchError extends Error {
     this.name = 'SshCertTypeMismatchError';
   }
 }
+export class SshPrincipalsNarrowedEmptyError extends Error {
+  constructor(subjectHint: string) {
+    super(
+      `issuance gate: every requested principal resolves only to hosts where ${subjectHint} is blocked — refusing to issue an unusable certificate`
+    );
+    this.name = 'SshPrincipalsNarrowedEmptyError';
+  }
+}
+
+/** BLK-13 optional hardening (decision-016, default OFF): zero-window blocks. */
+const issuanceGateEnabled = () => process.env.SSH_BLOCK_ISSUANCE_GATE === 'true';
 
 export class SshCertService {
   /** Sign and persist an OpenSSH certificate. */
@@ -76,6 +87,16 @@ export class SshCertService {
 
     const subject = parseSshPublicKey(params.sshPublicKey);
     const caBlob = parseSshPublicKey(ca.opensshPublicKey).blob;
+
+    // BLK-13 issuance gate: when the flag is ON and the identity has active
+    // blocks, replace each bare principal with host-scoped `P@<fqdn>` forms
+    // that exclude the blocked hosts — the cert is BORN unable to authenticate
+    // there, bounding even a never-pulling host by the residual TTL. sign() is
+    // the single choke point (UI issue, bulkRenew, external sign-user).
+    let principals = params.principals;
+    if (params.type === 'user' && params.identityId && issuanceGateEnabled()) {
+      principals = await this.narrowPrincipalsForBlocks(ctx, params.identityId, principals);
+    }
 
     const serial = params.serial ?? (await this.allocateSerial(ctx, params.caId));
     const nowSec = Math.floor(Date.now() / 1000);
@@ -89,7 +110,7 @@ export class SshCertService {
       serial,
       type: params.type,
       keyId: params.keyId,
-      principals: params.principals,
+      principals,
       validAfter: BigInt(validAfterSec),
       validBefore: params.validForSeconds <= 0 ? SSH_CERT_NO_EXPIRY : BigInt(validBeforeSec),
       criticalOptions: params.criticalOptions,
@@ -125,7 +146,7 @@ export class SshCertService {
       identityId: params.identityId ?? null,
       serial: serial.toString(),
       keyId: params.keyId,
-      principals: JSON.stringify(params.principals),
+      principals: JSON.stringify(principals),
       validAfter: new Date(validAfterSec * 1000),
       validBefore,
       extensions: params.extensions ? JSON.stringify(params.extensions) : null,
@@ -143,7 +164,14 @@ export class SshCertService {
       entityType: 'ssh_certificate',
       entityId: id,
       status: 'success',
-      details: { caId: params.caId, type: params.type, serial: serial.toString(), keyId: params.keyId, principals: params.principals },
+      details: {
+        caId: params.caId,
+        type: params.type,
+        serial: serial.toString(),
+        keyId: params.keyId,
+        principals,
+        ...(principals !== params.principals ? { narrowedByIssuanceGate: true, requestedPrincipals: params.principals } : {}),
+      },
       ipAddress: ctx.ipAddress ?? undefined,
     });
 
@@ -198,6 +226,38 @@ export class SshCertService {
       ipAddress: ctx.ipAddress ?? undefined,
     });
     return signed;
+  }
+
+  /**
+   * BLK-13: resolve each bare principal into `P@<fqdn>` for every non-blocked,
+   * non-offboarded host that maps it; principals resolving ONLY to blocked
+   * hosts are dropped. Requires the dual-form auth_principals lines render()
+   * pre-provisions. No active blocks → principals pass through untouched.
+   */
+  private async narrowPrincipalsForBlocks(ctx: ServiceContext, identityId: string, requested: string[]): Promise<string[]> {
+    const blocks = (await ctx.db
+      .select({ hostId: sshHostBlocks.hostId })
+      .from(sshHostBlocks)
+      .where(and(eq(sshHostBlocks.identityId, identityId), eq(sshHostBlocks.status, 'active')))) as any[];
+    if (!blocks.length) return requested;
+    const blockedHostIds = new Set(blocks.map((b) => b.hostId));
+
+    const maps = (await ctx.db
+      .select({ name: sshPrincipals.name, hostId: sshHosts.id, fqdn: sshHosts.fqdn })
+      .from(sshHostPrincipalMaps)
+      .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
+      .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id))
+      .where(and(inArray(sshPrincipals.name, requested), ne(sshHosts.status, 'offboarded')))) as any[];
+
+    const narrowed = new Set<string>();
+    for (const p of requested) {
+      for (const m of maps) {
+        if (m.name === p && !blockedHostIds.has(m.hostId)) narrowed.add(`${p}@${m.fqdn}`);
+      }
+    }
+    if (!narrowed.size) throw new SshPrincipalsNarrowedEmptyError(`identity ${identityId}`);
+    logger.info({ identityId, requested, narrowed: [...narrowed] }, 'issuance gate narrowed principals for blocked identity');
+    return [...narrowed].sort();
   }
 
   /**
