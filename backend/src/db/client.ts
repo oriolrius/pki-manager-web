@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from './schema.js';
+import { ensureKrlSeqSeeded } from './krl-seq.js';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
@@ -21,6 +22,10 @@ sqlite.pragma('foreign_keys = ON');
 
 // Enable WAL mode for better concurrency
 sqlite.pragma('journal_mode = WAL');
+
+// Defensive re-seed of the single-row KRL-number allocator (BLK-02) — see
+// ensureKrlSeqSeeded for why this must never regress the number space.
+ensureKrlSeqSeeded(sqlite);
 
 // Create Drizzle ORM instance
 export const db = drizzle(sqlite, { schema });

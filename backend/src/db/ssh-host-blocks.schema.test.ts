@@ -7,9 +7,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { db } from './client.js';
+import { db, sqliteDb } from './client.js';
 import { sshHosts, sshIdentities, sshHostBlocks, sshHostKrls, sshKrlSeq } from './schema.js';
-import { allocateKrlNumber } from './krl-seq.js';
+import { allocateKrlNumber, ensureKrlSeqSeeded } from './krl-seq.js';
 
 async function wipe() {
   await db.delete(sshHostKrls);
@@ -91,5 +91,52 @@ describe('BLK-02 schema: ssh_host_blocks / ssh_host_krls / ssh_krl_seq', () => {
     // Allocated numbers are strictly above anything either lineage has used.
     const after = (await db.select().from(sshKrlSeq).where(eq(sshKrlSeq.id, 1)))[0] as any;
     expect(after.value).toBe(before + 25);
+  });
+});
+
+describe('ensureKrlSeqSeeded startup backstop', () => {
+  let hostId: string;
+  let origValue: number;
+
+  beforeAll(async () => {
+    hostId = randomUUID();
+    origValue = ((await db.select().from(sshKrlSeq).where(eq(sshKrlSeq.id, 1)))[0] as any).value;
+    await db.insert(sshHosts).values({ id: hostId, fqdn: 'seqseed.lab.local', status: 'active' } as any);
+    await db.insert(sshHostKrls).values({
+      id: randomUUID(),
+      hostId,
+      krlNumber: origValue + 500,
+      versionHash: 'sha256:seqseed',
+      krlBlob: Buffer.from('krl'),
+      thisUpdate: new Date(),
+      nextUpdate: new Date(Date.now() + 3600_000),
+    } as any);
+  });
+
+  afterAll(async () => {
+    await db.delete(sshHostKrls).where(eq(sshHostKrls.hostId, hostId));
+    await db.delete(sshHosts).where(eq(sshHosts.id, hostId));
+    // Never let the allocator end below where this suite found it.
+    const cur = ((await db.select().from(sshKrlSeq).where(eq(sshKrlSeq.id, 1)))[0] as any)?.value ?? 0;
+    if (cur < origValue) await db.update(sshKrlSeq).set({ value: origValue }).where(eq(sshKrlSeq.id, 1));
+  });
+
+  it('re-creates a cleared allocator row at max(krl_number) over the lineages (no regression)', async () => {
+    await db.delete(sshKrlSeq).where(eq(sshKrlSeq.id, 1));
+    // Fail-closed while the row is missing.
+    await expect(allocateKrlNumber(db)).rejects.toThrow(/allocator row missing/);
+
+    ensureKrlSeqSeeded(sqliteDb);
+    const seeded = (await db.select().from(sshKrlSeq).where(eq(sshKrlSeq.id, 1)))[0] as any;
+    expect(seeded.value).toBe(origValue + 500);
+    // Next allocation is strictly above every number either lineage has used.
+    expect(await allocateKrlNumber(db)).toBe(origValue + 501);
+  });
+
+  it('is a no-op when the row already exists', async () => {
+    const before = ((await db.select().from(sshKrlSeq).where(eq(sshKrlSeq.id, 1)))[0] as any).value;
+    ensureKrlSeqSeeded(sqliteDb);
+    const after = ((await db.select().from(sshKrlSeq).where(eq(sshKrlSeq.id, 1)))[0] as any).value;
+    expect(after).toBe(before);
   });
 });
