@@ -113,6 +113,61 @@ Efficient batch certificate creation and management.
   </tr>
 </table>
 
+### Kubernetes Integration
+
+Register Kubernetes clusters and mint scoped tokens for the cert-manager external issuer.
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="assets/14-clusters.png" alt="Kubernetes Clusters" />
+      <p align="center"><em>K8s Clusters — cert-manager issuer tokens</em></p>
+    </td>
+    <td width="50%">
+      <img src="assets/21-api-docs.png" alt="REST / OpenAPI Docs" />
+      <p align="center"><em>REST / OpenAPI documentation (Swagger)</em></p>
+    </td>
+  </tr>
+</table>
+
+### SSH Certificate Manager
+
+A self-contained OpenSSH certificate authority: dual User + Host CA, principals, KRL
+revocation, and per-host user access blocks.
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="assets/15-ssh-overview.png" alt="SSH Overview" />
+      <p align="center"><em>SSH Certificate Manager — overview</em></p>
+    </td>
+    <td width="50%">
+      <img src="assets/16-ssh-cas.png" alt="SSH CAs" />
+      <p align="center"><em>Dual User + Host CAs</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/17-ssh-hosts.png" alt="SSH Hosts" />
+      <p align="center"><em>Host registration</em></p>
+    </td>
+    <td width="50%">
+      <img src="assets/18-ssh-users.png" alt="SSH Users" />
+      <p align="center"><em>User identities &amp; per-host access blocks</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/20-ssh-principals.png" alt="SSH Principals" />
+      <p align="center"><em>Principals &amp; host account mapping</em></p>
+    </td>
+    <td width="50%">
+      <img src="assets/19-ssh-krl.png" alt="SSH KRL" />
+      <p align="center"><em>Key Revocation Lists (KRL)</em></p>
+    </td>
+  </tr>
+</table>
+
 ## Features
 
 ### Certificate Authority Management

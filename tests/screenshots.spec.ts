@@ -17,8 +17,36 @@ import path from 'path';
 
 const screenshotsDir = path.join(process.cwd(), 'assets');
 
+/**
+ * Wait for a page to be visually stable before capturing:
+ * settle the network and let any async "Loading…" placeholder resolve to
+ * real content (SSH/cluster pages fetch their data via tRPC after mount).
+ */
+async function settle(page: import('@playwright/test').Page) {
+  await page.waitForLoadState('networkidle');
+  await page
+    .waitForFunction(() => !document.body.innerText.includes('Loading...'), null, { timeout: 8000 })
+    .catch(() => {});
+  await page.waitForTimeout(600);
+}
+
 test.describe('PKI Manager Screenshots', () => {
   test.beforeEach(async ({ page }) => {
+    // Hide the dev-only TanStack Router devtools badge on every navigation so
+    // it never leaks into documentation screenshots.
+    await page.addInitScript(() => {
+      const inject = () => {
+        const style = document.createElement('style');
+        style.textContent =
+          '[class*="TanStackRouterDevtools"],[aria-label="Open TanStack Router Devtools"]{display:none !important;}';
+        (document.head || document.documentElement).appendChild(style);
+      };
+      // At document_start there is no <head> yet; defer until the DOM exists.
+      // The rule is global, so it also hides the badge React mounts later.
+      if (document.head) inject();
+      else document.addEventListener('DOMContentLoaded', inject);
+    });
+
     // Navigate to the application
     await page.goto('/');
 
@@ -248,5 +276,107 @@ test.describe('PKI Manager Screenshots', () => {
         fullPage: true,
       });
     }
+  });
+
+  // --- New feature areas -----------------------------------------------------
+
+  test('14 - Kubernetes Clusters (cert-manager issuer)', async ({ page }) => {
+    // Clusters management page: mint/manage cluster tokens for the external issuer
+    await page.goto('/clusters');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /k8s clusters/i })).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '14-clusters.png'),
+      fullPage: true,
+    });
+  });
+
+  test('15 - SSH Certificate Manager (overview)', async ({ page }) => {
+    await page.goto('/ssh');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: /ssh certificate manager/i })).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '15-ssh-overview.png'),
+      fullPage: true,
+    });
+  });
+
+  test('16 - SSH Certificate Authorities', async ({ page }) => {
+    await page.goto('/ssh/cas');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/ssh certificate authorities/i).first()).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '16-ssh-cas.png'),
+      fullPage: true,
+    });
+  });
+
+  test('17 - SSH Hosts', async ({ page }) => {
+    await page.goto('/ssh/hosts');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/ssh hosts/i).first()).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '17-ssh-hosts.png'),
+      fullPage: true,
+    });
+  });
+
+  test('18 - SSH User Identities & Per-Host Access Blocks', async ({ page }) => {
+    await page.goto('/ssh/users');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/ssh user identities/i).first()).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '18-ssh-users.png'),
+      fullPage: true,
+    });
+  });
+
+  test('19 - SSH Key Revocation Lists (KRL)', async ({ page }) => {
+    await page.goto('/ssh/krl');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/key revocation lists/i).first()).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '19-ssh-krl.png'),
+      fullPage: true,
+    });
+  });
+
+  test('20 - SSH Principals & Host Mapping', async ({ page }) => {
+    await page.goto('/ssh/principals');
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/principal catalog/i).first()).toBeVisible();
+    await settle(page);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '20-ssh-principals.png'),
+      fullPage: true,
+    });
+  });
+
+  test('21 - REST / OpenAPI Documentation (Swagger)', async ({ page }) => {
+    // Embedded Swagger UI for the REST API surface
+    await page.goto('/api-docs');
+    await page.waitForLoadState('networkidle');
+
+    // Swagger UI renders asynchronously from the backend spec; wait for it.
+    await page.locator('.swagger-ui').first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+
+    await page.screenshot({
+      path: path.join(screenshotsDir, '21-api-docs.png'),
+      fullPage: true,
+    });
   });
 });
