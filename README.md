@@ -14,11 +14,14 @@ PKI Manager provides complete control over your Private Key Infrastructure witho
 
 - **Self-Hosted PKI**: Create and manage your own root Certificate Authorities
 - **Multi-Type Certificates**: Server (TLS/SSL), Client Auth, S/MIME Email, Code Signing
-- **Secure Key Management**: Integration with Cosmian KMS for secure key storage
+- **Secure Key Management**: Integration with Cosmian KMS — private keys never touch disk
+- **Kubernetes-Native**: cert-manager external issuer that auto-signs & auto-approves cluster CSRs (one cluster token = one CA)
+- **CRL Revocation**: CA-signed Certificate Revocation Lists served over HTTP, with CRL Distribution Points (CDP) embedded in issued certificates
+- **SSH Certificate Authority**: Dual User+Host CA with principals, KRL revocation, and per-host user access blocks pushed to a host agent
+- **Dual API**: Typed tRPC for the SPA *plus* a REST/OpenAPI surface with live Swagger docs (`/api/v1`, `/api/docs`)
 - **Bulk Operations**: CSV-based bulk certificate creation and batch operations
 - **OIDC Authentication**: Provider-agnostic auth supporting Keycloak, Auth0, Okta, Azure AD
 - **Modern UI**: React 19 with light/dark theme support and responsive design
-- **Type-Safe**: End-to-end TypeScript with tRPC for API type safety
 
 ## Screenshots
 
@@ -131,6 +134,13 @@ Efficient batch certificate creation and management.
 - ✅ Revocation with standard reasons (keyCompromise, superseded, etc.)
 - ✅ Comprehensive certificate details view
 
+### Certificate Revocation (CRL)
+- ✅ CA-signed Certificate Revocation Lists (RFC 5280)
+- ✅ Served over HTTP for public distribution (no auth required)
+- ✅ CRL Distribution Point (CDP) URL embedded in every issued certificate
+- ✅ Automatic CRL regeneration on each revoke
+- ✅ Standard revocation reasons (keyCompromise, superseded, cessationOfOperation, …)
+
 ### Export & Download
 - ✅ Multiple formats: PEM, CRT, DER, CER
 - ✅ Certificate chains (PEM Chain)
@@ -148,6 +158,14 @@ Efficient batch certificate creation and management.
 - ✅ Bulk renewal for expiring certificates
 - ✅ Batch revocation with reason
 - ✅ Multi-select deletion
+
+### Kubernetes Integration (cert-manager)
+- ✅ Native cert-manager **external issuer** (Go controller, Helm chart)
+- ✅ Signs cluster CSRs via KMS — private key never leaves the KMS
+- ✅ **Auto-approves** CertificateRequests via a dedicated approver RBAC role
+- ✅ Scoped cluster tokens — **one cluster token = one CA**
+- ✅ Revoke-on-delete, Prometheus metrics, in-cluster deploy via ingress-nginx
+- ✅ Clusters management page to mint and manage cluster tokens
 
 ### Monitoring & Alerts
 - ✅ Real-time dashboard with PKI statistics
@@ -179,6 +197,13 @@ Efficient batch certificate creation and management.
 - ✅ JWT validation via JWKS
 - ✅ Silent token renewal
 
+### API & Integrations
+- ✅ Typed **tRPC** API powering the React SPA (end-to-end TypeScript inference)
+- ✅ Full **REST / OpenAPI** surface at `/api/v1` (CAs, certificates, bulk, dashboard, search, reports, audit)
+- ✅ Live **Swagger UI** at `/api/docs` + machine-readable spec at `/api/v1/openapi`
+- ✅ External issuer API for Kubernetes clusters (`/api/v1/external`)
+- ✅ First-party [Python CLI](https://github.com/oriolrius/pki-manager-cli) and [Ansible Collection](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/)
+
 ### User Experience
 - ✅ Modern, responsive UI with card-based layout
 - ✅ Light/Dark theme with system detection
@@ -189,8 +214,16 @@ Efficient batch certificate creation and management.
 
 ### SSH Certificate Manager
 A self-contained OpenSSH certificate authority lives under **`/ssh`**: a dual
-(User + Host) CA, host registration, user-cert issuance with principals, and KRL
-revocation — all copy-paste, with a per-host deploy bundle and a guided checklist.
+(User + Host) CA with copy-paste onboarding, per-host deploy bundles, and a
+guided checklist.
+
+- ✅ Dual **User + Host** OpenSSH CA
+- ✅ User-cert issuance with principals; long-lived TTL presets (+1m … +10y)
+- ✅ Host registration + per-host deploy bundle
+- ✅ Two-tier **KRL** revocation (global + per-host)
+- ✅ **Per-host user access blocks** — block/unblock a user on specific hosts, incl. fleet-wide
+- ✅ Zero-window, flag-gated issuance gate for immediate lockout
+- ✅ `krl-client` host agent: pulls ECIES-encrypted, CA-signed per-host KRLs with anti-rollback + atomic install
 
 **New to it? Start here:**
 - [How it works (concept)](docs/ssh/concept.md) — the dual CA, two trust
@@ -286,7 +319,17 @@ For detailed setup, see [DEVELOPMENT.md](DEVELOPMENT.md) and [Authentication Gui
 
 ## API Documentation
 
-The application uses tRPC for type-safe API communication. Key endpoints:
+The application exposes **two APIs over the same service layer**:
+
+- **tRPC** (`/trpc`) — end-to-end type-safe, used by the React SPA.
+- **REST / OpenAPI** (`/api/v1`) — language-agnostic, with an interactive
+  **Swagger UI at `/api/docs`** and the raw spec at `/api/v1/openapi`. This is
+  what the [Python CLI](https://github.com/oriolrius/pki-manager-cli) and
+  [Ansible Collection](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/) consume.
+- A scoped **external issuer API** (`/api/v1/external`) serves Kubernetes
+  clusters (CSR signing, revocation) and the SSH host agents.
+
+Key tRPC procedures (each has a REST twin under `/api/v1`):
 
 ### Dashboard
 - `dashboard.stats` - Get PKI statistics
@@ -310,7 +353,8 @@ The application uses tRPC for type-safe API communication. Key endpoints:
 - `certificate.delete` - Delete certificate
 - `certificate.download` - Download certificate
 
-All endpoints are fully type-safe with automatic TypeScript inference.
+tRPC procedures are fully type-safe with automatic TypeScript inference; the
+same operations are available as REST endpoints documented in Swagger.
 
 ## Security Considerations
 
@@ -346,7 +390,6 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - [Development Guide](DEVELOPMENT.md) - Setup, scripts, and development workflow
 - [Authentication Guide](backlog/docs/doc-004%20-%20OIDC-Authentication-Setup-Guide.md) - OIDC setup and provider configuration
 - [Keycloak Setup](keycloak/README.md) - Local Keycloak development environment
-- [Features Documentation](FEATURES.md) - Detailed feature documentation
 - [Cosmian KMS Documentation](https://docs.cosmian.com/)
 - [X.509 Certificate Standard (RFC 5280)](https://datatracker.ietf.org/doc/html/rfc5280)
 - [PKCS Standards](https://en.wikipedia.org/wiki/PKCS)
