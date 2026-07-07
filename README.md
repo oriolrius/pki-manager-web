@@ -338,6 +338,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 | [pki-manager-cli](https://github.com/oriolrius/pki-manager-cli) | Python CLI tool for PKI Manager - manage certificates from the command line |
 | [pki-manager-skill](https://github.com/oriolrius/pki-manager-skill) | Claude Code skill for AI-assisted certificate management |
 | [pki-manager-ansible](https://github.com/oriolrius/pki-manager-ansible) | Ansible Collection for certificate management ([Galaxy](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/)) |
+| [ssh-ca-cosmian-kms](https://github.com/oriolrius/ssh-ca-cosmian-kms) | Design reference and Docker PoC for the OpenSSH Certificate Authority behind this project: KMS-held CA keys signed via PKCS#11 (the key never touches disk), host/user certs, RBAC principals, and KMS-backed KRL distribution |
+| [ssh-per-host-access-blocks-lab](https://github.com/oriolrius/ssh-per-host-access-blocks-lab) | Reproducible Docker lab for the per-host user access-block model used here: Host-CA-signed, ECIES-encrypted per-host KRLs pulled by `krl-client`, with anti-rollback and unblock-without-reissue |
 
 ## Additional Resources
 
