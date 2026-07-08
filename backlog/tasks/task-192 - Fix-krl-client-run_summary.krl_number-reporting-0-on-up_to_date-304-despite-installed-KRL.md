@@ -3,11 +3,11 @@ id: TASK-192
 title: >-
   Fix krl-client run_summary.krl_number reporting 0 on up_to_date (304) despite
   installed KRL
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-05 00:53'
-updated_date: '2026-07-08 11:53'
+updated_date: '2026-07-08 11:54'
 labels:
   - bug
   - krl-client
@@ -36,10 +36,10 @@ Fix — populate `s.krlNumber` from `st.Number` right after state load (run.go:1
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 On an up_to_date (304) run with a KRL installed, run_summary.krl_number equals the installed KRL header number (from state), not 0
-- [ ] #2 On a fresh host with nothing installed, run_summary.krl_number is still 0
-- [ ] #3 README "run_summary" krl_number field doc reconciled with the behavior
-- [ ] #4 A test covers the 304 path asserting the installed number is reported
+- [x] #1 On an up_to_date (304) run with a KRL installed, run_summary.krl_number equals the installed KRL header number (from state), not 0
+- [x] #2 On a fresh host with nothing installed, run_summary.krl_number is still 0
+- [x] #3 README "run_summary" krl_number field doc reconciled with the behavior
+- [x] #4 A test covers the 304 path asserting the installed number is reported
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,3 +49,9 @@ Fix — populate `s.krlNumber` from `st.Number` right after state load (run.go:1
 2. Update README run_summary.krl_number description.
 3. Add/extend a test in internal/app/run_test.go for the 304 branch asserting krl_number == installed state number.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed in krl-client/internal/app/run.go: seed s.krlNumber = st.Number right after state.Read (before the 304 short-circuit); the 200 install path still overwrites with p.Number. Now every terminal path (304 up_to_date / error) reports the last-known installed KRL header number; 0 iff nothing installed. README run_summary.krl_number doc reconciled. Tests: extended TestRunUpToDate304 to assert krl_number==5 (installed, on a 304) and TestRunErrorSummarySurfacesUnderQuiet to assert krl_number==0 (fresh host). go build + go test ./internal/app/ green (15 passed).
+<!-- SECTION:NOTES:END -->
