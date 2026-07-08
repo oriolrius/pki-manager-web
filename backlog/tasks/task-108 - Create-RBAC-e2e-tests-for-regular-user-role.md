@@ -1,9 +1,11 @@
 ---
 id: TASK-108
 title: Create RBAC e2e tests for regular user role
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-13 07:50'
+updated_date: '2026-07-08 12:02'
 labels:
   - testing
   - e2e
