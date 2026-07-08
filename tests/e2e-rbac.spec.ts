@@ -266,6 +266,87 @@ async function waitForToast(page: Page, textPattern: RegExp, timeout = 5000) {
   await expect(page.getByText(textPattern)).toBeVisible({ timeout });
 }
 
+/**
+ * Helper: read the CA id from the current /cas/<id> detail URL.
+ */
+function caIdFromUrl(page: Page): string | undefined {
+  return page.url().match(/\/cas\/([a-zA-Z0-9-]+)$/)?.[1];
+}
+
+/**
+ * Helper: read the certificate id from the current /certificates/<id> URL.
+ */
+function certIdFromUrl(page: Page): string | undefined {
+  return page.url().match(/\/certificates\/([a-zA-Z0-9-]+)$/)?.[1];
+}
+
+/**
+ * Helper: trigger an action and assert the resulting tRPC call is NOT rejected
+ * for authorization reasons. This is the core admin-capability assertion: an
+ * admin must never receive FORBIDDEN. Business-rule errors (e.g. deleting a CA
+ * that still has certificates) are tolerated — this verifies RBAC only.
+ * Returns the raw response body for optional further inspection.
+ */
+async function triggerAndExpectAuthorized(
+  page: Page,
+  procedureUrlPart: string,
+  trigger: () => Promise<void>
+): Promise<string> {
+  const [response] = await Promise.all([
+    page.waitForResponse(
+      (resp) =>
+        resp.url().includes(procedureUrlPart) &&
+        resp.request().method() === 'POST',
+      { timeout: 30000 }
+    ),
+    trigger(),
+  ]);
+
+  let body = '';
+  try {
+    body = await response.text();
+  } catch {
+    body = '';
+  }
+  console.log(`[TEST] ${procedureUrlPart} -> HTTP ${response.status()}`);
+
+  // An admin must never be blocked by RBAC on a privileged operation.
+  expect(body).not.toContain('FORBIDDEN');
+  expect(body).not.toContain('Admin role required');
+  expect(body).not.toContain('Admin access required');
+  return body;
+}
+
+/**
+ * Helper: as an admin, issue a certificate under a given CA (selected by its CN,
+ * which equals the CA name). Returns the new certificate id. Uses the issue
+ * form's "Generate Sample Data" to fill a valid server-cert subject.
+ */
+async function issueCertificateAsAdmin(
+  page: Page,
+  caName: string
+): Promise<string | undefined> {
+  await page.goto(`${FRONTEND_URL}/certificates/new`);
+  await expect(
+    page.getByRole('heading', { name: /issue new certificate/i })
+  ).toBeVisible({ timeout: 10000 });
+
+  // The first <select> is the CA picker; its option label is the CA's CN.
+  await page.locator('select').first().selectOption({ label: caName });
+
+  // Fill a valid subject with one click.
+  await page.getByRole('button', { name: /generate sample data/i }).click();
+
+  await triggerAndExpectAuthorized(page, 'certificate.issue', async () => {
+    await page.getByRole('button', { name: /^issue certificate$/i }).click();
+  });
+
+  await page
+    .waitForURL(/\/certificates\/[a-zA-Z0-9-]+$/, { timeout: 15000 })
+    .catch(() => {});
+  return certIdFromUrl(page);
+}
+
 // ============================================================================
 // Admin Role Tests
 // ============================================================================
@@ -363,6 +444,100 @@ test.describe('Production E2E - Admin Role Tests', () => {
       const bodyText = await page.textContent('body');
       expect(bodyText).not.toContain('FORBIDDEN');
     }
+  });
+});
+
+// ============================================================================
+// Admin Destructive Operations - full lifecycle on throwaway objects
+// (issue -> revoke cert -> delete cert -> revoke CA -> delete CA). Runs serial
+// and operates ONLY on the CA/cert it creates, so it never mutates real data.
+// ============================================================================
+
+test.describe('Production E2E - Admin Destructive Operations', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  // Shared across the serial steps.
+  const caName = `RBAC Lifecycle CA ${TEST_SUFFIX}`;
+  let lifecycleCaId: string | undefined;
+  let lifecycleCertId: string | undefined;
+
+  test.beforeEach(async ({ page }) => {
+    await clearAuthState(page);
+  });
+
+  test('Admin can create a CA and issue a certificate', async ({ page }) => {
+    await loginAsAdmin(page);
+
+    // Create the throwaway CA.
+    await navigateToCreateCA(page);
+    await fillCAForm(page, caName);
+    const result = await submitCAFormAndCheck(page, caName);
+    expect(result.success).toBe(true);
+    await expect(page).toHaveURL(/\/cas\/[a-zA-Z0-9-]+$/);
+    lifecycleCaId = caIdFromUrl(page);
+    expect(lifecycleCaId).toBeTruthy();
+
+    // Issue a certificate under it (AC#4: admin can issue a certificate).
+    lifecycleCertId = await issueCertificateAsAdmin(page, caName);
+    expect(lifecycleCertId).toBeTruthy();
+  });
+
+  test('Admin can revoke the certificate', async ({ page }) => {
+    test.skip(!lifecycleCertId, 'no certificate was issued in the previous step');
+    await loginAsAdmin(page);
+
+    await page.goto(`${FRONTEND_URL}/certificates/${lifecycleCertId}`);
+    await page.getByRole('button', { name: /^revoke$/i }).click();
+
+    // Confirm in the "Revoke Certificate" dialog (AC#5).
+    await expect(
+      page.getByRole('heading', { name: /revoke certificate/i })
+    ).toBeVisible({ timeout: 10000 });
+    await triggerAndExpectAuthorized(page, 'certificate.revoke', async () => {
+      await page.getByRole('button', { name: /^revoke certificate$/i }).click();
+    });
+  });
+
+  test('Admin can delete the revoked certificate', async ({ page }) => {
+    test.skip(!lifecycleCertId, 'no certificate was issued in the previous step');
+    await loginAsAdmin(page);
+
+    await page.goto(`${FRONTEND_URL}/certificates/${lifecycleCertId}`);
+    // The trigger "Delete" button opens a confirm dialog whose confirm label
+    // is also "Delete" (AC#6).
+    await page.getByRole('button', { name: /^delete$/i }).first().click();
+    await triggerAndExpectAuthorized(page, 'certificate.delete', async () => {
+      await page
+        .getByRole('button', { name: /^delete$/i })
+        .last()
+        .click();
+    });
+  });
+
+  test('Admin can revoke and delete the CA', async ({ page }) => {
+    test.skip(!lifecycleCaId, 'no CA was created in the first step');
+    await loginAsAdmin(page);
+
+    await page.goto(`${FRONTEND_URL}/cas/${lifecycleCaId}`);
+
+    // Revoke the CA (AC#7, part 1).
+    await page.getByRole('button', { name: /^revoke$/i }).click();
+    await expect(
+      page.getByRole('heading', { name: /revoke certificate authority/i })
+    ).toBeVisible({ timeout: 10000 });
+    await triggerAndExpectAuthorized(page, 'ca.revoke', async () => {
+      await page.getByRole('button', { name: /^revoke ca$/i }).click();
+    });
+
+    // Delete the CA (AC#7, part 2). A business error (e.g. residual certs) is
+    // acceptable — we assert only that admin is authorized, not FORBIDDEN.
+    await page.getByRole('button', { name: /^delete$/i }).first().click();
+    await triggerAndExpectAuthorized(page, 'ca.delete', async () => {
+      await page
+        .getByRole('button', { name: /^delete$/i })
+        .last()
+        .click();
+    });
   });
 });
 
