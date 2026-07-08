@@ -1,5 +1,7 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { SearchInput } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/hosts')({
   component: SshHosts,
@@ -18,23 +20,45 @@ function SshHosts() {
   const isDetail = matchRoute({ to: '/ssh/hosts/$id', fuzzy: false });
 
   const hostsQuery = trpc.ssh.host.list.useQuery();
+  const [filter, setFilter] = useState('');
 
   if (isNew || isDetail) {
     return <Outlet />;
   }
 
   const hosts = hostsQuery.data ?? [];
+  const q = filter.trim().toLowerCase();
+  const filteredHosts = q
+    ? hosts.filter(
+        (h) =>
+          h.fqdn.toLowerCase().includes(q) ||
+          (h.displayName ?? '').toLowerCase().includes(q) ||
+          h.addresses.some((a) => a.toLowerCase().includes(q)) ||
+          h.status.toLowerCase().includes(q)
+      )
+    : hosts;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">SSH Hosts</h2>
-        <button
-          onClick={() => navigate({ to: '/ssh/hosts/new' })}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm"
-        >
-          Register Host
-        </button>
+        <div className="flex items-center gap-2">
+          {hosts.length > 0 && (
+            <SearchInput
+              className="w-64"
+              value={filter}
+              onChange={setFilter}
+              placeholder="Filter hosts…"
+              ariaLabel="Filter hosts"
+            />
+          )}
+          <button
+            onClick={() => navigate({ to: '/ssh/hosts/new' })}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm whitespace-nowrap"
+          >
+            Register Host
+          </button>
+        </div>
       </div>
 
       {hostsQuery.isLoading && <div className="text-center py-8 text-muted-foreground">Loading...</div>}
@@ -58,8 +82,14 @@ function SshHosts() {
                     No hosts registered yet.
                   </td>
                 </tr>
+              ) : filteredHosts.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    No hosts match “{filter}”.
+                  </td>
+                </tr>
               ) : (
-                hosts.map((h) => (
+                filteredHosts.map((h) => (
                   <tr
                     key={h.id}
                     className="hover:bg-muted/50 cursor-pointer"
