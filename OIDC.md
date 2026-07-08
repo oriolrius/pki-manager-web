@@ -232,7 +232,7 @@ const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri));
 
 // 3. For each request: Validate the token
 const { payload } = await jwtVerify(token, jwks, {
-  issuer: 'http://localhost:8180/realms/pki-e2e',
+  issuer: 'http://localhost:58180/realms/pki-e2e',
   audience: 'pki-web',
 });
 
@@ -255,7 +255,7 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgxODAvcmV
 **Decoded payload:**
 ```json
 {
-  "iss": "http://localhost:8180/realms/pki-e2e",
+  "iss": "http://localhost:58180/realms/pki-e2e",
   "aud": "pki-web",
   "sub": "user-uuid-here",
   "email": "testadmin@example.com",
@@ -335,9 +335,9 @@ export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 
 When running in Docker, there's a networking challenge:
 
-- **Browser** accesses Keycloak at `localhost:8180`
-- **Backend container** cannot reach `localhost:8180` (it refers to itself)
-- **Tokens** have `iss: http://localhost:8180/realms/pki-e2e`
+- **Browser** accesses Keycloak at `localhost:58180`
+- **Backend container** cannot reach `localhost:58180` (it refers to itself)
+- **Tokens** have `iss: http://localhost:58180/realms/pki-e2e`
 
 ### Solution: OIDC_DISCOVERY_BASE_URL
 
@@ -347,16 +347,16 @@ When running in Docker, there's a networking challenge:
 │                                                                          │
 │  Browser                                    Docker Network               │
 │  ┌─────────────────┐                       ┌─────────────────┐          │
-│  │ localhost:8180  │ ◄─── Port mapping ───►│ keycloak:8080   │          │
+│  │ localhost:58180  │ ◄─── Port mapping ───►│ keycloak:8080   │          │
 │  └─────────────────┘                       └─────────────────┘          │
 │         │                                          ▲                    │
 │         │ Token issued with                        │                    │
-│         │ iss=localhost:8180                       │                    │
+│         │ iss=localhost:58180                       │                    │
 │         ▼                                          │                    │
 │  ┌─────────────────┐    OIDC_DISCOVERY_BASE_URL    │                    │
 │  │ Backend         │ ──────────────────────────────┘                    │
 │  │ Validates:      │   Fetches from: keycloak:8080                      │
-│  │ iss=localhost   │   Validates:    localhost:8180                     │
+│  │ iss=localhost   │   Validates:    localhost:58180                     │
 │  └─────────────────┘                                                    │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -368,7 +368,7 @@ When running in Docker, there's a networking challenge:
 backend:
   environment:
     # What's in tokens (for validation)
-    - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+    - OIDC_ISSUER=http://localhost:58180/realms/pki-e2e
     # Where to fetch OIDC config (Docker network)
     - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-e2e
 ```

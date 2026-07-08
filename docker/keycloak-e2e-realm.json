@@ -35,17 +35,15 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "rootUrl": "http://localhost:8080",
+      "rootUrl": "http://localhost:58080",
       "baseUrl": "/",
       "redirectUris": [
-        "http://localhost:8080/*",
-        "http://localhost:5173/*",
-        "http://127.0.0.1:8080/*"
+        "http://localhost:58080/*",
+        "http://127.0.0.1:58080/*"
       ],
       "webOrigins": [
-        "http://localhost:8080",
-        "http://localhost:5173",
-        "http://127.0.0.1:8080"
+        "http://localhost:58080",
+        "http://127.0.0.1:58080"
       ],
       "defaultClientScopes": [
         "web-origins",
