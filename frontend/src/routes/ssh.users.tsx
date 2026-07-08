@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
-import { useToast, useConfirm, Combobox } from '@/components/ui';
+import { useToast, useConfirm, Combobox, SearchInput } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/users')({
   component: SshUsers,
@@ -23,6 +23,7 @@ function SshUsers() {
   const [newSubject, setNewSubject] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [filter, setFilter] = useState('');
   const createMutation = trpc.ssh.user.createIdentity.useMutation();
   const disableMutation = trpc.ssh.user.disableIdentity.useMutation();
 
@@ -31,6 +32,15 @@ function SshUsers() {
   }
 
   const identities = identitiesQuery.data ?? [];
+  const q = filter.trim().toLowerCase();
+  const filteredIdentities = q
+    ? identities.filter(
+        (i) =>
+          i.subject.toLowerCase().includes(q) ||
+          (i.email ?? '').toLowerCase().includes(q) ||
+          i.status.toLowerCase().includes(q)
+      )
+    : identities;
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,10 +79,19 @@ function SshUsers() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">SSH User Identities</h2>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {identities.length > 0 && (
+            <SearchInput
+              className="w-64"
+              value={filter}
+              onChange={setFilter}
+              placeholder="Filter users…"
+              ariaLabel="Filter users"
+            />
+          )}
           <button
             onClick={() => setShowCreate((s) => !s)}
-            className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted font-medium"
+            className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted font-medium whitespace-nowrap"
           >
             <Plus className="h-4 w-4" />
             New Identity
@@ -126,8 +145,12 @@ function SshUsers() {
         <div className="space-y-3">
           {identities.length === 0 ? (
             <div className="rounded-lg border p-8 text-center text-muted-foreground">No identities yet.</div>
+          ) : filteredIdentities.length === 0 ? (
+            <div className="rounded-lg border p-8 text-center text-muted-foreground">
+              No identities match “{filter}”.
+            </div>
           ) : (
-            identities.map((identity) => (
+            filteredIdentities.map((identity) => (
               <IdentityCard
                 key={identity.id}
                 identity={identity}
