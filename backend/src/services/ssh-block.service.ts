@@ -96,7 +96,10 @@ export class SshBlockService {
         identityId,
         reason: params.reason ?? null,
         status: 'active',
-        createdBy: params.createdBy ?? ctx.ipAddress ?? null,
+        // Actor identity (OIDC username via actorOf), never a network address —
+        // the request IP is captured separately in audit_log. Null when the
+        // caller is unauthenticated (OIDC disabled).
+        createdBy: params.createdBy ?? null,
       } as any);
 
       const krl = await this.regenerate(ctx, hostId);
@@ -140,7 +143,7 @@ export class SshBlockService {
 
       await ctx.db
         .update(sshHostBlocks)
-        .set({ status: 'lifted', liftedBy: params.liftedBy ?? ctx.ipAddress ?? null, liftedAt: new Date() })
+        .set({ status: 'lifted', liftedBy: params.liftedBy ?? null, liftedAt: new Date() })
         .where(eq(sshHostBlocks.id, row.id));
 
       // Symmetric: the lift only reaches the host through a NEW composed KRL.

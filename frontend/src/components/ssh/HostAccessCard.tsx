@@ -130,7 +130,7 @@ export function HostAccessCard({ hostId }: { hostId: string }) {
                     )}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
-                    {e.block ? `${e.block.createdBy ?? '—'}, ${new Date(e.block.createdAt).toLocaleDateString()}` : ''}
+                    {e.block ? `${e.block.createdBy ?? '—'}, ${new Date(e.block.createdAt).toLocaleString()}` : ''}
                   </td>
                   <td className="py-2 pr-3">
                     {e.blocked ? <HostKrlStatePill state={access.state} /> : <span className="text-xs">allowed</span>}
