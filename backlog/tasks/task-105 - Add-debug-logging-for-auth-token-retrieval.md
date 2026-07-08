@@ -1,7 +1,7 @@
 ---
 id: TASK-105
 title: Add debug logging for auth token retrieval
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-02-13 07:49'
@@ -27,8 +27,14 @@ Add console.debug/warn logging to token retrieval functions to help diagnose aut
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Console shows debug log with storage key when looking for token
-- [ ] #2 Console shows debug log when no token found in localStorage
-- [ ] #3 Console shows warning with error details when token retrieval fails
-- [ ] #4 Existing functionality remains unchanged (silent fallback to no auth)
+- [x] #1 Console shows debug log with storage key when looking for token
+- [x] #2 Console shows debug log when no token found in localStorage
+- [x] #3 Console shows warning with error details when token retrieval fails
+- [x] #4 Existing functionality remains unchanged (silent fallback to no auth)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Already implemented in frontend/src/lib/auth/token.ts: getManualAccessToken() logs the storage key (console.debug, line 56), logs when no token is in localStorage (line 59), and warns with error details on failure (console.warn, line 81); silent fallback to null is preserved. trpc.ts additionally logs header set/absent (lines 19/21). Frontend typecheck clean.
+<!-- SECTION:NOTES:END -->
