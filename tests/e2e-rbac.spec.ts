@@ -36,8 +36,10 @@ const E2E_TARGET = process.env.E2E_TARGET || 'local';
 
 const TARGETS = {
   local: {
-    frontendUrl: 'http://localhost:8080',
-    keycloakPattern: /.*localhost:8180.*realms.*/,
+    // Dedicated high ports (see docker/docker-compose.e2e.yml) chosen to avoid
+    // clashing with other local apps that commonly bind 3000/8080.
+    frontendUrl: 'http://localhost:58080',
+    keycloakPattern: /.*localhost:58180.*realms.*/,
   },
   production: {
     frontendUrl: 'https://pki.nexiona.io',

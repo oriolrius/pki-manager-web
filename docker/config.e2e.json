@@ -1,7 +1,7 @@
 {
-  "apiUrl": "http://localhost:3000/trpc",
+  "apiUrl": "http://localhost:53000/trpc",
   "oidc": {
-    "authority": "http://localhost:8180/realms/pki-e2e",
+    "authority": "http://localhost:58180/realms/pki-e2e",
     "clientId": "pki-web",
     "scope": "openid profile email"
   }

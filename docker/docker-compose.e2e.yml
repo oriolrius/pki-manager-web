@@ -12,11 +12,13 @@
 #   - testadmin / Test123! (has 'admin' role)
 #   - testuser / Test123! (has 'user' role, no admin)
 #
-# URLs:
-#   - Frontend: http://localhost:8080
-#   - Backend API: http://localhost:3000
-#   - Keycloak: http://localhost:8180
-#   - KMS: http://localhost:9998 (internal)
+# URLs (dedicated high ports chosen to avoid clashing with other local apps
+# that commonly grab 3000/8080; keep these in sync with config.e2e.json, the
+# keycloak-e2e-realm.json redirect URIs, and tests/e2e-rbac.spec.ts):
+#   - Frontend: http://localhost:58080
+#   - Backend API: http://localhost:53000
+#   - Keycloak: http://localhost:58180
+#   - KMS: internal-only (no host port)
 
 services:
   # Keycloak Identity Provider
@@ -25,7 +27,7 @@ services:
     container_name: pki-e2e-keycloak
     restart: unless-stopped
     ports:
-      - "8180:8080"
+      - "58180:8080"
     volumes:
       - ./keycloak-e2e-realm.json:/opt/keycloak/data/import/pki-e2e-realm.json:ro
     environment:
@@ -35,7 +37,7 @@ services:
       - KC_METRICS_ENABLED=false
       - KC_HTTP_PORT=8080
       # Keycloak 26+ hostname configuration - use full URL for consistent issuer
-      - KC_HOSTNAME=http://localhost:8180
+      - KC_HOSTNAME=http://localhost:58180
       - KC_HOSTNAME_STRICT=false
     command: start-dev --import-realm
     networks:
@@ -74,19 +76,19 @@ services:
       - PORT=3000
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      - FRONTEND_URL=http://localhost:8080
+      - FRONTEND_URL=http://localhost:58080
       - DATABASE_PATH=/app/backend/data/pki.db
       - KMS_URL=http://kms:9998
-      - CRL_DISTRIBUTION_URL=http://localhost:3000/crl
+      - CRL_DISTRIBUTION_URL=http://localhost:53000/crl
       # OIDC Configuration - Keycloak
-      # The issuer must match what Keycloak puts in tokens (localhost:8180)
+      # The issuer must match what Keycloak puts in tokens (localhost:58180)
       # But backend reaches Keycloak via Docker network (keycloak:8080)
-      - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+      - OIDC_ISSUER=http://localhost:58180/realms/pki-e2e
       - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-e2e
       - OIDC_AUDIENCE=pki-web
       - OIDC_ROLES_CLAIM=realm_access.roles
     ports:
-      - "3000:3000"
+      - "53000:3000"
     depends_on:
       kms:
         condition: service_started
@@ -109,7 +111,7 @@ services:
     volumes:
       - ./config.e2e.json:/usr/share/nginx/html/config.json:ro
     ports:
-      - "8080:8080"
+      - "58080:8080"
     depends_on:
       backend:
         condition: service_healthy
