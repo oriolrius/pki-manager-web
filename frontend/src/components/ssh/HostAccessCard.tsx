@@ -7,11 +7,14 @@
 import { useState } from 'react';
 import { ShieldBan } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { useToast, useConfirm } from '@/components/ui';
 import { HostKrlStatePill } from './HostKrlStatePill';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from './block-flows';
 
 export function HostAccessCard({ hostId }: { hostId: string }) {
   const utils = trpc.useUtils();
+  const toast = useToast();
+  const confirm = useConfirm();
   const accessQuery = trpc.ssh.host.access.useQuery({ id: hostId });
   const identitiesQuery = trpc.ssh.user.listIdentities.useQuery();
   const blockMutation = trpc.ssh.block.block.useMutation();
@@ -21,9 +24,12 @@ export function HostAccessCard({ hostId }: { hostId: string }) {
   const access = accessQuery.data;
 
   const deps: BlockFlowDeps = {
-    confirmFn: (m) => confirm(m),
-    promptFn: (m) => prompt(m),
-    alertFn: (m) => alert(m),
+    confirmFn: async (m) => (await confirm({ description: m, confirmLabel: 'Confirm' })).confirmed,
+    promptFn: async (m) => {
+      const r = await confirm({ description: m, reason: { placeholder: 'Optional' }, confirmLabel: 'Continue' });
+      return r.confirmed ? r.reason ?? '' : null;
+    },
+    alertFn: (m, variant) => (variant === 'error' ? toast.error(m) : toast.success(m)),
     fetchCollisions: (identityId) => utils.client.ssh.block.collisions.query({ id: identityId }),
     block: (input) => blockMutation.mutateAsync(input),
     unblock: (input) => unblockMutation.mutateAsync(input),

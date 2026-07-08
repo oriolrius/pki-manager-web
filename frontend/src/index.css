@@ -68,3 +68,42 @@
     color: var(--color-foreground);
   }
 }
+
+/* Toast + dialog entrance animations (used by src/components/ui). */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-toast-in {
+  animation: toast-in 0.18s ease-out;
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+.animate-dialog-in {
+  animation: dialog-in 0.18s ease-out;
+}

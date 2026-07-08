@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { RefreshCw, Ban } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/krl')({
   component: SshKrl,
@@ -50,6 +51,7 @@ function SshKrl() {
 }
 
 function KrlForCa({ caId }: { caId: string }) {
+  const toast = useToast();
   const utils = trpc.useUtils();
   const latestQuery = trpc.ssh.krl.getLatest.useQuery({ id: caId });
   const revocationsQuery = trpc.ssh.krl.listRevocations.useQuery({ id: caId });
@@ -77,9 +79,9 @@ function KrlForCa({ caId }: { caId: string }) {
       {
         onSuccess: () => {
           invalidate();
-          alert('KRL generated.');
+          toast.success('KRL generated.');
         },
-        onError: (e) => alert(`Generate failed: ${e.message}`),
+        onError: (e) => toast.error(`Generate failed: ${e.message}`),
       }
     );
   };
@@ -92,9 +94,9 @@ function KrlForCa({ caId }: { caId: string }) {
       invalidate();
       setValue('');
       setReason('');
-      alert('Revoked. Regenerate the KRL to publish.');
+      toast.success('Revoked. Regenerate the KRL to publish.');
     };
-    const onError = (err: { message: string }) => alert(`Revoke failed: ${err.message}`);
+    const onError = (err: { message: string }) => toast.error(`Revoke failed: ${err.message}`);
     const r = reason.trim() || undefined;
     if (mode === 'serial') revokeSerialMutation.mutate({ caId, serial: v, reason: r }, { onSuccess, onError });
     else if (mode === 'key') revokeKeyMutation.mutate({ caId, fingerprint: v, reason: r }, { onSuccess, onError });

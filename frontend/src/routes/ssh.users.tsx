@@ -1,9 +1,10 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, UserX } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
+import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/users')({
   component: SshUsers,
@@ -15,6 +16,8 @@ function SshUsers() {
   const isNew = matchRoute({ to: '/ssh/users/new' });
 
   const utils = trpc.useUtils();
+  const toast = useToast();
+  const confirm = useConfirm();
   const identitiesQuery = trpc.ssh.user.listIdentities.useQuery();
 
   const [newSubject, setNewSubject] = useState('');
@@ -40,18 +43,24 @@ function SshUsers() {
           setNewEmail('');
           setShowCreate(false);
         },
-        onError: (err) => alert(`Failed to create identity: ${err.message}`),
+        onError: (err) => toast.error(`Failed to create identity: ${err.message}`),
       }
     );
   };
 
-  const handleDisable = (identityId: string) => {
-    if (!confirm('Disable this identity? It will no longer be able to receive new certificates.')) return;
+  const handleDisable = async (identityId: string) => {
+    const { confirmed } = await confirm({
+      title: 'Disable identity?',
+      description: 'It will no longer be able to receive new certificates.',
+      confirmLabel: 'Disable',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     disableMutation.mutate(
       { id: identityId },
       {
         onSuccess: () => utils.ssh.user.listIdentities.invalidate(),
-        onError: (err) => alert(`Failed: ${err.message}`),
+        onError: (err) => toast.error(`Failed to disable identity: ${err.message}`),
       }
     );
   };
@@ -133,6 +142,98 @@ function SshUsers() {
   );
 }
 
+/** Hover- AND click-triggered info popover (accessible + touch-friendly). */
+function InfoTip({
+  children,
+  label,
+  placement = 'right',
+}: {
+  children: React.ReactNode;
+  label?: string;
+  placement?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={label ?? 'More info'}
+        onClick={() => setOpen((o) => !o)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="text-muted-foreground hover:text-foreground"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className={`absolute top-5 z-30 w-72 rounded-md border bg-popover p-3 text-xs font-normal leading-relaxed text-popover-foreground shadow-md ${
+            placement === 'left' ? 'right-0' : 'left-0'
+          }`}
+        >
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const CERT_STATUS_STYLES: Record<string, string> = {
+  active: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  expired: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  revoked: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+};
+
+/** A cert past validBefore is effectively expired even if the DB row still says active. */
+function effectiveStatus(c: { status: string; validBefore: string }): string {
+  if (c.status === 'revoked') return 'revoked';
+  if (new Date(c.validBefore).getTime() < Date.now()) return 'expired';
+  return c.status;
+}
+
+function StatusPill({ status, title }: { status: string; title?: string }) {
+  const cls = CERT_STATUS_STYLES[status] ?? CERT_STATUS_STYLES.active;
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls} ${
+        title ? 'cursor-help' : ''
+      }`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+      {status}
+    </span>
+  );
+}
+
+/** Scannable relative expiry ("in 29 days" / "3 days ago") with urgency colouring. */
+function relativeExpiry(iso: string): { text: string; tone: string } {
+  const ms = new Date(iso).getTime() - Date.now();
+  const abs = Math.abs(ms);
+  const day = 86_400_000;
+  const hr = 3_600_000;
+  const min = 60_000;
+  let n: number;
+  let unit: string;
+  if (abs >= day) {
+    n = Math.round(abs / day);
+    unit = 'day';
+  } else if (abs >= hr) {
+    n = Math.round(abs / hr);
+    unit = 'hour';
+  } else {
+    n = Math.max(1, Math.round(abs / min));
+    unit = 'min';
+  }
+  const label = `${n} ${unit}${unit !== 'min' && n !== 1 ? 's' : ''}`;
+  const text = ms >= 0 ? `in ${label}` : `${label} ago`;
+  let tone = 'text-muted-foreground';
+  if (ms >= 0 && ms < day) tone = 'text-red-600 dark:text-red-400';
+  else if (ms >= 0 && ms < 7 * day) tone = 'text-amber-600 dark:text-amber-400';
+  return { text, tone };
+}
+
 function IdentityCard({
   identity,
   onDisable,
@@ -144,11 +245,44 @@ function IdentityCard({
 }) {
   const [open, setOpen] = useState(false);
   const utils = trpc.useUtils();
+  const toast = useToast();
+  const confirm = useConfirm();
   const certsQuery = trpc.ssh.user.listCertificates.useQuery(
     { identityId: identity.id },
     { enabled: open }
   );
   const certs = certsQuery.data ?? [];
+
+  // Certificate table: reveal first 3, "Show more" expands the rest (already fetched).
+  const [showAllCerts, setShowAllCerts] = useState(false);
+  const [copiedSerial, setCopiedSerial] = useState<string | null>(null);
+  const revokeCertMutation = trpc.ssh.user.revoke.useMutation();
+  const visibleCerts = showAllCerts ? certs : certs.slice(0, 3);
+  const handleRevokeCert = async (certId: string, serial: string) => {
+    const { confirmed, reason } = await confirm({
+      title: `Revoke certificate #${serial}?`,
+      description: 'This adds it to the KRL and cannot be undone.',
+      confirmLabel: 'Revoke',
+      tone: 'danger',
+      reason: { label: 'Revocation reason (optional)', placeholder: 'e.g. key compromise' },
+    });
+    if (!confirmed) return;
+    revokeCertMutation.mutate(
+      { certId, reason },
+      {
+        onSuccess: () => {
+          toast.success(`Certificate #${serial} revoked`);
+          utils.ssh.user.listCertificates.invalidate({ identityId: identity.id });
+        },
+        onError: (e) => toast.error(`Failed to revoke: ${e.message}`),
+      }
+    );
+  };
+  const copySerial = (s: string) => {
+    navigator.clipboard?.writeText(s);
+    setCopiedSerial(s);
+    setTimeout(() => setCopiedSerial((cur) => (cur === s ? null : cur)), 1200);
+  };
 
   // BLK-09: "Blocked on:" host pills + pre-emptive "Block on host…" select.
   const blocksQuery = trpc.ssh.block.listForIdentity.useQuery({ id: identity.id }, { enabled: open });
@@ -163,9 +297,12 @@ function IdentityCard({
   );
 
   const deps: BlockFlowDeps = {
-    confirmFn: (m) => confirm(m),
-    promptFn: (m) => prompt(m),
-    alertFn: (m) => alert(m),
+    confirmFn: async (m) => (await confirm({ description: m, confirmLabel: 'Confirm' })).confirmed,
+    promptFn: async (m) => {
+      const r = await confirm({ description: m, reason: { placeholder: 'Optional' }, confirmLabel: 'Continue' });
+      return r.confirmed ? r.reason ?? '' : null;
+    },
+    alertFn: (m, variant) => (variant === 'error' ? toast.error(m) : toast.success(m)),
     fetchCollisions: (identityId) => utils.client.ssh.block.collisions.query({ id: identityId }),
     block: (input) => blockMutation.mutateAsync(input),
     unblock: (input) => unblockMutation.mutateAsync(input),
@@ -283,34 +420,145 @@ function IdentityCard({
             </span>
           </div>
 
-          {certsQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading certificates...</p>
-          ) : certs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No certificates issued for this identity.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th className="text-left font-medium py-1">Serial</th>
-                  <th className="text-left font-medium py-1">Principals</th>
-                  <th className="text-left font-medium py-1">Status</th>
-                  <th className="text-left font-medium py-1">Valid before</th>
-                </tr>
-              </thead>
-              <tbody>
-                {certs.map((c) => (
-                  <tr key={c.id} className="border-t">
-                    <td className="py-1.5 font-mono text-xs">{c.serial}</td>
-                    <td className="py-1.5 font-mono text-xs">{(c.principals ?? []).join(', ')}</td>
-                    <td className="py-1.5">{c.status}</td>
-                    <td className="py-1.5 text-xs text-muted-foreground">
-                      {new Date(c.validBefore).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-sm font-medium">Issued certificates</h4>
+              <InfoTip label="About this table" placement="right">
+                <p>
+                  Every SSH certificate signed for this user. Each row is one certificate: its
+                  serial, the principals (Linux usernames) it lets them log in as, its status, and
+                  when it expires. Certificates are short-lived by design — expiry is the main way
+                  access is revoked.
+                </p>
+              </InfoTip>
+              {!certsQuery.isLoading && certs.length > 0 && (
+                <span className="text-xs text-muted-foreground">({certs.length})</span>
+              )}
+            </div>
+
+            {certsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading certificates...</p>
+            ) : certs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No certificates issued for this identity.</p>
+            ) : (
+              <>
+                <table className="w-full text-sm">
+                  <thead className="text-muted-foreground">
+                    <tr>
+                      <th className="text-left font-medium py-1">Serial</th>
+                      <th className="text-left font-medium py-1">Key ID</th>
+                      <th className="text-left font-medium py-1">Principals</th>
+                      <th className="text-left font-medium py-1">Status</th>
+                      <th className="text-left font-medium py-1">Expires</th>
+                      <th className="text-right font-medium py-1">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleCerts.map((c) => {
+                      const status = effectiveStatus(c);
+                      const rel = relativeExpiry(c.validBefore);
+                      const full = new Date(c.validBefore).toLocaleString();
+                      const revokedTitle =
+                        status === 'revoked'
+                          ? `Revoked${c.revocationDate ? ' on ' + new Date(c.revocationDate).toLocaleString() : ''} — ${
+                              c.revocationReason || 'no reason given'
+                            }`
+                          : undefined;
+                      return (
+                        <tr key={c.id} className="border-t align-top">
+                          <td className="py-1.5 font-mono text-xs">{c.serial}</td>
+                          <td className="py-1.5 font-mono text-xs">{c.keyId}</td>
+                          <td className="py-1.5">
+                            <div className="flex flex-wrap gap-1">
+                              {(c.principals ?? []).map((p: string) => (
+                                <span
+                                  key={p}
+                                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-mono bg-muted text-foreground/80"
+                                >
+                                  {p}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-1.5">
+                            <StatusPill status={status} title={revokedTitle} />
+                          </td>
+                          <td className="py-1.5">
+                            <span className={`text-xs ${rel.tone}`} title={full}>
+                              {rel.text}
+                            </span>
+                          </td>
+                          <td className="py-1.5">
+                            <div className="flex items-center justify-end gap-2">
+                              <InfoTip label="Certificate options" placement="left">
+                                <div className="space-y-1">
+                                  <div className="font-medium">Extensions</div>
+                                  {c.extensions?.length ? (
+                                    <ul className="list-disc pl-4">
+                                      {c.extensions.map((e: string) => (
+                                        <li key={e}>{e}</li>
+                                      ))}
+                                    </ul>
+                                  ) : (
+                                    <div className="text-muted-foreground">none</div>
+                                  )}
+                                  {Object.keys(c.criticalOptions ?? {}).length > 0 && (
+                                    <>
+                                      <div className="font-medium pt-1">Critical options</div>
+                                      <ul className="list-disc pl-4">
+                                        {Object.entries(c.criticalOptions).map(([k, v]) => (
+                                          <li key={k}>
+                                            {k}: {String(v)}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </>
+                                  )}
+                                </div>
+                              </InfoTip>
+                              <button
+                                onClick={() => copySerial(c.serial)}
+                                title="Copy serial"
+                                aria-label="Copy serial"
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                {copiedSerial === c.serial ? (
+                                  <Check className="h-3.5 w-3.5 text-green-600" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                              {status !== 'revoked' && (
+                                <button
+                                  onClick={() => handleRevokeCert(c.id, c.serial)}
+                                  disabled={revokeCertMutation.isPending}
+                                  title="Revoke certificate"
+                                  aria-label="Revoke certificate"
+                                  className="inline-flex items-center gap-1 text-xs text-destructive hover:underline disabled:opacity-50"
+                                >
+                                  <ShieldOff className="h-3.5 w-3.5" />
+                                  Revoke
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {certs.length > 3 && (
+                  <button
+                    onClick={() => setShowAllCerts((s) => !s)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {showAllCerts ? 'Show less' : `Show ${certs.length - 3} more`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

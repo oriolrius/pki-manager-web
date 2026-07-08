@@ -6,6 +6,7 @@ import { faChartLine, faShield, faCertificate, faLayerGroup, faBook, faTerminal,
 import packageJson from '../../../package.json';
 import { AuthProvider, AuthGuard } from '@/lib/auth';
 import { UserMenu } from '@/components/UserMenu';
+import { UiProvider } from '@/components/ui';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -13,6 +14,7 @@ export const Route = createRootRoute({
 
 function RootComponent() {
   return (
+    <UiProvider>
     <AuthProvider>
       <AuthGuard>
     <div className="min-h-screen bg-background">
@@ -112,5 +114,6 @@ function RootComponent() {
     </div>
       </AuthGuard>
     </AuthProvider>
+    </UiProvider>
   );
 }

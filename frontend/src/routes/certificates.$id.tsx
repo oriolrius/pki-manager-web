@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faDownload, faRotate, faCircleXmark, faTrash, faCalendar, faShield, faKey, faDatabase, faAward } from '@fortawesome/free-solid-svg-icons';
+import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/certificates/$id')({
   component: CertificateDetail,
@@ -46,6 +47,8 @@ const DOWNLOAD_FORMATS = [
 function CertificateDetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
   // Disable retries for CONFLICT errors (KMS inconsistency) - they won't resolve with retries
   const certQuery = trpc.certificate.getById.useQuery({ id }, {
     retry: (failureCount, error) => {
@@ -89,23 +92,23 @@ function CertificateDetail() {
   const confirmDownload = async () => {
     // Validate password for formats that require it (without private key, like JKS Truststore)
     if (selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && !downloadPassword) {
-      alert('Password is required for this format');
+      toast.info('Password is required for this format');
       return;
     }
 
     if (selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && downloadPassword.length < 8) {
-      alert('Password must be at least 8 characters long');
+      toast.info('Password must be at least 8 characters long');
       return;
     }
 
     // Validate password only if encryption is enabled for formats with private keys
     if (selectedFormat?.hasPrivateKey && encryptPrivateKey && !downloadPassword) {
-      alert('Password is required when private key encryption is enabled');
+      toast.info('Password is required when private key encryption is enabled');
       return;
     }
 
     if (selectedFormat?.hasPrivateKey && encryptPrivateKey && downloadPassword.length < 8) {
-      alert('Password must be at least 8 characters long');
+      toast.info('Password must be at least 8 characters long');
       return;
     }
 
@@ -174,20 +177,25 @@ function CertificateDetail() {
         setShowDockerVolumeInfoPopup(true);
       }
     } catch (error: any) {
-      alert(`Failed to download certificate: ${error.message}`);
+      toast.error(`Failed to download certificate: ${error.message}`);
     }
   };
 
   const handleRenew = async () => {
-    if (confirm('Are you sure you want to renew this certificate? This will create a new certificate with the same details.')) {
+    const { confirmed } = await confirm({
+      title: 'Renew this certificate?',
+      description: 'This will create a new certificate with the same details.',
+      confirmLabel: 'Renew',
+    });
+    if (confirmed) {
       try {
         const data = await renewMutation.mutateAsync({ id, generateNewKey: false });
         await certQuery.refetch();
         utils.certificate.list.invalidate();
-        alert(`Certificate renewed successfully. New ID: ${data.id}`);
+        toast.success(`Certificate renewed successfully. New ID: ${data.id}`);
         navigate({ to: `/certificates/${data.id}` });
       } catch (error: any) {
-        alert(`Failed to renew certificate: ${error.message}`);
+        toast.error(`Failed to renew certificate: ${error.message}`);
       }
     }
   };
@@ -206,27 +214,33 @@ function CertificateDetail() {
           setShowRevokeDialog(false);
           setSelectedReason('unspecified');
           setRevokeDetails('');
-          alert('Certificate revoked successfully');
+          toast.success('Certificate revoked successfully');
         },
         onError: (error) => {
-          alert(`Failed to revoke certificate: ${error.message}`);
+          toast.error(`Failed to revoke certificate: ${error.message}`);
         },
       }
     );
   };
 
-  const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this certificate? This action cannot be undone.')) {
+  const handleDelete = async () => {
+    const { confirmed } = await confirm({
+      title: 'Delete this certificate?',
+      description: 'This action cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (confirmed) {
       deleteMutation.mutate(
         { id },
         {
           onSuccess: () => {
             utils.certificate.list.invalidate();
-            alert('Certificate deleted successfully');
+            toast.success('Certificate deleted successfully');
             navigate({ to: '/certificates' });
           },
           onError: (error) => {
-            alert(`Failed to delete certificate: ${error.message}`);
+            toast.error(`Failed to delete certificate: ${error.message}`);
           },
         }
       );

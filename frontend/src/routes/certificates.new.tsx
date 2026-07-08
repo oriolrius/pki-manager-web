@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { ArrowLeft, Shuffle } from 'lucide-react';
 import { useState } from 'react';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/certificates/new')({
   component: NewCertificate,
@@ -10,6 +11,7 @@ export const Route = createFileRoute('/certificates/new')({
 function NewCertificate() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     caId: '',
     commonName: '',
@@ -85,7 +87,7 @@ function NewCertificate() {
       utils.certificate.list.invalidate();
       navigate({ to: `/certificates/${result.id}` });
     } catch (error: any) {
-      alert(`Failed to issue certificate: ${error.message}`);
+      toast.error(`Failed to issue certificate: ${error.message}`);
     }
   };
 

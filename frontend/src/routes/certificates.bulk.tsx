@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { ArrowLeft, FileText, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/certificates/bulk')({
   component: BulkCertificates,
@@ -21,6 +22,7 @@ const STORAGE_KEY = 'pki-manager-bulk-ca-id';
 function BulkCertificates() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     caId: '',
     defaultValidityDays: 365,
@@ -58,12 +60,12 @@ function BulkCertificates() {
     e.preventDefault();
 
     if (!formData.caId) {
-      alert('Please select a Certificate Authority');
+      toast.info('Please select a Certificate Authority');
       return;
     }
 
     if (!formData.csvData.trim()) {
-      alert('Please provide CSV data');
+      toast.info('Please provide CSV data');
       return;
     }
 
@@ -77,7 +79,7 @@ function BulkCertificates() {
       setResults(result);
       utils.certificate.list.invalidate();
     } catch (error: any) {
-      alert(`Failed to issue certificates: ${error.message}`);
+      toast.error(`Failed to issue certificates: ${error.message}`);
     }
   };
 

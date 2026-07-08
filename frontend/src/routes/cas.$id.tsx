@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { getApiUrl } from '@/lib/config';
 import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy } from 'lucide-react';
 import { useState } from 'react';
+import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/cas/$id')({
   component: CADetail,
@@ -40,6 +41,8 @@ function CADetail() {
     },
   });
   const utils = trpc.useUtils();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
   const [showForceDeleteDialog, setShowForceDeleteDialog] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -108,27 +111,33 @@ function CADetail() {
           setShowRevokeDialog(false);
           setSelectedReason('unspecified');
           setRevokeDetails('');
-          alert('CA revoked successfully');
+          toast.success('CA revoked successfully');
         },
         onError: (error) => {
-          alert(`Failed to revoke CA: ${error.message}`);
+          toast.error(`Failed to revoke CA: ${error.message}`);
         },
       }
     );
   };
 
-  const handleDelete = () => {
-    if (confirm('Are you sure you want to delete this CA? This action cannot be undone and will affect all issued certificates.')) {
+  const handleDelete = async () => {
+    const { confirmed } = await confirm({
+      title: 'Delete this CA?',
+      description: 'This action cannot be undone and will affect all issued certificates.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (confirmed) {
       deleteMutation.mutate(
         { id },
         {
           onSuccess: () => {
             utils.ca.list.invalidate();
-            alert('CA deleted successfully');
+            toast.success('CA deleted successfully');
             navigate({ to: '/cas' });
           },
           onError: (error) => {
-            alert(`Failed to delete CA: ${error.message}`);
+            toast.error(`Failed to delete CA: ${error.message}`);
           },
         }
       );
@@ -142,7 +151,7 @@ function CADetail() {
       setTimeout(() => setLinkCopied(false), 2000);
     } catch (error) {
       console.error('Failed to copy link:', error);
-      alert('Failed to copy link to clipboard');
+      toast.error('Failed to copy link to clipboard');
     }
   };
 

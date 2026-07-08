@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { Callout } from '@/components/ssh/Callout';
+import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/cas/$id')({
   component: SshCaDetail,
@@ -14,6 +15,8 @@ function SshCaDetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const caQuery = trpc.ssh.ca.get.useQuery({ id });
   const listQuery = trpc.ssh.ca.list.useQuery();
@@ -41,45 +44,63 @@ function SshCaDetail() {
   const successor = listQuery.data?.find((c) => c.predecessorCaId === ca.id);
   const isRotating = ca.status === 'rotating' || !!successor;
 
-  const handleRotate = () => {
-    if (!confirm('Rotate this CA? A successor key is generated; the current key stays trusted during overlap.')) return;
+  const handleRotate = async () => {
+    const { confirmed } = await confirm({
+      title: 'Rotate this CA?',
+      description: 'A successor key is generated; the current key stays trusted during overlap.',
+      confirmLabel: 'Rotate',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     rotateMutation.mutate(
       { id },
       {
         onSuccess: () => {
           invalidate();
-          alert('CA rotated. Both keys are published as trust anchors during the overlap.');
+          toast.success('CA rotated. Both keys are published as trust anchors during the overlap.');
         },
-        onError: (e) => alert(`Rotate failed: ${e.message}`),
+        onError: (e) => toast.error(`Rotate failed: ${e.message}`),
       }
     );
   };
 
-  const handleRetire = () => {
-    if (!confirm('Retire this CA? It will no longer be published as a trust anchor.')) return;
+  const handleRetire = async () => {
+    const { confirmed } = await confirm({
+      title: 'Retire this CA?',
+      description: 'It will no longer be published as a trust anchor.',
+      confirmLabel: 'Retire',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     retireMutation.mutate(
       { id },
       {
         onSuccess: () => {
           invalidate();
-          alert('CA retired.');
+          toast.success('CA retired.');
         },
-        onError: (e) => alert(`Retire failed: ${e.message}`),
+        onError: (e) => toast.error(`Retire failed: ${e.message}`),
       }
     );
   };
 
-  const handleRevoke = () => {
-    const reason = prompt('Revoke this CA. Optional reason:') ?? undefined;
-    if (!confirm('Revoke this CA? This is irreversible.')) return;
+  const handleRevoke = async () => {
+    const { confirmed, reason } = await confirm({
+      title: 'Revoke this CA?',
+      description: 'This is irreversible.',
+      confirmLabel: 'Revoke',
+      tone: 'danger',
+      reason: { label: 'Reason (optional)', placeholder: 'Why is this CA being revoked?' },
+    });
+    if (!confirmed) return;
     revokeMutation.mutate(
       { id, reason },
       {
         onSuccess: () => {
           invalidate();
-          alert('CA revoked.');
+          toast.success('CA revoked.');
         },
-        onError: (e) => alert(`Revoke failed: ${e.message}`),
+        onError: (e) => toast.error(`Revoke failed: ${e.message}`),
       }
     );
   };
