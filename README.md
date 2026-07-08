@@ -285,6 +285,10 @@ guided checklist.
   directions, the principal-in-two-places rule, two-tier revocation.
 - [Operator quickstart](docs/ssh/operator-quickstart.md) — zero to first login.
 - [Host & client setup](docs/ssh/setup.md) — set up an SSH server and client.
+- [Principals guide](docs/ssh/principals-guide.md) — what a principal really is,
+  with a 20-server / 3-profile worked example and per-host mappings.
+- [Per-host access blocks](docs/ssh/host-blocks-runbook.md) — block a user on one
+  host with a composed KRL; operator guide and cutover runbook.
 - [Automation API contract](docs/ssh-api-contract.md) · [Ansible role](ansible/README.md)
 
 ## Architecture
