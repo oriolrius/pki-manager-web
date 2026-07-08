@@ -33,6 +33,7 @@ function SshPrincipals() {
       { name: name.trim(), description: description.trim() || undefined },
       {
         onSuccess: () => {
+          toast.success(`Principal "${name.trim()}" created`);
           utils.ssh.principal.list.invalidate();
           setName('');
           setDescription('');
@@ -203,6 +204,7 @@ function HostPrincipalCard({
       { hostId, principalId, localAccount: localAccount.trim() },
       {
         onSuccess: () => {
+          toast.success(`Mapped to “${localAccount.trim()}” on this host`);
           invalidate();
           setLocalAccount('');
           setPrincipalId('');
@@ -216,7 +218,10 @@ function HostPrincipalCard({
     markPushedMutation.mutate(
       { hostId },
       {
-        onSuccess: invalidate,
+        onSuccess: () => {
+          toast.success('Marked as pushed on this host');
+          invalidate();
+        },
         onError: (err) => toast.error(`Failed: ${err.message}`),
       }
     );

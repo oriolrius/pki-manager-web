@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { useConfirm } from '@/components/ui';
+import { useConfirm, useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/clusters')({
   component: ClustersPage,
@@ -10,6 +10,7 @@ export const Route = createFileRoute('/clusters')({
 function ClustersPage() {
   const utils = trpc.useUtils();
   const confirm = useConfirm();
+  const toast = useToast();
   const clustersQuery = trpc.cluster.list.useQuery();
   const casQuery = trpc.ca.list.useQuery({ limit: 100, offset: 0 });
 
@@ -28,10 +29,15 @@ function ClustersPage() {
       setCaId('');
       utils.cluster.list.invalidate();
     },
+    onError: (err) => toast.error(`Failed to register cluster: ${err.message}`),
   });
 
   const revokeMutation = trpc.cluster.revoke.useMutation({
-    onSuccess: () => utils.cluster.list.invalidate(),
+    onSuccess: () => {
+      toast.success('Cluster token revoked');
+      utils.cluster.list.invalidate();
+    },
+    onError: (err) => toast.error(`Failed to revoke cluster: ${err.message}`),
   });
 
   const copyToken = async () => {
