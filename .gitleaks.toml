@@ -1,0 +1,37 @@
+# gitleaks configuration for pki-manager.
+# Extends the built-in ruleset and allowlists ONLY intentional, non-sensitive
+# material: example/placeholder files, throwaway test fixtures, and dev-only
+# Keycloak seeds. Real credentials live in untracked .env files and CI secrets,
+# never in the repo — so anything OUTSIDE these allowlists fails the build.
+title = "pki-manager gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Committed example placeholders, test fixtures, and dev-only seeds — not real secrets"
+# Match allowlist regexes against the whole line, so keyword-context false
+# positives (env-var NAMES, PEM template literals, example JWTs) are covered.
+regexTarget = "line"
+
+# Whole-file allowlist: pure examples and disposable test fixtures.
+paths = [
+  '''.*\.env\.example$''',
+  '''.*\.env\.example\..*$''',
+  # Golden SSH keys generated for krl-client's offline decode/verify tests.
+  '''krl-client/internal/app/testdata/.*''',
+  # KMS signing spikes: PEM headers are string templates, not real keys.
+  '''backend/src/kms/spike-.*\.ts$''',
+  # E2E/integration specs carry deliberately-invalid example tokens.
+  '''tests/.*\.spec\.ts$''',
+]
+
+# Value/line allowlist for false positives inside otherwise-scanned files.
+regexes = [
+  '''pki-service-secret''',                    # dev Keycloak client secret (keycloak/pki-dev-realm.json)
+  '''Test123!''',                              # E2E test-user password (docker/keycloak-e2e-realm.json)
+  '''__API_URL__''',                           # deploy-time frontend config placeholder
+  '''KC_BOOTSTRAP_ADMIN_PASSWORD''',           # Keycloak env-var NAME referenced in backlog docs
+  '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9''',  # standard {"alg":"RS256","typ":"JWT"} header of example tokens
+  '''secrets: decryption''',                   # prose in services/krl-distributor/host_puller.sh comment
+]
