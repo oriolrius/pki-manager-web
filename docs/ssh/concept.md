@@ -65,4 +65,6 @@ running** on every server and client.
 
 → Next: [Operator quickstart](operator-quickstart.md) ·
 [Host & client setup](setup.md) ·
+[Principals guide](principals-guide.md) ·
+[Per-host access blocks](host-blocks-runbook.md) ·
 [Automation API contract](../ssh-api-contract.md)
