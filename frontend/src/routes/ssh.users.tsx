@@ -385,7 +385,7 @@ function IdentityCard({
                       {b.reason && <p className="text-xs text-foreground/80">“{b.reason}”</p>}
                       <p className="text-xs text-muted-foreground">
                         by {b.createdBy ?? 'unknown'}
-                        {b.createdAt ? ` · ${new Date(b.createdAt).toLocaleDateString()}` : ''}
+                        {b.createdAt ? ` · ${new Date(b.createdAt).toLocaleString()}` : ''}
                       </p>
                     </div>
                     <button
