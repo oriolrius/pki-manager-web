@@ -33,30 +33,31 @@ function makeDeps(over: Partial<BlockFlowDeps> = {}): BlockFlowDeps & {
 
 describe('state pill derivation', () => {
   it('maps the four states to label + palette', () => {
-    expect(stateLabel('effective')).toBe('Effective');
+    expect(stateLabel('effective')).toBe('Enforced');
     expect(statePillClasses('effective')).toContain('green');
-    expect(stateLabel('pending')).toBe('Pending');
-    expect(statePillClasses('pending')).toContain('yellow');
-    expect(stateLabel('lifting')).toBe('Lifting');
-    expect(statePillClasses('lifting')).toContain('yellow');
-    expect(stateLabel('unknown')).toBe('Unknown');
-    expect(statePillClasses('unknown')).toContain('gray');
+    expect(stateLabel('pending')).toBe('Rolling out');
+    expect(statePillClasses('pending')).toContain('amber');
+    expect(stateLabel('lifting')).toBe('Clearing');
+    expect(statePillClasses('lifting')).toContain('amber');
+    expect(stateLabel('unknown')).toBe('Not enforced');
+    expect(statePillClasses('unknown')).toContain('red');
   });
 
-  it('tooltip carries the pinned honesty copy and the unsigned cause', () => {
+  it('tooltip carries the delivery-not-install honesty and the unsigned cause', () => {
     const tip = stateTooltip({ state: 'effective', unsignedLatest: false, servedAt: '2026-07-04T10:00:00Z' });
-    expect(tip).toMatch(/served to host puller at .* — not confirmation of install/);
+    expect(tip).toMatch(/pulled the revocation list that includes this block/);
+    expect(tip).toContain('not the final on-disk install');
     const unsigned = stateTooltip({ state: 'pending', unsignedLatest: true, servedAt: null });
-    expect(unsigned).toContain('UNSIGNED');
-    expect(stateTooltip({ state: 'unknown', unsignedLatest: false, servedAt: null })).toContain('cannot land');
+    expect(unsigned).toContain('could not be signed');
+    expect(stateTooltip({ state: 'unknown', unsignedLatest: false, servedAt: null })).toContain('cannot take effect');
   });
 
-  it('renders the pill with tooltip and unsigned suffix', () => {
+  it('renders the pill with tooltip and signing-pending suffix', () => {
     const { getByTitle, getByText } = render(
       <HostKrlStatePill state={{ state: 'pending', unsignedLatest: true, servedAt: null }} />
     );
-    expect(getByText(/Pending \(unsigned\)/)).toBeTruthy();
-    expect(getByTitle(/UNSIGNED/)).toBeTruthy();
+    expect(getByText(/Rolling out \(signing pending\)/)).toBeTruthy();
+    expect(getByTitle(/could not be signed/)).toBeTruthy();
   });
 });
 
