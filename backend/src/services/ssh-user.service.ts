@@ -196,6 +196,8 @@ export class SshUserService {
       criticalOptions: r.criticalOptions ? JSON.parse(r.criticalOptions) : {},
       status: r.status,
       validBefore: new Date(r.validBefore).toISOString(),
+      revocationReason: r.revocationReason ?? null,
+      revocationDate: r.revocationDate ? new Date(r.revocationDate).toISOString() : null,
     }));
   }
 

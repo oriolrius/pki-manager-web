@@ -9,6 +9,7 @@ import {
 } from '@/components/SshCapabilityEditor';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
+import { useToast } from '@/components/ui';
 import {
   type SshKeyType,
   keyTypeToken,
@@ -25,6 +26,7 @@ export const Route = createFileRoute('/ssh/users/new')({
 });
 
 function IssueUserCert() {
+  const toast = useToast();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
   const { identityId: initialIdentityId } = Route.useSearch();
@@ -49,15 +51,15 @@ function IssueUserCert() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!identityId) {
-      alert('Select an identity.');
+      toast.info('Select an identity.');
       return;
     }
     if (cap.principals.length === 0) {
-      alert('At least one principal is required.');
+      toast.info('At least one principal is required.');
       return;
     }
     if (!cap.sshPublicKey.trim()) {
-      alert('Paste the user public key.');
+      toast.info('Paste the user public key.');
       return;
     }
     issueMutation.mutate(
@@ -82,7 +84,7 @@ function IssueUserCert() {
             principals: cap.principals,
           });
         },
-        onError: (err) => alert(`Failed to issue certificate: ${err.message}`),
+        onError: (err) => toast.error(`Failed to issue certificate: ${err.message}`),
       }
     );
   };

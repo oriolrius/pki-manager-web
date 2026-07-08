@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/r
 import { trpc } from '@/lib/trpc';
 import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check, Shield } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/certificates')({
   component: Certificates,
@@ -51,6 +52,7 @@ function getCertificateTypeIcon(type: string) {
 
 function Certificates() {
   const navigate = useNavigate();
+  const toast = useToast();
   const matchRoute = useMatchRoute();
   const isDetailPage = matchRoute({ to: '/certificates/$id', fuzzy: false });
   const [searchTerm, setSearchTerm] = useState('');
@@ -321,23 +323,23 @@ function Certificates() {
 
     // Validate password for formats that always require it (like jks-truststore)
     if (selectedFormat?.requiresPassword && !bulkDownloadPassword) {
-      alert('Password is required for this format');
+      toast.info('Password is required for this format');
       return;
     }
 
     if (selectedFormat?.requiresPassword && bulkDownloadPassword.length < 8) {
-      alert('Password must be at least 8 characters long');
+      toast.info('Password must be at least 8 characters long');
       return;
     }
 
     // Validate password only if encryption is enabled for formats with private keys
     if (selectedFormat?.hasPrivateKey && bulkEncryptPrivateKey && !bulkDownloadPassword) {
-      alert('Password is required when private key encryption is enabled');
+      toast.info('Password is required when private key encryption is enabled');
       return;
     }
 
     if (selectedFormat?.hasPrivateKey && bulkEncryptPrivateKey && bulkDownloadPassword.length < 8) {
-      alert('Password must be at least 8 characters long');
+      toast.info('Password must be at least 8 characters long');
       return;
     }
 
@@ -457,7 +459,7 @@ function Certificates() {
       }
     } catch (error: any) {
       setShowProgressDialog(false);
-      alert(`Failed to download certificates: ${error.message}`);
+      toast.error(`Failed to download certificates: ${error.message}`);
     }
   };
 

@@ -3,12 +3,14 @@ import { trpc } from '@/lib/trpc';
 import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import { TagInput } from '@/components/TagInput';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/hosts/new')({
   component: NewSshHost,
 });
 
 function NewSshHost() {
+  const toast = useToast();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
 
@@ -38,7 +40,7 @@ function NewSshHost() {
       utils.ssh.host.list.invalidate();
       navigate({ to: '/ssh/hosts/$id', params: { id: host.id } });
     } catch (error: any) {
-      alert(`Failed: ${error.message}`);
+      toast.error(`Failed: ${error.message}`);
     }
   };
 

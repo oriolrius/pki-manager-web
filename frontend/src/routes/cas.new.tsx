@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { ArrowLeft, Shuffle } from 'lucide-react';
 import { useState } from 'react';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/cas/new')({
   component: NewCA,
@@ -10,6 +11,7 @@ export const Route = createFileRoute('/cas/new')({
 function NewCA() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     commonName: '',
     organization: '',
@@ -66,7 +68,7 @@ function NewCA() {
       utils.ca.list.invalidate();
       navigate({ to: `/cas/${result.id}` });
     } catch (error: any) {
-      alert(`Failed to create CA: ${error.message}`);
+      toast.error(`Failed to create CA: ${error.message}`);
     }
   };
 

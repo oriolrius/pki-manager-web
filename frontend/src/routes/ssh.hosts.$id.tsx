@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, XCircle, LogOut } from 'lucide-react';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { HostAccessCard } from '@/components/ssh/HostAccessCard';
+import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/hosts/$id')({
   component: SshHostDetail,
@@ -13,6 +14,8 @@ function SshHostDetail() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const hostQuery = trpc.ssh.host.get.useQuery({ id });
   const bundleQuery = trpc.ssh.host.deployBundle.useQuery({ id });
@@ -45,46 +48,61 @@ function SshHostDetail() {
   const host = hostQuery.data;
   const bundle = bundleQuery.data;
 
-  const handleRenew = () => {
-    if (!confirm('Issue/renew the host certificate now?')) return;
+  const handleRenew = async () => {
+    const { confirmed } = await confirm({
+      title: 'Issue/renew the host certificate now?',
+      confirmLabel: 'Issue',
+    });
+    if (!confirmed) return;
     issueMutation.mutate(
       { hostId: id },
       {
         onSuccess: () => {
           invalidate();
-          alert('Host certificate issued.');
+          toast.success('Host certificate issued.');
         },
-        onError: (e) => alert(`Issue failed: ${e.message}`),
+        onError: (e) => toast.error(`Issue failed: ${e.message}`),
       }
     );
   };
 
-  const handleRevoke = () => {
-    const reason = prompt('Revoke the current host certificate. Optional reason:') ?? undefined;
-    if (!confirm('Revoke the current host certificate?')) return;
+  const handleRevoke = async () => {
+    const { confirmed, reason } = await confirm({
+      title: 'Revoke the current host certificate?',
+      confirmLabel: 'Revoke',
+      tone: 'danger',
+      reason: { label: 'Reason (optional)', placeholder: 'Why is this certificate being revoked?' },
+    });
+    if (!confirmed) return;
     revokeMutation.mutate(
       { id, reason },
       {
         onSuccess: () => {
           invalidate();
-          alert('Certificate revoked. Regenerate the KRL to distribute.');
+          toast.success('Certificate revoked. Regenerate the KRL to distribute.');
         },
-        onError: (e) => alert(`Revoke failed: ${e.message}`),
+        onError: (e) => toast.error(`Revoke failed: ${e.message}`),
       }
     );
   };
 
-  const handleOffboard = () => {
-    const reason = prompt('Offboard this host (revokes cert, disables issuance). Optional reason:') ?? undefined;
-    if (!confirm('Offboard this host? This is a terminal state.')) return;
+  const handleOffboard = async () => {
+    const { confirmed, reason } = await confirm({
+      title: 'Offboard this host?',
+      description: 'This revokes the cert and disables issuance. This is a terminal state.',
+      confirmLabel: 'Offboard',
+      tone: 'danger',
+      reason: { label: 'Reason (optional)', placeholder: 'Why is this host being offboarded?' },
+    });
+    if (!confirmed) return;
     offboardMutation.mutate(
       { id, reason },
       {
         onSuccess: () => {
           invalidate();
-          alert('Host offboarded.');
+          toast.success('Host offboarded.');
         },
-        onError: (e) => alert(`Offboard failed: ${e.message}`),
+        onError: (e) => toast.error(`Offboard failed: ${e.message}`),
       }
     );
   };

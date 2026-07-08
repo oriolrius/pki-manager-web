@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
+import { useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/clusters')({
   component: ClustersPage,
@@ -8,6 +9,7 @@ export const Route = createFileRoute('/clusters')({
 
 function ClustersPage() {
   const utils = trpc.useUtils();
+  const confirm = useConfirm();
   const clustersQuery = trpc.cluster.list.useQuery();
   const casQuery = trpc.ca.list.useQuery({ limit: 100, offset: 0 });
 
@@ -94,8 +96,14 @@ function ClustersPage() {
                 <td className="px-4 py-2 text-right">
                   {c.status !== 'revoked' && (
                     <button
-                      onClick={() => {
-                        if (confirm(`Revoke cluster "${c.name}"? Token will stop working immediately.`)) {
+                      onClick={async () => {
+                        const { confirmed } = await confirm({
+                          title: `Revoke cluster "${c.name}"?`,
+                          description: 'Token will stop working immediately.',
+                          confirmLabel: 'Revoke',
+                          tone: 'danger',
+                        });
+                        if (confirmed) {
                           revokeMutation.mutate({ id: c.id });
                         }
                       }}

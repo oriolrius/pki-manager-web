@@ -12,9 +12,9 @@ export interface SharedKeyCollision {
 }
 
 export interface BlockFlowDeps {
-  confirmFn: (message: string) => boolean;
-  promptFn: (message: string) => string | null;
-  alertFn: (message: string) => void;
+  confirmFn: (message: string) => boolean | Promise<boolean>;
+  promptFn: (message: string) => string | null | Promise<string | null>;
+  alertFn: (message: string, variant?: 'success' | 'error') => void;
   /** Pre-block over-block check (trpc ssh.block.collisions). */
   fetchCollisions: (identityId: string) => Promise<SharedKeyCollision[]>;
   block: (input: { hostId: string; identityId: string; reason?: string }) => Promise<unknown>;
@@ -54,8 +54,8 @@ export async function blockFlow(deps: BlockFlowDeps, target: BlockTarget): Promi
   } catch {
     // Pre-check is advisory; the block response carries the warnings again.
   }
-  if (!deps.confirmFn(buildBlockConfirmMessage(target, collisions))) return false;
-  const reason = deps.promptFn('Optional reason for the block:') ?? undefined;
+  if (!(await deps.confirmFn(buildBlockConfirmMessage(target, collisions)))) return false;
+  const reason = (await deps.promptFn('Optional reason for the block:')) ?? undefined;
   try {
     const result = (await deps.block({
       hostId: target.hostId,
@@ -71,10 +71,10 @@ export async function blockFlow(deps: BlockFlowDeps, target: BlockTarget): Promi
       const others = [...new Set(confirmed.map((c) => c.subject))].join(', ');
       msg += `\n\nWarning: this key is also certified for ${others} — they are ALSO denied on this host.`;
     }
-    deps.alertFn(msg);
+    deps.alertFn(msg, 'success');
     return true;
   } catch (e) {
-    deps.alertFn(`Block failed: ${e instanceof Error ? e.message : String(e)}`);
+    deps.alertFn(`Block failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
     return false;
   }
 }
@@ -83,17 +83,20 @@ export async function unblockFlow(
   deps: BlockFlowDeps,
   target: Pick<BlockTarget, 'hostId' | 'fqdn' | 'identityId' | 'subject'>
 ): Promise<boolean> {
-  const ok = deps.confirmFn(
+  const ok = await deps.confirmFn(
     `Unblock ${target.subject} on ${target.fqdn}? The host keeps enforcing the old KRL until its next pull (shown as Lifting until it lands).`
   );
   if (!ok) return false;
   try {
     await deps.unblock({ hostId: target.hostId, identityId: target.identityId });
     deps.invalidate();
-    deps.alertFn(`Block lifted for ${target.subject} on ${target.fqdn}. Shown as Lifting until the host pulls the new KRL.`);
+    deps.alertFn(
+      `Block lifted for ${target.subject} on ${target.fqdn}. Shown as Lifting until the host pulls the new KRL.`,
+      'success'
+    );
     return true;
   } catch (e) {
-    deps.alertFn(`Unblock failed: ${e instanceof Error ? e.message : String(e)}`);
+    deps.alertFn(`Unblock failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
     return false;
   }
 }

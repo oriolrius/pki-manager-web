@@ -4,12 +4,15 @@ import { useState } from 'react';
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { Callout } from '@/components/ssh/Callout';
+import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/principals')({
   component: SshPrincipals,
 });
 
 function SshPrincipals() {
+  const toast = useToast();
+  const confirm = useConfirm();
   const utils = trpc.useUtils();
   const principalsQuery = trpc.ssh.principal.list.useQuery();
   const hostsQuery = trpc.ssh.host.list.useQuery();
@@ -34,18 +37,23 @@ function SshPrincipals() {
           setName('');
           setDescription('');
         },
-        onError: (err) => alert(`Failed: ${err.message}`),
+        onError: (err) => toast.error(`Failed: ${err.message}`),
       }
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Delete this principal?')) return;
+  const handleDelete = async (id: string) => {
+    const { confirmed } = await confirm({
+      title: 'Delete this principal?',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
     deleteMutation.mutate(
       { id },
       {
         onSuccess: () => utils.ssh.principal.list.invalidate(),
-        onError: (err) => alert(`Failed: ${err.message}`),
+        onError: (err) => toast.error(`Failed: ${err.message}`),
       }
     );
   };
@@ -171,6 +179,7 @@ function HostPrincipalCard({
   principals: { id: string; name: string }[];
   stale: boolean;
 }) {
+  const toast = useToast();
   const utils = trpc.useUtils();
   const renderQuery = trpc.ssh.principal.render.useQuery({ hostId });
 
@@ -198,7 +207,7 @@ function HostPrincipalCard({
           setLocalAccount('');
           setPrincipalId('');
         },
-        onError: (err) => alert(`Failed: ${err.message}`),
+        onError: (err) => toast.error(`Failed: ${err.message}`),
       }
     );
   };
@@ -208,7 +217,7 @@ function HostPrincipalCard({
       { hostId },
       {
         onSuccess: invalidate,
-        onError: (err) => alert(`Failed: ${err.message}`),
+        onError: (err) => toast.error(`Failed: ${err.message}`),
       }
     );
   };

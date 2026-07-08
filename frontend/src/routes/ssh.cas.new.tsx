@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { ArrowLeft, Info } from 'lucide-react';
 import { useState } from 'react';
+import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/cas/new')({
   component: NewSshCa,
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/ssh/cas/new')({
 });
 
 function NewSshCa() {
+  const toast = useToast();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
   const { caType: initialType } = Route.useSearch();
@@ -31,7 +33,7 @@ function NewSshCa() {
           navigate({ to: '/ssh/cas/$id', params: { id: ca.id } });
         },
         onError: (error) => {
-          alert(`Failed to create SSH CA: ${error.message}`);
+          toast.error(`Failed to create SSH CA: ${error.message}`);
         },
       }
     );
