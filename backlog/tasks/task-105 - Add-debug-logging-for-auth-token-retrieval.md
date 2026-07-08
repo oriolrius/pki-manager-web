@@ -1,9 +1,11 @@
 ---
 id: TASK-105
 title: Add debug logging for auth token retrieval
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-13 07:49'
+updated_date: '2026-07-08 11:52'
 labels:
   - frontend
   - auth
