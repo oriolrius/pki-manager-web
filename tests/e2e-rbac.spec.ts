@@ -415,11 +415,14 @@ test.describe('Production E2E - Admin Role Tests', () => {
     await loginAsAdmin(page);
     await navigateToCertificates(page);
 
-    // Verify certificates page loads
+    // Verify certificates page loads: the "Issue Certificate" action and/or the
+    // table are present. Use .first() so this stays strict-mode-safe even when
+    // both are visible (a populated list shows the button AND the table).
     await expect(
-      page.getByRole('button', { name: /issue certificate/i }).or(
-        page.locator('table')
-      )
+      page
+        .getByRole('button', { name: /issue certificate/i })
+        .or(page.locator('table'))
+        .first()
     ).toBeVisible({ timeout: 10000 });
   });
 
@@ -505,14 +508,14 @@ test.describe('Production E2E - Admin Destructive Operations', () => {
     await loginAsAdmin(page);
 
     await page.goto(`${FRONTEND_URL}/certificates/${lifecycleCertId}`);
-    // The trigger "Delete" button opens a confirm dialog whose confirm label
-    // is also "Delete" (AC#6).
-    await page.getByRole('button', { name: /^delete$/i }).first().click();
+    // The "Delete" action opens a role=dialog confirm modal whose confirm button
+    // is also labelled "Delete"; scope the confirm click to the dialog so it is
+    // unambiguous vs the trigger button (AC#6).
+    await page.getByRole('button', { name: /^delete$/i }).click();
+    const confirmDialog = page.getByRole('dialog');
+    await expect(confirmDialog).toBeVisible({ timeout: 10000 });
     await triggerAndExpectAuthorized(page, 'certificate.delete', async () => {
-      await page
-        .getByRole('button', { name: /^delete$/i })
-        .last()
-        .click();
+      await confirmDialog.getByRole('button', { name: /^delete$/i }).click();
     });
   });
 
@@ -533,12 +536,11 @@ test.describe('Production E2E - Admin Destructive Operations', () => {
 
     // Delete the CA (AC#7, part 2). A business error (e.g. residual certs) is
     // acceptable — we assert only that admin is authorized, not FORBIDDEN.
-    await page.getByRole('button', { name: /^delete$/i }).first().click();
+    await page.getByRole('button', { name: /^delete$/i }).click();
+    const caConfirmDialog = page.getByRole('dialog');
+    await expect(caConfirmDialog).toBeVisible({ timeout: 10000 });
     await triggerAndExpectAuthorized(page, 'ca.delete', async () => {
-      await page
-        .getByRole('button', { name: /^delete$/i })
-        .last()
-        .click();
+      await caConfirmDialog.getByRole('button', { name: /^delete$/i }).click();
     });
   });
 });
