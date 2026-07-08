@@ -3,9 +3,11 @@ id: TASK-192
 title: >-
   Fix krl-client run_summary.krl_number reporting 0 on up_to_date (304) despite
   installed KRL
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-05 00:53'
+updated_date: '2026-07-08 11:53'
 labels:
   - bug
   - krl-client
