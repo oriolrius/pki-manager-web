@@ -1,9 +1,11 @@
 ---
 id: TASK-106
 title: Change CA create procedure to require admin role
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-02-13 07:49'
+updated_date: '2026-07-08 11:51'
 labels:
   - backend
   - auth
