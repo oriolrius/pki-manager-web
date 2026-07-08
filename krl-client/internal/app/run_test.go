@@ -307,6 +307,11 @@ func TestRunUpToDate304(t *testing.T) {
 	if sums[0]["http_status"] != float64(304) {
 		t.Errorf("http_status = %v, want 304", sums[0]["http_status"])
 	}
+	// TASK-192 — a 304 with a KRL installed must report the installed header
+	// number (from state), not 0. State was pre-seeded with Number: 5 above.
+	if sums[0]["krl_number"] != float64(5) {
+		t.Errorf("krl_number = %v, want 5 (installed number from state on a 304)", sums[0]["krl_number"])
+	}
 }
 
 // AC#2 — on failure the summary is an ERROR-level event, so it surfaces even
@@ -333,6 +338,11 @@ func TestRunErrorSummarySurfacesUnderQuiet(t *testing.T) {
 	assertField(t, sums[0], "level", "ERROR")
 	if sums[0]["exit_code"] != float64(exitcodes.NotProvisioned) {
 		t.Errorf("exit_code = %v, want 9", sums[0]["exit_code"])
+	}
+	// TASK-192 — a fresh host (no state pre-seeded, nothing installed) still
+	// reports krl_number 0, so 0 unambiguously means "nothing installed".
+	if sums[0]["krl_number"] != float64(0) {
+		t.Errorf("krl_number = %v, want 0 (fresh host, nothing installed)", sums[0]["krl_number"])
 	}
 }
 

@@ -103,6 +103,11 @@ func (s *summary) execute(cfg *config.Config, log *slog.Logger) exitcodes.Code {
 	if err != nil {
 		return s.fail(err)
 	}
+	// Seed the summary with the last-known installed number so EVERY terminal
+	// path (304 up_to_date, error) reports what is actually on the host, not 0.
+	// The 200 install path overwrites this with p.Number below. 0 now means
+	// "nothing installed" iff state.json has no number — matching the README.
+	s.krlNumber = st.Number
 	log.Debug("state loaded", "installed_version", st.Version, "installed_number", st.Number)
 
 	// Conditional fetch: the cached krl_version is the If-None-Match token.
