@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
-import { useToast, useConfirm } from '@/components/ui';
+import { useToast, useConfirm, Combobox } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/users')({
   component: SshUsers,
@@ -416,18 +416,16 @@ function IdentityCard({
                 </span>
               ) : (
                 <>
-                  <select
+                  <Combobox
+                    className="w-56"
+                    ariaLabel="Select a host to block on"
+                    placeholder="Select host…"
+                    searchPlaceholder="Search hosts…"
+                    emptyText="No matching host"
                     value={blockHostId}
-                    onChange={(e) => setBlockHostId(e.target.value)}
-                    className="px-2 py-1 border rounded-md bg-background text-xs"
-                  >
-                    <option value="">Select host…</option>
-                    {blockableHosts.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.fqdn}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setBlockHostId}
+                    options={blockableHosts.map((h) => ({ value: h.id, label: h.fqdn }))}
+                  />
                   <button
                     disabled={!blockHostId || blockMutation.isPending}
                     onClick={async () => {

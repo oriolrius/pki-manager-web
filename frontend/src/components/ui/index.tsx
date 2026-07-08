@@ -10,6 +10,8 @@ import { ConfirmProvider } from './confirm-dialog';
 export { useToast } from './toast';
 export { useConfirm } from './confirm-dialog';
 export type { ConfirmOptions, ConfirmResult } from './confirm-dialog';
+export { Combobox } from './combobox';
+export type { ComboboxOption } from './combobox';
 
 export function UiProvider({ children }: { children: ReactNode }) {
   return (
