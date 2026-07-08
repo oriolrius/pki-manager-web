@@ -75,8 +75,6 @@ function CertificateDetail() {
   const [showDockerVolumeInfoPopup, setShowDockerVolumeInfoPopup] = useState(false);
   const [downloadedDockerVolumeFilename, setDownloadedDockerVolumeFilename] = useState('');
   const [showForceDeleteDialog, setShowForceDeleteDialog] = useState(false);
-  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
   const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
 
   const renewMutation = trpc.certificate.renew.useMutation();
@@ -287,8 +285,8 @@ function CertificateDetail() {
             onSuccess: () => {
               utils.certificate.list.invalidate();
               setShowForceDeleteDialog(false);
-              setSuccessMessage('Certificate record removed from database successfully');
-              setShowSuccessDialog(true);
+              toast.success('Certificate record removed from database');
+              navigate({ to: '/certificates' });
             },
             onError: (error) => {
               setForceDeleteError(error.message);
@@ -299,34 +297,6 @@ function CertificateDetail() {
 
       return (
         <div className="max-w-2xl mx-auto py-12 space-y-6">
-          {/* Success Dialog */}
-          {showSuccessDialog && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-              <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <h2 className="text-xl font-bold text-green-700 dark:text-green-400">Success</h2>
-                </div>
-                <p className="text-sm text-muted-foreground mb-6">
-                  {successMessage}
-                </p>
-                <button
-                  onClick={() => {
-                    setShowSuccessDialog(false);
-                    navigate({ to: '/certificates' });
-                  }}
-                  className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium"
-                >
-                  Go to Certificates
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Force Delete Confirmation Dialog */}
           {showForceDeleteDialog && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
