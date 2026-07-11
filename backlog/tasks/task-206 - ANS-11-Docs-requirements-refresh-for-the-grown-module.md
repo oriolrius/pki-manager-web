@@ -1,9 +1,10 @@
 ---
 id: TASK-206
 title: 'ANS-11: Docs + requirements refresh for the grown module'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 10:31'
 labels:
   - ansible
   - ansible-integration
@@ -31,8 +32,14 @@ Update ansible/README.md, defaults documentation, and requirements to reflect th
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 README documents every new role variable with defaults and a working ECIES + renewal example, and no longer contains the corrected drift statements
-- [ ] #2 The krl-client deployment prerequisites (ecdsa key, SSH_ECIES_ENABLED, NTP) are documented as enforced by the role, not just prose warnings
-- [ ] #3 A documented one-command path exists to run the dockerized e2e locally
-- [ ] #4 requirements.yml / galaxy dependency handling is documented or automated so a fresh controller can run the role without an undocumented manual step
+- [x] #1 README documents every new role variable with defaults and a working ECIES + renewal example, and no longer contains the corrected drift statements
+- [x] #2 The krl-client deployment prerequisites (ecdsa key, SSH_ECIES_ENABLED, NTP) are documented as enforced by the role, not just prose warnings
+- [x] #3 A documented one-command path exists to run the dockerized e2e locally
+- [x] #4 requirements.yml / galaxy dependency handling is documented or automated so a fresh controller can run the role without an undocumented manual step
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+README fully rewritten: all new vars documented with defaults + ECIES/renewal example; enforced prereqs (SSH_ECIES_ENABLED/ecdsa/NTP) documented as role-enforced; galaxy install + one-command e2e documented; tests/e2e/README.md added. meta description updated.
+<!-- SECTION:NOTES:END -->
