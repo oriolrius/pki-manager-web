@@ -339,10 +339,8 @@ describe('X.509 Certificate Utilities', () => {
       expect(csr.subject.CN).toBe('test.example.com');
     });
 
-    it.skip('should generate CSR with extensions', () => {
-      // Note: CSR extension support requires proper OID mapping in node-forge
-      // This is a known limitation of the current implementation
-      // Basic CSRs without extensions work correctly
+    it('should generate CSR with extensions', () => {
+      // generateCSR() applies requested extensions via addCSRExtensions().
       const params: CSRParams = {
         subject: { CN: 'example.com' },
         publicKey: testKeyPair.publicKey,
