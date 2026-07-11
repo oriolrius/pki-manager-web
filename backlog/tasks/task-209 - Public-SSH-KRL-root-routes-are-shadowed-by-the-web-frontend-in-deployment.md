@@ -27,3 +27,14 @@ On the deployed environment (pki.joor.net), GET /ssh/host-ca-keys and the other 
 - [ ] #2 GET /ssh/trusted-user-ca-keys, /ssh/cert-authority, /ssh/cas/:id/ca.pub, /ssh/hosts/:id/cert.pub, and /ssh/hosts/:id/sshd-config return their API responses (not HTML)
 - [ ] #3 GET /krl/:caId.bin and /krl/:caId.json return KRL data, not HTML
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Read backend public route paths (ssh-public.routes.ts, server.ts /cas, public-crl.routes.ts) and the frontend /ssh/* SPA routes to confirm the namespace collision.
+2. Rewrite docker/nginx.conf as a single-origin edge proxy: add an upstream/proxy to http://backend:3000 with standard proxy headers, and precise location blocks BEFORE the SPA fallback for /api/, /trpc, /crl/, /cas/*.pem|crt|cer|der, /krl/, and ONLY the specific backend /ssh/* trust-material paths (host-ca-keys|trusted-user-ca-keys|cert-authority, cas/:id/ca.pub, hosts/:id/cert.pub|sshd-config). Keep local /health and SPA fallback intact.
+3. Ensure the SPA still owns /ssh/cas, /ssh/hosts, etc. via regex anchoring/ordering.
+4. Document the collision + required edge-proxy rules in DEPLOYMENT.md (nginx + Traefik/Caddy/ingress note).
+5. Validate: nginx -t via nginx:alpine docker (comment out user directive if it is the only error), docker compose config parse.
+6. Update ticket ACs/notes; set status.
+<!-- SECTION:PLAN:END -->
