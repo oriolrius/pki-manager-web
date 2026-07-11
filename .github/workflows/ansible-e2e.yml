@@ -1,0 +1,55 @@
+name: Ansible e2e
+
+# Dockerized containers-as-hosts e2e for the ssh_host_cert role (via the
+# published oriolrius.pki_manager collection). Brings up its own backend+KMS,
+# applies the role to two managed-host containers, and asserts idempotence +
+# real ssh login + principal RBAC + revocation on both KRL channels.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ansible/**'
+      - 'backend/src/rest/routes/ssh**'
+      - 'backend/src/services/ssh**'
+      - 'krl-client/**'
+      - '.github/workflows/ansible-e2e.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ansible/**'
+      - 'backend/src/rest/routes/ssh**'
+      - 'backend/src/services/ssh**'
+      - 'krl-client/**'
+      - '.github/workflows/ansible-e2e.yml'
+  workflow_dispatch:
+
+jobs:
+  ssh-host-cert-e2e:
+    name: ssh_host_cert e2e (containers-as-hosts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go (build the krl-client static binary)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ansible-core + driver collections
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'ansible-core>=2.16'
+          ansible-galaxy collection install community.docker community.crypto
+
+      - name: Run the SSH host-cert e2e (strict — a skip is a failure in CI)
+        working-directory: ansible/tests/e2e
+        env:
+          E2E_STRICT: '1'
+        run: ./run.sh
