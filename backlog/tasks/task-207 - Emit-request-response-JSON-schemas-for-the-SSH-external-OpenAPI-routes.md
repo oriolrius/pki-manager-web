@@ -1,7 +1,7 @@
 ---
 id: TASK-207
 title: Emit request/response JSON schemas for the SSH & external OpenAPI routes
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-07-11 16:47'
