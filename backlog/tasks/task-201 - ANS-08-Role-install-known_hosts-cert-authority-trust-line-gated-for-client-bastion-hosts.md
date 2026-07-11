@@ -3,9 +3,11 @@ id: TASK-201
 title: >-
   ANS-08: Role: install known_hosts @cert-authority trust line (gated, for
   client/bastion hosts)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:55'
 labels:
   - ansible
   - ansible-integration
