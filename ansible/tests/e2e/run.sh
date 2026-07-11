@@ -49,8 +49,12 @@ if [ "${E2E_COLLECTION_LOCAL:-0}" = "1" ] && [ -f "$SIBLING/galaxy.yml" ]; then
 else
   ansible-galaxy collection install -r ../../requirements.yml -p "$COLL_DIR" --force >/dev/null 2>&1 || skip "collection install failed (network unavailable? set E2E_COLLECTION_LOCAL=1)"
 fi
+# The harness reaches the host containers with the community.docker CONNECTION
+# plugin, so it must live on the SAME path (ANSIBLE_COLLECTIONS_PATH replaces the
+# default search paths, it does not append) — install it into _collections too.
+ansible-galaxy collection install community.docker -p "$COLL_DIR" >/dev/null 2>&1 || skip "community.docker install failed"
 export ANSIBLE_COLLECTIONS_PATH="$COLL_DIR"
-ok "oriolrius.pki_manager collection installed"
+ok "oriolrius.pki_manager + community.docker collections installed"
 
 mkdir -p _artifacts
 rm -f _artifacts/* 2>/dev/null || true
