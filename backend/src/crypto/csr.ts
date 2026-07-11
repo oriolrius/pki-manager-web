@@ -103,12 +103,17 @@ function addCSRExtensions(csr: any, extensions?: X509Extensions): void {
     }
   }
 
-  // Add extension request attribute if there are any extensions
+  // Add extension request attribute if there are any extensions.
+  // Use setAttributes() (not attributes.push) so node-forge fills each
+  // attribute's OID/type; pushing raw objects leaves `type` undefined and
+  // breaks ASN.1 serialization ("Cannot read properties of undefined (reading 'split')").
   if (attrs.length > 0) {
-    csr.attributes.push({
-      name: 'extensionRequest',
-      extensions: attrs,
-    });
+    csr.setAttributes([
+      {
+        name: 'extensionRequest',
+        extensions: attrs,
+      },
+    ]);
   }
 }
 

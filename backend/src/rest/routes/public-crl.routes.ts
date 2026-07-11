@@ -17,7 +17,7 @@ import { certificateAuthorities, crls } from '../../db/schema.js';
 import { getCRLService } from '../../services/crl.service.js';
 
 export async function publicCrlRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.get('/crl/:caId.:format', async (req, reply) => {
+  fastify.get('/crl/:caId.:format', { schema: { hide: true } }, async (req, reply) => {
     const { caId, format } = req.params as { caId: string; format: string };
 
     // Validate format
