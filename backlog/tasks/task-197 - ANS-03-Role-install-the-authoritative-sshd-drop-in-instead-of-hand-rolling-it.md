@@ -3,9 +3,11 @@ id: TASK-197
 title: >-
   ANS-03: Role: install the authoritative sshd drop-in instead of hand-rolling
   it
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:54'
 labels:
   - ansible
   - ansible-integration
