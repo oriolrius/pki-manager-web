@@ -63,7 +63,7 @@ Then hand out CA trust in **both** directions (the Ansible role installs the ser
 
 ### 1.2 Mint the fleet token with the ops a self-provisioning host needs
 
-Mint from the PKI Manager UI or `trpc.ssh.token.mint`, scoped to the **one** Host CA this fleet belongs to. The required ops depend on whether the host uses the ECIES revocation channel (§2.2):
+Mint with the module (`pki_manager: action=ssh_token_mint`), the REST endpoint `POST /api/v1/ssh/tokens`, or the UI — scoped to the **one** Host CA this fleet belongs to. The required ops depend on whether the host uses the ECIES revocation channel (§2.2):
 
 | Server profile | Token ops | Backing endpoints |
 |---|---|---|
@@ -78,13 +78,14 @@ Mint from the PKI Manager UI or `trpc.ssh.token.mint`, scoped to the **one** Hos
 
 ## 2. Deploy a SERVER (Ansible `ssh_host_cert` role)
 
+Everything here uses the **[`oriolrius.pki_manager`](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/)** collection — the `ssh_host_cert` role plus the `pki_manager` module that drives the PKI Manager **REST** API (no `curl`, no tRPC).
+
 ### 2.1 Minimal path
 
-**Step 1 — Install the controller-side Galaxy dependency (once).** The role generates the host key **on the node** via `community.crypto.openssh_keypair`, so the collection must be present on the controller before the first run:
+**Step 1 — Install the collection (once, on the controller).** It pulls in `community.crypto` automatically:
 
 ```bash
-cd ansible
-ansible-galaxy collection install -r requirements.yml
+ansible-galaxy collection install oriolrius.pki_manager
 ```
 
 **Step 2 — Put the fleet token in Vault** (never in plain inventory):
@@ -93,30 +94,38 @@ ansible-galaxy collection install -r requirements.yml
 ansible-vault create secrets.yml   # set: ssh_ca_fleet_token: pkimg_…
 ```
 
-**Step 3 — Write the minimal inventory.** `site.yml` targets `hosts: sshservers` with `gather_facts: true` (the role needs `ansible_fqdn` and `ansible_all_ipv4_addresses`), so the group name must be exactly `sshservers`:
+**Step 3 — Write a YAML inventory** (`inventory.yml`). The play gathers facts (the role needs `ansible_fqdn` + `ansible_all_ipv4_addresses`):
 
-```ini
-# inventory.ini
-[sshservers]
-server1.example.com
-server2.example.com
+```yaml
+# inventory.yml
+all:
+  children:
+    sshservers:
+      hosts:
+        server1.example.com: {}
+        server2.example.com: {}
 ```
 
-**Step 4 — Set the minimal required variables.** Only two are strictly required for a basic server:
+**Step 4 — Write the playbook** (`site.yml`). Only `ssh_ca_base_url` is set here; the vaulted `ssh_ca_fleet_token` comes from `-e @secrets.yml`:
 
-| Variable | Value |
-|---|---|
-| `ssh_ca_base_url` | PKI Manager base URL, e.g. `https://pki.example.com` |
-| `ssh_ca_fleet_token` | from Vault |
+```yaml
+# site.yml
+- name: Provision SSH-CA servers
+  hosts: sshservers
+  become: true
+  gather_facts: true
+  vars:
+    ssh_ca_base_url: https://pki.example.com
+  roles:
+    - oriolrius.pki_manager.ssh_host_cert
+```
 
-Defaults already **ON**: `ssh_host_cert_principals_enabled: true` (login RBAC), `ssh_host_cert_renew_enabled: true` (unattended renewal). KRL revocation is **OFF** by default — a plain run installs only a fail-closed **empty `RevokedKeys` placeholder**, so enable the ECIES `krl-client` channel in §2.2 if you need live revocation. Other relevant defaults: `ssh_host_cert_validate_certs` (`true`), `ssh_host_cert_sshd_service` (`ssh`), `ssh_host_cert_reload_method` (`service`; use `command` for init-less containers), `ssh_host_cert_scheduler` (`cron`).
+Defaults already **ON**: `ssh_host_cert_principals_enabled` (login RBAC), `ssh_host_cert_renew_enabled` (unattended renewal). KRL revocation is **OFF** by default — a plain run installs only a fail-closed **empty `RevokedKeys` placeholder**, so enable the ECIES `krl-client` channel in §2.2 for live revocation. Other useful defaults: `ssh_host_cert_reload_method` (`service`; use `command` for init-less containers), `ssh_host_cert_scheduler` (`cron`). Full variable table: [`roles/ssh_host_cert/README.md`](https://github.com/oriolrius/pki-manager-ansible/blob/main/roles/ssh_host_cert/README.md).
 
-**Step 5 — Run the playbook:**
+**Step 5 — Run it:**
 
 ```bash
-ansible-playbook -i inventory.ini site.yml \
-  -e ssh_ca_base_url=https://pki.example.com \
-  -e @secrets.yml --ask-vault-pass
+ansible-playbook -i inventory.yml site.yml -e @secrets.yml --ask-vault-pass
 ```
 
 One run does, in order:
@@ -179,9 +188,9 @@ NTP is enforced on this path (`ssh_host_cert_require_timesync`, default `true`).
 Creates an `sshIdentities` row. `subject` is required (*"identity subject is required"*); `email` / `externalSubject` optional. New identities are `active` with `pubkeySource='per_request'`; a disabled identity cannot be issued certs. Returns the identity's `id`, which you pass as the `identityId` input to every later step.
 
 ```
-POST /api/v1/ssh/identities   body: { subject, email?, externalSubject? }
-tRPC  ssh.user.createIdentity
-UI    /ssh/users/new → New Identity
+module  pki_manager: action=ssh_identity_create  identity_subject=alice@acme.example
+REST    POST /api/v1/ssh/identities   body: { subject, email?, externalSubject? }
+UI      /ssh/users/new → New Identity
 ```
 
 ### Step 2 — Create the principals (role labels)
@@ -189,17 +198,18 @@ UI    /ssh/users/new → New Identity
 Create each role label the user will carry (e.g. `developers`, `sysadmins`, `client-acme`). Names must match the grammar `^[A-Za-z0-9](?:[A-Za-z0-9._@-]{0,62})$`. A principal grants nothing on its own — **reuse** existing principals rather than minting one per person.
 
 ```
-POST /api/v1/ssh/principals   body: { name, description? }
-tRPC  ssh.principal.create
-UI    /ssh → Principals → Principal catalog
+module  pki_manager: action=ssh_principal_create  principal_name=developers
+REST    POST /api/v1/ssh/principals   body: { name, description? }
+UI      /ssh → Principals → Principal catalog
 ```
 
 ### Step 2b — (Optional) Grant the identity the entitlement to encode each principal
 
-Inserts an `sshUserPrincipals` (identity→principal) row: a **catalog** entitlement, distinct from host mapping. It is enforced **only** at issue time when `enforceEntitlement:true` is passed (then `assertEntitled()` rejects *"identity not entitled to principals: …"*). **tRPC-only — there is no REST route**, so REST-only automation cannot grant catalog entitlements.
+Inserts an `sshUserPrincipals` (identity→principal) row: a **catalog** entitlement, distinct from host mapping. It is enforced **only** at issue time when `enforceEntitlement:true` is passed (then `assertEntitled()` rejects *"identity not entitled to principals: …"*).
 
 ```
-tRPC  ssh.principal.grant   input: { identityId, principalId }
+module  pki_manager: action=ssh_principal_grant  identity_id=…  principal_id=…
+REST    POST /api/v1/ssh/principals/grant   body: { identityId, principalId }
 ```
 
 ### Step 3 — Ensure principal → local-account host maps exist (the #1 login gotcha)
@@ -209,9 +219,10 @@ For each host the user should reach, map each of their principals to a local acc
 > **Skip this and you get the classic "authenticated but denied" trap:** the certificate signature verifies but the login is refused with **`Valid certificate but Permission denied`**. Login succeeds only when the same principal is in **both** the cert **and** the host's `auth_principals` file. Neither issuance nor `enforceEntitlement` checks host maps — the issue form only *warns* (via `mappingsByPrincipal`); it does not block.
 
 ```
-POST /api/v1/ssh/principals/map     body: { hostId, principalId, localAccount }
-GET  /api/v1/ssh/hosts/:id/auth-principals   # render/verify the exact file contents
-tRPC ssh.principal.map / ssh.principal.render / ssh.principal.markPushed
+module  pki_manager: action=ssh_principal_map  host_id=…  principal_id=…  local_account=deploy
+        pki_manager: action=ssh_host_list  host_fqdn=…      # resolve host_id by fqdn
+        pki_manager: action=ssh_auth_principals  host_id=…  # render/verify the exact files
+REST    POST /api/v1/ssh/principals/map · GET /api/v1/ssh/hosts/:id/auth-principals
 ```
 
 The rendered file uses the dual form (bare `P` plus `P@<fqdn>`) plus `AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u`. Mapping bumps `host.updatedAt`, marking the host **Stale** until the file is re-deployed and **Mark pushed** is clicked. Because the server's `auth_principals` file is written by the §2 role at run time, **re-run the §2 role** (or re-push the file and click **Mark pushed**) after creating these maps — otherwise the host still carries the empty set installed on its first §2 run and §4 login will be denied.
@@ -234,11 +245,11 @@ The backend rejects private keys / garbage early via `parseSshPublicKey`; the pa
 Signs the user's public key against the User CA with their principals.
 
 ```
-POST /api/v1/ssh/users/issue
-  body: { identityId, sshPublicKey, principals[], caId?, extensions?,
-          forceCommand?, sourceAddress?, validForSeconds?, keyId?, enforceEntitlement? }
-tRPC  ssh.user.issue
-UI    /ssh/users/new → Issue Certificate
+module  pki_manager: action=ssh_user_issue  identity_id=…  user_ca_id=…
+        ssh_public_key="{{ lookup('file','~/.ssh/id_ed25519.pub') }}"  principals=[developers]
+REST    POST /api/v1/ssh/users/issue
+        body: { identityId, sshPublicKey, principals[], caId?, validForSeconds?, enforceEntitlement? }
+UI      /ssh/users/new → Issue Certificate
 ```
 
 | Field | Rule / default |
@@ -285,7 +296,7 @@ When the cert expires (~1 week) request a fresh one — **no new key needed**.
 
 ### Step 8 — Trust the servers' Host CA (client side — this is what suppresses TOFU)
 
-Step 7 only wired the **servers-trust-users** direction. To wire the other mandatory direction from §0 — **clients trust servers** — add the Host CA `@cert-authority` line to the user's `~/.ssh/known_hosts` on the **user's own machine**. Without it, the first login shows the `The authenticity of host … can't be established` TOFU prompt:
+Step 7 only wired the **servers-trust-users** direction. To wire the other mandatory direction from §0 — **clients trust servers** — add the Host CA `@cert-authority` line to the user's `~/.ssh/known_hosts` on the **user's own machine**. Without it, the first login shows the `The authenticity of host … can't be established` TOFU prompt. The automation fetches it with `pki_manager: action=ssh_cert_authority` (see §6); a user doing it by hand can also just:
 
 ```bash
 curl "https://pki.example.com/ssh/cert-authority?pattern=*.example.com" >> ~/.ssh/known_hosts
@@ -334,7 +345,7 @@ The host's `krl-client` pulls `POST /api/v1/external/ssh/krl` (returns `304` wit
 
 ## 6. Try it end-to-end — complete worked example
 
-Scenario used throughout: onboard user **alice** (principal `developers` → local account `deploy`) onto **`server1.acme.example`**, under a fleet CA named *acme*, with the ECIES revocation channel. Every `curl` below is verified against a live backend; the Ansible + login + revoke steps are the ones the sandbox in §6.1 runs.
+Scenario used throughout: onboard user **alice** (principal `developers` → local account `deploy`) onto **`server1.acme.example`**, under a fleet CA named *acme*, with the ECIES revocation channel. Everything is driven by the `oriolrius.pki_manager` collection (REST API) — no `curl`. This whole flow is what the sandbox in §6.1 runs and what the collection's `tests/` validate against a live backend.
 
 ### 6.1 Fastest — the zero-infra sandbox
 
@@ -346,113 +357,122 @@ ansible/tests/e2e/run.sh
 
 It builds the `krl-client` binary, stands up backend+KMS, applies the role, asserts idempotence, then drives real `ssh`. See [tests/e2e/README.md](../../ansible/tests/e2e/README.md) for what each phase asserts, and `ansible/tests/e2e/seed.py` for the same bootstrap expressed as API calls.
 
-### 6.2 Against your own backend and host (copy-paste)
+### 6.2 Against your own backend and host (Ansible, module-driven)
 
-**Prerequisites:** a reachable PKI Manager backend; with OIDC off it must run with `ALLOW_UNAUTHENTICATED_SSH_CA=true` (and `SSH_ECIES_ENABLED=true` for the revocation channel); `curl`, `jq`, `ansible`, `ssh` on your workstation; the target host reachable by Ansible with a `deploy` UNIX account. To deploy a server **without** live revocation, omit the three `ssh_host_cert_ecies_*`/`krl_client` vars below and skip step 10.
+**Prerequisites:** the collection installed (`ansible-galaxy collection install oriolrius.pki_manager`); a reachable backend (OIDC off ⇒ `ALLOW_UNAUTHENTICATED_SSH_CA=true`, and `SSH_ECIES_ENABLED=true` for the revocation channel); the target host reachable by Ansible with a `deploy` UNIX account. The complete, ready-to-run playbook is [`examples/ssh_deploy_server_and_user.yml`](https://github.com/oriolrius/pki-manager-ansible/blob/main/examples/ssh_deploy_server_and_user.yml) — the essentials are below.
 
-```bash
-# 0. Backend base URL
-BASE=https://pki.example.com
+`inventory.yml`:
+
+```yaml
+all: {children: {sshservers: {hosts: {server1.acme.example: {}}}}}
 ```
 
-```bash
-# 1. One-time platform setup: dual CA + fleet token (the token is shown ONCE).
-USER_CA=$(curl -sS -X POST "$BASE/api/v1/ssh/cas" -H 'content-type: application/json' \
-  -d '{"caType":"user","label":"acme-user-ca"}' | jq -r .id)
-HOST_CA=$(curl -sS -X POST "$BASE/api/v1/ssh/cas" -H 'content-type: application/json' \
-  -d '{"caType":"host","label":"acme-host-ca"}' | jq -r .id)
-TOKEN=$(curl -sS -X POST "$BASE/trpc/ssh.token.mint?batch=1" -H 'content-type: application/json' \
-  -d "{\"0\":{\"name\":\"acme-fleet\",\"hostCaId\":\"$HOST_CA\",\"opSet\":[\"sign-host\",\"get-principals\",\"register-host-pubkey\"]}}" \
-  | jq -r '.[0].result.data.token')
-echo "user-ca=$USER_CA host-ca=$HOST_CA token=${TOKEN:0:12}…"
+**Play 1 — platform (localhost): dual CA + fleet token + principal.**
+
+```yaml
+- hosts: localhost
+  gather_facts: false
+  module_defaults:
+    oriolrius.pki_manager.pki_manager: {api_url: "https://pki.example.com/api/v1"}
+  tasks:
+    - name: Create the dual CA
+      oriolrius.pki_manager.pki_manager: {action: ssh_ca_create, ssh_ca_type: "{{ item }}"}
+      loop: [user, host]
+      register: cas
+    - name: Mint the fleet token
+      oriolrius.pki_manager.pki_manager:
+        action: ssh_token_mint
+        token_name: acme-fleet
+        host_ca_id: "{{ cas.results[1].ca_id }}"
+        token_ops: [sign-host, get-principals, register-host-pubkey]
+      register: fleet
+      no_log: true
+    - name: Create the 'developers' principal
+      oriolrius.pki_manager.pki_manager: {action: ssh_principal_create, principal_name: developers}
+      register: principal
+    - name: Stash platform facts for later plays
+      ansible.builtin.set_fact:
+        acme_user_ca: "{{ cas.results[0].ca_id }}"
+        acme_fleet_token: "{{ fleet.token }}"
+        acme_principal_id: "{{ principal.principal_id }}"
 ```
 
-```bash
-# 2. Deploy the SERVER with the Ansible role (registers the host and installs
-#    trust anchors / principals / renewal; the ECIES vars enable revocation).
-#    For a real fleet, put the token in Ansible Vault (see §2.1), not on -e.
-cd ansible && ansible-galaxy collection install -r requirements.yml
-printf '[sshservers]\nserver1.acme.example\n' > inventory.ini
-ansible-playbook -i inventory.ini site.yml \
-  -e ssh_ca_base_url="$BASE" -e ssh_ca_fleet_token="$TOKEN" \
-  -e ssh_host_cert_ecies_enabled=true \
-  -e ssh_host_cert_krl_client_url=https://artifacts.example.com/krl-client-linux-amd64 \
-  -e ssh_host_cert_krl_client_checksum="sha256:<hex>"
-cd ..
+**Play 2 — server: apply the role (ECIES channel).**
+
+```yaml
+- hosts: sshservers
+  become: true
+  gather_facts: true
+  vars:
+    ssh_ca_base_url: https://pki.example.com
+    ssh_ca_fleet_token: "{{ hostvars['localhost'].acme_fleet_token }}"
+    ssh_host_cert_ecies_enabled: true
+    ssh_host_cert_krl_client_url: https://artifacts.example.com/krl-client-linux-amd64
+    ssh_host_cert_krl_client_checksum: "sha256:<hex>"
+  roles:
+    - oriolrius.pki_manager.ssh_host_cert
 ```
 
-```bash
-# 3. Resolve the host's server-side id (the role registered it via sign-host).
-HOST_ID=$(curl -sS "$BASE/trpc/ssh.host.list" \
-  | jq -r '.result.data[] | select(.fqdn=="server1.acme.example") | .id')
-echo "host-id=$HOST_ID"
+**Play 3 — user: identity → map → issue cert → client config.**
+
+```yaml
+- hosts: localhost
+  gather_facts: false
+  module_defaults:
+    oriolrius.pki_manager.pki_manager: {api_url: "https://pki.example.com/api/v1"}
+  tasks:
+    - name: Create alice + entitle her to 'developers'
+      oriolrius.pki_manager.pki_manager: {action: ssh_identity_create, identity_subject: "alice@acme.example"}
+      register: ident
+    - name: Grant the entitlement
+      oriolrius.pki_manager.pki_manager: {action: ssh_principal_grant, identity_id: "{{ ident.identity_id }}", principal_id: "{{ hostvars['localhost'].acme_principal_id }}"}
+    - name: Resolve each host id by fqdn
+      oriolrius.pki_manager.pki_manager: {action: ssh_host_list, host_fqdn: "{{ hostvars[item].ansible_fqdn }}"}
+      loop: "{{ groups['sshservers'] }}"
+      register: hs
+    - name: Map 'developers' -> deploy on each host
+      oriolrius.pki_manager.pki_manager: {action: ssh_principal_map, host_id: "{{ item.host_id }}", principal_id: "{{ hostvars['localhost'].acme_principal_id }}", local_account: deploy}
+      loop: "{{ hs.results }}"
+    - name: Issue alice's cert (she generated ~/.ssh/id_ed25519 on her machine)
+      oriolrius.pki_manager.pki_manager:
+        action: ssh_user_issue
+        identity_id: "{{ ident.identity_id }}"
+        user_ca_id: "{{ hostvars['localhost'].acme_user_ca }}"
+        ssh_public_key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+        principals: [developers]
+      register: usercert
+    - name: Install the cert + the @cert-authority trust line locally
+      ansible.builtin.copy: {content: "{{ usercert.cert_openssh }}\n", dest: "~/.ssh/id_ed25519-cert.pub", mode: '0644'}
+    - name: Fetch the client trust line (kills TOFU)
+      oriolrius.pki_manager.pki_manager: {action: ssh_cert_authority, cert_authority_pattern: "*.acme.example"}
+      register: ca
+    - ansible.builtin.copy: {content: "{{ ca.cert_authority }}\n", dest: "~/.ssh/known_hosts_acme", mode: '0644'}
 ```
 
-```bash
-# 4. Onboard the USER: identity -> principal -> host map (the login-gating step).
-IDENT=$(curl -sS -X POST "$BASE/api/v1/ssh/identities" -H 'content-type: application/json' \
-  -d '{"subject":"alice@acme.example"}' | jq -r .id)
-PRINC=$(curl -sS -X POST "$BASE/api/v1/ssh/principals" -H 'content-type: application/json' \
-  -d '{"name":"developers","description":"app deployers"}' | jq -r .id)
-curl -sS -X POST "$BASE/api/v1/ssh/principals/map" -H 'content-type: application/json' \
-  -d "{\"hostId\":\"$HOST_ID\",\"principalId\":\"$PRINC\",\"localAccount\":\"deploy\"}"
-# confirm the exact file the host will serve:
-curl -sS "$BASE/api/v1/ssh/hosts/$HOST_ID/auth-principals" | jq .files
-# -> { "deploy": "developers\ndevelopers@server1.acme.example\n" }
-```
+> **Ordering — the #1 gotcha.** `auth_principals` is written when the role runs,
+> so the play-3 mapping only lands after you **run play 2 again** (or run the
+> whole playbook twice). Until then the host serves an empty principals set and
+> login is denied with `Valid certificate but Permission denied`.
+
+**Log in** as the mapped account — no password, no TOFU prompt:
 
 ```bash
-# 5. Push the new principals to the host. auth_principals is written at role
-#    run time, so the map above only takes effect after a RE-RUN of the role.
-cd ansible && ansible-playbook -i inventory.ini site.yml \
-  -e ssh_ca_base_url="$BASE" -e ssh_ca_fleet_token="$TOKEN" \
-  -e ssh_host_cert_ecies_enabled=true \
-  -e ssh_host_cert_krl_client_url=https://artifacts.example.com/krl-client-linux-amd64 \
-  -e ssh_host_cert_krl_client_checksum="sha256:<hex>"; cd ..
+ssh -o UserKnownHostsFile=~/.ssh/known_hosts_acme deploy@server1.acme.example
 ```
 
-```bash
-# 6. The USER generates a keypair on THEIR machine and sends only the .pub.
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''
-```
+**Revoke** — block alice on one host (her cert stays valid elsewhere); her
+`krl-client` installs the signed KRL on its next pull:
 
-```bash
-# 7. Issue the user certificate against the User CA with the principal.
-curl -sS -X POST "$BASE/api/v1/ssh/users/issue" -H 'content-type: application/json' \
-  -d "{\"identityId\":\"$IDENT\",\"caId\":\"$USER_CA\",\"sshPublicKey\":\"$(cat ~/.ssh/id_ed25519.pub)\",\"principals\":[\"developers\"]}" \
-  | jq -r '.cert.certOpenssh' > ~/.ssh/id_ed25519-cert.pub
-chmod 644 ~/.ssh/id_ed25519-cert.pub
-ssh-keygen -L -f ~/.ssh/id_ed25519-cert.pub    # inspect principals + validity window
+```yaml
+- name: Block alice on the compromised host
+  oriolrius.pki_manager.pki_manager:
+    action: ssh_block
+    api_url: "https://pki.example.com/api/v1"
+    host_id: "{{ blocked_host_id }}"     # from play 3's `hs.results`
+    identity_id: "{{ alice_identity_id }}"
+# force the pull now on the host:  krl-client --config /etc/krl-client/config.yaml
+# lift it later with  action: ssh_unblock
 ```
-
-```bash
-# 8. Client trust (kills TOFU) + ~/.ssh/config.
-curl -sS "$BASE/ssh/cert-authority?pattern=*.acme.example" >> ~/.ssh/known_hosts
-cat >> ~/.ssh/config <<'EOF'
-Host *.acme.example
-  IdentityFile ~/.ssh/id_ed25519
-  CertificateFile ~/.ssh/id_ed25519-cert.pub
-  IdentitiesOnly yes
-EOF
-```
-
-```bash
-# 9. Log in as the MAPPED account — no password, no TOFU prompt.
-ssh deploy@server1.acme.example
-```
-
-```bash
-# 10. Revoke: block alice on this host (her cert stays valid elsewhere). Her
-#     host's krl-client installs the signed KRL on its next pull (<= 15 min); to
-#     force it now, on the host run:
-#       krl-client --config /etc/krl-client/config.yaml
-curl -sS -X POST "$BASE/api/v1/ssh/blocks" -H 'content-type: application/json' \
-  -d "{\"hostId\":\"$HOST_ID\",\"identityId\":\"$IDENT\"}" | jq '.warnings'
-# after the pull, the SAME login is refused: "Valid certificate but Permission denied".
-# lift it with:  POST /api/v1/ssh/blocks/unblock {hostId, identityId}
-```
-
-If step 9 fails with `Valid certificate but Permission denied`, you skipped the re-run in step 5 (the host still has the empty principals set) — see the ordering note in §2.1.
 
 ---
 
@@ -465,5 +485,6 @@ Relative to `docs/ssh/`:
 - [setup.md](setup.md) — the by-hand server + client procedure the Ansible role automates; also the source for the user/client-side steps.
 - [operator-quickstart.md](operator-quickstart.md) — the **legacy manual web-UI** "zero to first login" flow this guide supersedes for automation.
 - [host-blocks-runbook.md](host-blocks-runbook.md) — per-host access-block cutover / rollback runbook (revocation after the fleet is deployed).
-- [../ssh-api-contract.md](../ssh-api-contract.md) — the external endpoints the role calls, token minting, and the honest KRL trust model + env gates.
-- [../../ansible/README.md](../../ansible/README.md) — the `ssh_host_cert` role reference and the full variable table this guide drives. (Dockerized proof of the same end-to-end deploy: [../../ansible/tests/e2e/README.md](../../ansible/tests/e2e/README.md).)
+- **[`oriolrius.pki_manager` collection](https://github.com/oriolrius/pki-manager-ansible)** ([Galaxy](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/)) — the `pki_manager` module (every SSH action) + the `ssh_host_cert` role + the complete [`examples/ssh_deploy_server_and_user.yml`](https://github.com/oriolrius/pki-manager-ansible/blob/main/examples/ssh_deploy_server_and_user.yml) this guide is built on.
+- [../../ansible/tests/e2e/README.md](../../ansible/tests/e2e/README.md) — the dockerized containers-as-hosts e2e that proves the same end-to-end deploy (converge + idempotence + real ssh login + revocation).
+- [../ssh-api-contract.md](../ssh-api-contract.md) — the REST endpoints the module calls, and the honest KRL trust model + env gates.
