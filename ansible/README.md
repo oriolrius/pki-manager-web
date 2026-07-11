@@ -19,9 +19,11 @@ key is signed, by `POST /api/v1/external/ssh/sign-host` with a fleet bearer toke
 5. Writes the `sshd_config.d/60-ssh-ca.conf` drop-in (HostCertificate,
    TrustedUserCAKeys, AuthorizedPrincipalsFile, RevokedKeys), runs `sshd -t`,
    and reloads sshd.
-6. *(optional, `ssh_host_cert_ecies_enabled: true`)* registers the host's ECIES
-   key for encrypted KRL distribution, pulled by the [`krl-client`](../krl-client/)
-   Go binary (local decryption with the host's own SSH host key).
+6. *(optional, `ssh_host_cert_ecies_enabled: true`)* **registers** the host's
+   ECIES key with the backend for encrypted KRL distribution. NOTE: today this
+   is registration-only — it does **not** yet install the [`krl-client`](../krl-client/)
+   puller (binary, config, scheduler). That is delivered by ANS-05/06/07 of the
+   Ansible Integration milestone (see `backlog/docs/doc-009`).
 7. *(optional, `ssh_host_cert_krl_cron_enabled: true`)* installs a cron that
    refreshes `RevokedKeys` from the public KRL endpoint. To receive **per-host
    access blocks** on such hosts, switch `ssh_host_cert_krl_fetch_url` to

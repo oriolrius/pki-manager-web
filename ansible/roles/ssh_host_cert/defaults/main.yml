@@ -26,9 +26,11 @@ ssh_host_cert_dropin: "{{ ssh_host_cert_dirname }}/sshd_config.d/60-ssh-ca.conf"
 ssh_host_cert_sshd_service: ssh
 
 # --- Optional ECIES KRL distribution (SSH-15/SSH-24) -------------------------
-# When true, also register the host's ECIES key and install the KRL puller.
+# When true, register the host's ECIES key with the backend. NOTE: today this
+# only REGISTERS the key — it does NOT install the krl-client puller (binary,
+# config, state dir, scheduler). The full encrypted-KRL puller lands in
+# ANS-05/06/07 of the Ansible Integration milestone (doc-009).
 ssh_host_cert_ecies_enabled: false
-ssh_ca_krl_url: "{{ ssh_ca_api_url }}/krl"
 
 # --- Optional public-path KRL fetch cron (BLK-12) ----------------------------
 # For hosts NOT on the encrypted (ECIES) channel: a cron that refreshes
