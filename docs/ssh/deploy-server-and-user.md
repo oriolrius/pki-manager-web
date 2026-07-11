@@ -33,7 +33,7 @@ If the principal exists in only one place, **OpenSSH accepts the certificate sig
 Certificate validity windows **and** KRL freshness depend on an accurate clock, so a time daemon (**chrony / systemd-timesyncd / ntp**, or a synced `timedatectl`) must be running everywhere.
 
 - **Validity windows:** user certs ~1 week, host certs ~1 year. Clock drift puts `now` outside the cert's window, so a signature that verifies is still rejected as not-yet-valid or expired.
-- **KRL freshness (ECIES channel):** each ECIES payload carries a `valid_until`. `krl-client` rejects a payload whose `valid_until` is in the past beyond `--clock-skew` (default **300s**) with **exit code 5 ("payload expired")** — a drifted host then fails **every** run and silently freezes on its last-good KRL. The shipped systemd unit orders itself `After=time-sync.target`. For the ECIES channel the Ansible role preflights time-sync and **fails fast**; on the public-cron path it is not asserted, but sshd still rejects certs outside their window.
+- **KRL freshness (ECIES channel):** each ECIES payload carries a `valid_until`. `krl-client` rejects a payload whose `valid_until` is in the past beyond `--clock-skew` (default **300s**) with **exit code 5 ("payload expired")** — a drifted host then fails **every** run and silently freezes on its last-good KRL. The shipped systemd unit orders itself `After=time-sync.target`, and the Ansible role preflights time-sync and **fails fast** (`ssh_host_cert_require_timesync`, default `true`).
 
 ### Prerequisites checklist
 
@@ -61,12 +61,12 @@ Then hand out CA trust in **both** directions (the Ansible role installs the ser
 
 ### 1.2 Mint the fleet token with the ops a self-provisioning host needs
 
-Mint from the PKI Manager UI or `trpc.ssh.token.mint`, scoped to the **one** Host CA this fleet belongs to. The required ops depend on the KRL channel you'll choose in §2:
+Mint from the PKI Manager UI or `trpc.ssh.token.mint`, scoped to the **one** Host CA this fleet belongs to. The required ops depend on whether the host uses the ECIES revocation channel (§2.2):
 
 | Server profile | Token ops | Backing endpoints |
 |---|---|---|
-| **Basic** (public-cron KRL) | `sign-host`, `get-principals` | `POST /sign-host`, `GET …/hosts/<fqdn>/auth-principals` |
-| **ECIES** (encrypted KRL) | `sign-host`, `get-principals`, **`register-host-pubkey`** | + `POST /register-host-pubkey` |
+| **Without live revocation** | `sign-host`, `get-principals` | `POST /sign-host`, `GET …/hosts/<fqdn>/auth-principals` |
+| **With KRL revocation (ECIES — recommended)** | `sign-host`, `get-principals`, **`register-host-pubkey`** | + `POST /register-host-pubkey` |
 
 - The token is **shown once**. The backend rejects any request whose token lacks the required op with **403 FORBIDDEN**.
 - The API base is derived by the role as `ssh_ca_api_url = {{ ssh_ca_base_url }}/api/v1/external/ssh`.
@@ -107,7 +107,7 @@ server2.example.com
 | `ssh_ca_base_url` | PKI Manager base URL, e.g. `https://pki.example.com` |
 | `ssh_ca_fleet_token` | from Vault |
 
-Defaults already **ON**: `ssh_host_cert_principals_enabled: true` (login RBAC), `ssh_host_cert_renew_enabled: true` (unattended renewal). Both KRL channels are **OFF** by default — a plain run installs only a fail-closed **empty `RevokedKeys` placeholder**, so pick a channel in §2.2 if you need live revocation. Other relevant defaults: `ssh_host_cert_validate_certs` (`true`), `ssh_host_cert_sshd_service` (`ssh`), `ssh_host_cert_reload_method` (`service`; use `command` for init-less containers), `ssh_host_cert_scheduler` (`cron`).
+Defaults already **ON**: `ssh_host_cert_principals_enabled: true` (login RBAC), `ssh_host_cert_renew_enabled: true` (unattended renewal). KRL revocation is **OFF** by default — a plain run installs only a fail-closed **empty `RevokedKeys` placeholder**, so enable the ECIES `krl-client` channel in §2.2 if you need live revocation. Other relevant defaults: `ssh_host_cert_validate_certs` (`true`), `ssh_host_cert_sshd_service` (`ssh`), `ssh_host_cert_reload_method` (`service`; use `command` for init-less containers), `ssh_host_cert_scheduler` (`cron`).
 
 **Step 5 — Run the playbook:**
 
@@ -130,33 +130,19 @@ Re-runs are idempotent (`sign-host` is keyed on host+fingerprint via an `Idempot
 
 > **Ordering — auth_principals is populated at run time.** Phase 2 writes `/etc/ssh/auth_principals/<account>` from the host maps that exist **when the role runs**. A first §2 run performed **before** any maps exist (they are created in §3 Step 3) installs an **empty** principals set, so §4 login will be denied until you **re-run this §2 role** (or re-push the `auth_principals` file and click **Mark pushed**) *after* creating the maps. Plan the order: deploy the host (§2) → create identity / principals / maps (§3) → **re-run §2** → log in (§4).
 
-### 2.2 Choose a KRL (revocation) channel
+### 2.2 Enable KRL revocation (ECIES `krl-client`)
 
-Both channels are OFF by default. Enable exactly one per host.
+Live revocation is **OFF** by default — a plain run installs only an empty, fail-closed `RevokedKeys` placeholder. Enable the encrypted **ECIES `krl-client`** channel to make revocations and per-host blocks land automatically. Its properties:
 
-| | **Channel A — public curl cron** | **Channel B — ECIES `krl-client`** |
-|---|---|---|
-| Transport | Plain `curl` over TLS, atomic `mv` over `RevokedKeys` | Encrypted to the host's own key; signature-verified |
-| Signature verified? | **No** (integrity = TLS + `0444` root-owned perms) | **Yes** (Host-CA anchor) |
-| Host key type | unchanged (ed25519) | switched to **`ecdsa-sha2-nistp256`** (ECIES is P-256 only) |
-| Backend flag | none for per-CA; `SSH_HOST_KRL_PUBLIC=true` for per-host | `SSH_ECIES_ENABLED=true` (**required**) |
-| Token op | `sign-host`, `get-principals` | + `register-host-pubkey` |
+| | **ECIES `krl-client`** |
+|---|---|
+| Transport | Encrypted to the host's own key; signature-verified before install |
+| Signature verified? | **Yes** — composed-KRL Host-CA signature checked against `/etc/ssh/ssh-host-ca.pub` |
+| Host key type | switched to **`ecdsa-sha2-nistp256`** (ECIES is P-256 only) |
+| Backend flag | `SSH_ECIES_ENABLED=true` (**required**) |
+| Token ops | `sign-host`, `get-principals`, **`register-host-pubkey`** |
 
-**Channel A — public curl cron.** Writes `/etc/cron.d/pki-manager-krl` that curls `ssh_host_cert_krl_fetch_url` and atomically replaces `RevokedKeys`. Two sub-modes:
-
-```yaml
-ssh_host_cert_krl_cron_enabled: true
-ssh_host_cert_krl_cron_minutes: 15
-
-# Sub-mode 1 — legacy per-CA KRL (no backend flag needed):
-ssh_host_cert_user_ca_id: <caId>        # default URL: {{ ssh_ca_base_url }}/krl/<caId>.bin
-
-# Sub-mode 2 — per-host access blocks (decision-016):
-ssh_host_cert_krl_fetch_url: "{{ ssh_ca_base_url }}/krl/hosts/{{ ansible_fqdn }}.bin"
-# ^ requires backend:  SSH_HOST_KRL_PUBLIC=true   (else the route 404s, see gotchas)
-```
-
-**Channel B — ECIES `krl-client`.** Registers the host's ECDSA pubkey (`POST /register-host-pubkey`, asserted 200), installs the `krl-client` binary + config + scheduler + a first-run pull, and verifies the composed-KRL signature against the Host-CA anchor at `/etc/ssh/ssh-host-ca.pub`:
+Enabling it registers the host's ECDSA pubkey (`POST /register-host-pubkey`, asserted 200), installs the `krl-client` binary + config + scheduler + a first-run pull, and verifies each composed-KRL signature against the Host-CA anchor at `/etc/ssh/ssh-host-ca.pub` **before** installing it:
 
 ```yaml
 ssh_host_cert_ecies_enabled: true
@@ -174,10 +160,9 @@ NTP is enforced on this path (`ssh_host_cert_require_timesync`, default `true`).
 
 ### 2.3 Server gotchas
 
-- **A default run enables NO live revocation.** Both KRL flags are `false`, so `RevokedKeys` is just an empty fail-closed placeholder until you opt into Channel A or B.
+- **A default run enables NO live revocation.** `ssh_host_cert_ecies_enabled` is `false`, so `RevokedKeys` is just an empty fail-closed placeholder until you enable the ECIES channel (§2.2).
 - **Unattended renewal stores the token on the host** (`0600`, `/etc/pki-manager/ssh-renew.env`) so it can re-mint itself; a compromised host can then sign host certs for any FQDN under that Host CA. Set `ssh_host_cert_renew_enabled: false` to renew by re-running the playbook from the controller instead.
 - **ECIES is P-256-only:** an ed25519 host key gets `409 ECIES_KEY_UNSUPPORTED` on `register-host-pubkey`. The role auto-switches the host key to ecdsa when `ssh_host_cert_ecies_enabled=true` — do **not** force an ed25519 key on an ECIES host. The role accepts 200/404/409/501 from the URI call but then **asserts status == 200**, so a backend without `SSH_ECIES_ENABLED` (501) or a host not yet signed (404) fails the play with an explicit message.
-- **Per-host public KRL silently 404s** unless the backend runs with `SSH_HOST_KRL_PUBLIC=true`; the curl cron would then overwrite `RevokedKeys` with an error body. Set the flag **before** switching `ssh_host_cert_krl_fetch_url` to `/krl/hosts/<fqdn>.bin`.
 - **Init-less containers:** set `ssh_host_cert_reload_method: command` so sshd is reloaded via SIGHUP instead of the service module.
 - **Never hand-edit `60-ssh-ca.conf`.** It is fetched verbatim from `GET /ssh/hosts/<id>/sshd-config` and is algorithm-aware (an ecdsa/ECIES host gets ecdsa `HostKey`/`HostCertificate` paths automatically). Re-render server-side.
 
@@ -329,22 +314,18 @@ If you instead see **`Valid certificate but Permission denied`**, the certificat
 
 Revocation is **two-tier**:
 
-- **Tier 1 — short TTL (primary).** User certs expire ~weekly, host certs ~yearly; **expiry is the main revocation mechanism** — to revoke, stop re-issuing (or just re-issue). This is load-bearing because **OpenSSH KRLs are natively UNSIGNED** — sshd verifies no signature on a `RevokedKeys` file, so public-KRL integrity rests only on TLS + `0444` root-owned perms, backstopped by short TTLs.
+- **Tier 1 — short TTL (primary).** User certs expire ~weekly, host certs ~yearly; **expiry is the main revocation mechanism** — to revoke, stop re-issuing (or just re-issue). This stays load-bearing because sshd itself does **not** verify a signature on the `RevokedKeys` file it reads; on the ECIES channel the `krl-client` puller verifies the composed KRL's **Host-CA signature before installing it** (a tampered KRL is rejected, not applied), and short TTLs backstop the whole scheme.
 - **Tier 2 — the KRL (emergency kill switch)** for a key you must revoke NOW.
 
 Note the asymmetry: a server's `RevokedKeys` gates **user** logins; **host-cert** revocation is enforced client-side, not by the server's `revoked_keys`. And **blocks are not revocations** — a per-host *block* denies an identity on that host while its certs stay valid everywhere else.
 
-### How each channel propagates a revoke or a block
+### How the ECIES channel propagates a revoke or a block
 
-| Channel | Endpoint | A plain revoke | A per-host block | Gate |
-|---|---|---|---|---|
-| **A — public curl cron** | `GET /krl/<caId>.bin` (bare per-CA; ETag/304) | lands as soon as the KRL regenerates and the host's cron re-pulls | via `GET /krl/hosts/<fqdn>.bin` (composed) — **only if** `SSH_HOST_KRL_PUBLIC=true` **and** the host's `ssh_host_cert_krl_fetch_url` is switched to it | `SSH_HOST_KRL_PUBLIC` default **OFF** |
-| **B — ECIES `krl-client`** | `POST /api/v1/external/ssh/krl` (304 `X-KRL-Version` / 200 ECIES ciphertext) | propagates on the host's next pull | same composed per-host KRL — propagates on next pull | `SSH_HOST_KRL_SERVE` default **ON** |
+The host's `krl-client` pulls `POST /api/v1/external/ssh/krl` (returns `304` with `X-KRL-Version`, or `200` with the ECIES ciphertext). Both a **plain revoke** and a **per-host block** land on the host's **next pull**: each rebuilds the composed per-host KRL the endpoint serves (`SSH_HOST_KRL_SERVE`, default **ON**).
 
 - The **composed per-host KRL** = host-CA revocations ∪ all user-CA revocations ∪ resolved active blocks, signed with the **Host-CA** key; `krl-client` verifies it against `--ca-pubkey` (default `/etc/ssh/ssh-host-ca.pub`, from `GET /ssh/host-ca-keys`) — **not** the User CA.
 - **Fail-closed:** sshd re-reads `RevokedKeys` on **every** auth, so no reload is needed once the file lands.
-- **Latency** on either channel is bounded by the pull interval: **≤ 1 interval, median ≈ 7.5 min** at the default 15-min timer. An **offline host keeps its last-good KRL** and is never shown *Effective*.
-- Until a public-path host has **both** `SSH_HOST_KRL_PUBLIC=true` **and** its fetch URL switched to `/krl/hosts/<fqdn>.bin`, it shows **Unknown** and the UI warns the block will **not** be enforced there.
+- **Latency** is bounded by the pull interval: **≤ 1 interval, median ≈ 7.5 min** at the default 15-min timer. An **offline host keeps its last-good KRL** and is never shown *Effective*.
 - If the composed KRL is **unsigned** (e.g. KMS signing failed), `krl-client` fails-stale on last-good (**exit 4**) unless run with `--allow-unsigned`; this surfaces as `(unsigned)` in the UI pill and audit log. And remember: **clock drift** makes `krl-client` fail every run with **exit 5**, silently freezing a host on its last KRL (§0).
 
 ---
