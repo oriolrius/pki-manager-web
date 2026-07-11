@@ -5,8 +5,8 @@
 ################################################################################
 FROM node:22-alpine AS base
 
-# Install specific pnpm version for reproducibility
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+# Install specific pnpm version for reproducibility (patched: see security scan)
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
 
 # Set working directory
 WORKDIR /app
@@ -100,11 +100,14 @@ RUN npm run build:docker
 ################################################################################
 FROM node:22-alpine AS backend
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
-# Install dumb-init for proper signal handling and OpenJDK for keytool (JKS generation)
-RUN apk add --no-cache dumb-init openjdk17-jre-headless
+# Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan, then
+# install dumb-init for signal handling and OpenJDK for keytool (JKS generation).
+# The runtime is pure `node` (see entrypoint + CMD), so pnpm is never installed here and
+# the bundled npm/npx are removed — this keeps their vulnerable transitive deps
+# (sigstore, tar, ...) and the corepack pnpm cache out of the shipped image.
+RUN apk upgrade --no-cache && \
+    apk add --no-cache dumb-init openjdk17-jre-headless && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -161,6 +164,9 @@ CMD ["node", "backend/dist/server.js"]
 # Production Frontend Stage
 ################################################################################
 FROM nginx:alpine AS frontend
+
+# Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan
+RUN apk upgrade --no-cache
 
 # Create non-root user
 RUN addgroup -g 1001 -S nginx-user && \
