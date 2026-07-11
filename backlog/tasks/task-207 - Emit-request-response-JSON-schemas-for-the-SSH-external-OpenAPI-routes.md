@@ -27,3 +27,13 @@ The /api/v1/ssh/* and /api/v1/external/* Fastify routes register schemas with on
 - [ ] #2 Published openapi.json documents a 200 response schema for those SSH and external routes
 - [ ] #3 A client generated with openapi-python-client exposes typed body= parameters and return models for those endpoints (no body-less stubs)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add helper backend/src/rest/schemas/ssh-openapi-schemas.ts: zodBodySchema() (zod-to-json-schema, jsonSchema7 target, additionalProperties:true) + permissive okObject/okArray/error response schemas.
+2. Attach body+response schemas to every POST/GET in ssh.routes.ts (Zod-derived bodies), external.routes.ts (hand-written /sign,/revoke bodies) and ssh-external.routes.ts (sign-host/sign-user/register-host-pubkey/krl); binary krl endpoints get no response schema.
+3. Guard the two Fastify hazards: bodies additionalProperties:true so ajv never 400s valid input; responses permissive so fast-json-stringify never strips fields; match response type (object vs array) to real service return types.
+4. Add Vitest ssh-openapi.test.ts proving requestBody+200 present, no response stripping, valid body not rejected.
+5. Run test + strict typecheck; verify openapi-python-client emits typed body+return models.
+<!-- SECTION:PLAN:END -->
