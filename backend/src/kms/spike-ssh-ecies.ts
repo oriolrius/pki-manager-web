@@ -38,8 +38,9 @@ async function main(): Promise<void> {
   const hostTag = 'ssh-ecies-spike-host';
   const keyId = 'ssh-ecies-spike-host-key';
   try {
-    // (a) Register a per-host ECIES keypair tagged by host_id (KMS-resident model,
-    //     matching host_puller.sh's HOST_PRIV_KEY_ID). Private key never leaves KMS.
+    // (a) Register a per-host ECIES keypair tagged by host_id (the KMS-resident
+    //     model — retired by decision-015 in favour of local-key decryption;
+    //     this spike is kept for historical reference). Private key never leaves KMS.
     try {
       cosmian(['ec', 'keys', 'create', '--curve', 'nist-p256', '--tag', hostTag, '--tag', 'host-pubkey', keyId]);
       record('(a) register per-host ECIES keypair (tagged)', true, `created ${keyId} / ${keyId}_pk tagged ${hostTag}`);

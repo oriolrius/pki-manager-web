@@ -20,7 +20,8 @@ key is signed, by `POST /api/v1/external/ssh/sign-host` with a fleet bearer toke
    TrustedUserCAKeys, AuthorizedPrincipalsFile, RevokedKeys), runs `sshd -t`,
    and reloads sshd.
 6. *(optional, `ssh_host_cert_ecies_enabled: true`)* registers the host's ECIES
-   key for encrypted KRL distribution (see `services/krl-distributor/`).
+   key for encrypted KRL distribution, pulled by the [`krl-client`](../krl-client/)
+   Go binary (local decryption with the host's own SSH host key).
 7. *(optional, `ssh_host_cert_krl_cron_enabled: true`)* installs a cron that
    refreshes `RevokedKeys` from the public KRL endpoint. To receive **per-host
    access blocks** on such hosts, switch `ssh_host_cert_krl_fetch_url` to
