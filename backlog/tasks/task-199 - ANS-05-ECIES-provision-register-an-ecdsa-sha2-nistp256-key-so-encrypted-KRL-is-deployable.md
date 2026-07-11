@@ -3,9 +3,11 @@ id: TASK-199
 title: >-
   ANS-05: ECIES: provision + register an ecdsa-sha2-nistp256 key so encrypted
   KRL is deployable
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:54'
 labels:
   - ansible
   - ansible-integration
