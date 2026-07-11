@@ -1,6 +1,6 @@
 # PKI Manager
 
-> A modern, web-based Public Key Infrastructure management application for securely generating, issuing, managing, and revoking X.509 digital certificates.
+> A self-hosted web application for the complete X.509 **and** SSH certificate lifecycle — issue, renew, and revoke certificates with private keys kept in Cosmian KMS, plus a Kubernetes cert-manager external issuer.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -8,7 +8,7 @@
 
 ## Overview
 
-PKI Manager provides complete control over your Private Key Infrastructure without relying on external certificate authorities. Perfect for enterprises, home labs, and development environments that demand full control over their security infrastructure.
+PKI Manager provides complete control over your Public Key Infrastructure (PKI) — X.509, SSH, and Kubernetes certificates — without relying on external certificate authorities. Perfect for enterprises, home labs, and development environments that demand full control over their security infrastructure.
 
 ### Key Highlights
 
