@@ -3,9 +3,11 @@ id: TASK-196
 title: >-
   ANS-01: Backend: fleet-token endpoint serving a host's rendered
   auth_principals
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:42'
 labels:
   - ansible-integration
   - api
