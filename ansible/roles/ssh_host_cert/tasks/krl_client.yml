@@ -75,6 +75,16 @@
     mode: "0755"
   become: true
 
+- name: Create the man page directory
+  ansible.builtin.file:
+    path: "{{ ssh_host_cert_krl_client_man | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: ssh_host_cert_krl_client_man_src | length > 0
+
 - name: Install the krl-client man page
   ansible.builtin.copy:
     src: "{{ ssh_host_cert_krl_client_man_src }}"
@@ -89,6 +99,15 @@
 - name: Create the krl-client state directory
   ansible.builtin.file:
     path: "{{ ssh_host_cert_krl_client_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Create the krl-client config directory
+  ansible.builtin.file:
+    path: "{{ ssh_host_cert_krl_client_config | dirname }}"
     state: directory
     owner: root
     group: root
