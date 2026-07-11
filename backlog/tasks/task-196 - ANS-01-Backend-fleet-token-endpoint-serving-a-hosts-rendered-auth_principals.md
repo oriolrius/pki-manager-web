@@ -3,7 +3,7 @@ id: TASK-196
 title: >-
   ANS-01: Backend: fleet-token endpoint serving a host's rendered
   auth_principals
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
@@ -35,3 +35,9 @@ The authoritative per-account AuthorizedPrincipalsFile contents are rendered onl
 - [x] #3 An integration test asserts the endpoint output byte-matches the admin tRPC render for the same host, and that an unauthorized/unknown-host request is rejected
 - [x] #4 Each successful fetch writes an audit_log row
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Added GET /api/v1/external/ssh/hosts/:fqdn/auth-principals (new get-principals fleet-token op) reusing ssh-principal.service.render() — byte-identical to admin tRPC render. Writes ssh.external.principals.fetch audit row per fetch. 2 new integration tests (byte-match + 404/403/401 rejection) green against live KMS.
+<!-- SECTION:NOTES:END -->
