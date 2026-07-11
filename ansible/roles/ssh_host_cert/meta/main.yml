@@ -2,7 +2,11 @@
 galaxy_info:
   role_name: ssh_host_cert
   author: PKI Manager
-  description: Generate an Ed25519 host key on the node and sign it via the PKI Manager external SSH API.
+  description: >-
+    Provision a full SSH-CA node from the PKI Manager external API: host key +
+    signed cert, User/Host-CA trust, login-RBAC principals, the authoritative
+    sshd drop-in, unattended renewal, and a KRL revocation channel (public cron
+    or encrypted krl-client).
   license: MIT
   min_ansible_version: "2.14"
   platforms:
