@@ -108,6 +108,17 @@ describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
     expect(r.statusCode).toBe(403);
   });
 
+  it('renewal: a rotated Idempotency-Key returns a fresh cert, not the cached original (ANS-04)', async () => {
+    // The role's renewal job rotates a period bucket into the Idempotency-Key.
+    // A new bucket must mint a NEW cert (later serial), not the cached one.
+    const r1 = await sign('sign-host', { fqdn: 'renew.lab.local', opensshHostPubkey: hostPub }, { 'idempotency-key': 'renew-renew.lab.local-2026-01' });
+    const r2 = await sign('sign-host', { fqdn: 'renew.lab.local', opensshHostPubkey: hostPub }, { 'idempotency-key': 'renew-renew.lab.local-2026-01' });
+    const r3 = await sign('sign-host', { fqdn: 'renew.lab.local', opensshHostPubkey: hostPub }, { 'idempotency-key': 'renew-renew.lab.local-2026-02' });
+    expect(r1.json().serial).toBe(r2.json().serial);       // same bucket -> cached
+    expect(r3.json().serial).not.toBe(r1.json().serial);   // new bucket -> fresh cert
+    expect(new Date(r3.json().validBefore).getTime()).toBeGreaterThanOrEqual(new Date(r1.json().validBefore).getTime());
+  });
+
   it('serves a host its own rendered auth_principals, byte-matching the admin render (ANS-01)', async () => {
     // Register the host + map a principal to a local account.
     await sign('sign-host', { fqdn: 'ap.lab.local', addresses: ['10.0.0.9'], opensshHostPubkey: hostPub });

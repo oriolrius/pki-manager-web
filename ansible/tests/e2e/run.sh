@@ -65,13 +65,18 @@ TOKEN=$(python3 -c 'import json;print(json.load(open("_artifacts/state.json"))["
 [ -n "$TOKEN" ] || fail "no fleet token from seed"
 ok "seeded (token ${TOKEN:0:12}…)"
 
+echo "==> seeding an X.509 CA + CRL + leaf (ANS-09 stretch)"
+X509_CA=$(python3 seed.py x509 --base "$BASE") || fail "seed x509"
+[ -n "$X509_CA" ] || fail "no x509 CA id"
+ok "x509 CA ${X509_CA}"
+
 ID_PUBLIC=$($DC ps -q host_public)
 ID_ECIES=$($DC ps -q host_ecies)
 
 echo "==> writing inventory"
 cat > inventory.ini <<EOF
 [managed]
-host_public ansible_host=${ID_PUBLIC} ssh_host_cert_ecies_enabled=false ssh_host_cert_krl_cron_enabled=true ssh_host_cert_krl_fetch_url=${BASE}/krl/hosts/${FQDN_PUBLIC}.bin
+host_public ansible_host=${ID_PUBLIC} ssh_host_cert_ecies_enabled=false ssh_host_cert_krl_cron_enabled=true ssh_host_cert_krl_fetch_url=${BASE}/krl/hosts/${FQDN_PUBLIC}.bin ssh_host_cert_known_hosts_enabled=true ssh_host_cert_x509_ca_trust_enabled=true ssh_host_cert_x509_crl_cron_enabled=true ssh_host_cert_x509_ca_id=${X509_CA}
 host_ecies  ansible_host=${ID_ECIES} ssh_host_cert_ecies_enabled=true
 
 [managed:vars]
@@ -123,6 +128,21 @@ echo "==> VERIFY: cert login (no TOFU) + principal RBAC"
 assert_accept alice "$FQDN_PUBLIC" "alice logs into public host (cert, StrictHostKeyChecking=yes, no TOFU)"
 assert_accept alice "$FQDN_ECIES"  "alice logs into ecies host (cert, no TOFU)"
 assert_deny  mallory "$FQDN_PUBLIC" "mallory (unlisted principal) denied on public host (RBAC)"
+
+echo "==> VERIFY: known_hosts @cert-authority trust line (ANS-08, host_public)"
+$DC exec -T host_public grep -q '^@cert-authority ' /etc/ssh/ssh_known_hosts \
+  || fail "known_hosts @cert-authority line not installed"
+ok "host_public ssh_known_hosts carries the @cert-authority Host-CA trust line"
+
+echo "==> VERIFY: X.509 CA trust-store install + CRL refresh (ANS-09 stretch, host_public)"
+docker cp _artifacts/leaf.pem "$(${DC} ps -q host_public)":/tmp/leaf.pem >/dev/null 2>&1 || fail "copy leaf.pem"
+$DC exec -T host_public openssl verify /tmp/leaf.pem 2>&1 | grep -q ': OK$' \
+  || fail "openssl verify against the installed CA trust store failed"
+ok "leaf verifies against the role-installed X.509 CA trust anchor"
+$DC exec -T host_public sh -c \
+  "openssl crl -inform DER -in /etc/pki-manager/crl/${X509_CA}.crl -noout 2>/dev/null || openssl crl -in /etc/pki-manager/crl/${X509_CA}.crl -noout" \
+  || fail "installed CRL does not parse"
+ok "role-refreshed CRL parses as a valid CRL"
 
 echo "==> VERIFY: revocation narrowing on the PUBLIC (curl-cron) channel"
 python3 seed.py block --base "$BASE" --host "$FQDN_PUBLIC" --user alice || fail "block alice on public"
