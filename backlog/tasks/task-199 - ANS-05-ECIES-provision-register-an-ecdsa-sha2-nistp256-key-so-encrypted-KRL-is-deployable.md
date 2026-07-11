@@ -3,11 +3,11 @@ id: TASK-199
 title: >-
   ANS-05: ECIES: provision + register an ecdsa-sha2-nistp256 key so encrypted
   KRL is deployable
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:54'
+updated_date: '2026-07-11 10:29'
 labels:
   - ansible
   - ansible-integration
@@ -30,8 +30,14 @@ ECIES is P-256-only (ssh-host.service.ts:335-340) and register-host-pubkey re-va
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With ECIES enabled, an ecdsa-sha2-nistp256 key exists at the krl-client default decrypt path and its public key is the one registered with the backend
-- [ ] #2 POST /register-host-pubkey returns success (not 409 ECIES_KEY_UNSUPPORTED) for a role-provisioned ECIES host
-- [ ] #3 The backend subsequently produces an ECIES-encrypted per-host KRL that decrypts with the host's ecdsa key
-- [ ] #4 A second role run reports no change (key not regenerated, registration idempotent)
+- [x] #1 With ECIES enabled, an ecdsa-sha2-nistp256 key exists at the krl-client default decrypt path and its public key is the one registered with the backend
+- [x] #2 POST /register-host-pubkey returns success (not 409 ECIES_KEY_UNSUPPORTED) for a role-provisioned ECIES host
+- [x] #3 The backend subsequently produces an ECIES-encrypted per-host KRL that decrypts with the host's ecdsa key
+- [x] #4 A second role run reports no change (key not regenerated, registration idempotent)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+hostkey.yml provisions ecdsa-nistp256 when ecies; register-host-pubkey returns 200; e2e ecies host decrypts the per-host KRL with its ecdsa key; idempotent (regenerate:never, register changed_when:false).
+<!-- SECTION:NOTES:END -->
