@@ -35,6 +35,18 @@ if [ ! -f "$BIN" ]; then
 fi
 CHECKSUM="sha256:$(sha256sum "$BIN" | awk '{print $1}')"
 
+# --- install the ssh_host_cert role via the oriolrius.pki_manager collection ---
+# Prefer a sibling checkout (offline dev); else install from requirements.yml (git).
+COLL_DIR="$(pwd)/_collections"
+SIBLING="$REPO/../pki-manager-ansible"
+if [ -d "$SIBLING/galaxy.yml" ] || [ -f "$SIBLING/galaxy.yml" ]; then
+  ansible-galaxy collection install "$SIBLING" -p "$COLL_DIR" --force >/dev/null 2>&1 || fail "collection install (local checkout)"
+else
+  ansible-galaxy collection install -r ../../requirements.yml -p "$COLL_DIR" --force >/dev/null 2>&1 || skip "collection install failed (network unavailable?)"
+fi
+export ANSIBLE_COLLECTIONS_PATH="$COLL_DIR"
+ok "oriolrius.pki_manager collection installed"
+
 mkdir -p _artifacts
 rm -f _artifacts/* 2>/dev/null || true
 

@@ -1,3 +1,13 @@
 ---
+# The ssh_host_cert role AND the pki_manager module now live in the
+# oriolrius.pki_manager collection; installing it pulls in community.crypto.
+#
+# Until oriolrius.pki_manager >= 2.3.0 is published to Galaxy, install from git.
+# Once published, replace the git entry with:
+#   - name: oriolrius.pki_manager
+#     version: ">=2.3.0"
 collections:
+  - name: https://github.com/oriolrius/pki-manager-ansible.git
+    type: git
+    version: feat/ssh-workflow
   - name: community.crypto
