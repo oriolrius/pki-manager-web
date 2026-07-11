@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-07-11 16:47'
-updated_date: '2026-07-11 17:03'
+updated_date: '2026-07-11 17:07'
 labels:
   - bug
   - api
@@ -26,7 +26,10 @@ On the deployed environment (pki.joor.net), GET /ssh/host-ca-keys and the other 
 - [ ] #1 On the deployed environment, GET /ssh/host-ca-keys returns the Host CA public key(s), not HTML
 - [ ] #2 GET /ssh/trusted-user-ca-keys, /ssh/cert-authority, /ssh/cas/:id/ca.pub, /ssh/hosts/:id/cert.pub, and /ssh/hosts/:id/sshd-config return their API responses (not HTML)
 - [ ] #3 GET /krl/:caId.bin and /krl/:caId.json return KRL data, not HTML
+- [ ] #4 Through the single-origin edge (docker/nginx.conf), the SPA still owns its /ssh/* UI routes: GET /ssh/cas, /ssh/hosts, /ssh/users, /ssh/principals, and /ssh/cas/:id return the SPA index.html (fall through to the SPA fallback, not proxied to the backend)
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
