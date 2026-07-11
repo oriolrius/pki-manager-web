@@ -23,9 +23,11 @@ The public trust-material / KRL routes (/ssh/cas/:id/ca.pub, /ssh/host-ca-keys, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every path in the published openapi.json resolves to a live route at the documented server base (no advertised URL 404s)
-- [ ] #2 The public SSH/KRL root routes are either documented at their correct (root) base or omitted from the /api/v1 spec
+- [x] #1 Every path in the published openapi.json resolves to a live route at the documented server base (no advertised URL 404s)
+- [x] #2 The public SSH/KRL root routes are either documented at their correct (root) base or omitted from the /api/v1 spec
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
