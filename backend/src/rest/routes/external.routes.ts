@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyError, FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
@@ -144,7 +144,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
   // Body-schema validation failures must use the API's standard
   // {error:{code,message}} shape (Fastify's default validation error would
   // otherwise break the external issuer contract).
-  fastify.setErrorHandler((error, _req, reply) => {
+  fastify.setErrorHandler((error: FastifyError, _req, reply) => {
     if (error.validation) {
       return reply.code(400).send({ error: { code: 'BAD_REQUEST', message: error.message } });
     }
