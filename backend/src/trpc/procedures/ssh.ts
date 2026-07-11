@@ -298,7 +298,7 @@ const tokenRouter = router({
         name: z.string().min(1).max(128),
         userCaId: z.string().optional(),
         hostCaId: z.string().optional(),
-        opSet: z.array(z.enum(['sign-host', 'sign-user', 'register-host-pubkey'])).min(1),
+        opSet: z.array(z.enum(['sign-host', 'sign-user', 'register-host-pubkey', 'get-principals'])).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {

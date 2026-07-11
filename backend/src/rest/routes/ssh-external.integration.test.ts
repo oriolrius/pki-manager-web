@@ -8,12 +8,14 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 import { registerSshExternalRoutes } from './ssh-external.routes.js';
 import { db } from '../../db/client.js';
 import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshHostKrls, sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshFleetTokenService } from '../../services/ssh-fleet-token.service.js';
+import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 
 const KMS = process.env.KMS_AVAILABLE === 'true';
 const ctx = { db, ipAddress: null };
@@ -104,6 +106,33 @@ describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
     const hostOnly = await getSshFleetTokenService().mint(ctx, { name: 'host-only', hostCaId: hostCa.id, opSet: ['sign-host'] });
     const r = await app.inject({ method: 'POST', url: '/api/v1/external/ssh/sign-user', headers: { authorization: `Bearer ${hostOnly.token}` }, payload: { subject: 'x', sshPublicKey: userPub, principals: ['admin'] } });
     expect(r.statusCode).toBe(403);
+  });
+
+  it('serves a host its own rendered auth_principals, byte-matching the admin render (ANS-01)', async () => {
+    // Register the host + map a principal to a local account.
+    await sign('sign-host', { fqdn: 'ap.lab.local', addresses: ['10.0.0.9'], opensshHostPubkey: hostPub });
+    const host = (await db.select().from(sshHosts).where(eq(sshHosts.fqdn, 'ap.lab.local')).limit(1))[0] as any;
+    const p = await getSshPrincipalService().createPrincipal(ctx, { name: 'deployer' });
+    await getSshPrincipalService().mapToHost(ctx, { hostId: host.id, principalId: p.id, localAccount: 'deploy' });
+
+    const gp = await getSshFleetTokenService().mint(ctx, { name: 'gp', hostCaId: hostCa.id, opSet: ['get-principals'] });
+    const r = await app.inject({ method: 'GET', url: '/api/v1/external/ssh/hosts/ap.lab.local/auth-principals', headers: { authorization: `Bearer ${gp.token}` } });
+    expect(r.statusCode).toBe(200);
+    const expected = await getSshPrincipalService().render(ctx, host.id);
+    expect(r.json()).toEqual(JSON.parse(JSON.stringify(expected)));
+    // dual bare-P + P@fqdn forms for the mapped account.
+    expect(r.json().files.deploy).toBe('deployer\ndeployer@ap.lab.local\n');
+  });
+
+  it('rejects an unknown host (404) and a token without get-principals scope (403)', async () => {
+    const gp = await getSshFleetTokenService().mint(ctx, { name: 'gp2', hostCaId: hostCa.id, opSet: ['get-principals'] });
+    const unknown = await app.inject({ method: 'GET', url: '/api/v1/external/ssh/hosts/nope.lab.local/auth-principals', headers: { authorization: `Bearer ${gp.token}` } });
+    expect(unknown.statusCode).toBe(404);
+    // The default sign-host/sign-user token is NOT scoped for get-principals.
+    const scoped = await app.inject({ method: 'GET', url: '/api/v1/external/ssh/hosts/ap.lab.local/auth-principals', headers: { authorization: `Bearer ${token}` } });
+    expect(scoped.statusCode).toBe(403);
+    const noauth = await app.inject({ method: 'GET', url: '/api/v1/external/ssh/hosts/ap.lab.local/auth-principals' });
+    expect(noauth.statusCode).toBe(401);
   });
 
   it('refuses a revoked token', async () => {
