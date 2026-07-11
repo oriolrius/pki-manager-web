@@ -3,11 +3,11 @@ id: TASK-201
 title: >-
   ANS-08: Role: install known_hosts @cert-authority trust line (gated, for
   client/bastion hosts)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:55'
+updated_date: '2026-07-11 10:29'
 labels:
   - ansible
   - ansible-integration
@@ -30,8 +30,14 @@ For managed hosts that are also SSH clients (jump/bastion, CI runners, host-to-h
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When enabled, /etc/ssh/ssh_known_hosts contains the @cert-authority line for the configured pattern trusting the Host CA
-- [ ] #2 An ssh client on the host connects to another cert-presenting host with StrictHostKeyChecking=yes and no known_hosts prompt
-- [ ] #3 When the variable is off (default) no known_hosts change is made
-- [ ] #4 A second role run reports no change
+- [x] #1 When enabled, /etc/ssh/ssh_known_hosts contains the @cert-authority line for the configured pattern trusting the Host CA
+- [x] #2 An ssh client on the host connects to another cert-presenting host with StrictHostKeyChecking=yes and no known_hosts prompt
+- [x] #3 When the variable is off (default) no known_hosts change is made
+- [x] #4 A second role run reports no change
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+known_hosts.yml (gated): installs @cert-authority line. e2e: line lands on host_public; host_public trusts another host's cert under StrictHostKeyChecking=yes with no TOFU; off by default (ecies host unchanged); idempotent.
+<!-- SECTION:NOTES:END -->
