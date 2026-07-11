@@ -3,11 +3,11 @@ id: TASK-204
 title: >-
   ANS-07: Role: krl-client config + state dir + scheduler + first-run
   pull/verify
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:55'
+updated_date: '2026-07-11 10:29'
 labels:
   - ansible
   - ansible-integration
@@ -32,8 +32,14 @@ Complete the encrypted-KRL path: write /etc/krl-client/config.yaml (mandatory se
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 After the role runs on an ECIES host, a krl-client run pulls, decrypts, and atomically installs a signature-verified /etc/ssh/revoked_keys, and the scheduler (timer or cron) is enabled and fires on schedule
-- [ ] #2 sshd re-reads RevokedKeys and denies a cert that the pulled KRL revokes ('revoked by file'); a non-revoked cert still logs in
-- [ ] #3 If the backend ECIES path is disabled or no time daemon is active, the role fails with a clear actionable message rather than deploying a broken puller
-- [ ] #4 A second role run reports no change (config/units/state idempotent)
+- [x] #1 After the role runs on an ECIES host, a krl-client run pulls, decrypts, and atomically installs a signature-verified /etc/ssh/revoked_keys, and the scheduler (timer or cron) is enabled and fires on schedule
+- [x] #2 sshd re-reads RevokedKeys and denies a cert that the pulled KRL revokes ('revoked by file'); a non-revoked cert still logs in
+- [x] #3 If the backend ECIES path is disabled or no time daemon is active, the role fails with a clear actionable message rather than deploying a broken puller
+- [x] #4 A second role run reports no change (config/units/state idempotent)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+krl_client.yml: config + state dir + cron/systemd scheduler + preflight (SSH_ECIES_ENABLED via register assert, time-sync assert) + first-run dry-run/pull. e2e: signed RevokedKeys installed (269B), revoked cert denied, idempotent.
+<!-- SECTION:NOTES:END -->
