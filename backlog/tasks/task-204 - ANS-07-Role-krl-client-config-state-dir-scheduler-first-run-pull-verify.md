@@ -3,9 +3,11 @@ id: TASK-204
 title: >-
   ANS-07: Role: krl-client config + state dir + scheduler + first-run
   pull/verify
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:55'
 labels:
   - ansible
   - ansible-integration
