@@ -1,0 +1,75 @@
+# ANS-10 dockerized e2e stack: backend + KMS (not Ansible-managed) plus two
+# managed-host containers (Y=public-cron/ed25519, Z=ecies/ecdsa) and a client.
+# All on one network; backend is published to the host so the WSL controller and
+# the containers reach it at the SAME base URL (http://<host-ip>:<port>).
+name: ssh-host-cert-e2e
+
+services:
+  # Mirror the proven dev KMS (kms/docker-compose.yml): :latest + mounted
+  # kms.toml + COSMIAN_KMS_CONF. The default-config mode of pinned images
+  # rejects the KMIP Activate op the CA-create path needs. Fresh DB via tmpfs.
+  kms:
+    image: ghcr.io/cosmian/kms:latest
+    environment:
+      - RUST_LOG=info
+      - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
+    volumes:
+      - ../../../kms/kms.toml:/etc/cosmian/kms.toml:ro
+    tmpfs:
+      - /tmp
+      - /cosmian-kms/sqlite-data
+
+  backend:
+    build:
+      context: ../../..
+      dockerfile: docker/Dockerfile
+      target: backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/tmp/pki-e2e.db
+      - KMS_URL=http://kms:9998
+      # e2e feature flags: encrypted-KRL path + public per-host KRL serving.
+      - SSH_ECIES_ENABLED=true
+      - SSH_HOST_KRL_PUBLIC=true
+      # OIDC intentionally unset -> backend runs unauthenticated (fleet-token only).
+      # The SSH CA/issuance REST routes still gate on this flag when OIDC is off.
+      - ALLOW_UNAUTHENTICATED_SSH_CA=true
+    ports:
+      - "${E2E_BACKEND_PORT:-43000}:3000"
+    depends_on:
+      kms:
+        condition: service_started
+    tmpfs:
+      - /tmp
+
+  host_public:
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+    hostname: host-public.e2e.local
+    networks:
+      default:
+        aliases: [host-public.e2e.local]
+    volumes:
+      - ../../../krl-client/dist/krl-client-linux-amd64:/opt/krl-client-linux-amd64:ro
+
+  host_ecies:
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+    hostname: host-ecies.e2e.local
+    networks:
+      default:
+        aliases: [host-ecies.e2e.local]
+    volumes:
+      - ../../../krl-client/dist/krl-client-linux-amd64:/opt/krl-client-linux-amd64:ro
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.host
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./_artifacts:/artifacts

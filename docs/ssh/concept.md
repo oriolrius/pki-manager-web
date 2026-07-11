@@ -63,7 +63,8 @@ running** on every server and client.
 5. Issue user certs whose principals match those mappings.
 6. Revoke via short TTL, or the KRL when urgent.
 
-→ Next: [Operator quickstart](operator-quickstart.md) ·
+→ Next: [Deploy a server **and** a user (end-to-end reference)](deploy-server-and-user.md) ·
+[Operator quickstart](operator-quickstart.md) ·
 [Host & client setup](setup.md) ·
 [Principals guide](principals-guide.md) ·
 [Per-host access blocks](host-blocks-runbook.md) ·

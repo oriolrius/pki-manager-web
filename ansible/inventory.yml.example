@@ -1,0 +1,7 @@
+---
+all:
+  children:
+    sshservers:
+      hosts:
+        server1.example.com: {}
+        server2.example.com: {}

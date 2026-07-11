@@ -10,7 +10,7 @@ import { sshFleetTokens, sshCas } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
 import type { ServiceContext } from './types.js';
 
-export type SshTokenOp = 'sign-host' | 'sign-user' | 'register-host-pubkey';
+export type SshTokenOp = 'sign-host' | 'sign-user' | 'register-host-pubkey' | 'get-principals';
 
 export class SshTokenError extends Error {
   constructor(message: string) {
