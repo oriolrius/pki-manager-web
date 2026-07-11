@@ -1,7 +1,7 @@
 ---
 id: TASK-208
 title: OpenAPI advertises unreachable /api/v1 URLs for root-mounted public routes
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-07-11 16:47'
