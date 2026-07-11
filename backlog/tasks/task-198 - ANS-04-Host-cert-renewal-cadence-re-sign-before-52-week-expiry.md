@@ -1,11 +1,11 @@
 ---
 id: TASK-198
 title: 'ANS-04: Host-cert renewal cadence (re-sign before 52-week expiry)'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:54'
+updated_date: '2026-07-11 10:29'
 labels:
   - ansible
   - ansible-integration
@@ -28,8 +28,14 @@ Host certs are +52w (ssh-host.service.ts:25) but the role signs once and uses a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A scheduled unit/cron exists on the host that re-requests the host cert with a period-rotating Idempotency-Key
-- [ ] #2 In a test that advances the period bucket, a new sign-host request returns a cert with a later validBefore/serial than the previous one (not the cached original)
-- [ ] #3 The renewed cert is installed atomically and sshd reloads to present it; sshd -t passes
-- [ ] #4 The renewal schedule and lead-time-before-expiry are configurable via role variables
+- [x] #1 A scheduled unit/cron exists on the host that re-requests the host cert with a period-rotating Idempotency-Key
+- [x] #2 In a test that advances the period bucket, a new sign-host request returns a cert with a later validBefore/serial than the previous one (not the cached original)
+- [x] #3 The renewed cert is installed atomically and sshd reloads to present it; sshd -t passes
+- [x] #4 The renewal schedule and lead-time-before-expiry are configurable via role variables
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+renewal.yml + Python script: host-side cron/systemd re-invokes sign-host with a period-rotating Idempotency-Key; atomic install + reload. Backend test proves rotation mints a fresh serial vs cached; schedule/bucket/lead-time are role vars.
+<!-- SECTION:NOTES:END -->
