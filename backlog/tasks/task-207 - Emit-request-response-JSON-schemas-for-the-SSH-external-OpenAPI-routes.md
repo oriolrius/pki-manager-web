@@ -23,10 +23,12 @@ The /api/v1/ssh/* and /api/v1/external/* Fastify routes register schemas with on
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Published openapi.json documents a request-body schema for every POST under /ssh/* and /external/* (e.g. POST /ssh/cas, /ssh/hosts, /ssh/hosts/issue, /ssh/users/issue, /ssh/tokens, /ssh/blocks, /external/sign, /external/revoke, /external/ssh/sign-host, /external/ssh/sign-user)
-- [ ] #2 Published openapi.json documents a 200 response schema for those SSH and external routes
-- [ ] #3 A client generated with openapi-python-client exposes typed body= parameters and return models for those endpoints (no body-less stubs)
+- [x] #1 Published openapi.json documents a request-body schema for every POST under /ssh/* and /external/* (e.g. POST /ssh/cas, /ssh/hosts, /ssh/hosts/issue, /ssh/users/issue, /ssh/tokens, /ssh/blocks, /external/sign, /external/revoke, /external/ssh/sign-host, /external/ssh/sign-user)
+- [x] #2 Published openapi.json documents a 200 response schema for those SSH and external routes
+- [x] #3 A client generated with openapi-python-client exposes typed body= parameters and return models for those endpoints (no body-less stubs)
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
