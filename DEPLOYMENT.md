@@ -6,6 +6,7 @@
 - [Prerequisites](#prerequisites)
 - [Local Development with Docker](#local-development-with-docker)
 - [Production Deployment](#production-deployment)
+- [Single-Origin Edge Proxy & the `/ssh/*` Namespace Collision](#single-origin-edge-proxy--the-ssh-namespace-collision)
 - [Environment Configuration](#environment-configuration)
 - [GitHub Actions CI/CD](#github-actions-cicd)
 - [E2E Testing](#e2e-testing)
@@ -191,6 +192,106 @@ server {
     }
 }
 ```
+
+## Single-Origin Edge Proxy & the `/ssh/*` Namespace Collision
+
+> **Read this if you serve the SPA and the backend on ONE origin** (one
+> host/port behind a single reverse proxy or ingress — e.g. `https://pki.example.com`),
+> rather than the two-port model (`:8080` frontend, `:3000` backend) used by the
+> default compose file.
+
+### The collision
+
+`/ssh/*` is claimed by **both** layers:
+
+- The **frontend SPA** owns `/ssh/*` as a UI URL namespace — TanStack Router pages
+  such as `/ssh/cas`, `/ssh/hosts`, `/ssh/krl`, `/ssh/users`, `/ssh/principals`.
+- The **backend** serves **public, unauthenticated trust material** at the server
+  ROOT under `/ssh/...` (plus `/krl/...`, `/crl/...`, `/cas/....pem`) — the files
+  that hosts, the Ansible role, and `krl-client` fetch.
+
+With a naive single-origin edge (SPA fallback catching everything, or the frontend
+container serving `/` with no backend proxy), `GET /ssh/host-ca-keys` returns the
+SPA's `index.html` instead of the CA key material. Symptom observed in production:
+`/health` and `/crl/*` reach the backend, but `/ssh/host-ca-keys` returns
+`<!doctype html>`. The two-port compose model hides this because the backend and
+frontend are different origins.
+
+### The fix (already applied to `docker/nginx.conf`)
+
+The frontend container's nginx is now a single-origin edge proxy: it proxies the
+**specific backend-owned paths** to `http://backend:3000` and lets everything else
+(including the SPA's own `/ssh/cas`, `/ssh/hosts`, ... UI routes) fall through to
+the SPA. The proxy `location` blocks are placed **before** the `location /` SPA
+fallback; nginx evaluates regex locations (in order) ahead of the prefix fallback,
+so the specific backend `/ssh/...` paths win while the SPA keeps the rest. This is
+purely a proxy/routing change — the backend routes are unchanged, so external
+consumers (Ansible role, `krl-client`) keep working against the same paths.
+
+Backend-owned paths that MUST be routed to the backend:
+
+| Path pattern | What it serves |
+|---|---|
+| `/api/` (prefix) | REST + OpenAPI/Swagger API |
+| `/trpc` (prefix) | tRPC endpoint (frontend RPC) |
+| `^/crl/` | Public CRL downloads (`/crl/<caId>.crl\|.der`) |
+| `^/cas/[^/]+\.(pem\|crt\|cer\|der)$` | Public CA-certificate downloads |
+| `^/krl/` | Public SSH KRL (`/krl/<caId>.bin\|.json`, `/krl/hosts/<id>.bin\|.json`) |
+| `^/ssh/(host-ca-keys\|trusted-user-ca-keys\|cert-authority)$` | SSH trust anchors + known_hosts lines |
+| `^/ssh/cas/[^/]+/ca\.pub$` | A single SSH CA's public key |
+| `^/ssh/hosts/[^/]+/(cert\.pub\|sshd-config)$` | A host's cert + sshd drop-in |
+
+Everything **not** matched above (`/`, `/assets/*`, `/ssh/cas`, `/ssh/hosts`,
+`/ssh/krl`, `/ssh/users`, ...) is served by the SPA. The container's local
+`/health` (used by the frontend healthcheck) stays local.
+
+The exact nginx rules (standard `proxy_set_header Host/X-Real-IP/X-Forwarded-For/X-Forwarded-Proto`
+headers included) live in [`docker/nginx.conf`](docker/nginx.conf). For a
+single-origin deployment, point the SPA at the same origin by setting
+`VITE_API_URL=/trpc` (so the browser hits the edge, not `:3000` directly).
+
+### Verify
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+# Backend trust material through the single origin (NOT HTML):
+curl -s http://localhost:8080/ssh/host-ca-keys | head        # -> ssh-...-ca key line(s)
+curl -s http://localhost:8080/krl/<caId>.bin -o /dev/null -w '%{content_type}\n'  # -> application/octet-stream
+curl -s http://localhost:8080/crl/<caId>.crl | head -1       # -> -----BEGIN X509 CRL-----
+# SPA still owns its UI routes (IS HTML):
+curl -s http://localhost:8080/ssh/cas | head -1              # -> <!doctype html>
+```
+
+### Using a different edge proxy (Traefik / Caddy / Kubernetes ingress)
+
+If you terminate on something other than this nginx (Traefik, Caddy, HAProxy, an
+ingress controller, a cloud LB), you **must replicate the same path routing** to
+the backend, or the `/ssh/*` trust-material routes will be shadowed by the SPA
+again. Route the eight path patterns in the table above to the backend service
+(`backend:3000`) and send everything else to the frontend. Sketches:
+
+**Caddy**
+
+```caddyfile
+pki.example.com {
+    @backend {
+        path /api/* /trpc*
+        path /crl/* /krl/*
+        path_regexp cas ^/cas/[^/]+\.(pem|crt|cer|der)$
+        path /ssh/host-ca-keys /ssh/trusted-user-ca-keys /ssh/cert-authority
+        path_regexp sshpub ^/ssh/cas/[^/]+/ca\.pub$
+        path_regexp sshhost ^/ssh/hosts/[^/]+/(cert\.pub|sshd-config)$
+    }
+    reverse_proxy @backend backend:3000
+    reverse_proxy frontend:8080
+}
+```
+
+**Traefik / ingress** — create a higher-priority router/rule matching those exact
+paths/regexes to the backend service, and a default (lower priority) router to the
+frontend. In Kubernetes, use `Exact`/`ImplementationSpecific` path types (or a
+regex-capable ingress) for the `/ssh/...`, `/krl/`, `/crl/`, `/cas/....pem`, `/api/`,
+and `/trpc` routes to the backend Service, with a catch-all `/` to the frontend.
 
 ## Environment Configuration
 
