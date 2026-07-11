@@ -3,9 +3,11 @@ id: TASK-203
 title: >-
   ANS-02: Role: populate AuthorizedPrincipalsFile + guarantee RevokedKeys file
   exists
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:55'
 labels:
   - ansible
   - ansible-integration
