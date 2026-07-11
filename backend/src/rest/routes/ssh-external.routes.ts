@@ -20,6 +20,16 @@ import { getSshPrincipalService } from '../../services/ssh-principal.service.js'
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
+import { zodBodySchema, okObjectResponse } from '../schemas/ssh-openapi-schemas.js';
+
+// OpenAPI (TASK-207): document request bodies + responses for the fleet-token SSH API so
+// generated clients build typed requests. Bodies reuse the same Zod schemas the handlers
+// validate with (additionalProperties forced on so extra keys never 400). Responses use the
+// permissive object shape; error responses are NOT declared (these routes surface Fastify's
+// default validation-error shape, which an `{ error: {...} }` schema would corrupt). The
+// /krl route returns an encrypted binary envelope, so it gets a request body but NO response
+// schema (a JSON response schema would break binary serialization).
+const sshExtTag = ['SSH External Issuer'];
 
 const eciesEnabled = () => process.env.SSH_ECIES_ENABLED === 'true';
 // BLK-06 cutover gate: default ON. The off-switch is SAFE because KRL numbers
@@ -86,7 +96,14 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   }
 
   // ---- POST /sign-host ----
-  server.post(`${base}/sign-host`, async (req, reply) => {
+  server.post(`${base}/sign-host`, {
+    schema: {
+      tags: sshExtTag,
+      summary: 'Sign a host certificate (fleet token; idempotent on Idempotency-Key)',
+      body: zodBodySchema(signHostBody),
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
     const token = await authn(req, reply, 'sign-host');
     if (!token) return;
     const prev = await cached(req);
@@ -127,7 +144,14 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   });
 
   // ---- POST /sign-user ----
-  server.post(`${base}/sign-user`, async (req, reply) => {
+  server.post(`${base}/sign-user`, {
+    schema: {
+      tags: sshExtTag,
+      summary: 'Sign a user certificate (fleet token; idempotent on Idempotency-Key)',
+      body: zodBodySchema(signUserBody),
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
     const token = await authn(req, reply, 'sign-user');
     if (!token) return;
     const prev = await cached(req);
@@ -170,7 +194,21 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // key IS the ECIES key (already stored at host registration as opensshHostPubkey).
   // No KMS keypair is generated; this only confirms the host is eligible for
   // encrypted KRL distribution (its host key is a usable P-256 key).
-  server.post(`${base}/register-host-pubkey`, async (req, reply) => {
+  server.post(`${base}/register-host-pubkey`, {
+    schema: {
+      tags: sshExtTag,
+      summary: 'Confirm a host is eligible for encrypted (ECIES) KRL distribution',
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          fqdn: { type: 'string', description: 'Host FQDN (alias: host_id)' },
+          host_id: { type: 'string', description: 'Host FQDN (alias of fqdn)' },
+        },
+      },
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
     const token = await authn(req, reply, 'register-host-pubkey');
     if (!token) return reply;
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
@@ -191,7 +229,13 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // authoritative render (dual bare-P + P@fqdn forms) is produced by the SAME
   // ssh-principal.service.render() the admin tRPC procedure uses, so the bytes
   // match exactly. Fleet-token auth (get-principals op); no idempotency (read).
-  server.get(`${base}/hosts/:fqdn/auth-principals`, async (req, reply) => {
+  server.get(`${base}/hosts/:fqdn/auth-principals`, {
+    schema: {
+      tags: sshExtTag,
+      summary: "Render a host's AuthorizedPrincipalsFile map (fleet token)",
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
     const token = await authn(req, reply, 'get-principals');
     if (!token) return;
     const fqdn = (req.params as any)?.fqdn as string;
@@ -210,7 +254,21 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // ---- POST /krl (SSH-24 encrypted per-host distribution) ----
   // No app auth: ECIES means only the target host can decrypt (the 404-vs-200
   // host oracle is an accepted bounded disclosure). host_id is in the BODY.
-  server.post(`${base}/krl`, async (req, reply) => {
+  server.post(`${base}/krl`, {
+    // No response schema: the success payload is an ECIES-encrypted binary envelope, so a
+    // JSON response schema would corrupt it via fast-json-stringify.
+    schema: {
+      tags: sshExtTag,
+      summary: 'Fetch the host-encrypted (ECIES) KRL envelope; host_id is in the body',
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          host_id: { type: 'string', description: 'Target host FQDN' },
+        },
+      },
+    },
+  }, async (req, reply) => {
     if (!rateLimitOk(`ecies-krl:${req.ip}`, 120, 60_000)) return err(reply, 429, 'RATE_LIMITED', 'too many requests');
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
     const hostId = (req.body as any)?.host_id;

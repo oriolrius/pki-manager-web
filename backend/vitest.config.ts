@@ -1,8 +1,21 @@
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const rootDir = dirname(fileURLToPath(import.meta.url));
+
+// Default the suite to an isolated, auto-migrated SQLite DB (provisioned fresh in
+// src/test/setup.ts) so `pnpm test` runs from a clean checkout with no manual
+// `db:migrate` step. An explicit DATABASE_PATH (e.g. in CI) is respected.
+const TEST_DATABASE_PATH = process.env.DATABASE_PATH ?? resolve(rootDir, 'data/test.db');
+process.env.DATABASE_PATH = TEST_DATABASE_PATH;
 
 export default defineConfig({
   test: {
-    // Global setup file for KMS check and other shared resources
+    // Point test workers at the isolated DB migrated by globalSetup.
+    env: { DATABASE_PATH: TEST_DATABASE_PATH },
+
+    // Global setup file: migrates the test DB + checks KMS availability
     globalSetup: ['./src/test/setup.ts'],
 
     // Test environment
