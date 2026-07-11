@@ -11,6 +11,7 @@ Subcommands:
   block     --host <fqdn> --user <alice|mallory>
 """
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -114,6 +115,30 @@ def bootstrap(base, hosts):
                       "hostCaId": host_ca["id"]}))
 
 
+def x509(base):
+    """ANS-09 stretch: an X.509 CA + CRL + a leaf, for the host trust-store test."""
+    ca = http(base, "/api/v1/cas/", "POST", {
+        "subject": {"commonName": "e2e-x509-ca", "organization": "E2E", "country": "ES"},
+        "keyAlgorithm": "RSA-2048", "validityDays": 365})
+    ca_id = ca["id"]
+    http(base, "/api/v1/cas/%s/crls" % ca_id, "POST", {})  # generate the CRL
+    leaf = http(base, "/api/v1/certificates/", "POST", {
+        "caId": ca_id,
+        "subject": {"commonName": "leaf.e2e", "organization": "E2E", "country": "ES"},
+        "certificateType": "server", "keyAlgorithm": "RSA-2048", "validityDays": 90,
+        "sanDns": ["leaf.e2e"]})
+    leaf_id = leaf["id"]
+    # leaf PEM for `openssl verify` against the installed trust store. The
+    # download endpoint returns JSON {data: <base64 PEM>, ...}.
+    dl = http(base, "/api/v1/certificates/%s/download?format=pem" % leaf_id)
+    leaf_pem = base64.b64decode(dl["data"]).decode()
+    with open(ART + "/leaf.pem", "w") as fh:
+        fh.write(leaf_pem)
+    with open(ART + "/x509.json", "w") as fh:
+        json.dump({"caId": ca_id, "leafId": leaf_id}, fh)
+    print(ca_id)
+
+
 def block(base, fqdn, user):
     with open(ART + "/state.json") as fh:
         state = json.load(fh)
@@ -134,6 +159,8 @@ def main():
     k.add_argument("--base", required=True)
     k.add_argument("--host", required=True)
     k.add_argument("--user", required=True)
+    x = sub.add_parser("x509")
+    x.add_argument("--base", required=True)
     a = ap.parse_args()
     if a.cmd == "bootstrap":
         hosts = []
@@ -143,6 +170,8 @@ def main():
         bootstrap(a.base, hosts)
     elif a.cmd == "block":
         block(a.base, a.host, a.user)
+    elif a.cmd == "x509":
+        x509(a.base)
 
 
 if __name__ == "__main__":
