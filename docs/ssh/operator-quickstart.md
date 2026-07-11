@@ -4,6 +4,11 @@ The ordered path through the web UI. The SSH landing page (`/ssh`) shows the sam
 steps as a live checklist that unlocks each step as you go. Read
 [the concept page](concept.md) first if you haven't.
 
+> **Automating the fleet?** For the end-to-end path that deploys servers with the
+> Ansible `ssh_host_cert` role (host key, trust anchors, principals, renewal, KRL
+> channel) **and** onboards a user, see
+> [Deploy a server and a user](deploy-server-and-user.md).
+
 ## 1. Create the dual CA
 
 `/ssh` → **Certificate Authorities** → **Create SSH CA**

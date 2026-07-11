@@ -124,6 +124,40 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     expect(rendered.directive).toContain('AuthorizedPrincipalsFile');
   });
 
+  it('mints/lists/revokes a fleet token over REST (POST/GET /tokens)', async () => {
+    const mint = await app.inject({ method: 'POST', url: '/api/v1/ssh/tokens', payload: { name: 'rest-fleet', hostCaId: hostCa.id, opSet: ['sign-host', 'get-principals'] } });
+    expect(mint.statusCode).toBe(200);
+    const body = mint.json();
+    expect(body.token).toMatch(/^pkimg_/);
+    expect(body.record.opSet).toEqual(['sign-host', 'get-principals']);
+
+    const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/tokens' });
+    expect(list.json().some((t: any) => t.id === body.record.id)).toBe(true);
+
+    const rev = await app.inject({ method: 'POST', url: `/api/v1/ssh/tokens/${body.record.id}/revoke` });
+    expect(rev.statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/ssh/tokens' })).json().find((t: any) => t.id === body.record.id).revoked).toBe(true);
+  });
+
+  it('lists hosts and looks one up by fqdn (GET /hosts?fqdn=)', async () => {
+    const all = await app.inject({ method: 'GET', url: '/api/v1/ssh/hosts' });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().some((h: any) => h.id === hostId)).toBe(true);
+
+    const one = await app.inject({ method: 'GET', url: '/api/v1/ssh/hosts?fqdn=rest.lab.local' });
+    expect(one.json().length).toBe(1);
+    expect(one.json()[0].id).toBe(hostId);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/ssh/hosts?fqdn=nope.lab' })).json()).toEqual([]);
+  });
+
+  it('grants an identity a principal entitlement over REST (POST /principals/grant)', async () => {
+    const ident = (await app.inject({ method: 'POST', url: '/api/v1/ssh/identities', payload: { subject: 'grant@rest' } })).json();
+    const princ = (await app.inject({ method: 'POST', url: '/api/v1/ssh/principals', payload: { name: 'granters' } })).json();
+    const g = await app.inject({ method: 'POST', url: '/api/v1/ssh/principals/grant', payload: { identityId: ident.id, principalId: princ.id } });
+    expect(g.statusCode).toBe(200);
+    expect(g.json().ok).toBe(true);
+  });
+
   it('revokes a user cert over REST, lists it, and serves a KRL that sshd accepts', async () => {
     // resolve the active user CA
     const cas = (await app.inject({ method: 'GET', url: '/api/v1/ssh/cas' })).json();

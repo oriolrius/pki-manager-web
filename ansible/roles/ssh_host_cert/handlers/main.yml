@@ -1,6 +1,0 @@
----
-- name: Reload sshd
-  ansible.builtin.service:
-    name: "{{ ssh_host_cert_sshd_service }}"
-    state: reloaded
-  become: true

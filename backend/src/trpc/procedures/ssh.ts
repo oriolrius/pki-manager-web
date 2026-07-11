@@ -24,6 +24,7 @@ import {
   renderPrincipalsSchema,
   blockHostSchema,
   unblockHostSchema,
+  mintTokenSchema,
 } from '../ssh-schemas.js';
 import { getSshCaService, SshCaExistsError, SshCaAlgorithmError, SshCaNotFoundError } from '../../services/ssh-ca.service.js';
 import { getSshHostService, SshHostError } from '../../services/ssh-host.service.js';
@@ -293,14 +294,7 @@ const principalRouter = router({
 const tokenRouter = router({
   list: sshAdminProcedure.query(async ({ ctx }) => getSshFleetTokenService().list(svcCtx(ctx))),
   mint: sshAdminProcedure
-    .input(
-      z.object({
-        name: z.string().min(1).max(128),
-        userCaId: z.string().optional(),
-        hostCaId: z.string().optional(),
-        opSet: z.array(z.enum(['sign-host', 'sign-user', 'register-host-pubkey'])).min(1),
-      })
-    )
+    .input(mintTokenSchema)
     .mutation(async ({ ctx, input }) => {
       try {
         return await getSshFleetTokenService().mint(svcCtx(ctx), {

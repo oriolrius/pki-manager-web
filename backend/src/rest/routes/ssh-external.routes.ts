@@ -16,6 +16,7 @@ import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
 import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
+import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
@@ -181,6 +182,28 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       return await getSshHostService().registerEciesKey({ db, ipAddress: req.ip }, host.id);
     } catch (e: any) {
       return err(reply, 409, 'ECIES_KEY_UNSUPPORTED', e?.message ?? 'host not eligible for ECIES KRL');
+    }
+  });
+
+  // ---- GET /hosts/:fqdn/auth-principals (ANS-01) ----
+  // Host self-serve of its rendered AuthorizedPrincipalsFile map. The role can
+  // then install /etc/ssh/auth_principals/<account> without admin OIDC — the
+  // authoritative render (dual bare-P + P@fqdn forms) is produced by the SAME
+  // ssh-principal.service.render() the admin tRPC procedure uses, so the bytes
+  // match exactly. Fleet-token auth (get-principals op); no idempotency (read).
+  server.get(`${base}/hosts/:fqdn/auth-principals`, async (req, reply) => {
+    const token = await authn(req, reply, 'get-principals');
+    if (!token) return;
+    const fqdn = (req.params as any)?.fqdn as string;
+    if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'invalid fqdn');
+    const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, fqdn)).limit(1))[0];
+    if (!host) return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
+    try {
+      const render = await getSshPrincipalService().render({ db, ipAddress: req.ip }, host.id);
+      await createAuditLog({ db, operation: 'ssh.external.principals.fetch', entityType: 'ssh_host', entityId: host.id, status: 'success', details: { tokenId: token.id, fqdn, accounts: Object.keys(render.files).length }, ipAddress: req.ip });
+      return render;
+    } catch (e: any) {
+      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'principals render failed');
     }
   });
 

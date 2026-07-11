@@ -1,0 +1,29 @@
+# Managed-host image for the ssh_host_cert e2e (ANS-10): a container that acts
+# as a real SSH-CA-managed host. openssh-server + python3 (Ansible target) +
+# cron (the portable scheduler) + curl + ca-certificates. sshd runs in the
+# foreground as PID 1 so the role's SIGHUP reload (reload_method=command) works.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      openssh-server openssh-client python3 cron curl ca-certificates \
+      iproute2 procps sudo openssl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Login account the mapped principal (developers -> deploy) resolves to.
+RUN useradd --create-home --shell /bin/bash deploy
+
+# sshd: cert-only login. The drop-in the role installs (Include'd below) adds
+# HostCertificate / TrustedUserCAKeys / AuthorizedPrincipalsFile / RevokedKeys.
+RUN mkdir -p /run/sshd /etc/ssh/sshd_config.d \
+ && printf '%s\n' \
+      'Include /etc/ssh/sshd_config.d/*.conf' \
+      'PasswordAuthentication no' \
+      'PubkeyAuthentication yes' \
+      'PermitRootLogin no' \
+      'UsePAM yes' \
+      > /etc/ssh/sshd_config \
+ && ssh-keygen -A
+
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D", "-e"]

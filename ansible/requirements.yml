@@ -1,3 +1,8 @@
 ---
+# The ssh_host_cert role AND the pki_manager module live in the
+# oriolrius.pki_manager collection (published to Ansible Galaxy); installing it
+# pulls in community.crypto.
 collections:
+  - name: oriolrius.pki_manager
+    version: ">=2.3.0"
   - name: community.crypto

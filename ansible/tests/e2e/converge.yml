@@ -1,0 +1,8 @@
+---
+# ANS-10 converge: apply ssh_host_cert to both managed-host scenarios. Per-group
+# vars (ecies vs public-cron) come from the generated inventory.
+- name: Converge managed hosts (public-cron + ecies)
+  hosts: managed
+  gather_facts: true
+  roles:
+    - role: oriolrius.pki_manager.ssh_host_cert

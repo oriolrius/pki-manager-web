@@ -15,9 +15,11 @@ import {
   issueUserCertSchema,
   createIdentitySchema,
   createPrincipalSchema,
+  grantPrincipalSchema,
   mapPrincipalSchema,
   blockHostSchema,
   unblockHostSchema,
+  mintTokenSchema,
 } from '../../trpc/ssh-schemas.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
@@ -25,6 +27,7 @@ import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshBlockService } from '../../services/ssh-block.service.js';
+import { getSshFleetTokenService } from '../../services/ssh-fleet-token.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
 
 class HttpError extends Error {
@@ -74,6 +77,13 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       addresses: input.addresses ?? [],
       opensshHostPubkey: input.opensshHostPubkey,
     });
+  });
+
+  api.get('/hosts', { schema: { tags: tag, summary: 'List hosts (optionally filter by ?fqdn=)' } }, async (req) => {
+    ensureSshAllowed();
+    const hosts = await getSshHostService().list(ctx(req));
+    const fqdn = (req.query as any)?.fqdn as string | undefined;
+    return fqdn ? hosts.filter((h) => h.fqdn === fqdn) : hosts;
   });
 
   api.post('/hosts/issue', { schema: { tags: tag, summary: 'Issue a host certificate' } }, async (req) => {
@@ -135,6 +145,37 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       principalId: input.principalId,
       localAccount: input.localAccount,
     });
+    return { ok: true };
+  });
+
+  api.post('/principals/grant', { schema: { tags: tag, summary: 'Grant an identity the entitlement to encode a principal' } }, async (req) => {
+    ensureSshAllowed();
+    const input = parse(grantPrincipalSchema, req.body);
+    await getSshPrincipalService().grantToIdentity(ctx(req), { identityId: input.identityId, principalId: input.principalId });
+    return { ok: true };
+  });
+
+  // --- Fleet tokens: automation credentials for the external SSH API ---
+  api.post('/tokens', { schema: { tags: tag, summary: 'Mint a fleet token (plaintext shown once)' } }, async (req) => {
+    ensureSshAllowed();
+    const input = parse(mintTokenSchema, req.body);
+    return getSshFleetTokenService().mint(ctx(req), {
+      name: input.name,
+      userCaId: input.userCaId,
+      hostCaId: input.hostCaId,
+      opSet: input.opSet,
+    });
+  });
+
+  api.get('/tokens', { schema: { tags: tag, summary: 'List fleet tokens (metadata only, no secrets)' } }, async (req) => {
+    ensureSshAllowed();
+    return getSshFleetTokenService().list(ctx(req));
+  });
+
+  api.post('/tokens/:id/revoke', { schema: { tags: tag, summary: 'Revoke a fleet token' } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    await getSshFleetTokenService().revoke(ctx(req), id);
     return { ok: true };
   });
 

@@ -1,0 +1,8 @@
+# ansible-lint config for the ssh_host_cert role.
+#
+# yaml[line-length] is a warning, not a failure: the only long lines are cron
+# command bodies inside `content: |` literal blocks, which cron requires on one
+# physical line and which cannot carry an inline `# noqa` (it would become part
+# of the installed cron file).
+warn_list:
+  - yaml[line-length]

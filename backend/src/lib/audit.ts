@@ -55,7 +55,8 @@ export type AuditOperation =
   | 'ssh.host_krl.generate'
   | 'ssh.token.mint'
   | 'ssh.token.revoke'
-  | 'ssh.external.sign';
+  | 'ssh.external.sign'
+  | 'ssh.external.principals.fetch';
 
 export type AuditEntityType =
   | 'ca'
