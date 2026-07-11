@@ -29,6 +29,12 @@ import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshBlockService } from '../../services/ssh-block.service.js';
 import { getSshFleetTokenService } from '../../services/ssh-fleet-token.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
+import {
+  zodBodySchema,
+  okObjectResponse,
+  okArrayResponse,
+  errorResponse,
+} from '../schemas/ssh-openapi-schemas.js';
 
 class HttpError extends Error {
   constructor(public statusCode: number, message: string, public code = 'SSH_ERROR') {
@@ -52,23 +58,46 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   const ctx = (req: any) => ({ db, ipAddress: req.ip ?? null });
   const tag = ['SSH Certificate Manager'];
 
-  api.post('/cas', { schema: { tags: tag, summary: 'Create an SSH CA (User or Host)' } }, async (req) => {
+  // Schema builders (TASK-207): document requestBody + response so @fastify/swagger emits
+  // typed models. Bodies come from the same Zod schemas tRPC uses; responses are permissive
+  // (see ssh-openapi-schemas.ts). The 400/500 error responses match this router's
+  // setErrorHandler, which normalises every error to `{ error: { code, message } }`.
+  const errResponses = { 400: errorResponse, 500: errorResponse };
+  /** POST: `body` (from Zod, when present) + permissive object 200 response. */
+  const postSchema = (summary: string, body?: z.ZodTypeAny, response: unknown = okObjectResponse) => ({
+    schema: {
+      tags: tag,
+      summary,
+      ...(body ? { body: zodBodySchema(body) } : {}),
+      response: { 200: response, ...errResponses },
+    },
+  });
+  /** GET list endpoint: permissive array-of-objects 200 response. */
+  const listSchema = (summary: string) => ({
+    schema: { tags: tag, summary, response: { 200: okArrayResponse, ...errResponses } },
+  });
+  /** GET object endpoint: permissive object 200 response. */
+  const objectSchema = (summary: string) => ({
+    schema: { tags: tag, summary, response: { 200: okObjectResponse, ...errResponses } },
+  });
+
+  api.post('/cas', postSchema('Create an SSH CA (User or Host)', createSshCaSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(createSshCaSchema, req.body);
     return getSshCaService().create(ctx(req), { caType: input.caType, label: input.label });
   });
 
-  api.get('/cas', { schema: { tags: tag, summary: 'List SSH CAs' } }, async (req) => {
+  api.get('/cas', listSchema('List SSH CAs'), async (req) => {
     ensureSshAllowed();
     return getSshCaService().list(ctx(req));
   });
 
-  api.get('/trust-anchors', { schema: { tags: tag, summary: 'SSH trust anchors (TrustedUserCAKeys / @cert-authority)' } }, async (req) => {
+  api.get('/trust-anchors', objectSchema('SSH trust anchors (TrustedUserCAKeys / @cert-authority)'), async (req) => {
     ensureSshAllowed();
     return getSshCaService().getTrustAnchors(ctx(req));
   });
 
-  api.post('/hosts', { schema: { tags: tag, summary: 'Register a host by its public host key' } }, async (req) => {
+  api.post('/hosts', postSchema('Register a host by its public host key', registerHostSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(registerHostSchema, req.body);
     return getSshHostService().register(ctx(req), {
@@ -79,14 +108,14 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.get('/hosts', { schema: { tags: tag, summary: 'List hosts (optionally filter by ?fqdn=)' } }, async (req) => {
+  api.get('/hosts', listSchema('List hosts (optionally filter by ?fqdn=)'), async (req) => {
     ensureSshAllowed();
     const hosts = await getSshHostService().list(ctx(req));
     const fqdn = (req.query as any)?.fqdn as string | undefined;
     return fqdn ? hosts.filter((h) => h.fqdn === fqdn) : hosts;
   });
 
-  api.post('/hosts/issue', { schema: { tags: tag, summary: 'Issue a host certificate' } }, async (req) => {
+  api.post('/hosts/issue', postSchema('Issue a host certificate', issueHostCertSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(issueHostCertSchema, req.body);
     return getSshHostService().issue(ctx(req), {
@@ -98,7 +127,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.post('/identities', { schema: { tags: tag, summary: 'Create a user identity' } }, async (req) => {
+  api.post('/identities', postSchema('Create a user identity', createIdentitySchema), async (req) => {
     ensureSshAllowed();
     const input = parse(createIdentitySchema, req.body);
     return getSshUserService().createIdentity(ctx(req), {
@@ -108,7 +137,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.post('/users/issue', { schema: { tags: tag, summary: 'Issue a user certificate' } }, async (req) => {
+  api.post('/users/issue', postSchema('Issue a user certificate', issueUserCertSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(issueUserCertSchema, req.body);
     return getSshUserService().issue(ctx(req), {
@@ -126,18 +155,18 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // --- Principals: RBAC catalog + per-host account mapping (renders AuthorizedPrincipalsFile) ---
-  api.get('/principals', { schema: { tags: tag, summary: 'List SSH principals (roles)' } }, async (req) => {
+  api.get('/principals', listSchema('List SSH principals (roles)'), async (req) => {
     ensureSshAllowed();
     return getSshPrincipalService().listPrincipals(ctx(req));
   });
 
-  api.post('/principals', { schema: { tags: tag, summary: 'Create an SSH principal (role)' } }, async (req) => {
+  api.post('/principals', postSchema('Create an SSH principal (role)', createPrincipalSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(createPrincipalSchema, req.body);
     return getSshPrincipalService().createPrincipal(ctx(req), { name: input.name, description: input.description });
   });
 
-  api.post('/principals/map', { schema: { tags: tag, summary: 'Map a principal to a local account on a host' } }, async (req) => {
+  api.post('/principals/map', postSchema('Map a principal to a local account on a host', mapPrincipalSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(mapPrincipalSchema, req.body);
     await getSshPrincipalService().mapToHost(ctx(req), {
@@ -148,7 +177,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  api.post('/principals/grant', { schema: { tags: tag, summary: 'Grant an identity the entitlement to encode a principal' } }, async (req) => {
+  api.post('/principals/grant', postSchema('Grant an identity the entitlement to encode a principal', grantPrincipalSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(grantPrincipalSchema, req.body);
     await getSshPrincipalService().grantToIdentity(ctx(req), { identityId: input.identityId, principalId: input.principalId });
@@ -156,7 +185,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // --- Fleet tokens: automation credentials for the external SSH API ---
-  api.post('/tokens', { schema: { tags: tag, summary: 'Mint a fleet token (plaintext shown once)' } }, async (req) => {
+  api.post('/tokens', postSchema('Mint a fleet token (plaintext shown once)', mintTokenSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(mintTokenSchema, req.body);
     return getSshFleetTokenService().mint(ctx(req), {
@@ -167,39 +196,39 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.get('/tokens', { schema: { tags: tag, summary: 'List fleet tokens (metadata only, no secrets)' } }, async (req) => {
+  api.get('/tokens', listSchema('List fleet tokens (metadata only, no secrets)'), async (req) => {
     ensureSshAllowed();
     return getSshFleetTokenService().list(ctx(req));
   });
 
-  api.post('/tokens/:id/revoke', { schema: { tags: tag, summary: 'Revoke a fleet token' } }, async (req) => {
+  api.post('/tokens/:id/revoke', postSchema('Revoke a fleet token'), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     await getSshFleetTokenService().revoke(ctx(req), id);
     return { ok: true };
   });
 
-  api.get('/hosts/:id/auth-principals', { schema: { tags: tag, summary: "Render a host's AuthorizedPrincipalsFile contents (per local account)" } }, async (req) => {
+  api.get('/hosts/:id/auth-principals', objectSchema("Render a host's AuthorizedPrincipalsFile contents (per local account)"), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     return getSshPrincipalService().render(ctx(req), id);
   });
 
   // --- Revocation / KRL. A server's RevokedKeys consumes the (User) CA's KRL. ---
-  api.post('/certs/:id/revoke', { schema: { tags: tag, summary: 'Revoke an SSH certificate (rebuilds the CA KRL)' } }, async (req) => {
+  api.post('/certs/:id/revoke', postSchema('Revoke an SSH certificate (rebuilds the CA KRL)', z.object({ reason: z.string().max(256).optional() })), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     const body = parse(z.object({ reason: z.string().max(256).optional() }), (req.body ?? {}) as unknown);
     return getSshKrlService().revokeByCert(ctx(req), id, body.reason);
   });
 
-  api.post('/cas/:caId/krl', { schema: { tags: tag, summary: 'Generate / rebuild the KRL for a CA' } }, async (req) => {
+  api.post('/cas/:caId/krl', postSchema('Generate / rebuild the KRL for a CA'), async (req) => {
     ensureSshAllowed();
     const { caId } = req.params as { caId: string };
     return getSshKrlService().generate(ctx(req), caId);
   });
 
-  api.get('/cas/:caId/revocations', { schema: { tags: tag, summary: 'List revocations for a CA' } }, async (req) => {
+  api.get('/cas/:caId/revocations', listSchema('List revocations for a CA'), async (req) => {
     ensureSshAllowed();
     const { caId } = req.params as { caId: string };
     return getSshKrlService().listRevocations(ctx(req), caId);
@@ -236,7 +265,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   const actorOf = (req: any): string | undefined =>
     req.user?.preferredUsername ?? req.user?.email ?? req.user?.sub ?? undefined;
 
-  api.post('/blocks', { schema: { tags: tag, summary: 'Block an identity on a host (per-host KRL deny; certs stay valid elsewhere)' } }, async (req) => {
+  api.post('/blocks', postSchema('Block an identity on a host (per-host KRL deny; certs stay valid elsewhere)', blockHostSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(blockHostSchema, req.body);
     return getSshBlockService().block(ctx(req), {
@@ -247,7 +276,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.post('/blocks/unblock', { schema: { tags: tag, summary: 'Lift a block (symmetric: enforced on the next host pull)' } }, async (req) => {
+  api.post('/blocks/unblock', postSchema('Lift a block (symmetric: enforced on the next host pull)', unblockHostSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(unblockHostSchema, req.body);
     return getSshBlockService().unblock(ctx(req), {
@@ -257,36 +286,36 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.get('/hosts/:id/access', { schema: { tags: tag, summary: 'Who can reach this host (entitlements + blocks + distribution state)' } }, async (req) => {
+  api.get('/hosts/:id/access', objectSchema('Who can reach this host (entitlements + blocks + distribution state)'), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     return getSshBlockService().hostAccess(ctx(req), id);
   });
 
-  api.get('/hosts/:id/blocks', { schema: { tags: tag, summary: 'Block history for a host (active + lifted, audit-retained)' } }, async (req) => {
+  api.get('/hosts/:id/blocks', listSchema('Block history for a host (active + lifted, audit-retained)'), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     return getSshBlockService().listForHost(ctx(req), id);
   });
 
-  api.get('/identities/:id/blocks', { schema: { tags: tag, summary: "An identity's active blocks with per-host distribution state" } }, async (req) => {
+  api.get('/identities/:id/blocks', listSchema("An identity's active blocks with per-host distribution state"), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     return getSshBlockService().listForIdentityWithState(ctx(req), id);
   });
 
-  api.get('/identities/:id/collisions', { schema: { tags: tag, summary: 'Identities sharing a certified public key with this one (over-block pre-check)' } }, async (req) => {
+  api.get('/identities/:id/collisions', listSchema('Identities sharing a certified public key with this one (over-block pre-check)'), async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     return getSshBlockService().sharedKeyCollisions(ctx(req), id);
   });
 
-  api.get('/blocks/fleet', { schema: { tags: tag, summary: 'Fleet-wide per-host block counts + KRL distribution state' } }, async (req) => {
+  api.get('/blocks/fleet', listSchema('Fleet-wide per-host block counts + KRL distribution state'), async (req) => {
     ensureSshAllowed();
     return getSshBlockService().fleetDistribution(ctx(req));
   });
 
-  api.get('/metrics', { schema: { tags: tag, summary: 'SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts)' } }, async (req) => {
+  api.get('/metrics', objectSchema('SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts)'), async (req) => {
     ensureSshAllowed();
     return getSshMonService().metrics(ctx(req));
   });
