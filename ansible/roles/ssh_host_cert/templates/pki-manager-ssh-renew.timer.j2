@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodically renew this host's SSH certificate from PKI Manager
+
+[Timer]
+OnCalendar={{ ssh_host_cert_renew_oncalendar }}
+RandomizedDelaySec=300
+Persistent=true
+Unit=pki-manager-ssh-renew.service
+
+[Install]
+WantedBy=timers.target

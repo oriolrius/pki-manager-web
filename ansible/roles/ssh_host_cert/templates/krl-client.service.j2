@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Fetch and install the OpenSSH KRL (revoked_keys) from PKI Manager
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=oneshot
+ExecStart={{ ssh_host_cert_krl_client_bin }} --config {{ ssh_host_cert_krl_client_config }} --systemd
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ ssh_host_cert_dirname }} {{ ssh_host_cert_krl_client_state_dir }}
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

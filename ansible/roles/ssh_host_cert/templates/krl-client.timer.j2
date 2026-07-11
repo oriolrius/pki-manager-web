@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodically refresh the OpenSSH KRL from PKI Manager
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ ssh_host_cert_krl_client_interval_minutes }}min
+RandomizedDelaySec=300
+Persistent=true
+Unit=krl-client.service
+
+[Install]
+WantedBy=timers.target

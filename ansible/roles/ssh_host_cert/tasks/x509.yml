@@ -1,0 +1,80 @@
+---
+# ANS-09 (stretch, non-SSH): install an X.509 CA trust anchor into the OS store
+# and/or keep a CRL fresh via cron. Kept off the SSH critical path; both halves
+# are independently gated.
+
+# ── CA trust anchor into the OS store ───────────────────────────────────────
+- name: Assert an X.509 CA id is configured
+  ansible.builtin.assert:
+    that: ssh_host_cert_x509_ca_id | length > 0
+    fail_msg: "ssh_host_cert_x509_ca_id is required for the X.509 stretch tasks."
+  when: >-
+    (ssh_host_cert_x509_ca_trust_enabled | bool) or
+    (ssh_host_cert_x509_crl_cron_enabled | bool)
+
+- name: Fetch the CA certificate (PEM)
+  ansible.builtin.uri:
+    url: "{{ ssh_ca_base_url }}/cas/{{ ssh_host_cert_x509_ca_id }}.pem"
+    method: GET
+    return_content: true
+    status_code: 200
+    validate_certs: "{{ ssh_host_cert_validate_certs }}"
+  register: ssh_host_cert_x509_ca
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: ssh_host_cert_x509_ca_trust_enabled | bool
+
+- name: Install the CA cert into the OS trust store
+  ansible.builtin.copy:
+    content: "{{ ssh_host_cert_x509_ca.content }}"
+    dest: "/usr/local/share/ca-certificates/{{ ssh_host_cert_x509_ca_trust_name }}.crt"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: ssh_host_cert_x509_ca_installed
+  when: ssh_host_cert_x509_ca_trust_enabled | bool
+
+- name: Refresh the OS CA trust store
+  ansible.builtin.command: update-ca-certificates
+  become: true
+  when:
+    - ssh_host_cert_x509_ca_trust_enabled | bool
+    - ssh_host_cert_x509_ca_installed is changed
+  changed_when: true
+
+# ── CRL refresh cron ────────────────────────────────────────────────────────
+- name: Create the CRL directory
+  ansible.builtin.file:
+    path: "{{ ssh_host_cert_x509_crl_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: ssh_host_cert_x509_crl_cron_enabled | bool
+
+- name: Install the CRL refresh cron (atomic tmp-write + mv)
+  ansible.builtin.copy:
+    dest: /etc/cron.d/pki-manager-x509-crl
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by pki-manager ssh_host_cert (ANS-09). Refreshes the X.509 CRL.
+      */{{ ssh_host_cert_x509_crl_cron_minutes }} * * * * root curl -fsS --max-time 30 -o {{ ssh_host_cert_x509_crl_dir }}/{{ ssh_host_cert_x509_ca_id }}.crl.tmp "{{ ssh_ca_base_url }}/crl/{{ ssh_host_cert_x509_ca_id }}.crl" && mv -f {{ ssh_host_cert_x509_crl_dir }}/{{ ssh_host_cert_x509_ca_id }}.crl.tmp {{ ssh_host_cert_x509_crl_dir }}/{{ ssh_host_cert_x509_ca_id }}.crl
+  become: true
+  when: ssh_host_cert_x509_crl_cron_enabled | bool
+
+# Prime the CRL once so it exists immediately (not only after the first cron tick).
+- name: Prime the CRL now
+  ansible.builtin.get_url:
+    url: "{{ ssh_ca_base_url }}/crl/{{ ssh_host_cert_x509_ca_id }}.crl"
+    dest: "{{ ssh_host_cert_x509_crl_dir }}/{{ ssh_host_cert_x509_ca_id }}.crl"
+    owner: root
+    group: root
+    mode: "0644"
+    validate_certs: "{{ ssh_host_cert_validate_certs }}"
+  become: true
+  when: ssh_host_cert_x509_crl_cron_enabled | bool

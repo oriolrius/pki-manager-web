@@ -1,0 +1,162 @@
+---
+# ANS-05/06/07: the encrypted-KRL puller path. Register the host's ecdsa ECIES
+# key, install the krl-client binary + config + scheduler, preflight the hard
+# prerequisites, and prove the first pull decrypts + verifies + installs.
+
+# ── Preflight (ANS-07 AC#3): fail fast, don't deploy a broken puller ─────────
+- name: Preflight — a time-sync daemon is active (NTP is a hard prereq)
+  ansible.builtin.command: >-
+    sh -c 'systemctl is-active --quiet systemd-timesyncd
+    || systemctl is-active --quiet chrony
+    || systemctl is-active --quiet chronyd
+    || systemctl is-active --quiet ntp
+    || systemctl is-active --quiet ntpd
+    || { command -v timedatectl >/dev/null 2>&1 && [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; }'
+  register: ssh_host_cert_timesync
+  changed_when: false
+  failed_when: false
+  become: true
+  when: ssh_host_cert_require_timesync | bool
+
+- name: Assert a time-sync daemon is active
+  ansible.builtin.assert:
+    that: (ssh_host_cert_timesync.rc | default(1)) == 0
+    fail_msg: >-
+      No active time-sync daemon found. NTP is a hard prerequisite — krl-client
+      exits 5 on clock drift and sshd rejects certs outside their validity
+      window. Enable chrony or systemd-timesyncd, or (only in a controlled test
+      where the container inherits a synced host clock) set
+      ssh_host_cert_require_timesync=false.
+  when: ssh_host_cert_require_timesync | bool
+
+- name: Assert the krl-client install source is configured
+  ansible.builtin.assert:
+    that: ssh_host_cert_krl_client_url | length > 0
+    fail_msg: >-
+      ssh_host_cert_krl_client_url is required for an ECIES host (a get_url
+      source: https://… CI artifact or file:///abs/path/krl-client-linux-amd64).
+
+# ── ANS-05: register the ecdsa ECIES key (preflights backend SSH_ECIES_ENABLED) ─
+- name: Register the host's ECIES key (and preflight backend ECIES)
+  ansible.builtin.uri:
+    url: "{{ ssh_ca_api_url }}/register-host-pubkey"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ ssh_ca_fleet_token }}"
+    body_format: json
+    body:
+      fqdn: "{{ ansible_fqdn }}"
+    status_code: [200, 404, 409, 501]
+    validate_certs: "{{ ssh_host_cert_validate_certs }}"
+  register: ssh_host_cert_ecies_reg
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  no_log: true  # contains the bearer token
+
+- name: Assert ECIES registration succeeded
+  ansible.builtin.assert:
+    that: ssh_host_cert_ecies_reg.status == 200
+    fail_msg: >-
+      register-host-pubkey returned {{ ssh_host_cert_ecies_reg.status }}.
+      501 => the backend is not running with SSH_ECIES_ENABLED=true;
+      409 => the host key is not ecdsa-sha2-nistp256 (ECIES is P-256-only — this
+      role provisions an ecdsa host key when ssh_host_cert_ecies_enabled=true);
+      404 => the host is not registered (sign-host must run first).
+
+# ── ANS-06: install the krl-client binary + man page ─────────────────────────
+- name: Install the krl-client binary
+  ansible.builtin.get_url:
+    url: "{{ ssh_host_cert_krl_client_url }}"
+    dest: "{{ ssh_host_cert_krl_client_bin }}"
+    checksum: "{{ ssh_host_cert_krl_client_checksum | default(omit, true) }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install the krl-client man page
+  ansible.builtin.copy:
+    src: "{{ ssh_host_cert_krl_client_man_src }}"
+    dest: "{{ ssh_host_cert_krl_client_man }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: ssh_host_cert_krl_client_man_src | length > 0
+
+# ── ANS-07: config + state dir ───────────────────────────────────────────────
+- name: Create the krl-client state directory
+  ansible.builtin.file:
+    path: "{{ ssh_host_cert_krl_client_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install the krl-client config
+  ansible.builtin.template:
+    src: krl-client-config.yaml.j2
+    dest: "{{ ssh_host_cert_krl_client_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+# ── ANS-07: scheduler (cron default / systemd optional) ──────────────────────
+- name: Install the krl-client cron job
+  ansible.builtin.copy:
+    dest: /etc/cron.d/krl-client
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by pki-manager ssh_host_cert (ANS-07). Refreshes RevokedKeys.
+      SHELL=/bin/bash
+      */{{ ssh_host_cert_krl_client_interval_minutes }} * * * * root {{ ssh_host_cert_krl_client_bin }} --config {{ ssh_host_cert_krl_client_config }} --log-format json --quiet
+  become: true
+  when: ssh_host_cert_scheduler == 'cron'
+
+- name: Remove the krl-client cron job when using systemd
+  ansible.builtin.file:
+    path: /etc/cron.d/krl-client
+    state: absent
+  become: true
+  when: ssh_host_cert_scheduler != 'cron'
+
+- name: Install the krl-client systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - krl-client.service
+    - krl-client.timer
+  become: true
+  when: ssh_host_cert_scheduler == 'systemd'
+  notify: Reload systemd
+
+- name: Enable the krl-client timer
+  ansible.builtin.systemd:
+    name: krl-client.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: ssh_host_cert_scheduler == 'systemd'
+
+# ── ANS-07: first-run pull/verify (proves the channel end-to-end) ────────────
+# sshd reads RevokedKeys per-connection, so no reload is needed for a new KRL to
+# take effect — a fresh sshd child consults the file when validating each key.
+- name: First-run krl-client dry-run (fetch + decrypt + verify, no install)
+  ansible.builtin.command: "{{ ssh_host_cert_krl_client_bin }} --config {{ ssh_host_cert_krl_client_config }} --dry-run --log-format json --quiet"
+  become: true
+  changed_when: false
+
+- name: First-run krl-client pull (install signature-verified RevokedKeys)
+  ansible.builtin.command: "{{ ssh_host_cert_krl_client_bin }} --config {{ ssh_host_cert_krl_client_config }} --log-format json --quiet"
+  become: true
+  changed_when: false

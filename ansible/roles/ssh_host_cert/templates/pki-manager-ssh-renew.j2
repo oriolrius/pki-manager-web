@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# {{ ansible_managed }}
+#
+# Unattended SSH host-cert renewal (ANS-04). Re-invokes /sign-host with an
+# Idempotency-Key that rotates per period bucket, so the cert is re-minted with
+# a fresh validBefore well before the 52-week expiry. Within a bucket the call
+# is idempotent (the backend returns the cached cert); a new bucket mints a
+# fresh one. Installs atomically and reloads sshd only when the cert changed.
+#
+# Stdlib only (python3 is a hard Ansible prerequisite). Reads its config from
+# the env file baked in below.
+import json
+import os
+import ssl
+import subprocess
+import sys
+import tempfile
+import urllib.request
+from datetime import datetime, timezone
+
+ENV_FILE = "{{ ssh_host_cert_renew_env }}"
+
+
+def load_env(path):
+    cfg = {}
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            cfg[k.strip()] = v.strip()
+    return cfg
+
+
+def main():
+    cfg = load_env(ENV_FILE)
+    server = cfg["SERVER_URL"].rstrip("/")
+    token = cfg["FLEET_TOKEN"]
+    fqdn = cfg["FQDN"]
+    key_path = cfg["KEY_PATH"]
+    cert_path = cfg["CERT_PATH"]
+    addresses = json.loads(cfg.get("ADDRESSES", "[]"))
+    bucket_fmt = cfg.get("BUCKET_FORMAT", "%G-%V")
+    verify = cfg.get("VALIDATE_CERTS", "true").lower() != "false"
+
+    with open(key_path + ".pub", "r", encoding="utf-8") as fh:
+        pubkey = fh.read().strip()
+
+    bucket = datetime.now(timezone.utc).strftime(bucket_fmt)
+    idem = "renew-%s-%s" % (fqdn, bucket)
+
+    body = json.dumps(
+        {"fqdn": fqdn, "addresses": addresses, "opensshHostPubkey": pubkey}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        server + "/sign-host",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + token,
+            "Idempotency-Key": idem,
+            "Content-Type": "application/json",
+        },
+    )
+    ctx = None if verify else ssl._create_unverified_context()
+    with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    cert = payload["certOpenssh"].rstrip("\n") + "\n"
+
+    existing = None
+    if os.path.exists(cert_path):
+        with open(cert_path, "r", encoding="utf-8") as fh:
+            existing = fh.read()
+    if existing == cert:
+        print("krl renew: cert unchanged (bucket %s)" % bucket)
+        return 0
+
+    d = os.path.dirname(cert_path) or "."
+    fd, tmp = tempfile.mkstemp(dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(cert)
+        os.chmod(tmp, 0o444)
+        os.replace(tmp, cert_path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+    reload_sshd(cfg)
+    print("krl renew: installed fresh cert (bucket %s)" % bucket)
+    return 0
+
+
+def reload_sshd(cfg):
+    method = cfg.get("RELOAD_METHOD", "service")
+    if method == "command":
+        subprocess.call(["pkill", "-HUP", "-x", "sshd"])
+        return
+    svc = cfg.get("SSHD_SERVICE", "ssh")
+    if subprocess.call(["systemctl", "reload", svc]) != 0:
+        subprocess.call(["service", svc, "reload"])
+
+
+if __name__ == "__main__":
+    sys.exit(main())
