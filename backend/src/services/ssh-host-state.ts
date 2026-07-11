@@ -17,8 +17,8 @@
  *   pinned derivation rule.
  *
  * `unsignedLatest` is a DISTINCT cause, not a state: when KMS signing failed,
- * the latest row persisted unsigned — signature-requiring krl-client hosts
- * keep last-good and reject it (fail-stale), while host_puller.sh installs it.
+ * the latest row persisted unsigned — krl-client keeps last-good and rejects it
+ * (fail-stale), unless a host runs with `--allow-unsigned`, which installs it.
  * Surfaced so it is never silent.
  */
 import { eq } from 'drizzle-orm';
