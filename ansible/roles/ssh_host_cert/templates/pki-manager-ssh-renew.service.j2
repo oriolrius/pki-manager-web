@@ -1,9 +1,0 @@
-# {{ ansible_managed }}
-[Unit]
-Description=Renew this host's SSH certificate from PKI Manager
-Wants=network-online.target time-sync.target
-After=network-online.target time-sync.target
-
-[Service]
-Type=oneshot
-ExecStart={{ ssh_host_cert_renew_script }}

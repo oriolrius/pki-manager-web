@@ -1,3 +1,4 @@
 _artifacts/
 inventory.ini
 __pycache__/
+_collections/
