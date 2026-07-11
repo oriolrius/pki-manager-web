@@ -89,6 +89,15 @@ export const grantPrincipalSchema = z.object({
   principalId: z.string().min(1),
 });
 
+export const sshTokenOpSchema = z.enum(['sign-host', 'sign-user', 'register-host-pubkey', 'get-principals']);
+
+export const mintTokenSchema = z.object({
+  name: z.string().min(1).max(128),
+  userCaId: z.string().optional(),
+  hostCaId: z.string().optional(),
+  opSet: z.array(sshTokenOpSchema).min(1),
+});
+
 export const mapPrincipalSchema = z.object({
   hostId: z.string().min(1),
   principalId: z.string().min(1),
