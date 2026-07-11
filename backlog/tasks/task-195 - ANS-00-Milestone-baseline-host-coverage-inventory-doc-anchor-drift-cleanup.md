@@ -1,7 +1,7 @@
 ---
 id: TASK-195
 title: 'ANS-00: Milestone baseline: host-coverage inventory doc-anchor + drift cleanup'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
@@ -32,3 +32,9 @@ Open the milestone the way prior SSH milestones opened (BLK-00 pattern): produce
 - [x] #3 defaults/main.yml and README.md no longer claim ECIES enablement installs a puller; they accurately state registration-only until ANS-05/06/07 land
 - [x] #4 backlog task list shows the milestone with all ANS-xx tasks created and cross-linked
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Landed doc-009 gap-matrix anchor; removed dead ssh_ca_krl_url; corrected defaults/main.yml + README ECIES claims to registration-only. Committed 668a9f1.
+<!-- SECTION:NOTES:END -->
