@@ -1,9 +1,11 @@
 ---
 id: TASK-200
 title: 'ANS-06: Role: install the krl-client binary + man page'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:54'
 labels:
   - ansible
   - ansible-integration
