@@ -1,6 +1,6 @@
 {
   "name": "pki-manager",
-  "version": "3.7.1",
+  "version": "3.8.0",
   "private": true,
   "description": "PKI Manager - Web-based Public Key Infrastructure management application",
   "license": "Apache-2.0",
