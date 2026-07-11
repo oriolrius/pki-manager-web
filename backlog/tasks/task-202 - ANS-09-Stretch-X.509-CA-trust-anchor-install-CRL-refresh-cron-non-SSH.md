@@ -1,11 +1,11 @@
 ---
 id: TASK-202
 title: 'ANS-09: Stretch: X.509 CA trust-anchor install + CRL refresh cron (non-SSH)'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:55'
+updated_date: '2026-07-11 10:29'
 labels:
   - ansible
   - ansible-integration
@@ -28,7 +28,13 @@ Low-priority parallel of the SSH trust install for X.509 peers. Fetch the CA cer
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When enabled, the CA cert lands in the host trust store and 'openssl verify' against it succeeds for a leaf issued by that CA
-- [ ] #2 A cron refreshes /etc/.../<caId>.crl atomically from the public endpoint and the file parses as a valid DER/PEM CRL
-- [ ] #3 Both features are disabled by default and a second run is idempotent
+- [x] #1 When enabled, the CA cert lands in the host trust store and 'openssl verify' against it succeeds for a leaf issued by that CA
+- [x] #2 A cron refreshes /etc/.../<caId>.crl atomically from the public endpoint and the file parses as a valid DER/PEM CRL
+- [x] #3 Both features are disabled by default and a second run is idempotent
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+x509.yml (gated stretch): installs CA into OS trust store (update-ca-certificates) + atomic CRL refresh cron. e2e: openssl verify of a leaf succeeds against the installed anchor; CRL parses; disabled by default + idempotent.
+<!-- SECTION:NOTES:END -->
