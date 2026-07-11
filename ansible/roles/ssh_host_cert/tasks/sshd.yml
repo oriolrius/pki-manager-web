@@ -1,0 +1,39 @@
+---
+# ANS-03: install the authoritative sshd drop-in served at
+# GET /ssh/hosts/:id/sshd-config — the single source of truth (ssh-config.ts).
+# This replaces the hand-rolled blockinfile (which hardcoded ed25519 paths and
+# drifted): the served render is algorithm-aware, so an ecdsa (ECIES) host gets
+# the correct HostKey/HostCertificate paths for free.
+- name: Fetch the authoritative sshd drop-in for this host
+  ansible.builtin.uri:
+    url: "{{ ssh_ca_base_url }}/ssh/hosts/{{ ssh_host_cert_host_id }}/sshd-config"
+    method: GET
+    return_content: true
+    status_code: 200
+    validate_certs: "{{ ssh_host_cert_validate_certs }}"
+  register: ssh_host_cert_dropin_render
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Install the sshd drop-in verbatim
+  ansible.builtin.copy:
+    content: "{{ ssh_host_cert_dropin_render.content }}"
+    dest: "{{ ssh_host_cert_dropin }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload sshd
+    - Reload sshd (SIGHUP)
+
+- name: Validate the full sshd configuration before reload
+  ansible.builtin.command: /usr/sbin/sshd -t
+  become: true
+  changed_when: false
+
+# Flush now so the reload happens before any KRL pull / verify that relies on
+# the new RevokedKeys directive being live.
+- name: Reload sshd if the cert/trust/drop-in changed
+  ansible.builtin.meta: flush_handlers

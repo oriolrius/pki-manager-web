@@ -1,0 +1,14 @@
+---
+# Generate the host key ON the node — the private key is created on the target
+# and never leaves it. Algorithm is ed25519 by default, or ecdsa-sha2-nistp256
+# when ECIES is enabled (that same key is the local ECIES decrypt key, ANS-05).
+- name: Generate the SSH host key on the node ({{ ssh_host_cert_key_type }})
+  community.crypto.openssh_keypair:
+    backend: opensshbin
+    path: "{{ ssh_host_cert_key_path }}"
+    type: "{{ ssh_host_cert_key_type }}"
+    size: "{{ ssh_host_cert_ecdsa_size if ssh_host_cert_key_type == 'ecdsa' else omit }}"
+    comment: "pki-manager-managed host key for {{ inventory_hostname }}"
+    regenerate: never
+  become: true
+  register: ssh_host_cert_keydata

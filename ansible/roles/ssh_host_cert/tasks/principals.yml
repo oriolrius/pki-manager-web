@@ -1,0 +1,77 @@
+---
+# ANS-02: make cert-based logins actually work. The drop-in points
+# AuthorizedPrincipalsFile at auth_principals/%u; without this a valid User-CA
+# cert is denied ("Permission denied"). Fetch the authoritative per-account
+# render (ANS-01, byte-identical to the admin tRPC render) with the fleet token
+# and install each account file.
+- name: Fetch this host's rendered auth_principals (ANS-01 endpoint)
+  ansible.builtin.uri:
+    url: "{{ ssh_ca_api_url }}/hosts/{{ ansible_fqdn }}/auth-principals"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ ssh_ca_fleet_token }}"
+    return_content: true
+    status_code: 200
+    validate_certs: "{{ ssh_host_cert_validate_certs }}"
+  register: ssh_host_cert_principals
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  no_log: true  # contains the bearer token
+
+- name: Create the AuthorizedPrincipalsFile directory
+  ansible.builtin.file:
+    path: "{{ ssh_host_cert_auth_principals_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Install per-account principal files
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ ssh_host_cert_auth_principals_dir }}/{{ item.key }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  loop: "{{ ssh_host_cert_principals.json.files | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+# Optional prune: drop account files that are no longer in the render so a
+# de-mapped account loses its principals. Off by default (operator files may
+# also live here).
+- name: List existing principal files
+  ansible.builtin.find:
+    paths: "{{ ssh_host_cert_auth_principals_dir }}"
+    file_type: file
+  register: ssh_host_cert_existing_principals
+  become: true
+  when: ssh_host_cert_principals_prune | bool
+
+- name: Prune principal files not in the render
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  become: true
+  loop: "{{ ssh_host_cert_existing_principals.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when:
+    - ssh_host_cert_principals_prune | bool
+    - (item.path | basename) not in (ssh_host_cert_principals.json.files.keys() | list)
+
+# The always-written RevokedKeys directive is fail-closed: a missing file makes
+# sshd refuse every key. Create an empty 0444 placeholder if absent, but NEVER
+# clobber a KRL the puller/cron has already installed (force: false).
+- name: Guarantee the RevokedKeys file exists (fail-closed placeholder)
+  ansible.builtin.copy:
+    dest: "{{ ssh_host_cert_revoked_keys }}"
+    content: ""
+    owner: root
+    group: root
+    mode: "0444"
+    force: false
+  become: true

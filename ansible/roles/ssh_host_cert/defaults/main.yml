@@ -1,20 +1,37 @@
 ---
-# Defaults for the ssh_host_cert role (SSH-31). Productionised Jan-Piet Mens
-# pattern, retargeted at the PKI Manager external API: the Ed25519 host key is
-# generated ON the node (never leaves it); only the public key is signed, via
+# Defaults for the ssh_host_cert role. Productionised Jan-Piet Mens pattern,
+# retargeted at the PKI Manager external API: the host key is generated ON the
+# node (never leaves it); only the public key is signed, via
 # POST /api/v1/external/ssh/sign-host with a fleet bearer token.
+#
+# The Ansible Integration milestone (doc-009) grew this role from "issue a host
+# cert" to a full SSH-CA node: principals (login RBAC), authoritative sshd
+# drop-in, unattended renewal, and both KRL channels (public cron / encrypted
+# krl-client). Every on-host path below mirrors backend/src/services/ssh-config.ts
+# and krl-client/internal/config/config.go — the single sources of truth.
 
 # --- PKI Manager endpoints ---------------------------------------------------
 # Public base (trust-material downloads) and the token-scoped external API.
 ssh_ca_base_url: "https://pki.internal"
 ssh_ca_api_url: "{{ ssh_ca_base_url }}/api/v1/external/ssh"
-# Fleet token (pkimg_…) scoped to one Host CA + sign-host. Store in Ansible Vault.
+# Fleet token (pkimg_…) scoped to one Host CA. For a fully self-provisioning
+# host the token needs ops: sign-host, get-principals, and (ECIES) register-host-pubkey.
+# Store in Ansible Vault; NEVER in plain inventory.
 ssh_ca_fleet_token: ""
 ssh_host_cert_validate_certs: true
 
-# --- Layout on the node ------------------------------------------------------
+# --- Host key algorithm ------------------------------------------------------
+# ed25519 by default. When ECIES is enabled the host key MUST be an
+# ecdsa-sha2-nistp256 key (decision-015 reuse model): the SAME key sshd presents
+# is the key the backend encrypts the per-host KRL to and krl-client decrypts
+# with at /etc/ssh/ssh_host_ecdsa_key. ECIES is P-256-only, so an ed25519 host
+# 409s ECIES_KEY_UNSUPPORTED on register-host-pubkey.
+ssh_host_cert_key_type: "{{ 'ecdsa' if ssh_host_cert_ecies_enabled | bool else 'ed25519' }}"
+ssh_host_cert_ecdsa_size: 256
+
+# --- Layout on the node (mirrors ssh-config.ts) ------------------------------
 ssh_host_cert_dirname: /etc/ssh
-ssh_host_cert_key_path: "{{ ssh_host_cert_dirname }}/ssh_host_ed25519_key"
+ssh_host_cert_key_path: "{{ ssh_host_cert_dirname }}/ssh_host_{{ ssh_host_cert_key_type }}_key"
 ssh_host_cert_cert_path: "{{ ssh_host_cert_key_path }}-cert.pub"
 ssh_host_cert_user_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-user-ca.pub"
 # Host CA public key — the KRL puller's signature trust anchor (BLK-10).
@@ -22,15 +39,74 @@ ssh_host_cert_user_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-user-ca.pub"
 # --ca-pubkey is this path. MUST be installed BEFORE the per-host KRL cutover.
 ssh_host_cert_host_ca_pub: "{{ ssh_host_cert_dirname }}/ssh-host-ca.pub"
 ssh_host_cert_revoked_keys: "{{ ssh_host_cert_dirname }}/revoked_keys"
+ssh_host_cert_auth_principals_dir: "{{ ssh_host_cert_dirname }}/auth_principals"
 ssh_host_cert_dropin: "{{ ssh_host_cert_dirname }}/sshd_config.d/60-ssh-ca.conf"
 ssh_host_cert_sshd_service: ssh
+# How the sshd reload handler runs. "service" uses the service module (systemd
+# or SysV). "command" sends the running sshd a SIGHUP — for minimal containers
+# (the ANS-10 e2e) where no init manages sshd.
+ssh_host_cert_reload_method: service
+
+# --- Scheduler substrate (renewal + krl-client) ------------------------------
+# "cron" is portable (works in a minimal openssh+python image, the e2e default).
+# "systemd" matches krl-client/packaging and gives StateDirectory + time-sync
+# ordering, but needs systemd-in-container for the e2e.
+ssh_host_cert_scheduler: cron
+
+# --- Principals / login RBAC (ANS-02) ----------------------------------------
+# Populate AuthorizedPrincipalsFile from the authoritative render (ANS-01), so a
+# valid User-CA cert with a mapped principal can actually log in. Needs the
+# get-principals op on the fleet token.
+ssh_host_cert_principals_enabled: true
+# Remove auth_principals/<account> files no longer present in the render (so a
+# de-mapped account loses its principals on the next run). Off by default to
+# avoid deleting operator-managed files in the same directory.
+ssh_host_cert_principals_prune: false
+
+# --- Unattended host-cert renewal (ANS-04) -----------------------------------
+# A host-side scheduled job re-invokes sign-host with an Idempotency-Key that
+# rotates per period bucket, so the cert is re-minted (fresh validBefore) well
+# before the 52-week expiry. SECURITY: this stores the fleet token on the host
+# (0600) so it can call the API itself — a compromised host can then sign host
+# certs for any fqdn under this Host CA. Set false to renew by re-running the
+# playbook from the controller instead.
+ssh_host_cert_renew_enabled: true
+# `date -u +FORMAT` bucket. Default = ISO year-week, so a fresh 52-week cert is
+# minted weekly (lead time never drops below ~51 weeks). Use "%Y-%m" for monthly.
+ssh_host_cert_renew_bucket_format: "%G-%V"
+# cron schedule (5-field) for the renewal job (default: 03:17 daily; the weekly
+# bucket makes only the first run of each ISO week actually mint a new cert).
+ssh_host_cert_renew_cron: "17 3 * * *"
+# systemd OnCalendar equivalent when ssh_host_cert_scheduler == systemd.
+ssh_host_cert_renew_oncalendar: "*-*-* 03:17:00"
+ssh_host_cert_renew_env: /etc/pki-manager/ssh-renew.env
+ssh_host_cert_renew_script: /usr/local/sbin/pki-manager-ssh-renew
 
 # --- Optional ECIES KRL distribution (SSH-15/SSH-24) -------------------------
-# When true, register the host's ECIES key with the backend. NOTE: today this
-# only REGISTERS the key — it does NOT install the krl-client puller (binary,
-# config, state dir, scheduler). The full encrypted-KRL puller lands in
-# ANS-05/06/07 of the Ansible Integration milestone (doc-009).
+# When true: provision an ecdsa host key (above), register it with the backend,
+# and install the krl-client puller (binary + config + scheduler, ANS-05/06/07).
+# The backend must run with SSH_ECIES_ENABLED=true (preflighted below).
 ssh_host_cert_ecies_enabled: false
+
+# --- krl-client puller (ANS-06 binary / ANS-07 config+scheduler) -------------
+# Install source for the binary: a URL get_url can fetch (https://… CI artifact,
+# or file:///abs/path for a locally-built dist/krl-client-linux-amd64). Pin the
+# checksum ("sha256:…") so a re-run is idempotent and a tampered artifact fails.
+ssh_host_cert_krl_client_url: ""
+ssh_host_cert_krl_client_checksum: ""
+ssh_host_cert_krl_client_bin: /usr/local/bin/krl-client
+ssh_host_cert_krl_client_man: /usr/local/share/man/man8/krl-client.8
+# Man page source (shipped in-repo); empty skips the man-page install.
+ssh_host_cert_krl_client_man_src: ""
+ssh_host_cert_krl_client_config: /etc/krl-client/config.yaml
+ssh_host_cert_krl_client_state_dir: /var/lib/krl-client
+# TLS roots for a private-CA PKI Manager server (--ca-bundle). Empty = system roots.
+ssh_host_cert_krl_client_ca_bundle: ""
+# Pull cadence for the krl-client scheduler.
+ssh_host_cert_krl_client_interval_minutes: 15
+# Preflight: require an active time-sync daemon (NTP is a hard prereq; krl-client
+# exits 5 on clock drift). Disable only in a controlled test with a synced clock.
+ssh_host_cert_require_timesync: true
 
 # --- Optional public-path KRL fetch cron (BLK-12) ----------------------------
 # For hosts NOT on the encrypted (ECIES) channel: a cron that refreshes
@@ -43,3 +119,22 @@ ssh_host_cert_krl_cron_enabled: false
 ssh_host_cert_user_ca_id: ""
 ssh_host_cert_krl_fetch_url: "{{ ssh_ca_base_url }}/krl/{{ ssh_host_cert_user_ca_id }}.bin"
 ssh_host_cert_krl_cron_minutes: 15
+
+# --- Optional known_hosts @cert-authority trust (ANS-08) ---------------------
+# For hosts that are also SSH CLIENTS (bastion/jump, CI runners, host-to-host):
+# trust the Host CA so they connect to other cert-presenting hosts with
+# StrictHostKeyChecking=yes and no TOFU. Off by default (leaf servers don't need it).
+ssh_host_cert_known_hosts_enabled: false
+ssh_host_cert_known_hosts_pattern: "*"
+ssh_host_cert_known_hosts_path: "{{ ssh_host_cert_dirname }}/ssh_known_hosts"
+
+# --- Optional X.509 host automation (ANS-09 stretch, non-SSH) ----------------
+# Install a CA trust anchor into the OS store and/or keep a CRL fresh via cron.
+# Both off by default; kept out of the SSH critical path.
+ssh_host_cert_x509_ca_trust_enabled: false
+ssh_host_cert_x509_crl_cron_enabled: false
+# Backend CA id for the public /cas/:id.pem and /crl/:id.crl endpoints.
+ssh_host_cert_x509_ca_id: ""
+ssh_host_cert_x509_ca_trust_name: pki-manager-ca
+ssh_host_cert_x509_crl_dir: /etc/pki-manager/crl
+ssh_host_cert_x509_crl_cron_minutes: 60

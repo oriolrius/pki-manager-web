@@ -1,0 +1,75 @@
+---
+# ANS-04: unattended host-cert renewal. A host-side scheduled job re-invokes
+# sign-host with a period-rotating Idempotency-Key. NOTE: this places the fleet
+# token on the host (0600) so it can call the API itself.
+- name: Create the PKI Manager config directory
+  ansible.builtin.file:
+    path: "{{ ssh_host_cert_renew_env | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+- name: Install the renewal runtime env (contains the fleet token)
+  ansible.builtin.template:
+    src: ssh-renew.env.j2
+    dest: "{{ ssh_host_cert_renew_env }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Install the renewal script
+  ansible.builtin.template:
+    src: pki-manager-ssh-renew.j2
+    dest: "{{ ssh_host_cert_renew_script }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# --- cron scheduler (portable default) ---
+- name: Install the renewal cron job
+  ansible.builtin.copy:
+    dest: /etc/cron.d/pki-manager-ssh-renew
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by pki-manager ssh_host_cert (ANS-04). Renews the host cert.
+      {{ ssh_host_cert_renew_cron }} root {{ ssh_host_cert_renew_script }}
+  become: true
+  when: ssh_host_cert_scheduler == 'cron'
+
+- name: Remove the renewal cron job when using systemd
+  ansible.builtin.file:
+    path: /etc/cron.d/pki-manager-ssh-renew
+    state: absent
+  become: true
+  when: ssh_host_cert_scheduler != 'cron'
+
+# --- systemd scheduler ---
+- name: Install the renewal systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - pki-manager-ssh-renew.service
+    - pki-manager-ssh-renew.timer
+  become: true
+  when: ssh_host_cert_scheduler == 'systemd'
+  notify: Reload systemd
+
+- name: Enable the renewal timer
+  ansible.builtin.systemd:
+    name: pki-manager-ssh-renew.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: ssh_host_cert_scheduler == 'systemd'
