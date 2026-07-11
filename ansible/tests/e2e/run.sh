@@ -17,7 +17,10 @@ HOST_IP=$(hostname -I | awk '{print $1}')
 BASE="http://${HOST_IP}:${PORT}"
 DC="docker compose"
 
-skip() { echo "SKIP: $*"; exit 0; }
+# In CI (E2E_STRICT=1) a "skip" is a real failure — docker/KMS ARE available on
+# the runner, so any skip there means something actually broke. Locally, skip is
+# a graceful no-op when docker/KMS is unavailable.
+skip() { if [ "${E2E_STRICT:-0}" = "1" ]; then echo "FAIL(strict): $*"; exit 1; fi; echo "SKIP: $*"; exit 0; }
 fail() { echo "FAIL: $*"; exit 1; }
 ok()   { echo "PASS: $*"; }
 
@@ -36,13 +39,15 @@ fi
 CHECKSUM="sha256:$(sha256sum "$BIN" | awk '{print $1}')"
 
 # --- install the ssh_host_cert role via the oriolrius.pki_manager collection ---
-# Prefer a sibling checkout (offline dev); else install from requirements.yml (git).
+# Default: install the PUBLISHED collection from requirements.yml (Galaxy) — this
+# validates the real end-user path. Set E2E_COLLECTION_LOCAL=1 to install from a
+# sibling ../pki-manager-ansible checkout instead (fast, offline dev).
 COLL_DIR="$(pwd)/_collections"
 SIBLING="$REPO/../pki-manager-ansible"
-if [ -d "$SIBLING/galaxy.yml" ] || [ -f "$SIBLING/galaxy.yml" ]; then
+if [ "${E2E_COLLECTION_LOCAL:-0}" = "1" ] && [ -f "$SIBLING/galaxy.yml" ]; then
   ansible-galaxy collection install "$SIBLING" -p "$COLL_DIR" --force >/dev/null 2>&1 || fail "collection install (local checkout)"
 else
-  ansible-galaxy collection install -r ../../requirements.yml -p "$COLL_DIR" --force >/dev/null 2>&1 || skip "collection install failed (network unavailable?)"
+  ansible-galaxy collection install -r ../../requirements.yml -p "$COLL_DIR" --force >/dev/null 2>&1 || skip "collection install failed (network unavailable? set E2E_COLLECTION_LOCAL=1)"
 fi
 export ANSIBLE_COLLECTIONS_PATH="$COLL_DIR"
 ok "oriolrius.pki_manager collection installed"
