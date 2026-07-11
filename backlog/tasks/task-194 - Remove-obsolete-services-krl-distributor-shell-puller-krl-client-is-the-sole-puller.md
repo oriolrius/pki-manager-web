@@ -3,9 +3,11 @@ id: TASK-194
 title: >-
   Remove obsolete services/krl-distributor shell puller; krl-client is the sole
   puller
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 08:48'
+updated_date: '2026-07-11 08:48'
 labels:
   - docs
   - ssh
