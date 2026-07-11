@@ -1,9 +1,11 @@
 ---
 id: TASK-195
 title: 'ANS-00: Milestone baseline: host-coverage inventory doc-anchor + drift cleanup'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:38'
 labels:
   - ansible
   - ansible-integration
