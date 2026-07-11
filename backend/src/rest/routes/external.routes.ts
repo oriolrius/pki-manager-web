@@ -10,6 +10,49 @@ import { logger } from '../../lib/logger.js';
 import { parseCertificate } from '../../crypto/x509.js';
 import { clusterAuthPreHandler } from '../middleware/cluster-auth.js';
 import { randomUUID } from 'crypto';
+import { okObjectResponse, errorResponse } from '../schemas/ssh-openapi-schemas.js';
+
+// --- OpenAPI schemas (TASK-207) --------------------------------------------------------
+// The external issuer API is consumed by generated clients; document its request bodies and
+// responses. Bodies use `additionalProperties: true` (the handlers validate manually and
+// tolerate extra keys) and keep `required` to exactly what each handler enforces. Responses
+// are the permissive object shape so fast-json-stringify never strips real fields. Error
+// responses are intentionally NOT declared: schema-validation failures surface Fastify's
+// default `{ statusCode, error, message }` shape, which an `{ error: {...} }` response schema
+// would corrupt.
+const externalTag = ['External Issuer'];
+
+const signBodySchema = {
+  type: 'object',
+  required: ['csrPem', 'requestUid'],
+  additionalProperties: true,
+  properties: {
+    csrPem: { type: 'string', description: 'PEM-encoded PKCS#10 CSR to sign' },
+    requestUid: {
+      type: 'string',
+      description: 'Idempotency key; repeat calls for the same uid return the cached certificate',
+    },
+    durationDays: {
+      type: 'number',
+      description: 'Requested validity in days (clamped server-side to 1..825; default 90)',
+    },
+    certificateType: { type: 'string', enum: ['server', 'client', 'dual'] },
+    k8sNamespace: { type: 'string' },
+    k8sResource: { type: 'string' },
+    sanDns: { type: 'array', items: { type: 'string' } },
+    sanIp: { type: 'array', items: { type: 'string' } },
+  },
+} as const;
+
+const revokeBodySchema = {
+  type: 'object',
+  required: ['serialNumber'],
+  additionalProperties: true,
+  properties: {
+    serialNumber: { type: 'string', description: 'Serial number of the certificate to revoke' },
+    reason: { type: 'string', description: 'RFC 5280 revocation reason (default: unspecified)' },
+  },
+} as const;
 
 // Leaf extensions we add ourselves. SAN/keyUsage/extKeyUsage come from the CSR (Cosmian
 // copies the CSR's requested extensions verbatim), so we must NOT re-supply them here or
@@ -98,8 +141,24 @@ function parseCsrPem(csrPem: string): ParsedCsr {
 export async function externalRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', clusterAuthPreHandler);
 
+  // Body-schema validation failures must use the API's standard
+  // {error:{code,message}} shape (Fastify's default validation error would
+  // otherwise break the external issuer contract).
+  fastify.setErrorHandler((error, _req, reply) => {
+    if (error.validation) {
+      return reply.code(400).send({ error: { code: 'BAD_REQUEST', message: error.message } });
+    }
+    return reply.send(error);
+  });
+
   // GET /health - probe used by Issuer reconciler
-  fastify.get('/health', async (req) => {
+  fastify.get('/health', {
+    schema: {
+      tags: externalTag,
+      summary: 'Liveness probe returning the authenticated cluster identity',
+      response: { 200: okObjectResponse },
+    },
+  }, async (req) => {
     return {
       status: 'ok',
       cluster: { id: req.cluster!.id, name: req.cluster!.name, caId: req.cluster!.caId },
@@ -108,7 +167,16 @@ export async function externalRoutes(fastify: FastifyInstance) {
   });
 
   // GET /ca-bundle - PEM chain for cluster's CA
-  fastify.get('/ca-bundle', async (req, reply) => {
+  fastify.get('/ca-bundle', {
+    schema: {
+      tags: externalTag,
+      summary: "PEM chain of the cluster's bound CA",
+      // 404 is declared because the handler emits an explicit `{ error: { code, message } }`
+      // 404 (its shape matches errorResponse); this GET has no body schema, so there is no
+      // Fastify default-shape validation error to corrupt.
+      response: { 200: okObjectResponse, 404: errorResponse },
+    },
+  }, async (req, reply) => {
     const caId = req.cluster!.caId;
     const ca = await db
       .select()
@@ -141,7 +209,14 @@ export async function externalRoutes(fastify: FastifyInstance) {
       sanDns?: string[];
       sanIp?: string[];
     };
-  }>('/sign', async (req, reply) => {
+  }>('/sign', {
+    schema: {
+      tags: externalTag,
+      summary: 'Sign a CSR with the cluster CA (idempotent on requestUid)',
+      body: signBodySchema,
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
     const body = req.body;
     if (!body || !body.csrPem || !body.requestUid) {
       return reply.code(400).send({
@@ -342,7 +417,14 @@ export async function externalRoutes(fastify: FastifyInstance) {
   // POST /revoke
   fastify.post<{
     Body: { serialNumber: string; reason?: string };
-  }>('/revoke', async (req, reply) => {
+  }>('/revoke', {
+    schema: {
+      tags: externalTag,
+      summary: 'Revoke a certificate the cluster issued (idempotent)',
+      body: revokeBodySchema,
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
     const body = req.body;
     if (!body || !body.serialNumber) {
       return reply.code(400).send({
