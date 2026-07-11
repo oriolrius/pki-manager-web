@@ -35,7 +35,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   // Public BARE KRL bytes for sshd's RevokedKeys (SSH-22). sshd does NOT verify
   // any signature on this file — integrity rests on TLS + 0444 root-owned perms.
   // ETag/If-None-Match/304 + lazy-regen + last-good fallback are new here.
-  server.get('/krl/:caId.bin', async (req, reply) => {
+  server.get('/krl/:caId.bin', { schema: { hide: true } }, async (req, reply) => {
     if (!rateLimitOk(`krl:${req.ip}`, 120, 60_000)) {
       reply.code(429);
       return 'rate limited\n';
@@ -63,7 +63,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   });
 
   // Signed envelope for the (deferred) puller: bare KRL + detached CA signature.
-  server.get('/krl/:caId.json', async (req, reply) => {
+  server.get('/krl/:caId.json', { schema: { hide: true } }, async (req, reply) => {
     const { caId } = req.params as { caId: string };
     const row = await freshestKrl(caId);
     if (!row) {
@@ -109,7 +109,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     return row;
   }
 
-  server.get('/krl/hosts/:hostId.bin', async (req, reply) => {
+  server.get('/krl/hosts/:hostId.bin', { schema: { hide: true } }, async (req, reply) => {
     if (!hostKrlPublicEnabled()) {
       reply.code(404);
       return 'per-host KRL public serving is disabled (SSH_HOST_KRL_PUBLIC)\n';
@@ -143,7 +143,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     return Buffer.from(row.krlBlob);
   });
 
-  server.get('/krl/hosts/:hostId.json', async (req, reply) => {
+  server.get('/krl/hosts/:hostId.json', { schema: { hide: true } }, async (req, reply) => {
     if (!hostKrlPublicEnabled()) {
       reply.code(404);
       return { error: { code: 'DISABLED', message: 'per-host KRL public serving is disabled (SSH_HOST_KRL_PUBLIC)' } };
@@ -173,7 +173,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   };
 
   // A single CA's OpenSSH public key.
-  server.get('/ssh/cas/:id/ca.pub', async (req, reply) => {
+  server.get('/ssh/cas/:id/ca.pub', { schema: { hide: true } }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
       const ca = await getSshCaService().get(ctx, id);
@@ -186,7 +186,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   });
 
   // TrustedUserCAKeys file contents (all active/rotating User CAs).
-  server.get('/ssh/trusted-user-ca-keys', async (_req, reply) => {
+  server.get('/ssh/trusted-user-ca-keys', { schema: { hide: true } }, async (_req, reply) => {
     const anchors = await getSshCaService().getTrustAnchors(ctx);
     text(reply, 'ssh-user-ca.pub');
     return anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : '');
@@ -196,14 +196,14 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   // HOST_CA_PATH (/etc/ssh/ssh-host-ca.pub) by the Ansible role; krl-client's
   // default --ca-pubkey. Composed per-host KRLs are signed with the Host-CA
   // key (decision-016 pinned req #1) — NOT the User CA.
-  server.get('/ssh/host-ca-keys', async (_req, reply) => {
+  server.get('/ssh/host-ca-keys', { schema: { hide: true } }, async (_req, reply) => {
     const anchors = await getSshCaService().getTrustAnchors(ctx);
     text(reply, 'ssh-host-ca.pub');
     return anchors.hostCaKeys.map((k) => k.trim()).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
   });
 
   // @cert-authority known_hosts lines for the Host CA(s), for a pattern.
-  server.get('/ssh/cert-authority', async (req, reply) => {
+  server.get('/ssh/cert-authority', { schema: { hide: true } }, async (req, reply) => {
     const pattern = ((req.query as any)?.pattern as string) || '*';
     const anchors = await getSshCaService().getTrustAnchors(ctx);
     text(reply);
@@ -211,7 +211,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   });
 
   // A host's current certificate (HostCertificate).
-  server.get('/ssh/hosts/:id/cert.pub', async (req, reply) => {
+  server.get('/ssh/hosts/:id/cert.pub', { schema: { hide: true } }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
       const host = await getSshHostService().get(ctx, id);
@@ -228,7 +228,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   });
 
   // The ready-to-paste sshd_config drop-in for a host.
-  server.get('/ssh/hosts/:id/sshd-config', async (req, reply) => {
+  server.get('/ssh/hosts/:id/sshd-config', { schema: { hide: true } }, async (req, reply) => {
     const { id } = req.params as { id: string };
     try {
       const host = await getSshHostService().get(ctx, id);

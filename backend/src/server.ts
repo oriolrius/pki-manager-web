@@ -37,22 +37,39 @@ await registerRestApi(server);
 // Register external issuer API (cluster bearer-token auth, separate from OIDC)
 await server.register(externalRoutes, { prefix: '/api/v1/external' });
 
-// Register tRPC
-await server.register(fastifyTRPCPlugin, {
-  prefix: '/trpc',
-  trpcOptions: {
-    router: appRouter,
-    createContext,
-  },
+// Register tRPC at the ROOT /trpc prefix. The @trpc/server fastify adapter
+// registers a bare `fastify.all('/trpc/:path')` with no schema, so @fastify/swagger
+// would otherwise advertise `/trpc/{path}` in the /api/v1 OpenAPI doc — a URL that
+// is unreachable under the /api/v1 server base (a client would request
+// /api/v1/trpc/… → 404). Wrap the registration in an encapsulated context whose
+// `onRoute` hook marks every tRPC route `hide: true`; this affects ONLY the
+// OpenAPI document, not routing/validation, so tRPC keeps working exactly as
+// before (TASK-208).
+await server.register(async (trpcScope) => {
+  trpcScope.addHook('onRoute', (routeOptions) => {
+    routeOptions.schema = { ...routeOptions.schema, hide: true };
+  });
+  await trpcScope.register(fastifyTRPCPlugin, {
+    prefix: '/trpc',
+    trpcOptions: {
+      router: appRouter,
+      createContext,
+    },
+  });
 });
 
-// Health check endpoint (legacy - kept for backward compatibility)
-server.get('/health', async () => {
+// Health check endpoint (legacy - kept for backward compatibility). Hidden from
+// the /api/v1 OpenAPI doc: it is mounted at the ROOT (a client resolving it
+// against the /api/v1 server base would 404), and /api/v1/health already covers
+// it in the spec (TASK-208).
+server.get('/health', { schema: { hide: true } }, async () => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
 
-// Public CA certificate endpoint - serves CA certificates for download
-server.get('/cas/:caId.:format', async (req, reply) => {
+// Public CA certificate endpoint - serves CA certificates for download.
+// hide:true keeps this ROOT route out of the /api/v1 OpenAPI doc (it is
+// unreachable under the /api/v1 server base); routing is unaffected (TASK-208).
+server.get('/cas/:caId.:format', { schema: { hide: true } }, async (req, reply) => {
   const { caId, format } = req.params as { caId: string; format: string };
 
   // Validate format
