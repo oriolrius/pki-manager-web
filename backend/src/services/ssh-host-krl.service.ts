@@ -18,8 +18,8 @@
  * because it is embedded in the signed OpenSSH KRL header the puller's
  * anti-rollback compares. Signing uses the HOST-CA key (pinned req #1;
  * trust-anchor reconciliation is BLK-10). signRaw failure is non-fatal: the
- * row persists with ca_signature null (host_puller.sh installs it;
- * krl-client fail-stales on last-good until a signed row lands).
+ * row persists with ca_signature null (krl-client fail-stales on last-good
+ * until a signed row lands, unless run with `--allow-unsigned`).
  */
 import { randomUUID } from 'crypto';
 import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';

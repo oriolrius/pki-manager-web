@@ -132,7 +132,7 @@
   when: ssh_host_cert_ecies_enabled | bool
 
 # ── PHASE 6 (optional): public-path KRL refresh cron (BLK-12) ───────────────
-# Only for hosts NOT using the encrypted channel (host_puller.sh / krl-client).
+# Only for hosts NOT using the encrypted channel (krl-client).
 # tmp-write + same-filesystem mv keeps sshd's fail-closed RevokedKeys
 # consistent at all times (never modified in place, per sshd_config(5)).
 - name: Install the public KRL refresh cron (RevokedKeys)

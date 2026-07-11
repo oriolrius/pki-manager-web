@@ -1,9 +1,0 @@
-[Unit]
-Description=PKI-Manager SSH KRL puller (fetch + verify + install RevokedKeys)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-EnvironmentFile=/etc/krl-puller.env
-ExecStart=/usr/local/sbin/host_puller.sh
