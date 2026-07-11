@@ -74,8 +74,9 @@ describe('BLK-07 deriveHostKrlState', () => {
     const pending = deriveHostKrlState(eciesHost(), unsigned(V2), []);
     expect(pending.state).toBe('pending');
     expect(pending.unsignedLatest).toBe(true);
-    // Even "effective" can carry the cause: host_puller.sh installs unsigned
-    // rows, so the served version CAN match an unsigned head.
+    // Even "effective" can carry the cause: a krl-client host run with
+    // --allow-unsigned installs unsigned rows, so the served version CAN
+    // match an unsigned head.
     const effective = deriveHostKrlState(eciesHost({ lastKrlVersion: V2 }), unsigned(V2), []);
     expect(effective.state).toBe('effective');
     expect(effective.unsignedLatest).toBe(true);

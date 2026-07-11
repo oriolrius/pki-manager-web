@@ -15,16 +15,16 @@ Blocks are **not** revocations — the blocked identity's certificates stay vali
 on every other host. sshd re-reads `RevokedKeys` on every auth attempt
 (fail-closed, no reload), so a block lands on the host's **next KRL pull**.
 
-## How each client verifies (and what unsigned means)
+## How the client verifies (and what unsigned means)
 
 The composed KRL is signed with the **Host-CA** key. The trust anchor is
 `/etc/ssh/ssh-host-ca.pub` (`GET /ssh/host-ca-keys`), installed by the Ansible
-role.
+role. `krl-client` (Go) is the sole supported puller — it decrypts locally with
+the host's own SSH host key and verifies the detached CA signature.
 
 | Client | Trust anchor | Unsigned-KRL posture (KMS signing failed) |
 |---|---|---|
 | `krl-client` (Go) | `--ca-pubkey`, **default `/etc/ssh/ssh-host-ca.pub`** | **Rejects** (exit 4) and keeps last-good — fail-stale — unless run with `--allow-unsigned` |
-| `host_puller.sh` | `CA_PUBLIC_KEY_ID` = Host CA KMS key id | Verifies only when a signature is present; **installs** unsigned KRLs (deny availability wins) |
 
 An unsigned latest KRL is surfaced in the UI state pill as `(unsigned)` and in
 the audit log (`ssh.host_krl.generate`, status `failure`, `signError`). Fix the
