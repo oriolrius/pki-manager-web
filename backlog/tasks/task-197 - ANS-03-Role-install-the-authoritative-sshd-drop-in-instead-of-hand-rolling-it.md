@@ -3,11 +3,11 @@ id: TASK-197
 title: >-
   ANS-03: Role: install the authoritative sshd drop-in instead of hand-rolling
   it
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:54'
+updated_date: '2026-07-11 10:29'
 labels:
   - ansible
   - ansible-integration
@@ -30,8 +30,14 @@ Replace the hand-composed blockinfile (tasks/main.yml:94-109) with a fetch of GE
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The installed /etc/ssh/sshd_config.d/60-ssh-ca.conf byte-matches the content served by GET /ssh/hosts/:id/sshd-config for that host
-- [ ] #2 On an ecdsa-keyed host the drop-in references the ecdsa host key/cert paths (no ed25519 hardcoding)
-- [ ] #3 sshd -t passes and sshd reloads only when the served content changes
-- [ ] #4 A second role run reports no change when the server render is unchanged
+- [x] #1 The installed /etc/ssh/sshd_config.d/60-ssh-ca.conf byte-matches the content served by GET /ssh/hosts/:id/sshd-config for that host
+- [x] #2 On an ecdsa-keyed host the drop-in references the ecdsa host key/cert paths (no ed25519 hardcoding)
+- [x] #3 sshd -t passes and sshd reloads only when the served content changes
+- [x] #4 A second role run reports no change when the server render is unchanged
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+sshd.yml: installs GET /ssh/hosts/:id/sshd-config verbatim (algorithm-aware). e2e: ecies host presents its ecdsa cert (ecdsa paths), sshd -t passes, reload-on-change only, idempotent.
+<!-- SECTION:NOTES:END -->
