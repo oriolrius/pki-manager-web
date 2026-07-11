@@ -1,9 +1,11 @@
 ---
 id: TASK-193
 title: 'Fix tRPC 401s after idle: auto-refresh the manual OIDC access token'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 08:35'
+updated_date: '2026-07-11 08:35'
 labels:
   - frontend
   - auth
@@ -30,3 +32,13 @@ Fix: use the already-stored refresh_token to renew the access token on demand in
 - [ ] #4 Existing behavior is unchanged for a still-valid token and for OIDC-disabled (unauthenticated) mode
 - [ ] #5 Unit tests cover: refresh-on-expiry success, single-flight dedup, and refresh-failure fallback
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. token.ts: add refreshManualAccessToken() posting grant_type=refresh_token to the Keycloak token endpoint, updating localStorage (rotated refresh token) and returning the new access token; on failure clear stored token and return null.
+2. token.ts: change getManualAccessToken() to refresh when the token is expired/expiring (60s buffer) if a refresh_token exists, with a module-level single-flight promise shared across concurrent/batched callers.
+3. Keep getAccessToken() (UserManager first, then manual) and OIDC-disabled behavior intact.
+4. Add token.test.ts covering refresh-on-expiry, single-flight dedup, and refresh-failure fallback.
+5. Verify: frontend typecheck + vitest.
+<!-- SECTION:PLAN:END -->
