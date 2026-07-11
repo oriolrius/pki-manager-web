@@ -133,6 +133,15 @@ echo "==> VERIFY: known_hosts @cert-authority trust line (ANS-08, host_public)"
 $DC exec -T host_public grep -q '^@cert-authority ' /etc/ssh/ssh_known_hosts \
   || fail "known_hosts @cert-authority line not installed"
 ok "host_public ssh_known_hosts carries the @cert-authority Host-CA trust line"
+# From host_public (its system known_hosts now trusts the Host CA), connect to
+# the cert-presenting ecies host under StrictHostKeyChecking=yes: host-cert
+# verification must PASS (auth then fails, no cert) — NOT "Host key verification
+# failed", which is what a missing @cert-authority would produce (TOFU refused).
+kh_err=$($DC exec -T host_public ssh -o StrictHostKeyChecking=yes -o BatchMode=yes \
+  -o ConnectTimeout=8 deploy@host-ecies.e2e.local true 2>&1 || true)
+echo "$kh_err" | grep -q 'Host key verification failed' \
+  && fail "host_public did not trust the ecies host cert (TOFU refused despite @cert-authority)"
+ok "host_public trusts another host's cert with StrictHostKeyChecking=yes, no TOFU"
 
 echo "==> VERIFY: X.509 CA trust-store install + CRL refresh (ANS-09 stretch, host_public)"
 docker cp _artifacts/leaf.pem "$(${DC} ps -q host_public)":/tmp/leaf.pem >/dev/null 2>&1 || fail "copy leaf.pem"
