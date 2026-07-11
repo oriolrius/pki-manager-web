@@ -1,9 +1,11 @@
 ---
 id: TASK-209
 title: Public SSH/KRL root routes are shadowed by the web frontend in deployment
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-07-11 16:47'
+updated_date: '2026-07-11 17:03'
 labels:
   - bug
   - api
