@@ -30,8 +30,8 @@ The authoritative per-account AuthorizedPrincipalsFile contents are rendered onl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A host holding a valid fleet token (or via the public /ssh path, matching existing trust-bundle endpoints) can GET its own per-account auth_principals content and receive exactly what ssh-principal.service render() produces
-- [ ] #2 The response includes each account name and its file body (dual bare-P and P@fqdn forms) for the host
-- [ ] #3 An integration test asserts the endpoint output byte-matches the admin tRPC render for the same host, and that an unauthorized/unknown-host request is rejected
-- [ ] #4 Each successful fetch writes an audit_log row
+- [x] #1 A host holding a valid fleet token (or via the public /ssh path, matching existing trust-bundle endpoints) can GET its own per-account auth_principals content and receive exactly what ssh-principal.service render() produces
+- [x] #2 The response includes each account name and its file body (dual bare-P and P@fqdn forms) for the host
+- [x] #3 An integration test asserts the endpoint output byte-matches the admin tRPC render for the same host, and that an unauthorized/unknown-host request is rejected
+- [x] #4 Each successful fetch writes an audit_log row
 <!-- AC:END -->
