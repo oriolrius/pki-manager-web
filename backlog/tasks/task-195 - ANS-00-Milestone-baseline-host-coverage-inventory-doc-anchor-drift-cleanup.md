@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-11 09:32'
-updated_date: '2026-07-11 09:38'
+updated_date: '2026-07-11 09:39'
 labels:
   - ansible
   - ansible-integration
@@ -27,8 +27,8 @@ Open the milestone the way prior SSH milestones opened (BLK-00 pattern): produce
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A backlog milestone document exists listing each host-deployable feature with yes/partial/no coverage and the file:line evidence, and is referenced by every ANS-xx task
-- [ ] #2 The unused ssh_ca_krl_url variable no longer appears in defaults, and grep for it across ansible/ returns only removed/history references
-- [ ] #3 defaults/main.yml and README.md no longer claim ECIES enablement installs a puller; they accurately state registration-only until ANS-05/06/07 land
-- [ ] #4 backlog task list shows the milestone with all ANS-xx tasks created and cross-linked
+- [x] #1 A backlog milestone document exists listing each host-deployable feature with yes/partial/no coverage and the file:line evidence, and is referenced by every ANS-xx task
+- [x] #2 The unused ssh_ca_krl_url variable no longer appears in defaults, and grep for it across ansible/ returns only removed/history references
+- [x] #3 defaults/main.yml and README.md no longer claim ECIES enablement installs a puller; they accurately state registration-only until ANS-05/06/07 land
+- [x] #4 backlog task list shows the milestone with all ANS-xx tasks created and cross-linked
 <!-- AC:END -->
