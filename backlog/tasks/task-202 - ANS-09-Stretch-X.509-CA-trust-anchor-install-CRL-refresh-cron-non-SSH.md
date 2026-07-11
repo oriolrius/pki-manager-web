@@ -1,9 +1,11 @@
 ---
 id: TASK-202
 title: 'ANS-09: Stretch: X.509 CA trust-anchor install + CRL refresh cron (non-SSH)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-11 09:32'
+updated_date: '2026-07-11 09:55'
 labels:
   - ansible
   - ansible-integration
