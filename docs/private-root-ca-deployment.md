@@ -1700,19 +1700,12 @@ They may use different trust mechanisms.
 # 13. Browser-Specific Summary
 
 | Platform   | Chrome/Edge                              | Safari             | Firefox                                         |
-
 | ---------- | ---------------------------------------- | ------------------ | ----------------------------------------------- |
-
 | Windows    | Windows root store                       | Not applicable     | Windows enterprise roots or Firefox import      |
-
 | macOS      | macOS Keychain                           | macOS Keychain     | Enterprise roots or Firefox import              |
-
 | Linux      | Distribution/package dependent           | Not applicable     | Often Firefox/NSS import or managed integration |
-
 | Android    | Android user CA store, subject to policy | Not applicable     | Must be tested for deployed mobile version      |
-
 | iOS/iPadOS | Apple system trust                       | Apple system trust | Apple system trust                              |
-
 | ChromeOS   | ChromeOS certificate management          | Not applicable     | Platform/package dependent                      |
 
 The safest operational rule is:
