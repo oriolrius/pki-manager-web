@@ -85,7 +85,103 @@ ca-private-key.pem
 
 A root CA private key would allow its holder to issue certificates trusted by every device on which the CA has been installed.
 
-## 2.2 Root CA versus intermediate CA
+## 2.2 Obtaining CA.crt from PKI Manager
+
+In this project, the public certificate of a CA is produced and served by the PKI Manager backend. There are three equivalent ways to obtain it. All of them return the **public** certificate only; none of the certificate/truststore formats contains the private key.
+
+### 2.2.1 Web UI
+
+1. Open the PKI Manager web interface.
+2. Go to **Certificate Authorities** and open the target CA (`/cas/<CA_ID>`).
+3. Use the **Download Certificate** panel and select a format:
+
+```text
+
+pem / crt   Public certificate, PEM text (this is CA.crt)
+
+der / cer   Public certificate, DER binary
+
+```
+
+The panel also offers PKCS#12 and JKS **truststore** formats (public certificate only, for Java clients) and **keystore** formats. The keystore formats embed the CA private key and must never be distributed to client devices — see the warning in section 2.1.
+
+### 2.2.2 REST API (authenticated)
+
+The `/api/v1` REST API exposes the same download, documented in Swagger at `/api/docs`:
+
+```text
+
+GET /api/v1/cas/{CA_ID}/download?format=pem
+
+```
+
+Supported `format` values:
+
+```text
+
+pem, crt, der, cer               public certificate
+
+p12-truststore, jks-truststore   public certificate in a truststore
+
+p12-keystore, jks-keystore       certificate + private key (do NOT distribute)
+
+```
+
+The response is JSON with Base64-encoded content:
+
+```json
+
+{
+
+  "data": "<base64>",
+
+  "mimeType": "application/x-pem-file",
+
+  "filename": "Example_Private_Root_CA.pem"
+
+}
+
+```
+
+Fetch and decode it to `CA.crt`:
+
+```bash
+
+curl -s \
+
+  -H "Authorization: Bearer $TOKEN" \
+
+  "https://pki.example.internal/api/v1/cas/$CA_ID/download?format=pem" |
+
+  jq -r .data |
+
+  base64 -d > CA.crt
+
+```
+
+If PKI Manager runs without OIDC configured, the API is unauthenticated and the `Authorization` header can be omitted.
+
+### 2.2.3 Public direct-download endpoint (no authentication)
+
+The backend also serves each CA's public certificate as a raw file at the server root. This is the most convenient form for scripts, `curl`, and automation because it returns the certificate bytes directly with a download filename:
+
+```text
+
+GET /cas/{CA_ID}.pem     (also .crt, .cer, .der)
+
+```
+
+```bash
+
+curl -s -o CA.crt \
+
+  "https://pki.example.internal/cas/$CA_ID.pem"
+
+```
+
+This endpoint returns only the public certificate and is safe to expose. After obtaining `CA.crt` by any of these methods, verify its SHA-256 fingerprint (section 2.4 and chapter 6) before distributing or installing it.
+
+## 2.3 Root CA versus intermediate CA
 
 A common private PKI has this hierarchy:
 
@@ -143,7 +239,7 @@ Trusted root CA installed on client
 
 Installing only the intermediate CA as a trusted root can technically work in some environments, but it changes the intended trust boundary and is generally not the preferred PKI design.
 
-## 2.3 Root certificate requirements
+## 2.4 Root certificate requirements
 
 Before deployment, verify that `CA.crt` really is a CA certificate.
 
