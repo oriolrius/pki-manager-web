@@ -391,6 +391,8 @@ X509v3 Subject Alternative Name:
 
 The hostname entered into the browser must match a DNS SAN exactly, subject to standard wildcard rules.
 
+**In PKI Manager:** certificates are always issued with a real `subjectAltName` extension, so this failure mode does not occur when the SAN is populated. Supply the names when issuing a certificate through the **Subject Alternative Names** section of the *New Certificate* form (**DNS Names**, **IP Addresses**, **Email** fields), or through the API fields `sanDns`, `sanIp`, and `sanEmail` on the certificate-issue request. Every hostname a client may use must appear as its own DNS SAN entry.
+
 ## 5.2 Common Name alone is insufficient
 
 Do not rely only on:
@@ -431,6 +433,8 @@ DNS:portal.example.internal
 ```
 
 is not valid when the user accesses the server using its IP address.
+
+**In PKI Manager:** use the **IP Addresses** field (API: `sanIp`) — not the DNS field — for any address a client connects to by IP. The backend encodes those entries as `iPAddress` GeneralNames, producing a correct `IP Address:` SAN rather than a `DNS:` entry.
 
 ## 5.4 Missing intermediate certificate
 
