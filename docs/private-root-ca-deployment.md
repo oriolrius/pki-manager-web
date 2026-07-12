@@ -7,25 +7,17 @@ The purpose of this procedure is to make browsers and supported applications tru
 The public CA certificate will be referred to as:
 
 ```text
-
 CA.crt
-
 ```
 
 After the CA is correctly installed as a trusted root, a browser should accept server certificates issued by that CA without displaying errors such as:
 
 ```text
-
 NET::ERR_CERT_AUTHORITY_INVALID
-
 SEC_ERROR_UNKNOWN_ISSUER
-
 MOZILLA_PKIX_ERROR_SELF_SIGNED_CERT
-
 Your connection is not private
-
 This Connection Is Not Private
-
 ```
 
 Installing `CA.crt` solves only the **issuer trust** part of certificate validation. The HTTPS server certificate and the complete TLS configuration must still be correct.
@@ -39,23 +31,16 @@ Installing `CA.crt` solves only the **issuer trust** part of certificate validat
 The file distributed to clients must contain the public certificate of the private root CA:
 
 ```text
-
 CA.crt
-
 ```
 
 It may also be named:
 
 ```text
-
 CA.cer
-
 root-ca.crt
-
 root-ca.cer
-
 company-root-ca.pem
-
 ```
 
 The filename and extension are not the critical part. The important elements are:
@@ -68,19 +53,12 @@ The filename and extension are not the critical part. The important elements are
 Never distribute any of the following:
 
 ```text
-
 CA.key
-
 root.key
-
 private.key
-
 ca-private-key.pem
-
 *.p12
-
 *.pfx
-
 ```
 
 A root CA private key would allow its holder to issue certificates trusted by every device on which the CA has been installed.
@@ -96,11 +74,8 @@ In this project, the public certificate of a CA is produced and served by the PK
 3. Use the **Download Certificate** panel and select a format:
 
 ```text
-
 pem / crt   Public certificate, PEM text (this is CA.crt)
-
 der / cer   Public certificate, DER binary
-
 ```
 
 The panel also offers PKCS#12 and JKS **truststore** formats (public certificate only, for Java clients) and **keystore** formats. The keystore formats embed the CA private key and must never be distributed to client devices — see the warning in section 2.1.
@@ -110,53 +85,35 @@ The panel also offers PKCS#12 and JKS **truststore** formats (public certificate
 The `/api/v1` REST API exposes the same download, documented in Swagger at `/api/docs`:
 
 ```text
-
 GET /api/v1/cas/{CA_ID}/download?format=pem
-
 ```
 
 Supported `format` values:
 
 ```text
-
 pem, crt, der, cer               public certificate
-
 p12-truststore, jks-truststore   public certificate in a truststore
-
 p12-keystore, jks-keystore       certificate + private key (do NOT distribute)
-
 ```
 
 The response is JSON with Base64-encoded content:
 
 ```json
-
 {
-
   "data": "<base64>",
-
   "mimeType": "application/x-pem-file",
-
   "filename": "Example_Private_Root_CA.pem"
-
 }
-
 ```
 
 Fetch and decode it to `CA.crt`:
 
 ```bash
-
 curl -s \
-
   -H "Authorization: Bearer $TOKEN" \
-
   "https://pki.example.internal/api/v1/cas/$CA_ID/download?format=pem" |
-
   jq -r .data |
-
   base64 -d > CA.crt
-
 ```
 
 If PKI Manager runs without OIDC configured, the API is unauthenticated and the `Authorization` header can be omitted.
@@ -166,17 +123,12 @@ If PKI Manager runs without OIDC configured, the API is unauthenticated and the 
 The backend also serves each CA's public certificate as a raw file at the server root. This is the most convenient form for scripts, `curl`, and automation because it returns the certificate bytes directly with a download filename:
 
 ```text
-
 GET /cas/{CA_ID}.pem     (also .crt, .cer, .der)
-
 ```
 
 ```bash
-
 curl -s -o CA.crt \
-
   "https://pki.example.internal/cas/$CA_ID.pem"
-
 ```
 
 This endpoint returns only the public certificate and is safe to expose. After obtaining `CA.crt` by any of these methods, verify its SHA-256 fingerprint (section 2.4 and chapter 6) before distributing or installing it.
@@ -186,21 +138,13 @@ This endpoint returns only the public certificate and is safe to expose. After o
 A common private PKI has this hierarchy:
 
 ```text
-
 Private Root CA
-
     │
-
     └── Private Intermediate CA
-
             │
-
             ├── server01 certificate
-
             ├── portal.example.internal certificate
-
             └── api.example.internal certificate
-
 ```
 
 Normally, clients should trust the **root CA**.
@@ -208,11 +152,8 @@ Normally, clients should trust the **root CA**.
 The server should present:
 
 ```text
-
 Leaf/server certificate
-
 Intermediate CA certificate
-
 ```
 
 The server should normally not send the root certificate because clients already possess and trust it locally.
@@ -220,21 +161,13 @@ The server should normally not send the root certificate because clients already
 The validation path is:
 
 ```text
-
 Server certificate
-
     │ signed by
-
     ▼
-
 Intermediate CA
-
     │ signed by
-
     ▼
-
 Trusted root CA installed on client
-
 ```
 
 Installing only the intermediate CA as a trusted root can technically work in some environments, but it changes the intended trust boundary and is generally not the preferred PKI design.
@@ -246,67 +179,44 @@ Before deployment, verify that `CA.crt` really is a CA certificate.
 Inspect it with OpenSSL:
 
 ```bash
-
 openssl x509 \
-
   -in CA.crt \
-
   -noout \
-
   -subject \
-
   -issuer \
-
   -serial \
-
   -dates \
-
   -fingerprint \
-
   -sha256 \
-
   -text
-
 ```
 
 Look for:
 
 ```text
-
 X509v3 Basic Constraints:
-
     CA:TRUE
-
 ```
 
 Preferably, the extension should be marked critical:
 
 ```text
-
 X509v3 Basic Constraints: critical
-
     CA:TRUE
-
 ```
 
 The certificate should also normally contain an appropriate key-usage extension:
 
 ```text
-
 X509v3 Key Usage: critical
-
     Certificate Sign, CRL Sign
-
 ```
 
 For a self-signed root CA, the subject and issuer are normally identical:
 
 ```text
-
 Subject: CN = Example Private Root CA
-
 Issuer:  CN = Example Private Root CA
-
 ```
 
 That alone does not prove that the certificate is legitimate. Compare its SHA-256 fingerprint against a value obtained through a trusted, independent channel.
@@ -320,27 +230,18 @@ That alone does not prove that the certificate is legitimate. Compare its SHA-25
 A PEM certificate is Base64-encoded text:
 
 ```pem
-
 -----BEGIN CERTIFICATE-----
-
 MIID...
-
 ...
-
 -----END CERTIFICATE-----
-
 ```
 
 Common extensions:
 
 ```text
-
 .crt
-
 .cer
-
 .pem
-
 ```
 
 PEM is commonly used by:
@@ -357,13 +258,9 @@ A DER certificate is binary rather than Base64 text.
 Common extensions:
 
 ```text
-
 .cer
-
 .der
-
 .crt
-
 ```
 
 Windows, Android, iOS and macOS can generally process DER-encoded certificates. Some import interfaces behave more consistently with DER than PEM.
@@ -373,31 +270,20 @@ Windows, Android, iOS and macOS can generally process DER-encoded certificates. 
 PEM to DER:
 
 ```bash
-
 openssl x509 \
-
   -in CA.crt \
-
   -outform DER \
-
   -out CA.der
-
 ```
 
 DER to PEM:
 
 ```bash
-
 openssl x509 \
-
   -in CA.der \
-
   -inform DER \
-
   -outform PEM \
-
   -out CA.crt
-
 ```
 
 The conversion changes only the representation. It does not change:
@@ -413,31 +299,20 @@ The conversion changes only the representation. It does not change:
 For maximum compatibility, maintain both forms:
 
 ```text
-
 CA.crt     # PEM
-
 CA.cer     # DER
-
 ```
 
 Before distribution, verify that both represent the same certificate:
 
 ```bash
-
 openssl x509 -in CA.crt -noout -fingerprint -sha256
-
 openssl x509 \
-
   -in CA.cer \
-
   -inform DER \
-
   -noout \
-
   -fingerprint \
-
   -sha256
-
 ```
 
 The fingerprints must match.
@@ -453,13 +328,9 @@ A device that trusts `CA.crt` will potentially accept any otherwise valid server
 For example, the CA could technically issue certificates for:
 
 ```text
-
 [www.google.com](http://www.google.com)
-
 [login.microsoftonline.com](http://login.microsoftonline.com)
-
 bank.example
-
 ```
 
 Whether an attacker could successfully use such certificates also depends on their ability to intercept or redirect traffic, but trusting the CA creates that possibility.
@@ -484,9 +355,7 @@ The fact that `CA.crt` does not contain a private key does not make installation
 Installing the correct CA fixes only this condition:
 
 ```text
-
 The certificate chain ends in an unknown CA.
-
 ```
 
 The browser will still reject the connection if any other TLS validation requirement fails.
@@ -498,11 +367,8 @@ Modern browsers validate hostnames against the certificate’s `subjectAltName` 
 A certificate such as:
 
 ```text
-
 Subject:
-
     CN = portal.example.internal
-
 ```
 
 is not sufficient by itself.
@@ -510,25 +376,17 @@ is not sufficient by itself.
 It should contain:
 
 ```text
-
 X509v3 Subject Alternative Name:
-
     DNS:portal.example.internal
-
 ```
 
 For multiple names:
 
 ```text
-
 X509v3 Subject Alternative Name:
-
     DNS:portal.example.internal
-
     DNS:portal
-
     DNS:www.portal.example.internal
-
 ```
 
 The hostname entered into the browser must match a DNS SAN exactly, subject to standard wildcard rules.
@@ -538,9 +396,7 @@ The hostname entered into the browser must match a DNS SAN exactly, subject to s
 Do not rely only on:
 
 ```text
-
 CN=portal.example.internal
-
 ```
 
 Issue certificates with a proper SAN extension.
@@ -550,27 +406,20 @@ Issue certificates with a proper SAN extension.
 If users browse to:
 
 ```text
-
 [https://192.168.1.50](https://192.168.1.50)
-
 ```
 
 the certificate must contain an IP SAN:
 
 ```text
-
 X509v3 Subject Alternative Name:
-
     IP Address:192.168.1.50
-
 ```
 
 This is different from:
 
 ```text
-
 DNS:192.168.1.50
-
 ```
 
 An IP address must be encoded as an IP SAN, not as a DNS name.
@@ -578,9 +427,7 @@ An IP address must be encoded as an IP SAN, not as a DNS name.
 A certificate containing only:
 
 ```text
-
 DNS:portal.example.internal
-
 ```
 
 is not valid when the user accesses the server using its IP address.
@@ -592,11 +439,8 @@ The client should normally receive the intermediate certificate from the HTTPS s
 The server should present:
 
 ```text
-
 server certificate
-
 intermediate CA certificate
-
 ```
 
 It should not rely on every browser having previously cached the intermediate.
@@ -608,27 +452,20 @@ A browser may work on one machine because the intermediate is cached and fail on
 A server certificate should normally permit TLS server authentication:
 
 ```text
-
 X509v3 Extended Key Usage:
-
     TLS Web Server Authentication
-
 ```
 
 Its corresponding OID is:
 
 ```text
-
 1.3.6.1.5.5.7.3.1
-
 ```
 
 A certificate restricted to client authentication is not a valid server certificate:
 
 ```text
-
 TLS Web Client Authentication
-
 ```
 
 ## 5.6 Invalid validity period
@@ -636,23 +473,16 @@ TLS Web Client Authentication
 The server certificate must currently be valid:
 
 ```text
-
 Not Before &lt;= current time &lt;= Not After
-
 ```
 
 Check:
 
 ```bash
-
 openssl x509 \
-
   -in server.crt \
-
   -noout \
-
   -dates
-
 ```
 
 Also verify the client’s clock. Incorrect time, date or time zone can make a valid certificate appear not yet valid or expired.
@@ -662,25 +492,17 @@ Also verify the client’s clock. Incorrect time, date or time zone can make a v
 Avoid:
 
 ```text
-
 MD5 signatures
-
 SHA-1 signatures
-
 RSA keys smaller than 2048 bits
-
 obsolete elliptic curves
-
 ```
 
 For broad compatibility, typical choices are:
 
 ```text
-
 RSA 2048 or 3072 with SHA-256
-
 ECDSA P-256 with SHA-256
-
 ```
 
 ## 5.8 CA constraints are incorrect
@@ -688,19 +510,14 @@ ECDSA P-256 with SHA-256
 The root and intermediate certificates must be permitted to sign certificates:
 
 ```text
-
 Basic Constraints: CA:TRUE
-
 Key Usage: Certificate Sign
-
 ```
 
 The leaf certificate should normally have:
 
 ```text
-
 Basic Constraints: CA:FALSE
-
 ```
 
 ## 5.9 Certificate chain order is wrong
@@ -708,19 +525,12 @@ Basic Constraints: CA:FALSE
 When creating a full-chain file, the order should normally be:
 
 ```text
-
 -----BEGIN CERTIFICATE-----
-
 Leaf/server certificate
-
 -----END CERTIFICATE-----
-
 -----BEGIN CERTIFICATE-----
-
 Intermediate CA certificate
-
 -----END CERTIFICATE-----
-
 ```
 
 Do not put the root first.
@@ -734,27 +544,18 @@ Do not put the intermediate before the leaf.
 ## 6.1 Display the SHA-256 fingerprint
 
 ```bash
-
 openssl x509 \
-
   -in CA.crt \
-
   -noout \
-
   -fingerprint \
-
   -sha256
-
 ```
 
 Example:
 
 ```text
-
 sha256 Fingerprint=
-
 4A:CF:21:7E:53:92:5D:5A:...
-
 ```
 
 ## 6.2 Verify that the private and public keys correspond
@@ -764,31 +565,19 @@ This procedure should be performed only on the protected CA system where the pri
 For an RSA key:
 
 ```bash
-
 openssl x509 \
-
   -in CA.crt \
-
   -noout \
-
   -modulus |
-
 openssl sha256
-
 ```
 
 ```bash
-
 openssl rsa \
-
   -in CA.key \
-
   -noout \
-
   -modulus |
-
 openssl sha256
-
 ```
 
 The values must match.
@@ -796,37 +585,22 @@ The values must match.
 A more general public-key comparison is:
 
 ```bash
-
 openssl x509 \
-
   -in CA.crt \
-
   -pubkey \
-
   -noout |
-
 openssl pkey \
-
   -pubin \
-
   -outform DER |
-
 openssl sha256
-
 ```
 
 ```bash
-
 openssl pkey \
-
   -in CA.key \
-
   -pubout \
-
   -outform DER |
-
 openssl sha256
-
 ```
 
 Again, the resulting hashes must match.
@@ -838,35 +612,24 @@ Do not perform this comparison on ordinary client devices because the private CA
 For a directly issued server certificate:
 
 ```bash
-
 openssl verify \
-
   -CAfile CA.crt \
-
   server.crt
-
 ```
 
 Expected result:
 
 ```text
-
 server.crt: OK
-
 ```
 
 For an intermediate-based hierarchy:
 
 ```bash
-
 openssl verify \
-
   -CAfile root-CA.crt \
-
   -untrusted intermediate-CA.crt \
-
   server.crt
-
 ```
 
 ---
@@ -884,31 +647,22 @@ Windows separates certificate stores by:
 The two most relevant scopes are:
 
 ```text
-
 Current User
-
 Local Computer
-
 ```
 
 The important store is:
 
 ```text
-
 Trusted Root Certification Authorities
-
 ```
 
 Installing a certificate into:
 
 ```text
-
 Personal
-
 Intermediate Certification Authorities
-
 Trusted Publishers
-
 ```
 
 does not give it the same root trust semantics.
@@ -922,9 +676,7 @@ Open Command Prompt or PowerShell **as Administrator**.
 Run:
 
 ```cmd
-
 certutil -addstore -f "ROOT" CA.crt
-
 ```
 
 `certutil -addstore` adds a certificate to the specified Windows certificate store; `ROOT` selects Trusted Root Certification Authorities.
@@ -934,15 +686,10 @@ This is the preferred command for machine-wide manual deployment.
 The parameters mean:
 
 ```text
-
 -addstore    Add certificate to a store
-
 -f           Force the operation
-
 ROOT         Trusted Root Certification Authorities
-
 CA.crt       Public CA certificate
-
 ```
 
 ## 7.3 Current-user installation
@@ -950,9 +697,7 @@ CA.crt       Public CA certificate
 Without administrative access, a certificate can be added to the current user’s trusted-root store:
 
 ```cmd
-
 certutil -user -addstore -f "ROOT" CA.crt
-
 ```
 
 This affects only the current user.
@@ -975,19 +720,14 @@ For machine-wide installation:
 2. Run:
 
 ```text
-
 certlm.msc
-
 ```
 
 3. Navigate to:
 
 ```text
-
 Trusted Root Certification Authorities
-
 └── Certificates
-
 ```
 
 4. Right-click **Certificates**.
@@ -996,9 +736,7 @@ Trusted Root Certification Authorities
 7. Explicitly place it in:
 
 ```text
-
 Trusted Root Certification Authorities
-
 ```
 
 8. Finish the wizard.
@@ -1009,19 +747,14 @@ Microsoft also documents importing roots through the Trusted Root Certification 
 For current-user installation, use:
 
 ```text
-
 certmgr.msc
-
 ```
 
 The distinction is:
 
 ```text
-
 certlm.msc  → Local Computer
-
 certmgr.msc → Current User
-
 ```
 
 ## 7.5 Verification
@@ -1029,25 +762,19 @@ certmgr.msc → Current User
 List the Local Computer root store:
 
 ```cmd
-
 certutil -store ROOT
-
 ```
 
 List the current-user root store:
 
 ```cmd
-
 certutil -user -store ROOT
-
 ```
 
 Search using part of the CA name:
 
 ```cmd
-
 certutil -store ROOT "Example Private Root CA"
-
 ```
 
 The exact display behavior depends on how uniquely the string identifies a certificate.
@@ -1059,9 +786,7 @@ Chrome on Windows normally integrates with the Windows certificate infrastructur
 Closing only the visible window may not terminate every Chrome process. Check Task Manager or use:
 
 ```cmd
-
 taskkill /IM chrome.exe /F
-
 ```
 
 Then reopen the browser.
@@ -1086,25 +811,19 @@ Current Firefox supports trusting private roots installed in the Windows operati
 Check:
 
 ```text
-
 about:config
-
 ```
 
 Search for:
 
 ```text
-
 security.enterprise_roots.enabled
-
 ```
 
 Set it to:
 
 ```text
-
 true
-
 ```
 
 Restart Firefox.
@@ -1112,19 +831,12 @@ Restart Firefox.
 Alternatively, import `CA.crt` directly into Firefox:
 
 ```text
-
 Settings
-
 → Privacy &amp; Security
-
 → Certificates
-
 → View Certificates
-
 → Authorities
-
 → Import
-
 ```
 
 Select the CA and enable trust for identifying websites.
@@ -1138,21 +850,13 @@ Direct Firefox import creates browser-profile-specific trust. It may need to be 
 For managed Firefox installations, use enterprise policy:
 
 ```json
-
 {
-
   "policies": {
-
     "Certificates": {
-
       "ImportEnterpriseRoots": true
-
     }
-
   }
-
 }
-
 ```
 
 Using operating-system roots is generally easier to maintain than importing the same CA manually into every Firefox profile.
@@ -1162,41 +866,29 @@ Using operating-system roots is generally easier to maintain than importing the 
 First locate it:
 
 ```cmd
-
 certutil -store ROOT
-
 ```
 
 Then delete it using a sufficiently unique certificate identifier:
 
 ```cmd
-
 certutil -delstore ROOT "&lt;certificate-hash-or-name&gt;"
-
 ```
 
 For the current user:
 
 ```cmd
-
 certutil -user -delstore ROOT "&lt;certificate-hash-or-name&gt;"
-
 ```
 
 The graphical alternative is:
 
 ```text
-
 certlm.msc
-
 → Trusted Root Certification Authorities
-
 → Certificates
-
 → Select CA
-
 → Delete
-
 ```
 
 Verify the fingerprint before deletion to avoid removing an unrelated root.
@@ -1212,21 +904,15 @@ macOS stores certificates in keychains.
 The relevant keychains are:
 
 ```text
-
 login
-
 System
-
 System Roots
-
 ```
 
 For a private organizational or local CA, install it into:
 
 ```text
-
 System
-
 ```
 
 when all users and system applications should trust it.
@@ -1234,9 +920,7 @@ when all users and system applications should trust it.
 Use:
 
 ```text
-
 login
-
 ```
 
 only when trust should be limited to the current account.
@@ -1255,9 +939,7 @@ Do not attempt to modify the protected Apple-managed `System Roots` keychain.
 8. Set:
 
 ```text
-
 When using this certificate: Always Trust
-
 ```
 
 9. Close the window.
@@ -1272,37 +954,25 @@ Apple also documents changing the certificate’s trust policies from the Trust 
 For machine-wide trust:
 
 ```bash
-
 sudo security add-trusted-cert \
-
   -d \
-
   -r trustRoot \
-
   -k /Library/Keychains/System.keychain \
-
   CA.crt
-
 ```
 
 Important parameters:
 
 ```text
-
 -d           Add to an admin trust domain
-
 -r trustRoot Treat certificate as a trusted root
-
 -k           Destination keychain
-
 ```
 
 For system-wide browser trust, the destination is:
 
 ```text
-
 /Library/Keychains/System.keychain
-
 ```
 
 ## 8.4 Safari on macOS
@@ -1330,35 +1000,24 @@ Firefox may use operating-system enterprise roots when appropriately configured.
 Check:
 
 ```text
-
 about:config
-
 ```
 
 Set:
 
 ```text
-
 security.enterprise_roots.enabled = true
-
 ```
 
 Alternatively, import the CA directly into Firefox:
 
 ```text
-
 Settings
-
 → Privacy &amp; Security
-
 → Certificates
-
 → View Certificates
-
 → Authorities
-
 → Import
-
 ```
 
 For managed environments, use Firefox enterprise policies instead of manually modifying each profile.
@@ -1376,15 +1035,10 @@ Using Keychain Access:
 From the command line:
 
 ```bash
-
 security find-certificate \
-
   -a \
-
   -c "Example Private Root CA" \
-
   /Library/Keychains/System.keychain
-
 ```
 
 ## 8.8 Remove the CA from macOS
@@ -1406,19 +1060,12 @@ From the command line, identify the certificate and remove it carefully using th
 Linux trust deployment is less uniform because there may be several trust mechanisms:
 
 ```text
-
 Operating-system CA bundle
-
 NSS certificate database
-
 Browser-specific certificate store
-
 Application-specific certificate bundle
-
 Container-specific certificate bundle
-
 Language-runtime-specific store
-
 ```
 
 Installing a CA in the operating-system trust store is necessary but may not be sufficient for every browser or application.
@@ -1436,19 +1083,14 @@ The certificate must:
 Install it:
 
 ```bash
-
 sudo cp CA.crt \
-
   /usr/local/share/ca-certificates/example-private-root-ca.crt
-
 ```
 
 Update the trust store:
 
 ```bash
-
 sudo update-ca-certificates
-
 ```
 
 Ubuntu documents placing a PEM-formatted root CA in the local CA directory and running `update-ca-certificates`.
@@ -1456,9 +1098,7 @@ Ubuntu documents placing a PEM-formatted root CA in the local CA directory and r
 The tool incorporates `.crt` files found below:
 
 ```text
-
 /usr/local/share/ca-certificates
-
 ```
 
 into the machine trust bundle.
@@ -1466,11 +1106,8 @@ into the machine trust bundle.
 Expected output is similar to:
 
 ```text
-
 Updating certificates in /etc/ssl/certs...
-
 1 added, 0 removed; done.
-
 ```
 
 ## 9.2 Verify on Debian or Ubuntu
@@ -1478,29 +1115,21 @@ Updating certificates in /etc/ssl/certs...
 Check the generated links:
 
 ```bash
-
 ls -l /etc/ssl/certs | grep -i example
-
 ```
 
 Test OpenSSL:
 
 ```bash
-
 openssl verify \
-
   -CApath /etc/ssl/certs \
-
   server.crt
-
 ```
 
 Test an HTTPS endpoint:
 
 ```bash
-
 curl -v [https://service.example.internal/](https://service.example.internal/)
-
 ```
 
 A successful `curl` test verifies the system/OpenSSL trust path, but it does not guarantee that Firefox uses the same trust store.
@@ -1508,13 +1137,9 @@ A successful `curl` test verifies the system/OpenSSL trust path, but it does not
 ## 9.3 Remove from Debian or Ubuntu
 
 ```bash
-
 sudo rm \
-
   /usr/local/share/ca-certificates/example-private-root-ca.crt
-
 sudo update-ca-certificates --fresh
-
 ```
 
 Then restart affected browsers and applications.
@@ -1524,35 +1149,26 @@ Then restart affected browsers and applications.
 A common trust-anchor location is:
 
 ```text
-
 /etc/pki/ca-trust/source/anchors/
-
 ```
 
 Install:
 
 ```bash
-
 sudo cp CA.crt \
-
   /etc/pki/ca-trust/source/anchors/example-private-root-ca.crt
-
 ```
 
 Update:
 
 ```bash
-
 sudo update-ca-trust extract
-
 ```
 
 Verify using:
 
 ```bash
-
 trust list | grep -A10 -B2 "Example Private Root CA"
-
 ```
 
 Exact commands can vary by distribution and version.
@@ -1564,17 +1180,11 @@ Chrome and Chromium trust behavior on Linux depends on distribution integration 
 Possible packaging differences include:
 
 ```text
-
 native distribution package
-
 Snap
-
 Flatpak
-
 vendor-supplied package
-
 Chromium distribution package
-
 ```
 
 Start by installing the CA into the operating-system trust store.
@@ -1594,21 +1204,13 @@ Firefox may maintain an NSS certificate database distinct from the operating-sys
 The most deterministic manual procedure is:
 
 ```text
-
 Firefox
-
 → Settings
-
 → Privacy &amp; Security
-
 → Certificates
-
 → View Certificates
-
 → Authorities
-
 → Import
-
 ```
 
 Select `CA.crt` and enable trust for websites.
@@ -1632,11 +1234,8 @@ Do not assume that a successful `curl` test means Firefox will trust the CA.
 Android has at least two relevant trust sources:
 
 ```text
-
 System-installed CAs
-
 User-installed CAs
-
 ```
 
 A manually installed private CA is normally placed in the **user credential store**, not in the read-only system CA store.
@@ -1650,17 +1249,13 @@ Installing the CA may allow the browser to trust local HTTPS sites, but it does 
 Transfer only the public certificate:
 
 ```text
-
 CA.crt
-
 ```
 
 or, when necessary for compatibility:
 
 ```text
-
 CA.cer
-
 ```
 
 Possible transfer mechanisms include:
@@ -1687,69 +1282,45 @@ Android menu names vary substantially by:
 A common path is:
 
 ```text
-
 Settings
-
 → Security &amp; privacy
-
 → More security settings
-
 → Encryption &amp; credentials
-
 → Install a certificate
-
 → CA certificate
-
 ```
 
 Other manufacturers may show:
 
 ```text
-
 Settings
-
 → Security
-
 → Credential storage
-
 → Install from storage
-
 ```
 
 or:
 
 ```text
-
 Settings
-
 → Biometrics and security
-
 → Other security settings
-
 → Install from device storage
-
 → CA certificate
-
 ```
 
 Select:
 
 ```text
-
 CA certificate
-
 ```
 
 Do not select:
 
 ```text
-
 VPN and app user certificate
-
 Wi-Fi certificate
-
 User identity certificate
-
 ```
 
 The device will display a warning because a newly trusted CA can be used to inspect or authenticate encrypted connections.
@@ -1800,11 +1371,8 @@ Android applications targeting Android 7.0/API level 24 or later do not automati
 Therefore this result is possible:
 
 ```text
-
 Chrome opens the site successfully.
-
 The native Android app rejects the same certificate.
-
 ```
 
 This does not necessarily mean the CA was installed incorrectly.
@@ -1814,69 +1382,41 @@ An application you control can explicitly trust user-added CAs.
 `AndroidManifest.xml`:
 
 ```xml
-
 &lt;application
-
     android:networkSecurityConfig="@xml/network_security_config"
-
     ...&gt;
-
 &lt;/application&gt;
-
 ```
 
 `res/xml/network_security_config.xml`:
 
 ```xml
-
 &lt;?xml version="1.0" encoding="utf-8"?&gt;
-
 &lt;network-security-config&gt;
-
     &lt;base-config&gt;
-
         &lt;trust-anchors&gt;
-
             &lt;certificates src="system" /&gt;
-
             &lt;certificates src="user" /&gt;
-
         &lt;/trust-anchors&gt;
-
     &lt;/base-config&gt;
-
 &lt;/network-security-config&gt;
-
 ```
 
 A safer domain-scoped configuration is:
 
 ```xml
-
 &lt;?xml version="1.0" encoding="utf-8"?&gt;
-
 &lt;network-security-config&gt;
-
     &lt;domain-config&gt;
-
         &lt;domain includeSubdomains="true"&gt;
-
             example.internal
-
         &lt;/domain&gt;
-
         &lt;trust-anchors&gt;
-
             &lt;certificates src="system" /&gt;
-
             &lt;certificates src="user" /&gt;
-
         &lt;/trust-anchors&gt;
-
     &lt;/domain-config&gt;
-
 &lt;/network-security-config&gt;
-
 ```
 
 Android officially provides Network Security Configuration for defining custom and user-supplied trust anchors.
@@ -1910,33 +1450,21 @@ For an organization, deploy the CA using Android Enterprise or MDM rather than r
 A typical path is:
 
 ```text
-
 Settings
-
 → Security &amp; privacy
-
 → More security settings
-
 → Encryption &amp; credentials
-
 → Trusted credentials
-
 → User
-
 ```
 
 or:
 
 ```text
-
 Settings
-
 → Security
-
 → Encryption &amp; credentials
-
 → User credentials
-
 ```
 
 Select the CA, verify its name and fingerprint where displayed, and remove it.
@@ -1952,11 +1480,8 @@ Avoid using a broad **Clear credentials** function unless removing every user-in
 For a root CA installed manually from a downloaded or transferred certificate, there are two distinct steps:
 
 ```text
-
 1. Install the certificate profile.
-
 2. Enable full trust for the root certificate.
-
 ```
 
 Completing only the first step is a very common cause of continuing TLS errors.
@@ -1968,17 +1493,13 @@ Apple explicitly states that SSL/TLS trust must be enabled manually for a root c
 Transfer only:
 
 ```text
-
 CA.crt
-
 ```
 
 or:
 
 ```text
-
 CA.cer
-
 ```
 
 Common methods:
@@ -2001,23 +1522,16 @@ The device should indicate that a profile has been downloaded.
 Then open:
 
 ```text
-
 Settings
-
 → General
-
 → VPN &amp; Device Management
-
 ```
 
 A temporary direct entry may also appear as:
 
 ```text
-
 Settings
-
 → Profile Downloaded
-
 ```
 
 Select the downloaded profile.
@@ -2038,23 +1552,16 @@ At this point, the certificate is installed, but manual SSL/TLS trust may still 
 Go to:
 
 ```text
-
 Settings
-
 → General
-
 → About
-
 → Certificate Trust Settings
-
 ```
 
 Under:
 
 ```text
-
 Enable Full Trust for Root Certificates
-
 ```
 
 enable the private CA.
@@ -2066,11 +1573,8 @@ Apple documents this exact second step for manually installed root certificates.
 The final state must be:
 
 ```text
-
 Profile installed: Yes
-
 Full trust enabled: Yes
-
 ```
 
 ## 11.5 Safari on iPhone and iPad
@@ -2127,31 +1631,20 @@ Apple’s deployment documentation distinguishes managed certificate delivery fr
 First disable full trust:
 
 ```text
-
 Settings
-
 → General
-
 → About
-
 → Certificate Trust Settings
-
 ```
 
 Then remove the profile:
 
 ```text
-
 Settings
-
 → General
-
 → VPN &amp; Device Management
-
 → Select profile
-
 → Remove Profile
-
 ```
 
 Enter the device passcode when requested.
@@ -2191,13 +1684,9 @@ Google provides certificate-synchronization controls for managed ChromeOS enviro
 Test these separately:
 
 ```text
-
 Chrome browser on ChromeOS
-
 Android app running on ChromeOS
-
 Linux application running in Crostini
-
 ```
 
 They may use different trust mechanisms.
@@ -2225,11 +1714,8 @@ They may use different trust mechanisms.
 The safest operational rule is:
 
 ```text
-
 Install the CA in the operating-system trust store,
-
 then explicitly test every required browser and application.
-
 ```
 
 Do not assume that success in one browser proves that every browser or native application uses the same trust store.
@@ -2252,19 +1738,12 @@ For larger environments, use centralized deployment.
 A typical domain deployment location is:
 
 ```text
-
 Computer Configuration
-
 → Policies
-
 → Windows Settings
-
 → Security Settings
-
 → Public Key Policies
-
 → Trusted Root Certification Authorities
-
 ```
 
 Import the public CA certificate there.
@@ -2324,21 +1803,13 @@ Confirm whether the CA is available to:
 Example policy:
 
 ```json
-
 {
-
   "policies": {
-
     "Certificates": {
-
       "ImportEnterpriseRoots": true
-
     }
-
   }
-
 }
-
 ```
 
 Where direct certificate installation into Firefox is required, use Mozilla’s supported enterprise certificate policies rather than scripting profile internals.
@@ -2350,15 +1821,10 @@ Where direct certificate installation into Firefox is required, use Mozilla’s 
 ## 15.1 Inspect the certificate served by the HTTPS endpoint
 
 ```bash
-
 openssl s_client \
-
   -connect service.example.internal:443 \
-
   -servername service.example.internal \
-
   -showcerts
-
 ```
 
 The `-servername` argument sends Server Name Indication and is essential when multiple HTTPS names share an endpoint.
@@ -2366,65 +1832,39 @@ The `-servername` argument sends Server Name Indication and is essential when mu
 ## 15.2 Display the received leaf certificate
 
 ```bash
-
 openssl s_client \
-
   -connect service.example.internal:443 \
-
   -servername service.example.internal \
-
   &lt;/dev/null 2&gt;/dev/null |
-
 openssl x509 \
-
   -noout \
-
   -subject \
-
   -issuer \
-
   -serial \
-
   -dates \
-
   -fingerprint \
-
   -sha256 \
-
   -ext subjectAltName \
-
   -ext extendedKeyUsage
-
 ```
 
 Verify:
 
 ```text
-
 Subject: expected service identity
-
 Issuer: expected private CA or intermediate
-
 Validity: current
-
 SAN: exact hostname used in browser
-
 EKU: TLS Web Server Authentication
-
 ```
 
 ## 15.3 Verify with a specific CA without installing it
 
 ```bash
-
 curl \
-
   --cacert CA.crt \
-
   -v \
-
   [https://service.example.internal/](https://service.example.internal/)
-
 ```
 
 This isolates server-certificate correctness from operating-system trust installation.
@@ -2432,11 +1872,8 @@ This isolates server-certificate correctness from operating-system trust install
 Interpretation:
 
 ```text
-
 curl --cacert works
-
 browser fails
-
 ```
 
 Likely causes:
@@ -2450,9 +1887,7 @@ Likely causes:
 If:
 
 ```text
-
 curl --cacert fails
-
 ```
 
 the problem is probably not simply local CA installation. Inspect:
@@ -2470,9 +1905,7 @@ the problem is probably not simply local CA installation. Inspect:
 After installation:
 
 ```bash
-
 curl -v [https://service.example.internal/](https://service.example.internal/)
-
 ```
 
 Do not supply `--cacert`.
@@ -2484,55 +1917,36 @@ Success indicates that `curl` and its TLS backend can locate the root through th
 Direct root issuer:
 
 ```bash
-
 openssl verify \
-
   -CAfile CA.crt \
-
   server.crt
-
 ```
 
 Intermediate issuer:
 
 ```bash
-
 openssl verify \
-
   -CAfile root-CA.crt \
-
   -untrusted intermediate-CA.crt \
-
   server.crt
-
 ```
 
 ## 15.6 Verify hostname matching
 
 ```bash
-
 openssl verify \
-
   -CAfile CA.crt \
-
   -verify_hostname service.example.internal \
-
   server.crt
-
 ```
 
 For an IP address:
 
 ```bash
-
 openssl verify \
-
   -CAfile CA.crt \
-
   -verify_ip 192.168.1.50 \
-
   server.crt
-
 ```
 
 ---
@@ -2564,9 +1978,7 @@ Likely causes:
 Check:
 
 ```text
-
 security.enterprise_roots.enabled
-
 ```
 
 ## 16.3 `NET::ERR_CERT_COMMON_NAME_INVALID`
@@ -2675,23 +2087,16 @@ If the existing CA expires or is replaced abruptly, every certificate issued und
 During the overlap:
 
 ```text
-
 Trusted roots:
-
     Old private root CA
-
     New private root CA
-
 ```
 
 After migration:
 
 ```text
-
 Trusted roots:
-
     New private root CA
-
 ```
 
 ## 17.2 Do not reuse the same subject carelessly
@@ -2701,9 +2106,7 @@ Two root certificates can have the same subject name but different keys.
 For example:
 
 ```text
-
 CN=Example Private Root CA
-
 ```
 
 may exist in both an old and new certificate.
@@ -2724,147 +2127,90 @@ Do not identify a root only by its display name.
 ## Certificate preparation
 
 ```text
-
 [ ] CA.crt contains only the public root certificate
-
 [ ] No private key is included
-
 [ ] Basic Constraints contains CA:TRUE
-
 [ ] Key Usage permits Certificate Sign
-
 [ ] SHA-256 fingerprint has been recorded
-
 [ ] PEM and DER versions have matching fingerprints
-
 [ ] CA validity period has been checked
-
 ```
 
 ## Server-certificate preparation
 
 ```text
-
 [ ] Server certificate is currently valid
-
 [ ] Exact browser hostname appears in subjectAltName
-
 [ ] IP access uses an IP SAN when applicable
-
 [ ] Extended Key Usage permits TLS Web Server Authentication
-
 [ ] Server sends required intermediate certificates
-
 [ ] Server does not depend on cached intermediates
-
 [ ] Chain order is leaf followed by intermediate
-
 ```
 
 ## Windows
 
 ```text
-
 [ ] CA installed in Trusted Root Certification Authorities
-
 [ ] Correct machine or user scope selected
-
 [ ] Fingerprint verified after installation
-
 [ ] Chrome restarted and tested
-
 [ ] Edge restarted and tested
-
 [ ] Firefox enterprise roots or direct import tested
-
 ```
 
 ## macOS
 
 ```text
-
 [ ] CA installed in System keychain
-
 [ ] Trust configured appropriately
-
 [ ] Fingerprint verified
-
 [ ] Safari tested
-
 [ ] Chrome/Edge tested
-
 [ ] Firefox tested separately
-
 ```
 
 ## Linux
 
 ```text
-
 [ ] CA installed in distribution trust directory
-
 [ ] Trust-update command executed
-
 [ ] curl/OpenSSL tested
-
 [ ] Chrome or Chromium tested
-
 [ ] Firefox tested separately
-
 [ ] Snap/Flatpak packaging considered
-
 ```
 
 ## Android
 
 ```text
-
 [ ] CA installed specifically as a CA certificate
-
 [ ] User or work-profile scope understood
-
 [ ] Chrome tested
-
 [ ] Other required browsers tested separately
-
 [ ] Native applications tested separately
-
 [ ] Certificate pinning considered
-
 ```
 
 ## iPhone and iPad
 
 ```text
-
 [ ] Certificate profile installed
-
 [ ] Full trust enabled separately
-
 [ ] Safari restarted and tested
-
 [ ] Other required browsers tested
-
 [ ] Profile removal procedure documented
-
 ```
 
 ## Managed deployment
 
 ```text
-
 [ ] Central deployment mechanism selected
-
 [ ] Device targeting documented
-
 [ ] Fingerprint verified in deployment package
-
 [ ] Removal policy defined
-
 [ ] CA rollover procedure defined
-
 [ ] Lost or retired device process defined
-
 ```
 
 ---
@@ -2874,63 +2220,36 @@ Do not identify a root only by its display name.
 Successful private-CA browser trust requires all of the following:
 
 ```text
-
 1. The correct public root CA is installed in the effective trust store.
-
 2. The server sends a valid leaf certificate.
-
 3. The server sends every required intermediate certificate.
-
 4. The hostname matches a SAN in the leaf certificate.
-
 5. The certificate is valid at the client’s current date and time.
-
 6. The certificate permits TLS server authentication.
-
 7. The browser or application accepts the selected trust store.
-
 8. No application-level certificate pinning rejects the chain.
-
 ```
 
 The most important platform-specific points are:
 
 ```text
-
 Windows:
-
 Install into Trusted Root Certification Authorities, preferably
-
 at Local Computer scope.
-
 Firefox:
-
 Verify operating-system enterprise-root integration or import
-
 the CA explicitly.
-
 macOS:
-
 Install into the System keychain and set the required trust policy.
-
 Linux:
-
 Update the operating-system trust store, but test Firefox and
-
 sandboxed browser packages separately.
-
 Android:
-
 Install as a CA certificate, but do not assume native applications
-
 trust user-added CAs.
-
 iPhone and iPad:
-
 Install the profile and then separately enable Full Trust under
-
 Certificate Trust Settings.
-
 ```
 
 A certificate warning should never be bypassed merely by clicking through it. The correct solution is to establish a valid certificate chain, install the intended trust anchor through a controlled process, and verify the certificate identity and fingerprint on every target platform.
