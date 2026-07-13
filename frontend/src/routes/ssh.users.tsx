@@ -272,7 +272,7 @@ function relativeExpiry(iso: string): { text: string; tone: string } {
   const text = ms >= 0 ? `in ${label}` : `${label} ago`;
   let tone = 'text-muted-foreground';
   if (ms >= 0 && ms < day) tone = 'text-red-600 dark:text-red-400';
-  else if (ms >= 0 && ms < 7 * day) tone = 'text-amber-600 dark:text-amber-400';
+  else if (ms >= 0 && ms < 7 * day) tone = 'text-amber-700 dark:text-amber-400';
   return { text, tone };
 }
 

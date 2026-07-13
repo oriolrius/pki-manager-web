@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/*
+ * Bind the `dark:` variant to the `.dark` CLASS that ThemeProvider toggles,
+ * instead of Tailwind v4's default `@media (prefers-color-scheme: dark)`.
+ * Without this, `dark:*` utilities follow the OS setting while our CSS-variable
+ * tokens follow the app theme class — so an OS-dark user who picks the light
+ * theme gets dark-mode text colours on light backgrounds (unreadable), and
+ * vice-versa. Keying both off `.dark` keeps the whole UI consistent.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Light mode colors - Vibrant Orange Scheme */
   --color-background: oklch(100% 0 0);
