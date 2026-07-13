@@ -26,3 +26,14 @@ export function userIdentityPath(algo: SshKeyType): string {
 export function certAuthorityLine(hostCaKey: string, pattern: string): string {
   return `@cert-authority ${pattern} ${hostCaKey.trim()}`;
 }
+
+/**
+ * Infer the subject key type from a signed certificate blob (its first token,
+ * e.g. `ecdsa-sha2-nistp256-cert-v01@openssh.com`). Lets the users list rebuild
+ * the delivery bundle without the backend re-sending the key type. Defaults to
+ * ed25519 for anything unrecognised.
+ */
+export function keyTypeFromCertOpenssh(certOpenssh: string): SshKeyType {
+  const kind = certOpenssh.trim().split(/\s+/)[0] ?? '';
+  return kind.startsWith('ecdsa-sha2-nistp256') ? 'ecdsa-sha2-nistp256' : 'ssh-ed25519';
+}

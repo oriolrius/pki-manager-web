@@ -1,10 +1,29 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
+import { createPortal } from 'react-dom';
 import { trpc } from '@/lib/trpc';
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff, Download, X } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
+import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
+import { keyTypeFromCertOpenssh } from '@/lib/ssh';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
 import { useToast, useConfirm, Combobox, SearchInput } from '@/components/ui';
+
+/** A row from ssh.user.listCertificates (service returns loosely-typed rows). */
+type CertRow = {
+  id: string;
+  serial: string;
+  keyId: string;
+  principals: string[];
+  extensions?: string[];
+  criticalOptions?: Record<string, unknown>;
+  status: string;
+  validAfter: string;
+  validBefore: string;
+  certOpenssh?: string;
+  revocationReason?: string | null;
+  revocationDate?: string | null;
+};
 
 export const Route = createFileRoute('/ssh/users')({
   component: SshUsers,
@@ -283,6 +302,9 @@ function IdentityCard({
   // Certificate table: reveal first 3, "Show more" expands the rest (already fetched).
   const [showAllCerts, setShowAllCerts] = useState(false);
   const [copiedSerial, setCopiedSerial] = useState<string | null>(null);
+  // The cert whose full delivery hand-off ("Send to the user") is shown in the modal.
+  const [detailCert, setDetailCert] = useState<CertRow | null>(null);
+  const trustAnchorsQuery = trpc.ssh.ca.trustAnchors.useQuery(undefined, { enabled: open });
   const revokeCertMutation = trpc.ssh.user.revoke.useMutation();
   const visibleCerts = showAllCerts ? certs : certs.slice(0, 3);
   const handleRevokeCert = async (certId: string, serial: string) => {
@@ -309,6 +331,19 @@ function IdentityCard({
     navigator.clipboard?.writeText(s);
     setCopiedSerial(s);
     setTimeout(() => setCopiedSerial((cur) => (cur === s ? null : cur)), 1200);
+  };
+  // Download the verbatim signed certificate (the *-cert.pub the user got at issue time).
+  const downloadCert = (c: { serial: string; certOpenssh?: string }) => {
+    if (!c.certOpenssh) return;
+    const body = c.certOpenssh.endsWith('\n') ? c.certOpenssh : c.certOpenssh + '\n';
+    const url = URL.createObjectURL(new Blob([body], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${identity.subject}-${c.serial}-cert.pub`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // BLK-09: "Blocked on:" host pills + pre-emptive "Block on host…" select.
@@ -547,32 +582,24 @@ function IdentityCard({
                           </td>
                           <td className="py-1.5">
                             <div className="flex items-center justify-end gap-2">
-                              <InfoTip label="Certificate options" placement="left">
-                                <div className="space-y-1">
-                                  <div className="font-medium">Extensions</div>
-                                  {c.extensions?.length ? (
-                                    <ul className="list-disc pl-4">
-                                      {c.extensions.map((e: string) => (
-                                        <li key={e}>{e}</li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <div className="text-muted-foreground">none</div>
-                                  )}
-                                  {Object.keys(c.criticalOptions ?? {}).length > 0 && (
-                                    <>
-                                      <div className="font-medium pt-1">Critical options</div>
-                                      <ul className="list-disc pl-4">
-                                        {Object.entries(c.criticalOptions).map(([k, v]) => (
-                                          <li key={k}>
-                                            {k}: {String(v)}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </>
-                                  )}
-                                </div>
-                              </InfoTip>
+                              <button
+                                onClick={() => setDetailCert(c)}
+                                title="Certificate details & delivery"
+                                aria-label="Certificate details and delivery"
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </button>
+                              {c.certOpenssh && (
+                                <button
+                                  onClick={() => downloadCert(c)}
+                                  title="Download signed certificate (*-cert.pub)"
+                                  aria-label="Download signed certificate"
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => copySerial(c.serial)}
                                 title="Copy serial"
@@ -618,6 +645,116 @@ function IdentityCard({
           </div>
         </div>
       )}
+      {detailCert &&
+        createPortal(
+          <CertDetailModal
+            cert={detailCert}
+            subject={identity.subject}
+            hostCaKeys={trustAnchorsQuery.data?.hostCaKeys ?? []}
+            onClose={() => setDetailCert(null)}
+          />,
+          document.body
+        )}
+    </div>
+  );
+}
+
+/**
+ * Full-screen hand-off for one issued certificate: the cert's details plus the
+ * exact "Send to the user" delivery blocks the issuer saw at issue time.
+ */
+function CertDetailModal({
+  cert,
+  subject,
+  hostCaKeys,
+  onClose,
+}: {
+  cert: CertRow;
+  subject: string;
+  hostCaKeys: string[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const critical = Object.entries(cert.criticalOptions ?? {});
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto p-4 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Certificate ${cert.serial}`}
+    >
+      <div className="animate-fade-in fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="animate-dialog-in relative z-10 my-auto w-full max-w-3xl space-y-6 rounded-lg border bg-card p-6 shadow-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">
+              Certificate <span className="font-mono">#{cert.serial}</span>
+            </h2>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>
+                Issued to <strong className="text-foreground">{subject}</strong>
+              </span>
+              <StatusPill status={effectiveStatus(cert)} />
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-muted-foreground">Key ID</dt>
+            <dd className="font-mono break-all">{cert.keyId}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-muted-foreground">Principals</dt>
+            <dd className="font-mono">{cert.principals?.join(', ') || '—'}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-muted-foreground">Valid from</dt>
+            <dd>{new Date(cert.validAfter).toLocaleString()}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-muted-foreground">Valid to</dt>
+            <dd>{new Date(cert.validBefore).toLocaleString()}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-24 shrink-0 text-muted-foreground">Extensions</dt>
+            <dd>{cert.extensions?.length ? cert.extensions.join(', ') : '—'}</dd>
+          </div>
+          {critical.length > 0 && (
+            <div className="flex gap-2">
+              <dt className="w-24 shrink-0 text-muted-foreground">Critical opts</dt>
+              <dd className="font-mono">{critical.map(([k, v]) => `${k}: ${String(v)}`).join(', ')}</dd>
+            </div>
+          )}
+        </dl>
+
+        {cert.certOpenssh ? (
+          <CertDeliveryPanel
+            certOpenssh={cert.certOpenssh}
+            keyType={keyTypeFromCertOpenssh(cert.certOpenssh)}
+            hostCaKeys={hostCaKeys}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            The signed certificate blob is unavailable for this record.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
