@@ -95,11 +95,14 @@ jobs:
           output-file: krl-client/dist/krl-client-linux-amd64.spdx.json
           upload-artifact: false
 
-      - name: Create GitHub Release
+      # Attach the signed binary to the release. release.yml owns the release
+      # title + notes, so this step sets neither name nor generate_release_notes
+      # (which would otherwise clobber/duplicate them); softprops updates the
+      # existing release, adding only these asset files.
+      - name: Attach krl-client binary to the release
         uses: softprops/action-gh-release@v2
         with:
           fail_on_unmatched_files: true
-          generate_release_notes: true
           files: |
             krl-client/dist/krl-client-linux-amd64
             krl-client/dist/checksums.txt
