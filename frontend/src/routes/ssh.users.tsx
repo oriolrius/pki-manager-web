@@ -274,7 +274,11 @@ function IdentityCard({
     { identityId: identity.id },
     { enabled: open }
   );
-  const certs = certsQuery.data ?? [];
+  // Newest first: serials are monotonic uint64s (stored as TEXT), so sort as
+  // BigInt descending — a string sort would misorder across digit-count boundaries.
+  const certs = [...(certsQuery.data ?? [])].sort((a, b) =>
+    BigInt(b.serial) > BigInt(a.serial) ? 1 : BigInt(b.serial) < BigInt(a.serial) ? -1 : 0
+  );
 
   // Certificate table: reveal first 3, "Show more" expands the rest (already fetched).
   const [showAllCerts, setShowAllCerts] = useState(false);
