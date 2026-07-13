@@ -7,16 +7,9 @@ import {
   defaultCapabilityValue,
   type SshCapabilityValue,
 } from '@/components/SshCapabilityEditor';
-import { DeployPanel } from '@/components/DeployPanel';
-import { ConfigSnippet } from '@/components/ConfigSnippet';
+import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
 import { useToast } from '@/components/ui';
-import {
-  type SshKeyType,
-  keyTypeToken,
-  userCertFilename,
-  userIdentityPath,
-  certAuthorityLine,
-} from '@/lib/ssh';
+import { type SshKeyType } from '@/lib/ssh';
 
 export const Route = createFileRoute('/ssh/users/new')({
   component: IssueUserCert,
@@ -37,7 +30,6 @@ function IssueUserCert() {
   const [cap, setCap] = useState<SshCapabilityValue>(defaultCapabilityValue());
   const [result, setResult] = useState<{
     certOpenssh: string;
-    sshClientConfig: string;
     serial: string;
     keyType: SshKeyType;
     validBefore: string;
@@ -77,7 +69,6 @@ function IssueUserCert() {
           utils.ssh.user.listCertificates.invalidate();
           setResult({
             certOpenssh: res.cert.certOpenssh,
-            sshClientConfig: res.sshClientConfig,
             serial: res.cert.serial,
             keyType: res.keyType,
             validBefore: res.cert.validBefore,
@@ -90,24 +81,7 @@ function IssueUserCert() {
   };
 
   if (result) {
-    const certFile = userCertFilename(result.keyType);
-    const idPath = userIdentityPath(result.keyType);
-    const token = keyTypeToken(result.keyType);
-    const caLine = (trustAnchorsQuery.data?.hostCaKeys ?? []).map((k) => certAuthorityLine(k, '*')).join('\n');
     const expires = new Date(result.validBefore);
-    const commands = [
-      "# 1. (If you don't already have a key) generate one:",
-      `ssh-keygen -t ${token} -f ${idPath}`,
-      '',
-      '# 2. Save the certificate above next to your private key:',
-      `#    ${idPath}-cert.pub   (chmod 644)`,
-      '',
-      '# 3. Verify what it grants (principals, expiry, options):',
-      `ssh-keygen -L -f ${idPath}-cert.pub`,
-      '',
-      '# 4. Log in as the account that maps to one of your principals:',
-      'ssh <account>@<host>',
-    ].join('\n');
 
     return (
       <div className="space-y-6 max-w-3xl">
@@ -124,44 +98,11 @@ function IssueUserCert() {
           (≈1 week — re-issue then, no new key needed). This certificate can log in only where one of its principals is
           mapped to a local account. Deliver the blocks below to the user out-of-band.
         </div>
-        <DeployPanel
-          title="Send to the user"
-          description="Each block is copy-paste. The certificate filename already matches the user's key type."
-        >
-          <ConfigSnippet
-            title="1. SSH certificate"
-            description={`Save next to the private key as ${certFile} (chmod 644). ssh then presents it automatically.`}
-            content={result.certOpenssh}
-            downloadFilename={certFile}
-            badge="cert"
-          />
-          <ConfigSnippet
-            title="2. ~/.ssh/config (optional)"
-            description="Narrow the Host pattern to your fleet instead of * so unrelated sessions are unaffected."
-            content={result.sshClientConfig}
-            downloadFilename="ssh_config"
-            badge="ssh_config"
-          />
-          {caLine ? (
-            <ConfigSnippet
-              title="3. Trust the servers' Host CA (known_hosts)"
-              description="Add to ~/.ssh/known_hosts so host-key warnings stop. Narrow * to your host pattern."
-              content={caLine}
-              downloadFilename="known_hosts_cert_authority"
-              badge="known_hosts"
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              No Host CA published yet — create a Host CA so clients can verify servers without host-key warnings.
-            </p>
-          )}
-          <ConfigSnippet
-            title="4. Use &amp; verify"
-            description="Generate a key if needed, verify the certificate, then log in."
-            content={commands}
-            badge="shell"
-          />
-        </DeployPanel>
+        <CertDeliveryPanel
+          certOpenssh={result.certOpenssh}
+          keyType={result.keyType}
+          hostCaKeys={trustAnchorsQuery.data?.hostCaKeys ?? []}
+        />
         <button
           onClick={() => {
             setResult(null);

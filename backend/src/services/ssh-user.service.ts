@@ -195,7 +195,9 @@ export class SshUserService {
       extensions: r.extensions ? JSON.parse(r.extensions) : [],
       criticalOptions: r.criticalOptions ? JSON.parse(r.criticalOptions) : {},
       status: r.status,
+      validAfter: new Date(r.validAfter).toISOString(),
       validBefore: new Date(r.validBefore).toISOString(),
+      certOpenssh: r.certOpenssh,
       revocationReason: r.revocationReason ?? null,
       revocationDate: r.revocationDate ? new Date(r.revocationDate).toISOString() : null,
     }));

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Copy, Check, Download } from 'lucide-react';
+import { highlightCode, type CodeLanguage } from '@/lib/highlight';
 
 export interface ConfigSnippetProps {
   /** Heading shown above the block. */
@@ -12,13 +13,34 @@ export interface ConfigSnippetProps {
   downloadFilename?: string;
   /** Optional language/format hint chip (e.g. "sshd_config"). */
   badge?: string;
+  /** Marks the block required/optional with a coloured pill + accent stripe. */
+  requirement?: 'required' | 'optional';
+  /** Enables lightweight syntax highlighting of the block contents. */
+  language?: CodeLanguage;
 }
 
 /**
  * Titled monospace config block with a copy button (transient Copy/Check state)
  * and an optional "download as file" button. Used across the SSH deploy panels.
  */
-export function ConfigSnippet({ title, description, content, downloadFilename, badge }: ConfigSnippetProps) {
+const REQUIREMENT_PILL: Record<'required' | 'optional', string> = {
+  required: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  optional: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+};
+const REQUIREMENT_ACCENT: Record<'required' | 'optional', string> = {
+  required: 'border-l-4 border-l-emerald-500/70',
+  optional: 'border-l-4 border-l-amber-500/60',
+};
+
+export function ConfigSnippet({
+  title,
+  description,
+  content,
+  downloadFilename,
+  badge,
+  requirement,
+  language,
+}: ConfigSnippetProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -51,6 +73,13 @@ export function ConfigSnippet({ title, description, content, downloadFilename, b
             {title && (
               <div className="flex items-center gap-2">
                 <h4 className="text-sm font-medium">{title}</h4>
+                {requirement && (
+                  <span
+                    className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${REQUIREMENT_PILL[requirement]}`}
+                  >
+                    {requirement}
+                  </span>
+                )}
                 {badge && (
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                     {badge}
@@ -63,8 +92,12 @@ export function ConfigSnippet({ title, description, content, downloadFilename, b
         </div>
       )}
       <div className="relative group">
-        <pre className="text-xs font-mono bg-muted/50 border rounded-md p-3 pr-20 overflow-x-auto whitespace-pre-wrap break-all">
-          <code>{content}</code>
+        <pre
+          className={`text-xs font-mono bg-muted/50 border rounded-md p-3 pr-20 overflow-x-auto whitespace-pre-wrap break-all ${
+            requirement ? REQUIREMENT_ACCENT[requirement] : ''
+          }`}
+        >
+          <code>{language ? highlightCode(content, language) : content}</code>
         </pre>
         <div className="absolute top-2 right-2 flex items-center gap-1">
           {downloadFilename && (
