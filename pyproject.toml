@@ -7,4 +7,4 @@ version_files = [
     "frontend/package.json:version",
     "backend/package.json:version"
 ]
-update_changelog_on_bump = false
+update_changelog_on_bump = true
