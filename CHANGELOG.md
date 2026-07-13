@@ -1,10 +1,11 @@
 ## v3.9.3 (2026-07-13)
 
-**SSH certificate UX & revocation modernisation.** Adds a certificate
-details/delivery view on the SSH Users page, brings the host deploy panel up to
-date (syntax-highlighted config blocks and signed ECIES revocation in place of
-the obsolete unsigned-KRL cron), and fixes a theme bug that made several boxes
-unreadable in light mode.
+**SSH certificate UX & revocation modernisation**
+
+Adds a certificate details/delivery view on the SSH Users page, brings the host
+deploy panel up to date (syntax-highlighted config blocks and signed ECIES
+revocation in place of the obsolete unsigned-KRL cron), and fixes a theme bug
+that made several boxes unreadable in light mode.
 
 ### Feat
 
