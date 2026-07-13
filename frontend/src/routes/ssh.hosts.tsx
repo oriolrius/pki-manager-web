@@ -104,7 +104,7 @@ function SshHosts() {
                     </td>
                     <td className="px-4 py-3 text-sm">
                       {h.currentCertId ? (
-                        <span className="text-green-600">Active</span>
+                        <span className="text-green-700 dark:text-green-400">Active</span>
                       ) : (
                         <span className="text-muted-foreground">None</span>
                       )}

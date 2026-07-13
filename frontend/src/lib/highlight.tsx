@@ -12,12 +12,15 @@ import type { ReactNode } from 'react';
  */
 export type CodeLanguage = 'shell' | 'ssh_config' | 'blob';
 
+// Light-mode shades are -700 so they clear WCAG AA on the near-white code-block
+// background; dark mode keeps the lighter -400 shades. (emerald/amber/fuchsia -600
+// fail AA on that background — see the SSH light-theme contrast audit.)
 const COLOR = {
-  comment: 'text-emerald-600 dark:text-emerald-400',
+  comment: 'text-emerald-700 dark:text-emerald-400',
   keyword: 'text-sky-700 dark:text-sky-400',
-  flag: 'text-amber-600 dark:text-amber-400',
-  placeholder: 'text-violet-600 dark:text-violet-400',
-  marker: 'text-fuchsia-600 dark:text-fuchsia-400',
+  flag: 'text-amber-700 dark:text-amber-400',
+  placeholder: 'text-violet-700 dark:text-violet-400',
+  marker: 'text-fuchsia-700 dark:text-fuchsia-400',
   muted: 'text-muted-foreground',
 } as const;
 
