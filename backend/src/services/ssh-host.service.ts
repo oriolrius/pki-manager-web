@@ -269,14 +269,26 @@ export class SshHostService {
 
     const krl = userCaId
       ? {
-          url: `/krl/${userCaId}.bin`,
+          // Modern channel: the composed, Host-CA-signed per-host KRL, verified
+          // before install by krl-client — not the legacy unsigned /krl/<caId>.bin.
+          url: '/api/v1/external/ssh/krl',
           setup: [
-            '# RevokedKeys lists revoked USER certificates (the User CA KRL).',
-            '# It must exist or sshd refuses to start — create it once:',
+            '# sshd refuses to start unless RevokedKeys exists. A default host ships a',
+            '# fail-closed EMPTY placeholder — create it once:',
             `sudo install -m 0444 /dev/null ${REVOKED_KEYS_PATH}`,
             '',
-            '# Keep it fresh (cron, every 15 min) — replace YOUR-PKI-HOST:',
-            `*/15 * * * * root curl -fsS -o ${REVOKED_KEYS_PATH}.new "https://YOUR-PKI-HOST/krl/${userCaId}.bin" && chmod 0444 ${REVOKED_KEYS_PATH}.new && mv -f ${REVOKED_KEYS_PATH}.new ${REVOKED_KEYS_PATH}`,
+            '# Live revocation AND per-host access blocks are delivered by the signed',
+            '# ECIES krl-client channel — do NOT cron-curl a raw KRL. krl-client pulls',
+            '# the composed, Host-CA-signed per-host KRL, verifies its signature against',
+            `# ${HOST_CA_PATH}, then installs it to ${REVOKED_KEYS_PATH}:`,
+            '#   POST /api/v1/external/ssh/krl',
+            '#',
+            '# Recommended: enable it with the Ansible ssh_host_cert role —',
+            '#   ssh_host_cert_ecies_enabled: true',
+            '#   ssh_host_cert_krl_client_url: https://…/krl-client-linux-amd64',
+            '#   ssh_host_cert_krl_client_checksum: "sha256:<hex>"',
+            '# (backend requires SSH_ECIES_ENABLED=true). sshd re-reads RevokedKeys on',
+            '# every auth, so no reload is needed once a KRL lands.',
             '',
           ].join('\n'),
         }

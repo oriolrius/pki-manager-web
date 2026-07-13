@@ -5,6 +5,15 @@ import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { HostAccessCard } from '@/components/ssh/HostAccessCard';
 import { useToast, useConfirm } from '@/components/ui';
+import type { CodeLanguage } from '@/lib/highlight';
+
+/** Pick syntax highlighting for a host deploy file by its name/filename. */
+function fileLanguage(f: { name: string; filename: string; isAuthPrincipals?: boolean }): CodeLanguage | undefined {
+  if (f.isAuthPrincipals) return undefined; // plain list of usernames
+  if (f.filename.endsWith('.pub')) return 'blob'; // host cert / CA public keys
+  if (/sshd|drop-in|config/i.test(f.name)) return 'ssh_config';
+  return undefined;
+}
 
 export const Route = createFileRoute('/ssh/hosts/$id')({
   component: SshHostDetail,
@@ -218,15 +227,17 @@ function SshHostDetail() {
               content={f.content}
               downloadFilename={f.filename}
               badge={f.mode}
+              language={fileLanguage(f)}
             />
           ))}
 
           {bundle.krl && (
             <ConfigSnippet
-              title="Keep revocations fresh (RevokedKeys)"
-              description="Create the file once, then refresh it on a schedule. Replace YOUR-PKI-HOST with your PKI Manager URL."
+              title="Revocation (RevokedKeys)"
+              description="sshd needs this file to exist (fail-closed). Live revocation and per-host blocks land via the signed ECIES krl-client channel — set it up with the Ansible role, not a raw KRL fetch."
               content={bundle.krl.setup}
-              badge="cron"
+              badge="shell"
+              language="shell"
             />
           )}
 
@@ -235,6 +246,7 @@ function SshHostDetail() {
             description="Run after placing the files. Reload (not restart) — OpenSSH re-reads the cert, trust anchors, and KRL per authentication."
             content={bundle.reloadCommands}
             badge="shell"
+            language="shell"
           />
         </DeployPanel>
       )}

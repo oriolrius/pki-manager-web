@@ -32,6 +32,7 @@ const isBase64Blob = (t: string) => /^[A-Za-z0-9+/]{20,}={0,2}$/.test(t);
 const isKeyAlgo = (t: string) => /^(ssh-|ecdsa-|rsa-|sk-)/.test(t);
 
 const SSH_CONFIG_KEYWORDS = new Set([
+  // ssh_config (client)
   'Host',
   'HostName',
   'User',
@@ -41,6 +42,14 @@ const SSH_CONFIG_KEYWORDS = new Set([
   'IdentitiesOnly',
   'ProxyJump',
   'ForwardAgent',
+  // sshd_config (server) — the host deploy drop-in
+  'HostKey',
+  'HostCertificate',
+  'TrustedUserCAKeys',
+  'AuthorizedPrincipalsFile',
+  'RevokedKeys',
+  'AuthorizedKeysFile',
+  'Match',
 ]);
 
 function span(cls: string, text: string, key: string): ReactNode {
@@ -68,6 +77,7 @@ function shellLine(line: string, base: string): ReactNode {
 }
 
 function sshConfigLine(line: string, base: string): ReactNode {
+  if (line.trimStart().startsWith('#')) return span(`${COLOR.comment} italic`, line, base);
   let seenKeyword = false;
   return tokenize(line).map((tok, i) => {
     const key = `${base}-${i}`;
