@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ANS-10: dockerized ssh_host_cert e2e (containers-as-hosts).
 #
-# One command: stands up backend+KMS, applies the role to a public-cron
-# (ed25519) host and an ecies (ecdsa) host, asserts idempotence, then drives
+# One command: stands up backend+KMS, applies the role to a public-cron host
+# and an ecies host (both ecdsa — host keys are ecdsa-sha2-nistp256 only), asserts
+# idempotence, then drives
 # real ssh from a client container — cert login with no TOFU, principal RBAC,
 # and per-host revocation narrowing on BOTH KRL channels.
 #
@@ -80,7 +81,7 @@ echo "    public=$FQDN_PUBLIC  ecies=$FQDN_ECIES"
 
 echo "==> seeding backend (CAs, fleet token, principal map, user certs)"
 python3 seed.py bootstrap --base "$BASE" \
-  --host "${FQDN_PUBLIC}:ed25519" --host "${FQDN_ECIES}:ecdsa" \
+  --host "${FQDN_PUBLIC}:ecdsa" --host "${FQDN_ECIES}:ecdsa" \
   > _artifacts/bootstrap.json || fail "seed bootstrap"
 TOKEN=$(python3 -c 'import json;print(json.load(open("_artifacts/state.json"))["token"])')
 [ -n "$TOKEN" ] || fail "no fleet token from seed"
@@ -97,7 +98,7 @@ ID_ECIES=$($DC ps -q host_ecies)
 echo "==> writing inventory"
 cat > inventory.ini <<EOF
 [managed]
-host_public ansible_host=${ID_PUBLIC} ssh_host_cert_ecies_enabled=false ssh_host_cert_krl_cron_enabled=true ssh_host_cert_krl_fetch_url=${BASE}/krl/hosts/${FQDN_PUBLIC}.bin ssh_host_cert_known_hosts_enabled=true ssh_host_cert_x509_ca_trust_enabled=true ssh_host_cert_x509_crl_cron_enabled=true ssh_host_cert_x509_ca_id=${X509_CA}
+host_public ansible_host=${ID_PUBLIC} ssh_host_cert_ecies_enabled=false ssh_host_cert_key_type=ecdsa ssh_host_cert_krl_cron_enabled=true ssh_host_cert_krl_fetch_url=${BASE}/krl/hosts/${FQDN_PUBLIC}.bin ssh_host_cert_known_hosts_enabled=true ssh_host_cert_x509_ca_trust_enabled=true ssh_host_cert_x509_crl_cron_enabled=true ssh_host_cert_x509_ca_id=${X509_CA}
 host_ecies  ansible_host=${ID_ECIES} ssh_host_cert_ecies_enabled=true
 
 [managed:vars]
