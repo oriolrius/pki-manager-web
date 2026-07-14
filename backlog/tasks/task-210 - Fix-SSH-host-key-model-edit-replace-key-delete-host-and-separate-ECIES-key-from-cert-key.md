@@ -3,9 +3,11 @@ id: TASK-210
 title: >-
   Fix SSH host key model: edit/replace key, delete host, and separate ECIES key
   from cert key
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-14 05:15'
+updated_date: '2026-07-14 05:16'
 labels: []
 dependencies: []
 ordinal: 37014
@@ -24,3 +26,18 @@ The register-host UI hardcodes ed25519 guidance, but ECIES KRL distribution (def
 - [ ] #3 A pending host with no issued certificate can be deleted through the UI/API, freeing its FQDN
 - [ ] #4 The register form guides the user to the correct key type and warns when ECIES KRL would not work
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Schema: add nullable ecies_pubkey to ssh_hosts; drizzle generate+migrate.
+2. Service: register() accepts optional eciesPubkey; add updateHostKey (pending-only), setEciesKey (ecdsa P-256), deleteHost (pending/no-cert/no-blocks/no-krls); resolveEciesKey helper (eciesPubkey || opensshHostPubkey-if-ecdsa). Audit rows for each.
+3. DTO: add hasEciesKey + eciesReady.
+4. Zod: updateHostKeySchema, setEciesKeySchema; registerHostSchema += eciesPubkey?.
+5. tRPC hostRouter: updateKey, setEciesKey, delete.
+6. REST: PUT /hosts/:id/key, PUT /hosts/:id/ecies-key, DELETE /hosts/:id; POST /hosts passes eciesPubkey.
+7. External /krl: encrypt to resolveEciesKey(host) not raw opensshHostPubkey.
+8. Frontend register form: correct copy, optional ECIES key field, inline warning when no ecdsa key.
+9. Frontend host detail: Replace key (pending), Set ECIES key, Delete (pending) actions.
+10. Tests for service methods + ECIES resolution; typecheck both workspaces.
+<!-- SECTION:PLAN:END -->
