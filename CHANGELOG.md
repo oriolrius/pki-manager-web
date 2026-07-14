@@ -1,3 +1,19 @@
+## v3.9.4 (2026-07-14)
+
+**Require ECDSA host keys for SSH**
+
+SSH host keys must now be `ecdsa-sha2-nistp256` — a single key that serves as both
+the certificate subject and the ECIES recipient for encrypted KRL distribution (an
+ed25519 signing key cannot do ECDH key agreement, so it can never receive an
+encrypted KRL). Host registration and the fleet `sign-host` path reject non-P256
+keys with an actionable message, and the register form now guides you to
+`/etc/ssh/ssh_host_ecdsa_key.pub` — so a host can no longer be registered in a
+state where it silently can't receive its revocation list.
+
+### Fix
+
+- **ssh**: require ecdsa-sha2-nistp256 host keys, fix register-form guidance
+
 ## v3.9.3 (2026-07-13)
 
 **SSH certificate UX & revocation modernisation**
