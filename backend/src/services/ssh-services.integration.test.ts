@@ -78,7 +78,7 @@ describe.skipIf(!KMS)('SSH services integration (SSH-10..14)', () => {
   });
 
   it('registers a host and issues a host cert validated by ssh-keygen -L', async () => {
-    keygen(['-t', 'ed25519', '-f', join(work, 'host'), '-N', '', '-q']);
+    keygen(['-t', 'ecdsa', '-b', '256', '-f', join(work, 'host'), '-N', '', '-q']);
     const host = await getSshHostService().register(ctx, {
       fqdn: 'server.lab.local',
       addresses: ['10.0.0.5'],

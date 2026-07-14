@@ -63,7 +63,7 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
 
   it('offboards a host in one action: revokes its cert, removes maps, sets offboarded', async () => {
     await getSshCaService().create(ctx, { caType: 'host' });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'h'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'h'), '-N', '', '-q']);
     const host = await getSshHostService().register(ctx, { fqdn: 'off.lab.local', addresses: ['10.0.0.40'], opensshHostPubkey: readFileSync(join(work, 'h.pub'), 'utf8') });
     const issued = await getSshHostService().issue(ctx, { hostId: host.id });
 

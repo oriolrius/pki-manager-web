@@ -89,7 +89,7 @@ describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
   async function startSshd(name: string, port: number, opts: { authorizedKeys?: string } = {}): Promise<{ dir: string; host: any }> {
     const dir = join(work, name);
     mkdirSync(dir, { recursive: true });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(dir, 'hostkey'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(dir, 'hostkey'), '-N', '', '-q']);
     const host = await getSshHostService().register(ctx, { fqdn: `${name}.e2e`, addresses: ['127.0.0.1'], opensshHostPubkey: readFileSync(join(dir, 'hostkey.pub'), 'utf8') });
     const issued = await getSshHostService().issue(ctx, { hostId: host.id });
     writeFileSync(join(dir, 'hostkey-cert.pub'), issued.cert.certOpenssh);
@@ -179,7 +179,7 @@ describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
     // Revoked host cert: a dummy host's cert, revoked, must survive composition.
     const wDir = join(work, 'w');
     mkdirSync(wDir, { recursive: true });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(wDir, 'hostkey'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(wDir, 'hostkey'), '-N', '', '-q']);
     const w = await getSshHostService().register(ctx, { fqdn: 'w.e2e', addresses: [], opensshHostPubkey: readFileSync(join(wDir, 'hostkey.pub'), 'utf8') });
     const wIssued = await getSshHostService().issue(ctx, { hostId: w.id });
     writeFileSync(join(wDir, 'hostkey-cert.pub'), wIssued.cert.certOpenssh);
