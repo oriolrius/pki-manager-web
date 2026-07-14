@@ -31,6 +31,19 @@ export class SshHostError extends Error {
   }
 }
 
+/** The one host key algorithm the manager accepts (cert subject AND ECIES recipient). */
+export const HOST_KEY_ALGORITHM = 'ecdsa-sha2-nistp256' as const;
+
+/** Reject any non-P256 host key with an actionable message. */
+export function assertEcdsaHostKey(algo: SshKeyAlgo): void {
+  if (algo !== HOST_KEY_ALGORITHM) {
+    throw new SshHostError(
+      `SSH host keys must be ${HOST_KEY_ALGORITHM} — paste /etc/ssh/ssh_host_ecdsa_key.pub (got '${algo}'). ` +
+        'The host certificate and encrypted KRL distribution both require a P-256 key.'
+    );
+  }
+}
+
 export interface SshHostDto {
   id: string;
   fqdn: string;
@@ -108,6 +121,10 @@ export class SshHostService {
   ): Promise<SshHostDto> {
     if (!isValidHostId(params.fqdn)) throw new SshHostError(`invalid fqdn '${params.fqdn}'`);
     const parsed = parseSshPublicKey(params.opensshHostPubkey); // throws on private key / garbage
+    // Host keys MUST be ecdsa-sha2-nistp256: the one key serves as both the
+    // certificate subject AND the ECIES recipient for encrypted KRL distribution
+    // (which is ECDH over P-256 — an ed25519 signing key can't do key agreement).
+    assertEcdsaHostKey(parsed.algo);
     const id = randomUUID();
     // principals = fqdn + any extra addresses, deduped, fqdn first.
     const addresses = Array.from(new Set([params.fqdn, ...params.addresses]));

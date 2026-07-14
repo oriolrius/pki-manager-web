@@ -64,7 +64,7 @@ describe.skipIf(!RUN)('BLK-13 issuance gate vs real sshd (never-pulling blocked 
   async function startSshd(name: string, port: number, principalId: string): Promise<any> {
     const dir = join(work, name);
     mkdirSync(dir, { recursive: true });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(dir, 'hostkey'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(dir, 'hostkey'), '-N', '', '-q']);
     const host = await getSshHostService().register(ctx, { fqdn: `${name}.e2e`, addresses: ['127.0.0.1'], opensshHostPubkey: readFileSync(join(dir, 'hostkey.pub'), 'utf8') });
     await getSshPrincipalService().mapToHost(ctx, { hostId: host.id, principalId, localAccount: USER });
     const issued = await getSshHostService().issue(ctx, { hostId: host.id });

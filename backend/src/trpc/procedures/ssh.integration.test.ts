@@ -86,7 +86,7 @@ describe.skipIf(!KMS)('SSH tRPC router (with dev opt-in)', () => {
     expect(anchors.hostCaKeys).toHaveLength(1);
 
     // Host register + issue
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'h'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'h'), '-N', '', '-q']);
     const host = await c.ssh.host.register({ fqdn: 'node1.lab.local', addresses: ['10.1.2.3'], opensshHostPubkey: readFileSync(join(work, 'h.pub'), 'utf8') });
     const issued = await c.ssh.host.issue({ hostId: host.id });
     writeFileSync(join(work, 'h-cert.pub'), issued.cert.certOpenssh);

@@ -80,7 +80,7 @@ describe.skipIf(!RUN)('SSH-33 end-to-end against real sshd', () => {
     const hostCa = await getSshCaService().create(ctx, { caType: 'host' });
 
     // UC2: host key + Host-CA-signed cert via the service.
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'hostkey'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'hostkey'), '-N', '', '-q']);
     const host = await getSshHostService().register(ctx, { fqdn: 'e2e-host', addresses: ['127.0.0.1', 'localhost'], opensshHostPubkey: readFileSync(join(work, 'hostkey.pub'), 'utf8') });
     const issued = await getSshHostService().issue(ctx, { hostId: host.id });
     writeFileSync(join(work, 'hostkey-cert.pub'), issued.cert.certOpenssh);

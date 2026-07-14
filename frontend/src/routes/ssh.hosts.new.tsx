@@ -25,6 +25,12 @@ function NewSshHost() {
 
   const pending = registerMutation.isPending || issueMutation.isPending;
 
+  // Host keys must be ecdsa-sha2-nistp256: the one key is both the certificate
+  // subject and the ECIES recipient for encrypted KRL distribution.
+  const keyText = opensshHostPubkey.trim();
+  const keyIsEcdsa = keyText.startsWith('ecdsa-sha2-nistp256 ');
+  const keyTypeWrong = keyText.length > 0 && !keyIsEcdsa;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -102,12 +108,22 @@ function NewSshHost() {
               onChange={(e) => setOpensshHostPubkey(e.target.value)}
               required
               rows={3}
-              placeholder="ssh-ed25519 AAAA... root@web01"
-              className="w-full px-3 py-2 border rounded-md bg-background text-xs font-mono"
+              placeholder="ecdsa-sha2-nistp256 AAAA... root@web01"
+              className={`w-full px-3 py-2 border rounded-md bg-background text-xs font-mono ${
+                keyTypeWrong ? 'border-red-400 dark:border-red-700' : ''
+              }`}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Paste the contents of <code className="font-mono">/etc/ssh/ssh_host_ed25519_key.pub</code> from the host.
+              Paste <code className="font-mono">/etc/ssh/ssh_host_ecdsa_key.pub</code> from the host. Host keys must be{' '}
+              <code className="font-mono">ecdsa-sha2-nistp256</code> — the same key is the certificate subject and the
+              ECIES recipient for encrypted KRL (revocation) distribution, which requires a P-256 key.
             </p>
+            {keyTypeWrong && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                This is not an <code className="font-mono">ecdsa-sha2-nistp256</code> key. Generate/point at the host's
+                ECDSA key: <code className="font-mono">ssh-keygen -t ecdsa -b 256 -f /etc/ssh/ssh_host_ecdsa_key</code>.
+              </p>
+            )}
           </div>
 
           <label className="flex items-center gap-2 text-sm">
@@ -125,7 +141,7 @@ function NewSshHost() {
             </button>
             <button
               type="submit"
-              disabled={pending}
+              disabled={pending || keyTypeWrong}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 font-medium shadow-sm"
             >
               {pending ? 'Working...' : issueNow ? 'Register & Issue' : 'Register Host'}

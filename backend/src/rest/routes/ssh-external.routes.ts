@@ -11,7 +11,8 @@ import { db } from '../../db/client.js';
 import { eq as eqcol, and as andcol, desc as desccol } from 'drizzle-orm';
 import { sshHosts, sshIdentities, sshIdempotency, sshCertificates, sshCas } from '../../db/schema.js';
 import { isValidHostId, validateCidrList, isValidPrincipalName } from '../../services/ssh-config.js';
-import { getSshHostService } from '../../services/ssh-host.service.js';
+import { getSshHostService, assertEcdsaHostKey } from '../../services/ssh-host.service.js';
+import { parseSshPublicKey } from '../../crypto/ssh/pubkey.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
@@ -125,6 +126,8 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         });
         host = (await db.select().from(sshHosts).where(eq(sshHosts.id, created.id)).limit(1))[0];
       } else if (host.opensshHostPubkey !== body.opensshHostPubkey.trim()) {
+        // Host keys are ecdsa-sha2-nistp256 only (same rule as register()).
+        assertEcdsaHostKey(parseSshPublicKey(body.opensshHostPubkey).algo);
         await db.update(sshHosts).set({ opensshHostPubkey: body.opensshHostPubkey.trim(), updatedAt: new Date() } as any).where(eq(sshHosts.id, host.id));
       }
       const issued = await getSshHostService().issue(ctx, {

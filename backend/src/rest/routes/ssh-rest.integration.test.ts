@@ -48,7 +48,7 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
 
     userCa = await getSshCaService().create({ db, ipAddress: null }, { caType: 'user', label: 'REST User CA' });
     hostCa = await getSshCaService().create({ db, ipAddress: null }, { caType: 'host', label: 'REST Host CA' });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'h'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'h'), '-N', '', '-q']);
     const host = await getSshHostService().register({ db, ipAddress: null }, { fqdn: 'rest.lab.local', addresses: ['10.9.9.9'], opensshHostPubkey: readFileSync(join(work, 'h.pub'), 'utf8') });
     hostId = host.id;
     await getSshHostService().issue({ db, ipAddress: null }, { hostId });

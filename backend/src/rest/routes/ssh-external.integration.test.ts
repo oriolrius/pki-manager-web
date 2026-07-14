@@ -51,7 +51,7 @@ describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
     token = minted.token;
     expect(token.startsWith('pkimg_')).toBe(true);
 
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'h'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'h'), '-N', '', '-q']);
     execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'u'), '-N', '', '-q']);
     hostPub = readFileSync(join(work, 'h.pub'), 'utf8');
     userPub = readFileSync(join(work, 'u.pub'), 'utf8');

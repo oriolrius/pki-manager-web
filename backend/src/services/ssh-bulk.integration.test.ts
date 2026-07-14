@@ -39,7 +39,7 @@ describe.skipIf(!KMS)('SSH-BULK', () => {
     await wipe();
     await getSshCaService().create(ctx, { caType: 'user' });
     await getSshCaService().create(ctx, { caType: 'host' });
-    execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'h'), '-N', '', '-q']);
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'h'), '-N', '', '-q']);
     execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'u'), '-N', '', '-q']);
     const host = await getSshHostService().register(ctx, { fqdn: 'bulk.lab.local', addresses: ['10.0.0.7'], opensshHostPubkey: readFileSync(join(work, 'h.pub'), 'utf8') });
     hostCert = (await getSshHostService().issue(ctx, { hostId: host.id })).cert;
