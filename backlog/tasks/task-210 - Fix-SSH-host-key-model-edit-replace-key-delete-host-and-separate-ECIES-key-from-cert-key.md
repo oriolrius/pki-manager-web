@@ -1,13 +1,13 @@
 ---
 id: TASK-210
 title: >-
-  Fix SSH host key model: edit/replace key, delete host, and separate ECIES key
-  from cert key
+  Force ecdsa-sha2-nistp256 host keys (single key = cert subject + ECIES
+  recipient)
 status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-14 05:15'
-updated_date: '2026-07-14 05:24'
+updated_date: '2026-07-14 07:42'
 labels: []
 dependencies: []
 ordinal: 37014
@@ -45,21 +45,13 @@ The register-host UI hardcodes ed25519 guidance, but ECIES KRL distribution (def
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Implemented (working tree; not committed/deployed).
+DIRECTION CHANGE: dropped the two-field (separate ecies_pubkey) approach — reverted entirely. Instead FORCE host keys to ecdsa-sha2-nistp256 so one key serves as both cert subject and ECIES recipient (ed25519 is a signing key and cannot do ECDH, so it can never be an ECIES recipient).
 
-Backend:
-- schema.ts: +ssh_hosts.ecies_pubkey (nullable). Migration 0009_violet_master_mold.sql (ALTER TABLE ADD COLUMN).
-- ssh-host.service.ts: resolveEciesRecipient() (dedicated ECIES key, else P-256 cert key, else null); parseEciesKey() validator; register() accepts optional eciesPubkey; new updateHostKey (pending-only), setEciesKey (ecdsa P-256), deleteHost (never-certified only). DTO +hasEciesKey/+eciesReady. registerEciesKey now resolves via recipient.
-- ssh-external.routes.ts /krl: encrypts to resolveEciesRecipient(host) not raw opensshHostPubkey -> ed25519-cert hosts can receive encrypted KRLs once an ECIES key is set.
-- audit.ts: +ssh.host.update_key/set_ecies_key/delete.
-- ssh-schemas.ts: updateHostKeySchema, setEciesKeySchema, registerHostSchema += eciesPubkey?.
-- tRPC hostRouter: updateKey, setEciesKey, delete. REST: PUT /hosts/:id/key, PUT /hosts/:id/ecies-key, DELETE /hosts/:id; POST /hosts passes eciesPubkey.
+Implemented (working tree, not committed):
+- backend/services/ssh-host.service.ts: assertEcdsaHostKey() helper + HOST_KEY_ALGORITHM const; register() rejects any non-P256 host key with an actionable message.
+- backend/rest/routes/ssh-external.routes.ts: same guard on the fleet /sign-host key-rotation branch.
+- frontend/routes/ssh.hosts.new.tsx: corrected copy (paste ssh_host_ecdsa_key.pub; ecdsa-sha2-nistp256 required + why), inline red warning + disabled submit when a non-ecdsa key is pasted.
+- 10 test files: host-key ssh-keygen flipped ed25519 -> ecdsa (user keys stay ed25519; crypto-level sign tests and the deliberate ed25519-via-direct-insert ECIES test untouched).
 
-Frontend:
-- ssh.hosts.new.tsx: corrected key guidance, optional ECIES key field, inline ECIES-unreachable warning.
-- ssh.hosts.$id.tsx: Replace key (pending), Set/Replace ECIES key, Delete (never-certified) actions + ECIES-readiness line.
-
-Tests: new ssh-host-edit.test.ts (8) green; ssh state/ecies/openapi/block-api (40) green; frontend (45) green. Strict typecheck clean both workspaces. ESLint could not run (pre-existing @eslint/eslintrc+ajv env failure).
-
-Back-compat: existing ecdsa-registered hosts and the c1h1 hotfix keep working via the P-256 cert-key fallback. Needs a release + prod db:migrate to reach pki.joor.net.
+Verified: strict typecheck clean (both workspaces); with KMS reachable all touched SSH suites pass (60+ tests, assertEcdsaHostKey=0 in failures). Live in dev stack (:52080): form shows ecdsa guidance; dev backend rejects ed25519 (clear msg) and accepts ecdsa. Operational: host1/c1h1 already converted to an ecdsa host cert (serial 40); old ed25519 cert (39) revoked.
 <!-- SECTION:NOTES:END -->
