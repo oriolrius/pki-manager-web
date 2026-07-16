@@ -29,3 +29,12 @@ frontend/src/routes/ssh.principals.tsx renders a HostPrincipalCard for every non
 - [ ] #3 Hosts needing a push are marked in the list itself, without selecting them one by one
 - [ ] #4 Mapping a principal and Mark pushed still work for the selected host
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Extract HostPrincipalCard from ssh.principals.tsx into components/ssh/HostPrincipalMappingCard.tsx, self-contained (queries principal.list/render/staleHosts by hostId).
+2. ssh.principals.tsx: replace the stacked cards with a host list (fqdn + status + stale badge) that selects one host; render the mapping card for the selection only.
+3. Auto-select first host; keep catalog above untouched.
+4. Typecheck + tests.
+<!-- SECTION:PLAN:END -->
