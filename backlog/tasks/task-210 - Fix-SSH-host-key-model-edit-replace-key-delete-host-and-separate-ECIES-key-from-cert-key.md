@@ -3,7 +3,7 @@ id: TASK-210
 title: >-
   Force ecdsa-sha2-nistp256 host keys (single key = cert subject + ECIES
   recipient)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-14 05:15'
