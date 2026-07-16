@@ -28,3 +28,12 @@ In frontend/src/components/SshCapabilityEditor.tsx the principals field is a fre
 - [ ] #4 The existing reachability warning still flags a selected principal that is mapped to no host account
 - [ ] #5 Issuing a certificate grants exactly the selected principals
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. New components/PrincipalSelect.tsx: pure (catalog passed in) combobox — chips for selections, text filter, dropdown of catalog matches, free entry still allowed but visibly distinct.
+2. SshCapabilityEditor takes optional principalCatalog prop and renders PrincipalSelect instead of TagInput (stays trpc-free so its unit tests need no provider).
+3. ssh.users.new.tsx feeds trpc.ssh.principal.list into it.
+4. Unit tests for filter/select/remove/free-entry; typecheck.
+<!-- SECTION:PLAN:END -->
