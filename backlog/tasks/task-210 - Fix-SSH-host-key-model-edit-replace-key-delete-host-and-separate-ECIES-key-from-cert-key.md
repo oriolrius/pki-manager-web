@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-14 05:15'
-updated_date: '2026-07-16 05:27'
+updated_date: '2026-07-16 05:28'
 labels: []
 dependencies: []
 ordinal: 37014
@@ -42,11 +42,11 @@ NOTE: the original plan (nullable ecies_pubkey column, updateHostKey/setEciesKey
 <!-- SECTION:NOTES:BEGIN -->
 DIRECTION CHANGE: dropped the two-field (separate ecies_pubkey) approach — reverted entirely. Instead FORCE host keys to ecdsa-sha2-nistp256 so one key serves as both cert subject and ECIES recipient (ed25519 is a signing key and cannot do ECDH, so it can never be an ECIES recipient).
 
-Implemented (working tree, not committed):
+Implemented (committed: 19d5ffa "fix(ssh): require ecdsa-sha2-nistp256 host keys, fix register-form guidance" + 3a97475 e2e ecdsa host keys):
 - backend/services/ssh-host.service.ts: assertEcdsaHostKey() helper + HOST_KEY_ALGORITHM const; register() rejects any non-P256 host key with an actionable message.
-- backend/rest/routes/ssh-external.routes.ts: same guard on the fleet /sign-host key-rotation branch.
+- backend/rest/routes/ssh-external.routes.ts: same guard on the fleet /sign-host key-rotation branch; ECIES/KRL encrypts to the host own ecdsa key.
 - frontend/routes/ssh.hosts.new.tsx: corrected copy (paste ssh_host_ecdsa_key.pub; ecdsa-sha2-nistp256 required + why), inline red warning + disabled submit when a non-ecdsa key is pasted.
 - 10 test files: host-key ssh-keygen flipped ed25519 -> ecdsa (user keys stay ed25519; crypto-level sign tests and the deliberate ed25519-via-direct-insert ECIES test untouched).
 
-Verified: strict typecheck clean (both workspaces); with KMS reachable all touched SSH suites pass (60+ tests, assertEcdsaHostKey=0 in failures). Live in dev stack (:52080): form shows ecdsa guidance; dev backend rejects ed25519 (clear msg) and accepts ecdsa. Operational: host1/c1h1 already converted to an ecdsa host cert (serial 40); old ed25519 cert (39) revoked.
+Verified: strict typecheck clean (both workspaces); with KMS reachable all touched SSH suites pass (60+ tests). Live in dev stack (:52080): form shows ecdsa guidance; dev backend rejects ed25519 (clear msg) and accepts ecdsa. Operational: host1/c1h1 already converted to an ecdsa host cert (serial 40); old ed25519 cert (39) revoked.
 <!-- SECTION:NOTES:END -->
