@@ -5,7 +5,7 @@
   "description": "PKI Manager - Web-based Public Key Infrastructure management application",
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "pnpm --parallel -r dev",
+    "dev": "mprocs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",

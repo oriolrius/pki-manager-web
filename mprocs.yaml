@@ -1,0 +1,10 @@
+procs:
+  backend:
+    shell: pnpm dev
+    cwd: <CONFIG_DIR>/backend
+  frontend:
+    shell: pnpm dev
+    cwd: <CONFIG_DIR>/frontend
+  backlog:
+    shell: backlog browser --no-open
+    cwd: <CONFIG_DIR>
