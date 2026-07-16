@@ -22,8 +22,9 @@ The register-host UI hardcodes ed25519 guidance, but ECIES KRL distribution (def
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 A registered host's public key can be replaced through the UI/API before a cert is issued
-- [x] #2 A host can be assigned a separate ecdsa-sha2-nistp256 ECIES key independent of its certificate key, and ECIES KRL uses it
 <!-- AC:END -->
+
+
 
 
 
