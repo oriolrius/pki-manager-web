@@ -19,10 +19,6 @@ ordinal: 37014
 The register-host UI hardcodes ed25519 guidance, but ECIES KRL distribution (default) requires an ecdsa-sha2-nistp256 key. A single opensshHostPubkey field is overloaded as BOTH the cert subject and the ECIES recipient, so a host cannot have an ed25519 host cert AND ECIES KRL. There is also no way to edit a host's key or delete a host (fqdn is UNIQUE), which permanently traps a mistyped registration. Repro: host c1h1.dev.ymbihq.local registered with ed25519 -> krl-client fails ECIES_KEY_UNSUPPORTED; had to hand-edit prod SQLite twice.
 <!-- SECTION:DESCRIPTION:END -->
 
-## Acceptance Criteria
-<!-- AC:BEGIN -->
-- [x] #1 A registered host's public key can be replaced through the UI/API before a cert is issued
-<!-- AC:END -->
 
 
 
