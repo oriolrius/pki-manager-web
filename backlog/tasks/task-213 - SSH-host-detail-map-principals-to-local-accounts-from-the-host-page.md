@@ -27,3 +27,12 @@ On /ssh/hosts/$id (frontend/src/routes/ssh.hosts.$id.tsx) there is no way to see
 - [ ] #3 The rendered /etc/ssh/auth_principals/<account> file contents are shown and copyable
 - [ ] #4 A host needing a push shows the stale signal and can be marked pushed from this page
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Reuse components/ssh/HostPrincipalMappingCard.tsx (extracted in TASK-212).
+2. Render it on /ssh/hosts/$id below HostAccessCard, hidden for offboarded hosts.
+3. Stale signal + Mark pushed + rendered auth_principals files come from the shared card.
+4. Typecheck + tests.
+<!-- SECTION:PLAN:END -->
