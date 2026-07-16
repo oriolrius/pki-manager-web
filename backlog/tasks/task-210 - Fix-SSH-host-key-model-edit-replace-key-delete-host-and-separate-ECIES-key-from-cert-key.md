@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-14 05:15'
-updated_date: '2026-07-14 07:42'
+updated_date: '2026-07-16 05:27'
 labels: []
 dependencies: []
 ordinal: 37014
@@ -24,8 +24,9 @@ The register-host UI hardcodes ed25519 guidance, but ECIES KRL distribution (def
 - [x] #1 A registered host's public key can be replaced through the UI/API before a cert is issued
 - [x] #2 A host can be assigned a separate ecdsa-sha2-nistp256 ECIES key independent of its certificate key, and ECIES KRL uses it
 - [x] #3 A pending host with no issued certificate can be deleted through the UI/API, freeing its FQDN
-- [x] #4 The register form guides the user to the correct key type and warns when ECIES KRL would not work
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
