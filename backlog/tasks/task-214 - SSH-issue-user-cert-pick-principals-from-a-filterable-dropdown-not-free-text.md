@@ -1,9 +1,11 @@
 ---
 id: TASK-214
 title: 'SSH issue user cert: pick principals from a filterable dropdown, not free text'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-16 05:23'
+updated_date: '2026-07-16 05:27'
 labels:
   - frontend
   - ssh
