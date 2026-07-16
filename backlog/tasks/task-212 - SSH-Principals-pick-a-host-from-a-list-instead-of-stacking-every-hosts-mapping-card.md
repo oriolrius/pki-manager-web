@@ -7,7 +7,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-07-16 05:22'
-updated_date: '2026-07-16 05:26'
+updated_date: '2026-07-16 05:37'
 labels:
   - frontend
   - ssh
@@ -24,10 +24,10 @@ frontend/src/routes/ssh.principals.tsx renders a HostPrincipalCard for every non
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 User sees a list of registered hosts on the Principals page rather than every host's mapping form at once
-- [ ] #2 Selecting a host shows that host's principal-to-account mapping form and rendered auth_principals files
-- [ ] #3 Hosts needing a push are marked in the list itself, without selecting them one by one
-- [ ] #4 Mapping a principal and Mark pushed still work for the selected host
+- [x] #1 User sees a list of registered hosts on the Principals page rather than every host's mapping form at once
+- [x] #2 Selecting a host shows that host's principal-to-account mapping form and rendered auth_principals files
+- [x] #3 Hosts needing a push are marked in the list itself, without selecting them one by one
+- [x] #4 Mapping a principal and Mark pushed still work for the selected host
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -38,3 +38,15 @@ frontend/src/routes/ssh.principals.tsx renders a HostPrincipalCard for every non
 3. Auto-select first host; keep catalog above untouched.
 4. Typecheck + tests.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Replaced the stack of per-host cards on /ssh/principals with a two-column host picker: a scrollable host list on the left, the selected host's mapping card on the right.
+
+- Extracted the old inline HostPrincipalCard into components/ssh/HostPrincipalMappingCard.tsx, now self-contained (it queries principal.list / render / staleHosts itself by hostId) so TASK-213 can reuse it on the host detail page. The exported StalePill is shared between the card header and the picker list.
+- The list shows fqdn + status + the stale pill per host and a '<n> need a push' / 'All pushed' summary, so a host needing a push is findable without clicking through. Selection falls back to the first host, so the page always shows a form once hosts load.
+- The principal catalog above is unchanged. Mapping now also invalidates mappingsByPrincipal and the host deploy bundle, so the reachability panel and the deploy panel's stale banner stay in sync.
+
+Verified in the dev stack (:52080): the list renders 5 seeded hosts with stale pills; selecting bastion-01 and mapping deploy -> deployer rendered /etc/ssh/auth_principals/deployer; Mark pushed cleared the pill in both the card header and the list (5 -> 4 need a push). Frontend typecheck clean, 52 tests pass.
+<!-- SECTION:NOTES:END -->
