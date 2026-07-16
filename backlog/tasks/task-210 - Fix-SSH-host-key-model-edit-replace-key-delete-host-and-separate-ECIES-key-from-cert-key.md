@@ -26,21 +26,15 @@ The register-host UI hardcoded ed25519 guidance, but ECIES KRL distribution (the
 - [x] #3 Encrypted KRL (ECIES) distribution encrypts to the host's own ecdsa-sha2-nistp256 host key; a non-ecdsa host key yields a clear error instead of a runtime ECIES_KEY_UNSUPPORTED failure
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-1. Schema: add nullable ecies_pubkey to ssh_hosts; drizzle generate+migrate.
-2. Service: register() accepts optional eciesPubkey; add updateHostKey (pending-only), setEciesKey (ecdsa P-256), deleteHost (pending/no-cert/no-blocks/no-krls); resolveEciesKey helper (eciesPubkey || opensshHostPubkey-if-ecdsa). Audit rows for each.
-3. DTO: add hasEciesKey + eciesReady.
-4. Zod: updateHostKeySchema, setEciesKeySchema; registerHostSchema += eciesPubkey?.
-5. tRPC hostRouter: updateKey, setEciesKey, delete.
-6. REST: PUT /hosts/:id/key, PUT /hosts/:id/ecies-key, DELETE /hosts/:id; POST /hosts passes eciesPubkey.
-7. External /krl: encrypt to resolveEciesKey(host) not raw opensshHostPubkey.
-8. Frontend register form: correct copy, optional ECIES key field, inline warning when no ecdsa key.
-9. Frontend host detail: Replace key (pending), Set ECIES key, Delete (pending) actions.
-10. Tests for service methods + ECIES resolution; typecheck both workspaces.
+1. backend ssh-host.service.ts: add HOST_KEY_ALGORITHM const + assertEcdsaHostKey() helper; register() rejects any non-ecdsa-sha2-nistp256 host key with an actionable message.
+2. backend ssh-external.routes.ts: same assertEcdsaHostKey guard on the fleet /sign-host key-rotation branch; ECIES/KRL encrypts to the host own ecdsa key and errors clearly on a non-ecdsa key.
+3. frontend ssh.hosts.new.tsx: corrected copy (paste /etc/ssh/ssh_host_ecdsa_key.pub; ecdsa-sha2-nistp256 required + why), inline red warning + disabled submit when a non-ecdsa key is pasted.
+4. Tests: flip host-key ssh-keygen ed25519 -> ecdsa across SSH suites (user keys stay ed25519; crypto sign tests and the deliberate ed25519-via-direct-insert ECIES test untouched); strict typecheck both workspaces.
+
+NOTE: the original plan (nullable ecies_pubkey column, updateHostKey/setEciesKey/deleteHost, PUT/DELETE routes, host-detail edit/delete UI) was reverted — forcing ecdsa at registration removes the need for edit/delete escape hatches.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
