@@ -3,7 +3,7 @@ id: TASK-212
 title: >-
   SSH Principals: pick a host from a list instead of stacking every host's
   mapping card
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-16 05:22'
