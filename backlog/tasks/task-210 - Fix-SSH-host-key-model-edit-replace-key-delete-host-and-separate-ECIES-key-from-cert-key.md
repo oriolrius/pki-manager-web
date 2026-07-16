@@ -16,13 +16,15 @@ ordinal: 37014
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-The register-host UI hardcodes ed25519 guidance, but ECIES KRL distribution (default) requires an ecdsa-sha2-nistp256 key. A single opensshHostPubkey field is overloaded as BOTH the cert subject and the ECIES recipient, so a host cannot have an ed25519 host cert AND ECIES KRL. There is also no way to edit a host's key or delete a host (fqdn is UNIQUE), which permanently traps a mistyped registration. Repro: host c1h1.dev.ymbihq.local registered with ed25519 -> krl-client fails ECIES_KEY_UNSUPPORTED; had to hand-edit prod SQLite twice.
+The register-host UI hardcoded ed25519 guidance, but ECIES KRL distribution (the default) requires an ecdsa-sha2-nistp256 key, and a single opensshHostPubkey field serves as BOTH the cert subject and the ECIES recipient. An ed25519 host key cannot be an ECIES recipient (it is a signing key and cannot do ECDH), so a mistyped ed25519 registration produced ECIES_KEY_UNSUPPORTED and, with fqdn UNIQUE and no self-service fix, permanently trapped the registration (prod SQLite hand-edited twice). Repro: host c1h1.dev.ymbihq.local registered with ed25519 -> krl-client fails ECIES_KEY_UNSUPPORTED. Chosen solution: FORCE host keys to ecdsa-sha2-nistp256 so the one key is both cert subject and ECIES recipient, and reject non-ecdsa keys at registration so the trap can never occur (rather than adding edit/delete escape hatches).
 <!-- SECTION:DESCRIPTION:END -->
 
-
-
-
-
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 Registering a host with any non-ecdsa-sha2-nistp256 key is rejected with an actionable message (paste ssh_host_ecdsa_key.pub), on both the register API and the fleet sign-host key-rotation path
+- [x] #2 The register form states ecdsa-sha2-nistp256 is required and why, tells the user to paste /etc/ssh/ssh_host_ecdsa_key.pub, and shows an inline warning + disables submit when a non-ecdsa key is pasted
+- [x] #3 Encrypted KRL (ECIES) distribution encrypts to the host's own ecdsa-sha2-nistp256 host key; a non-ecdsa host key yields a clear error instead of a runtime ECIES_KEY_UNSUPPORTED failure
+<!-- AC:END -->
 
 
 
@@ -54,10 +56,3 @@ Implemented (working tree, not committed):
 
 Verified: strict typecheck clean (both workspaces); with KMS reachable all touched SSH suites pass (60+ tests, assertEcdsaHostKey=0 in failures). Live in dev stack (:52080): form shows ecdsa guidance; dev backend rejects ed25519 (clear msg) and accepts ecdsa. Operational: host1/c1h1 already converted to an ecdsa host cert (serial 40); old ed25519 cert (39) revoked.
 <!-- SECTION:NOTES:END -->
-
-## Acceptance Criteria
-<!-- AC:BEGIN -->
-- [ ] #1 Registering a host with any non-ecdsa-sha2-nistp256 key is rejected with an actionable message (paste ssh_host_ecdsa_key.pub), on both the register API and the fleet sign-host key-rotation path
-- [ ] #2 The register form states ecdsa-sha2-nistp256 is required and why, tells the user to paste /etc/ssh/ssh_host_ecdsa_key.pub, and shows an inline warning + disables submit when a non-ecdsa key is pasted
-- [ ] #3 Encrypted KRL (ECIES) distribution encrypts to the host's own ecdsa-sha2-nistp256 host key; a non-ecdsa host key yields a clear error instead of a runtime ECIES_KEY_UNSUPPORTED failure
-<!-- AC:END -->
