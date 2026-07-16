@@ -1,9 +1,11 @@
 ---
 id: TASK-211
 title: 'SSH nav: move Principals tab to sit right after Certificate Authorities'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-16 05:22'
+updated_date: '2026-07-16 05:26'
 labels:
   - frontend
   - ssh
