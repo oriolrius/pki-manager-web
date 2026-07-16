@@ -1,9 +1,11 @@
 ---
 id: TASK-213
 title: 'SSH host detail: map principals to local accounts from the host page'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-07-16 05:22'
+updated_date: '2026-07-16 05:26'
 labels:
   - frontend
   - ssh
