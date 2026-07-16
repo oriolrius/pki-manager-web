@@ -1,7 +1,7 @@
 ---
 id: TASK-213
 title: 'SSH host detail: map principals to local accounts from the host page'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-07-16 05:22'
