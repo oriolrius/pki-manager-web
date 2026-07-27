@@ -9,7 +9,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { isOIDCEnabledAsync, hasValidManualTokensAsync, getAuthority, getClientId, getScope } from './config';
+import { isOIDCEnabledAsync, hasValidManualTokensAsync } from './config';
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -79,22 +79,11 @@ function AuthGuardInner({ children }: AuthGuardProps) {
       console.log('[AuthGuard] User not authenticated, redirecting to login...');
 
       // Fetch OIDC config asynchronously (supports runtime config.json)
-      Promise.all([getAuthority(), getClientId(), getScope()]).then(([authority, clientId, scope]) => {
-        const redirectUri = encodeURIComponent(window.location.origin + '/callback');
-        const encodedScope = encodeURIComponent(scope);
-        // Generate random state and nonce (works in non-HTTPS contexts)
-        const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
-        const state = randomString();
-        const nonce = randomString();
-
-        // Store state for validation
-        sessionStorage.setItem('oidc_state', state);
-        sessionStorage.setItem('oidc_nonce', nonce);
-
-        const url = `${authority}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodedScope}&state=${state}&nonce=${nonce}`;
-        console.log('[AuthGuard] Redirecting to:', url);
-        window.location.href = url;
+      auth.signinRedirect().catch((error) => {
+        console.error('[AuthGuard] OIDC redirect failed:', error);
+        setIsRedirecting(false);
       });
+      
     }
   }, [isCallbackRoute, auth.isLoading, tokensChecked, isAuthenticated, auth.activeNavigator, isRedirecting]);
 
