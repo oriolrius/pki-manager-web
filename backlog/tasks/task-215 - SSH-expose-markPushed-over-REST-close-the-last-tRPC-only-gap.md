@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-08-25 05:31'
-updated_date: '2026-08-25 05:33'
+updated_date: '2026-08-25 05:38'
 labels:
   - ssh-cert-manager
   - backend
@@ -27,12 +27,14 @@ Both APIs must keep delegating to the same service method (sshPrincipalService.m
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can clear a host's Stale principals flag using only the REST API, without any tRPC call
-- [ ] #2 The endpoint appears in the OpenAPI spec and is callable from Swagger UI at /api/docs
-- [ ] #3 Marking pushed via REST and via tRPC produce identical results (same service method, same audit_log entry)
-- [ ] #4 Calling the endpoint with an unknown host id returns 404 rather than a 500
-- [ ] #5 A state-changing call writes an audit_log row on both success and failure
+- [x] #1 An operator can clear a host's Stale principals flag using only the REST API, without any tRPC call
+- [x] #2 The endpoint appears in the OpenAPI spec and is callable from Swagger UI at /api/docs
+- [x] #3 Marking pushed via REST and via tRPC produce identical results (same service method, same audit_log entry)
+- [x] #4 Calling the endpoint with an unknown host id returns 404 rather than a 500
+- [x] #5 A state-changing call writes an audit_log row on both success and failure
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
