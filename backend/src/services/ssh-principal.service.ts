@@ -39,6 +39,13 @@ export interface AuthPrincipalsRender {
   stale: boolean;
 }
 
+export interface MarkPushedResult {
+  hostId: string;
+  fqdn: string;
+  /** ISO-8601; the value `stale` is computed against on the next render. */
+  lastPrincipalPushAt: string;
+}
+
 export class SshPrincipalService {
   async createPrincipal(ctx: ServiceContext, params: { name: string; description?: string }): Promise<PrincipalDto> {
     if (!isValidPrincipalName(params.name)) throw new SshPrincipalError(`invalid principal name '${params.name}'`);
@@ -179,9 +186,41 @@ export class SshPrincipalService {
     };
   }
 
-  /** Record that a host's principal files were pushed (clears drift). */
-  async markPushed(ctx: ServiceContext, hostId: string): Promise<void> {
-    await ctx.db.update(sshHosts).set({ lastPrincipalPushAt: new Date() }).where(eq(sshHosts.id, hostId));
+  /**
+   * Record that a host's principal files were pushed (clears drift).
+   *
+   * The host lookup is not decoration: without it an unknown id updated zero
+   * rows and still reported success, so a typo in an automation script looked
+   * like a clear while the host stayed Stale forever. The thrown message is
+   * matched by the REST router's `/not found/i` handler and becomes a 404.
+   */
+  async markPushed(ctx: ServiceContext, hostId: string): Promise<MarkPushedResult> {
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+    if (!host) {
+      await createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.principal.mark_pushed',
+        entityType: 'ssh_host',
+        entityId: hostId,
+        status: 'failure',
+        details: { error: 'host not found' },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+      throw new SshPrincipalError(`host ${hostId} not found`);
+    }
+
+    const pushedAt = new Date();
+    await ctx.db.update(sshHosts).set({ lastPrincipalPushAt: pushedAt }).where(eq(sshHosts.id, hostId));
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.principal.mark_pushed',
+      entityType: 'ssh_host',
+      entityId: hostId,
+      status: 'success',
+      details: { fqdn: host.fqdn },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+    return { hostId, fqdn: host.fqdn, lastPrincipalPushAt: pushedAt.toISOString() };
   }
 
   /** List hosts whose catalog maps changed after the last push. */

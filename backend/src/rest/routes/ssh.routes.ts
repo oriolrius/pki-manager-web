@@ -214,6 +214,15 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshPrincipalService().render(ctx(req), id);
   });
 
+  // TASK-215: the counterpart to the GET above — clears the Stale flag once the
+  // rendered files are on the host. Previously tRPC-only, which forced a
+  // REST-driven onboarding to break out of /api/v1 for this one step.
+  api.post('/hosts/:id/auth-principals/pushed', postSchema("Mark a host's rendered principal files as pushed (clears Stale)"), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshPrincipalService().markPushed(ctx(req), id);
+  });
+
   // --- Revocation / KRL. A server's RevokedKeys consumes the (User) CA's KRL. ---
   api.post('/certs/:id/revoke', postSchema('Revoke an SSH certificate (rebuilds the CA KRL)', z.object({ reason: z.string().max(256).optional() })), async (req) => {
     ensureSshAllowed();
