@@ -4,6 +4,7 @@ import { ArrowLeft, RefreshCw, XCircle, LogOut } from 'lucide-react';
 import { DeployPanel } from '@/components/DeployPanel';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { HostAccessCard } from '@/components/ssh/HostAccessCard';
+import { HostPrincipalMappingCard } from '@/components/ssh/HostPrincipalMappingCard';
 import { useToast, useConfirm } from '@/components/ui';
 import type { CodeLanguage } from '@/lib/highlight';
 
@@ -43,7 +44,12 @@ function SshHostDetail() {
   const handleMarkPushed = () => {
     markPushedMutation.mutate(
       { hostId: id },
-      { onSuccess: () => utils.ssh.host.deployBundle.invalidate({ id }) }
+      {
+        onSuccess: () => {
+          utils.ssh.host.deployBundle.invalidate({ id });
+          utils.ssh.principal.staleHosts.invalidate();
+        },
+      }
     );
   };
 
@@ -184,6 +190,15 @@ function SshHostDetail() {
 
       {/* Per-host user access blocks (decision-016) — between header and deploy panel. */}
       {host.status !== 'offboarded' && <HostAccessCard hostId={id} />}
+
+      {/* Which principals grant login here, and as which local account (TASK-213). */}
+      {host.status !== 'offboarded' && (
+        <HostPrincipalMappingCard
+          hostId={id}
+          title="Principals"
+          subtitle={`Map a principal to a local account on ${host.fqdn}. A login is denied unless the certificate's principal appears here.`}
+        />
+      )}
 
       {bundle && (
         <DeployPanel
