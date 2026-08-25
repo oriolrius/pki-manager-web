@@ -1,3 +1,10 @@
+## v3.9.5 (2026-08-25)
+
+### Feat
+
+- **ssh-ui**: reusable PrincipalSelect and per-host mapping card
+- **ssh**: expose markPushed over REST (TASK-215)
+
 ## v3.9.4 (2026-07-14)
 
 **Require ECDSA host keys for SSH**
