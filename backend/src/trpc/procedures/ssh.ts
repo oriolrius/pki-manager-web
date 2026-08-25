@@ -285,9 +285,14 @@ const principalRouter = router({
     }
   }),
   staleHosts: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().staleHosts(svcCtx(ctx))),
+  // Returns the service result verbatim so tRPC and REST
+  // (POST /api/v1/ssh/hosts/:id/auth-principals/pushed) stay identical.
   markPushed: sshProtectedProcedure.input(renderPrincipalsSchema).mutation(async ({ ctx, input }) => {
-    await getSshPrincipalService().markPushed(svcCtx(ctx), input.hostId);
-    return { ok: true };
+    try {
+      return await getSshPrincipalService().markPushed(svcCtx(ctx), input.hostId);
+    } catch (e) {
+      mapSshError(e);
+    }
   }),
 });
 
