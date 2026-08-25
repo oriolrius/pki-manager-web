@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
-import { Plus, Trash2, AlertTriangle } from 'lucide-react';
-import { ConfigSnippet } from '@/components/ConfigSnippet';
+import { Plus, Trash2 } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
+import { HostPrincipalMappingCard, StalePill } from '@/components/ssh/HostPrincipalMappingCard';
 import { useToast, useConfirm } from '@/components/ui';
 
 export const Route = createFileRoute('/ssh/principals')({
@@ -20,12 +20,15 @@ function SshPrincipals() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [selectedHostId, setSelectedHostId] = useState('');
   const createMutation = trpc.ssh.principal.create.useMutation();
   const deleteMutation = trpc.ssh.principal.delete.useMutation();
 
   const principals = principalsQuery.data ?? [];
   const hosts = (hostsQuery.data ?? []).filter((h) => h.status !== 'offboarded');
   const staleIds = new Set((staleQuery.data ?? []).map((h) => h.id));
+  // Fall back to the first host so the page always shows a mapping form once hosts load.
+  const selectedHost = hosts.find((h) => h.id === selectedHostId) ?? hosts[0];
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +149,7 @@ function SshPrincipals() {
         </div>
       </div>
 
-      {/* Per-host mapping + render */}
+      {/* Per-host mapping + render: pick a host, then configure it. */}
       <div className="space-y-3">
         <h2 className="font-semibold">Map principals to host accounts</h2>
         {hostsQuery.isLoading ? (
@@ -154,154 +157,43 @@ function SshPrincipals() {
         ) : hosts.length === 0 ? (
           <div className="rounded-lg border p-6 text-center text-muted-foreground">No hosts registered.</div>
         ) : (
-          hosts.map((host) => (
-            <HostPrincipalCard
-              key={host.id}
-              hostId={host.id}
-              fqdn={host.fqdn}
-              principals={principals}
-              stale={staleIds.has(host.id)}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
+          <div className="grid gap-4 lg:grid-cols-[minmax(220px,18rem)_1fr] items-start">
+            <div className="rounded-lg border bg-card overflow-hidden">
+              <div className="p-3 border-b">
+                <h3 className="text-sm font-medium">Hosts</h3>
+                <p className="text-xs text-muted-foreground">
+                  {staleIds.size > 0 ? `${staleIds.size} need a push` : 'All pushed'}
+                </p>
+              </div>
+              <ul className="divide-y max-h-[28rem] overflow-y-auto">
+                {hosts.map((host) => {
+                  const active = selectedHost?.id === host.id;
+                  return (
+                    <li key={host.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHostId(host.id)}
+                        aria-current={active ? 'true' : undefined}
+                        className={`w-full text-left px-3 py-2.5 hover:bg-muted/50 transition-colors ${
+                          active ? 'bg-primary/10' : ''
+                        }`}
+                      >
+                        <div className="text-sm font-medium truncate">{host.fqdn}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground">{host.status}</span>
+                          {staleIds.has(host.id) && <StalePill />}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
 
-function HostPrincipalCard({
-  hostId,
-  fqdn,
-  principals,
-  stale,
-}: {
-  hostId: string;
-  fqdn: string;
-  principals: { id: string; name: string }[];
-  stale: boolean;
-}) {
-  const toast = useToast();
-  const utils = trpc.useUtils();
-  const renderQuery = trpc.ssh.principal.render.useQuery({ hostId });
-
-  const [principalId, setPrincipalId] = useState('');
-  const [localAccount, setLocalAccount] = useState('');
-
-  const mapMutation = trpc.ssh.principal.map.useMutation();
-  const markPushedMutation = trpc.ssh.principal.markPushed.useMutation();
-
-  const render = renderQuery.data;
-
-  const invalidate = () => {
-    utils.ssh.principal.render.invalidate({ hostId });
-    utils.ssh.principal.staleHosts.invalidate();
-  };
-
-  const handleMap = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!principalId || !localAccount.trim()) return;
-    mapMutation.mutate(
-      { hostId, principalId, localAccount: localAccount.trim() },
-      {
-        onSuccess: () => {
-          toast.success(`Mapped to “${localAccount.trim()}” on this host`);
-          invalidate();
-          setLocalAccount('');
-          setPrincipalId('');
-        },
-        onError: (err) => toast.error(`Failed: ${err.message}`),
-      }
-    );
-  };
-
-  const handleMarkPushed = () => {
-    markPushedMutation.mutate(
-      { hostId },
-      {
-        onSuccess: () => {
-          toast.success('Marked as pushed on this host');
-          invalidate();
-        },
-        onError: (err) => toast.error(`Failed: ${err.message}`),
-      }
-    );
-  };
-
-  return (
-    <div className="rounded-lg border bg-card">
-      <div className="flex items-center justify-between p-4 border-b">
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{fqdn}</span>
-          {stale && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-              <AlertTriangle className="h-3 w-3" />
-              Stale — needs push
-            </span>
-          )}
-        </div>
-        {stale && (
-          <button
-            onClick={handleMarkPushed}
-            disabled={markPushedMutation.isPending}
-            className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted disabled:opacity-50"
-          >
-            Mark pushed
-          </button>
-        )}
-      </div>
-
-      <div className="p-4 space-y-4">
-        <form onSubmit={handleMap} className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[160px]">
-            <label className="block text-sm font-medium mb-1">Principal</label>
-            <select
-              value={principalId}
-              onChange={(e) => setPrincipalId(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-            >
-              <option value="">Select…</option>
-              {principals.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            {selectedHost && (
+              <HostPrincipalMappingCard key={selectedHost.id} hostId={selectedHost.id} title={selectedHost.fqdn} />
+            )}
           </div>
-          <div className="min-w-[160px]">
-            <label className="block text-sm font-medium mb-1">Local account</label>
-            <input
-              type="text"
-              value={localAccount}
-              onChange={(e) => setLocalAccount(e.target.value)}
-              placeholder="root"
-              className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={mapMutation.isPending || !principalId || !localAccount.trim()}
-            className="px-4 py-2 border rounded-md hover:bg-muted text-sm disabled:opacity-50"
-          >
-            Map
-          </button>
-        </form>
-
-        {renderQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading mapping...</p>
-        ) : render && Object.keys(render.files).length > 0 ? (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground font-mono">{render.directive}</p>
-            {Object.entries(render.files).map(([account, contents]) => (
-              <ConfigSnippet
-                key={account}
-                title={`/etc/ssh/auth_principals/${account}`}
-                content={contents}
-                downloadFilename={account}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No principal mappings for this host yet.</p>
         )}
       </div>
     </div>

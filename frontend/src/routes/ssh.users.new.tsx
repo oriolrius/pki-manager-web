@@ -26,6 +26,7 @@ function IssueUserCert() {
 
   const identitiesQuery = trpc.ssh.user.listIdentities.useQuery();
   const trustAnchorsQuery = trpc.ssh.ca.trustAnchors.useQuery();
+  const principalsQuery = trpc.ssh.principal.list.useQuery();
   const [identityId, setIdentityId] = useState(initialIdentityId ?? '');
   const [cap, setCap] = useState<SshCapabilityValue>(defaultCapabilityValue());
   const [result, setResult] = useState<{
@@ -158,7 +159,7 @@ function IssueUserCert() {
             )}
           </div>
 
-          <SshCapabilityEditor value={cap} onChange={setCap} />
+          <SshCapabilityEditor value={cap} onChange={setCap} principalCatalog={principalsQuery.data ?? []} />
 
           <PrincipalReachability principals={cap.principals} />
 

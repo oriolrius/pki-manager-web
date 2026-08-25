@@ -9,9 +9,9 @@ export const Route = createFileRoute('/ssh')({
 
 const SUB_NAV = [
   { to: '/ssh/cas', label: 'Certificate Authorities', icon: ShieldCheck },
+  { to: '/ssh/principals', label: 'Principals', icon: Tags },
   { to: '/ssh/hosts', label: 'Hosts', icon: Server },
   { to: '/ssh/users', label: 'Users', icon: Users },
-  { to: '/ssh/principals', label: 'Principals', icon: Tags },
   { to: '/ssh/krl', label: 'KRL', icon: Ban },
 ] as const;
 
