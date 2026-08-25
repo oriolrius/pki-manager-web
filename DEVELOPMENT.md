@@ -6,19 +6,21 @@ This guide covers setting up and running PKI Manager for local development.
 
 - Node.js >= 20.0.0
 - pnpm >= 9.0.0
-- Docker (for Cosmian KMS)
+- Docker (for Cosmian KMS and Keycloak)
 
 ## Quick Start
 
 ```bash
-# 1. Start Cosmian KMS
-cd kms && docker compose up -d
+# 1. Start infrastructure containers
+cd kms && docker compose up -d          # Cosmian KMS  :42998
+cd keycloak && docker compose up -d     # Keycloak     :42997 (optional, OIDC)
 
 # 2. Install dependencies
 pnpm install
 
 # 3. Configure environment
 cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 
 # 4. Run database migrations
 cd backend && pnpm db:migrate
@@ -27,10 +29,84 @@ cd backend && pnpm db:migrate
 pnpm dev
 ```
 
-This starts:
-- **Cosmian KMS** at http://localhost:42998
-- **Backend API** at http://localhost:3000
-- **Frontend** at http://localhost:5173
+### Dev stack ports
+
+The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` range
+(`backend/.env`, `frontend/.env`, `frontend/vite.config.ts`) — **not** the 3000/5173
+defaults.
+
+| Service | URL | Bound by |
+|---|---|---|
+| Frontend (Vite) | http://wsl.ymbihq.local:52080 | `frontend/vite.config.ts` (`host: '0.0.0.0'`) |
+| Backend (Fastify) | http://wsl.ymbihq.local:52081 — Swagger at `/api/docs` | `backend/.env` `PORT`/`HOST` |
+| Cosmian KMS | http://localhost:42998 | `kms/docker-compose.yml` |
+| Keycloak | http://localhost:42997 (admin/admin) | `keycloak/docker-compose.yml` |
+| Backlog.md web UI | http://localhost:6430 | `backlog/config.yml` `defaultPort` |
+
+## Launching the Dev Stack
+
+`pnpm dev` at the root runs **[mprocs](https://github.com/pvolok/mprocs)** (see
+`mprocs.yaml`), a TUI that supervises three panes: `backend`, `frontend`, `backlog`.
+
+> **mprocs needs a TTY.** Backgrounding it from a script or an agent shell dies
+> immediately with `Error: Stdin is not a tty.` Either run it in a real terminal, or
+> start the panes individually (`cd backend && pnpm dev`, `cd frontend && pnpm dev`).
+
+### Inside Orca (preferred)
+
+Launch mprocs in its own visible Orca terminal tab rather than as a background process:
+
+```bash
+orca terminal create \
+  --worktree path:/home/oriol/miimetiq3/pki-manager \
+  --title "DEV STACK" --command "pnpm dev" --json
+# → returns a handle: term_<uuid>
+
+orca terminal read --terminal term_<uuid>   # read pane state / logs without a TTY
+orca terminal switch --terminal term_<uuid> # bring the tab to the foreground
+orca terminal stop  --worktree path:/home/oriol/miimetiq3/pki-manager
+```
+
+`orca terminal read` shows the mprocs process list (`backend UP`, `frontend UP`,
+`backlog UP`) plus the focused pane's output — enough to verify the stack headlessly.
+
+### Verifying
+
+```bash
+ss -ltn | grep -E ':(52080|52081|42998|42997|6430)'   # check binds
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:52081/api/v1/openapi.json
+curl -s http://localhost:42998/version                # KMS liveness
+```
+
+Note: the KMS and Keycloak containers often report `unhealthy` in `docker ps` while
+serving fine — probe the HTTP endpoints, don't trust the healthcheck label.
+
+### WSL2 / Windows reachability gotcha
+
+The Orca browser and the user resolve `localhost` on **Windows**, and WSL2 only forwards
+**IPv4 (`0.0.0.0`)** binds. A server on the IPv6 wildcard (`*:PORT` in `ss`) works from
+inside WSL but gives `ERR_EMPTY_RESPONSE` / a `chrome-error://` page in the browser.
+
+- Backend and frontend already bind `0.0.0.0` — fine as-is.
+- **`backlog browser` binds the IPv6 wildcard on 6430** and has no `--host` flag, so it
+  is invisible from Windows. Put an IPv4 relay in front of it:
+
+```bash
+socat TCP4-LISTEN:52091,bind=0.0.0.0,fork,reuseaddr TCP4:127.0.0.1:6430 &
+# then open http://localhost:52091 on Windows
+```
+
+Always confirm the bind is `0.0.0.0:PORT` (not `*:PORT`) before sending someone a URL.
+
+### Cleaning up stale servers
+
+Ports are shared with other projects in the runtime, so kill by PID, not by name:
+
+```bash
+for p in 52080 52081 6430 52091; do
+  ss -ltnp 2>/dev/null | grep ":$p " | grep -oP 'pid=\K[0-9]+' | head -1
+done | xargs -r kill
+```
 
 ## Cosmian KMS Setup
 
@@ -76,12 +152,12 @@ KMS_URL=http://localhost:42998
 
 ```env
 # Server
-PORT=3000
+PORT=52081
 HOST=0.0.0.0
 NODE_ENV=development
 
 # Frontend URL for CORS
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://wsl.ymbihq.local:52080/
 
 # Database
 DATABASE_PATH=./data/pki.db
@@ -89,8 +165,21 @@ DATABASE_PATH=./data/pki.db
 # Cosmian KMS
 KMS_URL=http://localhost:42998
 
+# SSH CA REST API without OIDC (dev only)
+ALLOW_UNAUTHENTICATED_SSH_CA=true
+
 # CRL Distribution Point
-CRL_DISTRIBUTION_URL=http://localhost:3000/crl
+CRL_DISTRIBUTION_URL=http://wsl.ymbihq.local:52081/crl
+```
+
+With no `OIDC_ISSUER`/`OIDC_AUDIENCE` set the backend runs **fully unauthenticated** and
+logs `OIDC authentication is disabled` on boot — that is the default dev posture even
+when the Keycloak container is up. See [OIDC.md](OIDC.md) to enable it.
+
+### Frontend (`frontend/.env`)
+
+```env
+VITE_API_URL=http://wsl.ymbihq.local:52081/trpc
 ```
 
 ## Development Servers
@@ -105,11 +194,15 @@ pnpm dev
 
 ### Running Services Individually
 
+Use this when you can't give mprocs a TTY (scripts, agents, CI-ish runs):
+
 | Terminal | Directory | Command | URL |
 |----------|-----------|---------|-----|
 | 1 | `kms/` | `docker compose up -d` | http://localhost:42998 |
-| 2 | `backend/` | `pnpm dev` | http://localhost:3000 |
-| 3 | `frontend/` | `pnpm dev` | http://localhost:5173 |
+| 2 | `keycloak/` | `docker compose up -d` | http://localhost:42997 |
+| 3 | `backend/` | `pnpm dev` | http://wsl.ymbihq.local:52081 |
+| 4 | `frontend/` | `pnpm dev` | http://wsl.ymbihq.local:52080 |
+| 5 | repo root | `backlog browser --no-open` | http://localhost:6430 |
 
 ## Available Scripts
 
@@ -481,8 +574,11 @@ Services:
 | **tRPC type errors** | Run `pnpm dev` in backend to regenerate types |
 | **Frontend can't connect** | Check `VITE_API_URL` in frontend env |
 | **Database locked** | Close Drizzle Studio (`pnpm db:studio`) |
-| **Port in use** | Kill process: `lsof -ti:3000 \| xargs kill` |
-| **KMS connection fails** | Verify KMS is running: `curl http://localhost:42998/health` |
+| **Port in use** | Kill by PID: `ss -ltnp \| grep :52081` then `kill <pid>` |
+| **`pnpm dev` exits with `Stdin is not a tty`** | mprocs needs a real terminal — see [Launching the Dev Stack](#launching-the-dev-stack) |
+| **Browser shows `ERR_EMPTY_RESPONSE` / `chrome-error://`** | Server bound IPv6 (`*:PORT`); WSL2 only forwards `0.0.0.0` — see the reachability gotcha above |
+| **Container marked `unhealthy` but works** | Known for the KMS/Keycloak dev images; probe the HTTP endpoint instead |
+| **KMS connection fails** | Verify KMS is running: `curl http://localhost:42998/version` |
 | **KMS not starting** | Check Docker: `cd kms && docker compose logs` |
 | **Certificate creation fails** | Check KMS permissions and CA validity |
 

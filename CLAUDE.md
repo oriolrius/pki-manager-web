@@ -77,7 +77,7 @@ backend runs fully unauthenticated.
 
 | Command | Action |
 |---|---|
-| `pnpm dev` | backend + frontend dev servers (`--parallel -r`) |
+| `pnpm dev` | **mprocs** TUI: `backend` + `frontend` + `backlog` panes (needs a TTY) |
 | `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
 | `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
 
@@ -92,8 +92,17 @@ cd keycloak && docker compose up -d     # Keycloak     (:42997, admin/admin)
 pnpm install
 cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
 cd backend && pnpm db:migrate
-pnpm dev                                # backend :3000 + frontend
+pnpm dev                                # mprocs: backend :52081 + frontend :52080 + backlog :6430
 ```
+
+**Launching the stack as an agent — read
+[DEVELOPMENT.md § Launching the Dev Stack](DEVELOPMENT.md#launching-the-dev-stack) first.**
+Two things bite every time: `pnpm dev` runs **mprocs**, which dies with `Stdin is not a
+tty` if backgrounded — launch it in a real terminal
+(`orca terminal create --worktree path:<repo> --title "DEV STACK" --command "pnpm dev"`,
+then `orca terminal read`); and WSL2 only forwards **IPv4** binds to the Windows browser,
+so anything on the IPv6 wildcard (`*:PORT`, e.g. `backlog browser` on 6430) needs a socat
+relay. That doc also has the real port table, verify commands, and cleanup-by-PID recipe.
 
 The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` port range — see
 [frontend/CLAUDE.md](frontend/CLAUDE.md) and edit the `.env` files for local-only dev.
