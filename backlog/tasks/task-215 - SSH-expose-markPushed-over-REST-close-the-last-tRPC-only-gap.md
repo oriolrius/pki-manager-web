@@ -1,9 +1,11 @@
 ---
 id: TASK-215
 title: 'SSH: expose markPushed over REST (close the last tRPC-only gap)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-08-25 05:31'
+updated_date: '2026-08-25 05:32'
 labels:
   - ssh-cert-manager
   - backend
