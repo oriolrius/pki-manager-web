@@ -1,7 +1,7 @@
 ---
 id: TASK-215
 title: 'SSH: expose markPushed over REST (close the last tRPC-only gap)'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-08-25 05:31'
@@ -34,8 +34,6 @@ Both APIs must keep delegating to the same service method (sshPrincipalService.m
 - [x] #5 A state-changing call writes an audit_log row on both success and failure
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -45,3 +43,21 @@ Both APIs must keep delegating to the same service method (sshPrincipalService.m
 4. Tests: extend ssh-openapi.test.ts (route present in spec with a documented response) and add a non-KMS integration test covering REST-clears-stale, unknown-id 404, and the audit_log rows.
 5. Verify: pnpm test + typecheck in backend; confirm the endpoint in the local Swagger UI.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Adds POST /api/v1/ssh/hosts/:id/auth-principals/pushed, the REST counterpart to the existing GET .../auth-principals, so a REST-only onboarding never has to break out to tRPC.
+
+Changes:
+- services/ssh-principal.service.ts: markPushed() now looks the host up first and throws SshPrincipalError("host <id> not found") instead of silently updating zero rows; writes an audit_log row (ssh.principal.mark_pushed) on success AND failure; returns { hostId, fqdn, lastPrincipalPushAt } (new MarkPushedResult) instead of void.
+- lib/audit.ts: new ssh.principal.mark_pushed operation in the AuditOperation union.
+- trpc/procedures/ssh.ts: markPushed returns the service result verbatim and routes errors through mapSshError, so tRPC and REST are identical. The frontend ignores the value (it only invalidates queries), so no UI change was needed.
+- rest/routes/ssh.routes.ts: the new POST route, delegating to the same service method. The router's existing setErrorHandler maps /not found/i to 404, so no per-route error handling.
+
+Notable: the missing existence check was a real latent bug, not just a 404 nicety — a typo'd host id reported success while the host stayed Stale forever.
+
+Tests: new src/rest/routes/ssh-mark-pushed.integration.test.ts (4 tests, no KMS needed) covers stale->cleared over REST, 404 on unknown id, audit rows on both paths, and REST/service parity; ssh-openapi.test.ts asserts the path is in the generated spec with a 200 response.
+
+Verified: backend typecheck clean; full suite 61 files / 625 tests passing. Also exercised live against the dev backend — path present in /api/v1/openapi.json under the "SSH Certificate Manager" tag, POST returns the payload, unknown id returns 404 {"code":"SSH_ERROR"}, and both audit_log rows land.
+<!-- SECTION:NOTES:END -->
