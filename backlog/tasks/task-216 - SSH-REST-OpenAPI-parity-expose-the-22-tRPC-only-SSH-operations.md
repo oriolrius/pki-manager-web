@@ -1,7 +1,7 @@
 ---
 id: TASK-216
 title: 'SSH REST/OpenAPI parity: expose the 22 tRPC-only SSH operations'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-08-27 20:19'
@@ -41,8 +41,6 @@ Every new route must delegate to the same service singleton the tRPC procedure c
 - [x] #6 A test asserts REST/tRPC parity so a future tRPC-only procedure is caught automatically
 <!-- AC:END -->
 
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -52,3 +50,31 @@ Every new route must delegate to the same service singleton the tRPC procedure c
 4. Tests: a parity test that enumerates the tRPC router and asserts every procedure has a REST route (this is the regression guard, AC#6), plus an integration test exercising the new endpoints against a real Fastify instance, plus OpenAPI presence assertions.
 5. Verify: pnpm typecheck + full backend suite; smoke the new routes against the dev backend.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Brings the SSH REST surface to full parity with tRPC: all 52 procedures are now reachable over /api/v1/ssh (30 were before; 22 added).
+
+New routes in rest/routes/ssh.routes.ts, each delegating to the same service singleton as its tRPC twin:
+- CA: GET /cas/:caId · POST /cas/import · POST /cas/:caId/{revoke,rotate,retire}
+- Host: GET /hosts/:id · GET /hosts/:id/deploy-bundle · POST /hosts/:id/{revoke,ecies-key,offboard}
+- Identity: GET /identities · POST /identities/:id/{disable,offboard} · GET /users/certificates
+- Principal: GET /principals/mappings · GET /principals/stale-hosts · DELETE /principals/:id
+- Bulk: GET /bulk/expiring · POST /bulk/{renew,revoke}
+- KRL: POST /cas/:caId/{revoke-serial,revoke-key}
+
+Two latent service bugs found and fixed (same class as the TASK-215 markPushed no-op):
+- deletePrincipal() had no existence check: deleting an unknown id removed zero rows and reported success. Now throws -> 404.
+- revokeCurrent() collapsed "no such host" and "host has no live cert" into one message, so a typo'd id surfaced as a 400 state error. Now distinguishes them -> 404 vs 400.
+
+Two REST-layer defects caught by the new tests, not by review:
+- /principals/mappings returned 400 because mappingsByPrincipal yields a Record, not an array, and the route declared an array response schema. Now objectSchema.
+- Fastify validates a declared body schema even when no body is sent, so reason-only POSTs rejected a bare `curl -X POST` with "body must be object". Added an optionalBody preValidation hook that defaults the body to {}; applied to the four new reason-only routes and to the pre-existing /certs/:id/revoke, which had the same flaw.
+
+Tests:
+- ssh-rest-parity.test.ts (55 tests) is the regression guard: it enumerates the LIVE tRPC router via sshRouter._def.procedures and asserts every procedure maps to a registered REST operation. Adding a tRPC-only procedure now fails CI. Verified the guard actually fails by temporarily deleting a mapping. REST_EXEMPT is empty and a test asserts it stays empty.
+- ssh-rest-new-endpoints.integration.test.ts (22 tests, no KMS): reads, state changes, the in-use principal delete rejection, optional reason bodies, and a 404-on-unknown-id table across 10 new routes.
+
+Verified: typecheck clean; full backend suite 63 files / 702 tests (was 61/625). Smoked live against the dev backend: /identities, /cas/:caId, /hosts/:id/deploy-bundle, /bulk/expiring, /principals/mappings, a bare POST /hosts/:id/revoke, and a 404.
+<!-- SECTION:NOTES:END -->
