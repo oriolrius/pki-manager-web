@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-08-27 20:19'
-updated_date: '2026-08-27 20:19'
+updated_date: '2026-08-27 20:29'
 labels:
   - ssh-cert-manager
   - backend
@@ -33,13 +33,15 @@ Every new route must delegate to the same service singleton the tRPC procedure c
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every SSH operation available over tRPC is also callable over the REST API
-- [ ] #2 All new endpoints appear in the OpenAPI spec and are callable from Swagger UI at /api/docs
-- [ ] #3 A REST-only client can run a full SSH CA lifecycle (create/inspect/rotate/retire a CA, onboard/inspect/offboard a host, manage identities and their certs) without any tRPC call
-- [ ] #4 REST and tRPC return the same data for the same operation, because both call the same service method
-- [ ] #5 An unknown id returns 404 rather than 500 on every new endpoint
-- [ ] #6 A test asserts REST/tRPC parity so a future tRPC-only procedure is caught automatically
+- [x] #1 Every SSH operation available over tRPC is also callable over the REST API
+- [x] #2 All new endpoints appear in the OpenAPI spec and are callable from Swagger UI at /api/docs
+- [x] #3 A REST-only client can run a full SSH CA lifecycle (create/inspect/rotate/retire a CA, onboard/inspect/offboard a host, manage identities and their certs) without any tRPC call
+- [x] #4 REST and tRPC return the same data for the same operation, because both call the same service method
+- [x] #5 An unknown id returns 404 rather than 500 on every new endpoint
+- [x] #6 A test asserts REST/tRPC parity so a future tRPC-only procedure is caught automatically
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
