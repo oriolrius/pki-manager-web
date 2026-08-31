@@ -2,6 +2,9 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
 import SwaggerUI from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
+// Must come after swagger-ui.css: re-themes its hardcoded light palette onto the
+// app's design tokens so /api-docs is readable in both light and dark mode.
+import '../styles/swagger-theme.css';
 import { getApiUrl } from '../lib/config';
 
 export const Route = createFileRoute('/api-docs')({
