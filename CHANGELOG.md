@@ -1,3 +1,13 @@
+## v3.9.6 (2026-08-31)
+
+### Feat
+
+- **ssh**: full REST/OpenAPI parity with tRPC (TASK-216)
+
+### Fix
+
+- **ui**: theme the Swagger page so /api-docs is readable in dark mode
+
 ## v3.9.5 (2026-08-25)
 
 ### Feat
