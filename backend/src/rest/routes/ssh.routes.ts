@@ -10,6 +10,7 @@ import { db } from '../../db/client.js';
 import { isOIDCEnabled } from '../../lib/oidc.js';
 import {
   createSshCaSchema,
+  importSshCaSchema,
   registerHostSchema,
   issueHostCertSchema,
   issueUserCertSchema,
@@ -26,6 +27,7 @@ import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
+import { getSshBulkService } from '../../services/ssh-bulk.service.js';
 import { getSshBlockService } from '../../services/ssh-block.service.js';
 import { getSshFleetTokenService } from '../../services/ssh-fleet-token.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
@@ -54,6 +56,15 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
   return r.data;
 }
 
+// TASK-216 bodies. These live here rather than in ssh-schemas.ts because the
+// tRPC twins declare them inline too — the id half of each tRPC input travels
+// in the REST path instead of the body.
+const reasonSchema = z.object({ reason: z.string().max(256).optional() });
+const revokeSerialSchema = z.object({ serial: z.string().regex(/^\d+$/), reason: z.string().max(256).optional() });
+const revokeKeySchema = z.object({ fingerprint: z.string().min(1), reason: z.string().max(256).optional() });
+const bulkRenewSchema = z.object({ certIds: z.array(z.string().min(1)).min(1) });
+const bulkRevokeSchema = z.object({ certIds: z.array(z.string().min(1)).min(1), reason: z.string().max(256).optional() });
+
 export async function sshRoutes(api: FastifyInstance): Promise<void> {
   const ctx = (req: any) => ({ db, ipAddress: req.ip ?? null });
   const tag = ['SSH Certificate Manager'];
@@ -80,6 +91,18 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   const objectSchema = (summary: string) => ({
     schema: { tags: tag, summary, response: { 200: okObjectResponse, ...errResponses } },
   });
+  /**
+   * Fastify validates a declared body schema even when the request carries no
+   * body at all, so a POST whose body is nothing but an optional `reason` would
+   * reject a bare `curl -X POST` with "body must be object". Default the body to
+   * `{}` before validation so the field stays documented but stays optional.
+   */
+  const optionalBody = {
+    preValidation: (req: any, _reply: unknown, done: (e?: Error) => void) => {
+      if (req.body === undefined || req.body === null) req.body = {};
+      done();
+    },
+  };
 
   api.post('/cas', postSchema('Create an SSH CA (User or Host)', createSshCaSchema), async (req) => {
     ensureSshAllowed();
@@ -95,6 +118,46 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   api.get('/trust-anchors', objectSchema('SSH trust anchors (TrustedUserCAKeys / @cert-authority)'), async (req) => {
     ensureSshAllowed();
     return getSshCaService().getTrustAnchors(ctx(req));
+  });
+
+  // TASK-216 — CA lifecycle after create was tRPC-only, so a REST client could
+  // stand a CA up but never inspect, rotate or retire it. `:caId` (not `:id`)
+  // matches the existing /cas/:caId/krl routes: find-my-way rejects two
+  // different param names in the same path position.
+  api.get('/cas/:caId', objectSchema('Get one SSH CA'), async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    return getSshCaService().get(ctx(req), caId);
+  });
+
+  api.post('/cas/import', postSchema('Import an existing KMS keypair as an SSH CA', importSshCaSchema), async (req) => {
+    ensureSshAllowed();
+    const input = parse(importSshCaSchema, req.body);
+    return getSshCaService().import(ctx(req), {
+      caType: input.caType,
+      label: input.label,
+      kmsKeyId: input.kmsKeyId,
+      kmsPublicKeyId: input.kmsPublicKeyId,
+    });
+  });
+
+  api.post('/cas/:caId/revoke', { ...postSchema('Revoke an SSH CA', reasonSchema), ...optionalBody }, async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    const body = parse(reasonSchema, (req.body ?? {}) as unknown);
+    return getSshCaService().revoke(ctx(req), caId, body.reason);
+  });
+
+  api.post('/cas/:caId/rotate', postSchema('Rotate an SSH CA (new keypair, predecessor linked)'), async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    return getSshCaService().rotate(ctx(req), caId);
+  });
+
+  api.post('/cas/:caId/retire', postSchema('Retire an SSH CA (stops issuance, keeps trust)'), async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    return getSshCaService().retire(ctx(req), caId);
   });
 
   api.post('/hosts', postSchema('Register a host by its public host key', registerHostSchema), async (req) => {
@@ -127,6 +190,42 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
+  // TASK-216 — host lifecycle twins. Declared AFTER /hosts/issue so the literal
+  // path is matched before the `:id` parameter.
+  api.get('/hosts/:id', objectSchema('Get one host'), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshHostService().get(ctx(req), id);
+  });
+
+  api.get('/hosts/:id/deploy-bundle', objectSchema("Build the host's deploy bundle (sshd drop-in, CA keys, on-host paths)"), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshHostService().buildHostDeployBundle(ctx(req), id);
+  });
+
+  api.post('/hosts/:id/revoke', { ...postSchema("Revoke the host's current certificate", reasonSchema), ...optionalBody }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    const body = parse(reasonSchema, (req.body ?? {}) as unknown);
+    await getSshHostService().revokeCurrent(ctx(req), id, body.reason);
+    return { ok: true };
+  });
+
+  api.post('/hosts/:id/ecies-key', postSchema("Register the host's ECDSA public key as its ECIES/KRL recipient"), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshHostService().registerEciesKey(ctx(req), id);
+  });
+
+  api.post('/hosts/:id/offboard', { ...postSchema('Offboard a host (terminal: retires its per-host KRL lineage)', reasonSchema), ...optionalBody }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    const body = parse(reasonSchema, (req.body ?? {}) as unknown);
+    await getSshHostService().offboard(ctx(req), id, body.reason);
+    return { ok: true };
+  });
+
   api.post('/identities', postSchema('Create a user identity', createIdentitySchema), async (req) => {
     ensureSshAllowed();
     const input = parse(createIdentitySchema, req.body);
@@ -152,6 +251,35 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       keyId: input.keyId,
       enforceEntitlement: input.enforceEntitlement,
     });
+  });
+
+  // TASK-216 — identity twins. Listing identities was tRPC-only, which is why a
+  // REST client could not check whether a subject already existed before
+  // creating one (ssh_identities.subject is UNIQUE).
+  api.get('/identities', listSchema('List user identities'), async (req) => {
+    ensureSshAllowed();
+    return getSshUserService().listIdentities(ctx(req));
+  });
+
+  api.post('/identities/:id/disable', postSchema('Disable an identity (blocks further issuance)'), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    await getSshUserService().disableIdentity(ctx(req), id);
+    return { ok: true };
+  });
+
+  api.post('/identities/:id/offboard', { ...postSchema("Offboard an identity (disable + revoke its live certs)", reasonSchema), ...optionalBody }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    const body = parse(reasonSchema, (req.body ?? {}) as unknown);
+    await getSshUserService().offboard(ctx(req), id, body.reason);
+    return { ok: true };
+  });
+
+  api.get('/users/certificates', listSchema('List user certificates (optionally filter by ?identityId=)'), async (req) => {
+    ensureSshAllowed();
+    const identityId = (req.query as any)?.identityId as string | undefined;
+    return getSshUserService().listCertificates(ctx(req), identityId);
   });
 
   // --- Principals: RBAC catalog + per-host account mapping (renders AuthorizedPrincipalsFile) ---
@@ -181,6 +309,26 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     ensureSshAllowed();
     const input = parse(grantPrincipalSchema, req.body);
     await getSshPrincipalService().grantToIdentity(ctx(req), { identityId: input.identityId, principalId: input.principalId });
+    return { ok: true };
+  });
+
+  // TASK-216 — principal twins. `/principals/mappings` and `/principals/stale-hosts`
+  // are declared before `DELETE /principals/:id` only for readability; the
+  // methods differ, so ordering is not load-bearing here.
+  api.get('/principals/mappings', objectSchema('List principal -> (host, local account) mappings across the fleet'), async (req) => {
+    ensureSshAllowed();
+    return getSshPrincipalService().mappingsByPrincipal(ctx(req));
+  });
+
+  api.get('/principals/stale-hosts', listSchema('Hosts whose principal maps changed after the last push'), async (req) => {
+    ensureSshAllowed();
+    return getSshPrincipalService().staleHosts(ctx(req));
+  });
+
+  api.delete('/principals/:id', { schema: { tags: tag, summary: 'Delete a principal (rejected while entitlements or host maps reference it)', response: { 200: okObjectResponse, ...errResponses } } }, async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    await getSshPrincipalService().deletePrincipal(ctx(req), id);
     return { ok: true };
   });
 
@@ -224,7 +372,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // --- Revocation / KRL. A server's RevokedKeys consumes the (User) CA's KRL. ---
-  api.post('/certs/:id/revoke', postSchema('Revoke an SSH certificate (rebuilds the CA KRL)', z.object({ reason: z.string().max(256).optional() })), async (req) => {
+  api.post('/certs/:id/revoke', { ...postSchema('Revoke an SSH certificate (rebuilds the CA KRL)', reasonSchema), ...optionalBody }, async (req) => {
     ensureSshAllowed();
     const { id } = req.params as { id: string };
     const body = parse(z.object({ reason: z.string().max(256).optional() }), (req.body ?? {}) as unknown);
@@ -241,6 +389,43 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     ensureSshAllowed();
     const { caId } = req.params as { caId: string };
     return getSshKrlService().listRevocations(ctx(req), caId);
+  });
+
+  // TASK-216 — revoke without holding a cert row: by serial, or by public-key
+  // fingerprint. The fingerprint form is the only way to revoke a key this PKI
+  // never issued (e.g. a leaked key pasted into authorized_keys).
+  api.post('/cas/:caId/revoke-serial', postSchema('Revoke a serial under a CA (rebuilds the KRL)', revokeSerialSchema), async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    const body = parse(revokeSerialSchema, req.body);
+    return getSshKrlService().revokeBySerial(ctx(req), caId, body.serial, body.reason);
+  });
+
+  api.post('/cas/:caId/revoke-key', postSchema('Revoke a public key by fingerprint under a CA (rebuilds the KRL)', revokeKeySchema), async (req) => {
+    ensureSshAllowed();
+    const { caId } = req.params as { caId: string };
+    const body = parse(revokeKeySchema, req.body);
+    return getSshKrlService().revokeByKeyFingerprint(ctx(req), caId, body.fingerprint, body.reason);
+  });
+
+  // --- Bulk lifecycle (the whole bulk router was tRPC-only) ---
+  api.get('/bulk/expiring', listSchema('Certificates expiring within ?withinSeconds='), async (req) => {
+    ensureSshAllowed();
+    const raw = (req.query as any)?.withinSeconds;
+    const { withinSeconds } = parse(z.object({ withinSeconds: z.coerce.number().int().positive() }), { withinSeconds: raw });
+    return getSshBulkService().expiring(ctx(req), withinSeconds);
+  });
+
+  api.post('/bulk/renew', postSchema('Renew many certificates by id', bulkRenewSchema), async (req) => {
+    ensureSshAllowed();
+    const body = parse(bulkRenewSchema, req.body);
+    return getSshBulkService().bulkRenew(ctx(req), body.certIds);
+  });
+
+  api.post('/bulk/revoke', postSchema('Revoke many certificates by id', bulkRevokeSchema), async (req) => {
+    ensureSshAllowed();
+    const body = parse(bulkRevokeSchema, req.body);
+    return getSshBulkService().bulkRevoke(ctx(req), body.certIds, body.reason);
   });
 
   // The bare KRL bytes — the RevokedKeys file a server fetches. Lazily (re)builds

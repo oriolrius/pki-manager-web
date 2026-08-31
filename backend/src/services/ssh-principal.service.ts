@@ -87,6 +87,10 @@ export class SshPrincipalService {
   }
 
   async deletePrincipal(ctx: ServiceContext, id: string): Promise<void> {
+    // TASK-216: without this, deleting an unknown id removed zero rows and
+    // still reported success — the same silent no-op markPushed had.
+    const existing = (await ctx.db.select().from(sshPrincipals).where(eq(sshPrincipals.id, id)).limit(1))[0];
+    if (!existing) throw new SshPrincipalError(`principal ${id} not found`);
     // FK ON DELETE restrict prevents deleting an in-use principal.
     try {
       await ctx.db.delete(sshPrincipals).where(eq(sshPrincipals.id, id));
