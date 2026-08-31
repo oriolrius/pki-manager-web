@@ -328,7 +328,10 @@ export class SshHostService {
   /** Mark the host's active cert revoked (eligible for the next KRL build). */
   async revokeCurrent(ctx: ServiceContext, id: string, reason?: string): Promise<void> {
     const row = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, id)).limit(1))[0];
-    if (!row?.currentCertId) throw new SshHostError('host has no active certificate to revoke');
+    // TASK-216: separate "no such host" (404) from "host exists but has no live
+    // cert" (400) — collapsing them made a typo'd id look like a state problem.
+    if (!row) throw new SshHostError(`host ${id} not found`);
+    if (!row.currentCertId) throw new SshHostError('host has no active certificate to revoke');
     await ctx.db
       .update(sshCertificates)
       .set({ status: 'revoked', revocationDate: new Date(), revocationReason: reason ?? null, updatedAt: new Date() })
