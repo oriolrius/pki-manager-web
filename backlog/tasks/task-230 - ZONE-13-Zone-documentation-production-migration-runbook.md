@@ -1,7 +1,7 @@
 ---
 id: TASK-230
 title: 'ZONE-13: Zone documentation + production migration runbook'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:51'
 updated_date: '2026-09-01 05:49'
@@ -56,18 +56,6 @@ Write what shipped, including what did not. decision-017 defers cross-zone trust
 - [x] #6 The deferred items from decision-017 are documented as deferred rather than left ambiguous
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -78,3 +66,9 @@ Write what shipped, including what did not. decision-017 defers cross-zone trust
 5. Cross-link decision-017 and doc-010 from the concept page so the next reader can find the contract.
 6. Re-read the final docs against the shipped behaviour, not against this plan -- if a task changed shape during implementation, the docs follow the code.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Docs: new docs/ssh/zones.md (trust-boundary model, membership rules, archived zones, fail-closed resolution, ECIES 409, downstream consumers, deferred items). New docs/ssh/zones-migration-runbook.md — backup/migrate/verify/rollback with EVERY command executed against a byte copy of prod y0 pki.db (sample outputs embedded: 84 certs preserved, FK-clean, all rows default zone) + explicit 'rollback stops being safe the moment a 2nd zone exists' section. Zone notes added to concept/setup/deploy/principals/host-blocks guides. Root CLAUDE.md + backend/CLAUDE.md updated (schema, fail-closed resolveZone, FK-off migration gotcha). Downstream consumers (Galaxy oriolrius.pki_manager, pki-manager-cli) documented as default-zone-only until updated; krl-client already zone-aware. Deferred items (cross-zone trust, per-zone RBAC, X.509 zone_id, in-place move, multi-zone identities) documented as deferred.
+<!-- SECTION:NOTES:END -->
