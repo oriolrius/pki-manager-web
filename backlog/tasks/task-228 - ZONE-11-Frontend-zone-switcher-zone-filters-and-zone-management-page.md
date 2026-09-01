@@ -4,6 +4,7 @@ title: 'ZONE-11: Frontend zone switcher, zone filters and zone management page'
 status: To Do
 assignee: []
 created_date: '2026-09-01 04:50'
+updated_date: '2026-09-01 06:03'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -38,7 +39,7 @@ Archived zones stay visible in the switcher only when they are the current selec
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can switch the SSH section between zones and see only that zone's CAs, hosts, users, principals and KRLs
+- [x] #1 An operator can switch the SSH section between zones and see only that zone's CAs, hosts, users, principals and KRLs
 - [ ] #2 The selected zone survives a page reload and is carried in the URL so a link opens on the same zone
 - [ ] #3 An All-zones view exists and shows which zone each row belongs to
 - [ ] #4 Creating a CA, host or identity requires choosing a zone, prefilled from the switcher, and archived zones are not offered
@@ -46,6 +47,8 @@ Archived zones stay visible in the switcher only when they are the current selec
 - [ ] #6 The getting-started checklist on the SSH landing page reflects the selected zone rather than the whole installation
 - [ ] #7 Frontend tests and typecheck pass, and the change is verified in a running browser with two zones configured
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
