@@ -53,10 +53,12 @@ The migration must seed one zone (name 'default', display_name 'Default'), backf
 - [x] #1 Two zones can each hold their own active User CA and their own active Host CA at the same time
 - [x] #2 A second active CA of the same type within one zone is still rejected by the database, so rotation semantics are unchanged
 - [x] #3 The same host FQDN, the same identity subject and the same principal name can each exist once per zone and not twice within a zone
-- [ ] #4 Running the migration on an existing single-zone database leaves every SSH row intact and attached to a seeded 'default' zone
+- [x] #4 Running the migration on an existing single-zone database leaves every SSH row intact and attached to a seeded 'default' zone
 - [ ] #5 A zone that still owns CAs, hosts, identities or principals cannot be deleted
 - [ ] #6 pnpm typecheck is clean and the full backend suite passes with no pre-existing test edited
 <!-- AC:END -->
+
+
 
 
 
