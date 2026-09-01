@@ -23,9 +23,36 @@ const principalNameSchema = z.string().refine(isValidPrincipalName, 'invalid pri
 const ttlSecondsSchema = z.number().int().positive().max(10 * 366 * 24 * 3600);
 const serialSchema = z.string().regex(/^\d+$/, 'serial must be a non-negative integer string');
 
+// A zone reference is an id OR a URL-safe slug; resolveZone() disambiguates and
+// fails closed when omitted while several zones exist (decision-017 A1). Optional
+// on every create/issuance path so single-zone installs stay untouched.
+export const zoneRefSchema = z.string().min(1).max(63);
+export const zoneSlugSchema = z
+  .string()
+  .min(1)
+  .max(63)
+  .regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/, 'zone name must be a URL-safe slug (a-z, 0-9, dashes)');
+
+export const createZoneSchema = z.object({
+  name: zoneSlugSchema,
+  displayName: z.string().max(128).optional(),
+  description: z.string().max(512).optional(),
+});
+export const updateZoneSchema = z.object({
+  ref: zoneRefSchema,
+  displayName: z.string().max(128).optional(),
+  description: z.string().max(512).optional(),
+});
+export const zoneRefInputSchema = z.object({ ref: zoneRefSchema });
+export const listZonesSchema = z.object({ includeArchived: z.boolean().optional() }).optional();
+
+// Optional zone filter for every SSH list procedure.
+export const zoneFilterSchema = z.object({ zoneId: z.string().min(1).optional() }).optional();
+
 export const createSshCaSchema = z.object({
   caType: sshCaTypeSchema,
   label: z.string().max(128).optional(),
+  zone: zoneRefSchema.optional(),
 });
 
 export const importSshCaSchema = z.object({
@@ -33,6 +60,7 @@ export const importSshCaSchema = z.object({
   label: z.string().max(128).optional(),
   kmsKeyId: z.string().min(1),
   kmsPublicKeyId: z.string().min(1),
+  zone: zoneRefSchema.optional(),
 });
 
 export const sshCaIdSchema = z.object({ id: z.string().min(1) });
@@ -42,6 +70,7 @@ export const registerHostSchema = z.object({
   displayName: z.string().max(128).optional(),
   addresses: z.array(z.string().min(1)).default([]),
   opensshHostPubkey: z.string().min(1),
+  zone: zoneRefSchema.optional(),
 });
 
 export const issueHostCertSchema = z.object({
@@ -58,6 +87,7 @@ export const createIdentitySchema = z.object({
   subject: z.string().min(1).max(255),
   email: z.string().email().optional(),
   externalSubject: z.string().max(255).optional(),
+  zone: zoneRefSchema.optional(),
 });
 
 export const issueUserCertSchema = z.object({
@@ -82,6 +112,7 @@ export const identityIdSchema = z.object({ id: z.string().min(1) });
 export const createPrincipalSchema = z.object({
   name: principalNameSchema,
   description: z.string().max(256).optional(),
+  zone: zoneRefSchema.optional(),
 });
 
 export const grantPrincipalSchema = z.object({
@@ -96,6 +127,7 @@ export const mintTokenSchema = z.object({
   userCaId: z.string().optional(),
   hostCaId: z.string().optional(),
   opSet: z.array(sshTokenOpSchema).min(1),
+  zone: zoneRefSchema.optional(),
 });
 
 export const mapPrincipalSchema = z.object({

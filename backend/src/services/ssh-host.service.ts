@@ -20,6 +20,7 @@ import {
   HOST_CA_PATH,
   REVOKED_KEYS_PATH,
 } from './ssh-config.js';
+import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
 const DEFAULT_HOST_TTL = 52 * 7 * 24 * 3600; // +52w
@@ -46,6 +47,7 @@ export function assertEcdsaHostKey(algo: SshKeyAlgo): void {
 
 export interface SshHostDto {
   id: string;
+  zoneId: string;
   fqdn: string;
   displayName: string | null;
   addresses: string[];
@@ -99,6 +101,7 @@ export interface HostDeployBundle {
 function hostDto(row: any): SshHostDto {
   return {
     id: row.id,
+    zoneId: row.zoneId,
     fqdn: row.fqdn,
     displayName: row.displayName ?? null,
     addresses: row.addresses ? JSON.parse(row.addresses) : [],
@@ -117,7 +120,7 @@ export class SshHostService {
   /** Register a host with its pasted public host key. */
   async register(
     ctx: ServiceContext,
-    params: { fqdn: string; displayName?: string; addresses: string[]; opensshHostPubkey: string }
+    params: { fqdn: string; displayName?: string; addresses: string[]; opensshHostPubkey: string; zone?: string }
   ): Promise<SshHostDto> {
     if (!isValidHostId(params.fqdn)) throw new SshHostError(`invalid fqdn '${params.fqdn}'`);
     const parsed = parseSshPublicKey(params.opensshHostPubkey); // throws on private key / garbage
@@ -125,11 +128,14 @@ export class SshHostService {
     // certificate subject AND the ECIES recipient for encrypted KRL distribution
     // (which is ECDH over P-256 — an ed25519 signing key can't do key agreement).
     assertEcdsaHostKey(parsed.algo);
+    const zone = await resolveZone(ctx, params.zone);
+    await assertZoneUsable(ctx, zone.id);
     const id = randomUUID();
     // principals = fqdn + any extra addresses, deduped, fqdn first.
     const addresses = Array.from(new Set([params.fqdn, ...params.addresses]));
     await ctx.db.insert(sshHosts).values({
       id,
+      zoneId: zone.id,
       fqdn: params.fqdn,
       displayName: params.displayName ?? null,
       addresses: JSON.stringify(addresses),
@@ -143,7 +149,7 @@ export class SshHostService {
       entityType: 'ssh_host',
       entityId: id,
       status: 'success',
-      details: { fqdn: params.fqdn, addresses },
+      details: { fqdn: params.fqdn, addresses, zone: zone.name },
       ipAddress: ctx.ipAddress ?? undefined,
     });
     return hostDto((await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, id)).limit(1))[0]);
@@ -158,8 +164,12 @@ export class SshHostService {
     if (!host) throw new SshHostError(`host ${params.hostId} not found`);
     if (host.status === 'offboarded') throw new SshHostError('host is offboarded; cannot issue certificates');
     if (!host.opensshHostPubkey) throw new SshHostError('host has no registered public key');
+    // Archived zones block new issuance (amendment A3); existing trust material
+    // (KRL, trust downloads, ECIES) keeps being served from other code paths.
+    await assertZoneUsable(ctx, host.zoneId);
 
-    const ca = await this.resolveHostCa(ctx, params.caId);
+    // Host cert is signed by the active Host CA of the host's OWN zone (§6).
+    const ca = await this.resolveHostCa(ctx, host.zoneId, params.caId);
     const addresses: string[] = host.addresses ? JSON.parse(host.addresses) : [host.fqdn];
     const date = new Date().toISOString().slice(0, 10);
     const ttl = params.validForSeconds ?? DEFAULT_HOST_TTL;
@@ -194,8 +204,11 @@ export class SshHostService {
     };
   }
 
-  async list(ctx: ServiceContext): Promise<SshHostDto[]> {
-    return (await ctx.db.select().from(sshHosts).orderBy(desc(sshHosts.createdAt))).map(hostDto);
+  async list(ctx: ServiceContext, opts?: { zoneId?: string }): Promise<SshHostDto[]> {
+    const rows = opts?.zoneId
+      ? await ctx.db.select().from(sshHosts).where(eq(sshHosts.zoneId, opts.zoneId)).orderBy(desc(sshHosts.createdAt))
+      : await ctx.db.select().from(sshHosts).orderBy(desc(sshHosts.createdAt));
+    return (rows as any[]).map(hostDto);
   }
 
   async get(ctx: ServiceContext, id: string): Promise<SshHostDto & { sshdConfig: string; currentCert: string | null }> {
@@ -229,14 +242,16 @@ export class SshHostService {
     // sshd's RevokedKeys gates USER logins, so the server must serve the active
     // USER CA's KRL (revoked user certs) — NOT the Host CA's. Host-cert
     // revocation is enforced client-side (known_hosts), not here.
-    const userCa = (await ctx.db.select().from(sshCas).where(and(eq(sshCas.caType, 'user'), eq(sshCas.status, 'active'))).limit(1))[0];
+    // The host trusts ONLY its own zone's user CAs (decision-017 §5), so the
+    // RevokedKeys KRL and TrustedUserCAKeys come from host.zoneId, never globally.
+    const userCa = (await ctx.db.select().from(sshCas).where(and(eq(sshCas.zoneId, host.zoneId), eq(sshCas.caType, 'user'), eq(sshCas.status, 'active'))).limit(1))[0];
     const userCaId: string | null = userCa?.id ?? null;
 
     // Pull in the User CA trust file and the auth_principals files (the two
     // artifacts the old host page never emitted) from their owning services.
     const { getSshCaService } = await import('./ssh-ca.service.js');
     const { getSshPrincipalService } = await import('./ssh-principal.service.js');
-    const anchors = await getSshCaService().getTrustAnchors(ctx);
+    const anchors = await getSshCaService().getTrustAnchors(ctx, host.zoneId);
     const principals = await getSshPrincipalService().render(ctx, hostId);
 
     const hostKeyPath = hostKeyPathFor(algo);
@@ -422,17 +437,22 @@ export class SshHostService {
     });
   }
 
-  private async resolveHostCa(ctx: ServiceContext, caId?: string): Promise<any> {
+  private async resolveHostCa(ctx: ServiceContext, zoneId: string, caId?: string): Promise<any> {
     if (caId) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
       if (!ca) throw new SshHostError(`CA ${caId} not found`);
       if (ca.caType !== 'host') throw new SshHostError('selected CA is not a Host CA');
+      if (ca.zoneId !== zoneId) throw new SshHostError('selected CA belongs to a different zone');
       return ca;
     }
     const ca = (
-      await ctx.db.select().from(sshCas).where(and(eq(sshCas.caType, 'host'), eq(sshCas.status, 'active'))).limit(1)
+      await ctx.db
+        .select()
+        .from(sshCas)
+        .where(and(eq(sshCas.zoneId, zoneId), eq(sshCas.caType, 'host'), eq(sshCas.status, 'active')))
+        .limit(1)
     )[0];
-    if (!ca) throw new SshHostError('no active Host CA — create one first');
+    if (!ca) throw new SshHostError('no active Host CA in this zone — create one first');
     return ca;
   }
 }

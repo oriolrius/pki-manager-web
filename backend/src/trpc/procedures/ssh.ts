@@ -25,7 +25,20 @@ import {
   blockHostSchema,
   unblockHostSchema,
   mintTokenSchema,
+  createZoneSchema,
+  updateZoneSchema,
+  zoneRefInputSchema,
+  listZonesSchema,
+  zoneFilterSchema,
 } from '../ssh-schemas.js';
+import {
+  getSshZoneService,
+  SshZoneNotFoundError,
+  SshZoneAmbiguousError,
+  SshZoneExistsError,
+  SshZoneSlugError,
+  SshZoneArchivedError,
+} from '../../services/ssh-zone.service.js';
 import { getSshCaService, SshCaExistsError, SshCaAlgorithmError, SshCaNotFoundError } from '../../services/ssh-ca.service.js';
 import { getSshHostService, SshHostError } from '../../services/ssh-host.service.js';
 import { getSshUserService, SshUserError } from '../../services/ssh-user.service.js';
@@ -42,7 +55,12 @@ import {
 } from '../../services/ssh-cert.service.js';
 
 function mapSshError(error: unknown): never {
-  if (error instanceof SshCaExistsError) throw new TRPCError({ code: 'CONFLICT', message: error.message });
+  if (error instanceof SshCaExistsError || error instanceof SshZoneExistsError)
+    throw new TRPCError({ code: 'CONFLICT', message: error.message });
+  if (error instanceof SshZoneNotFoundError)
+    throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
+  if (error instanceof SshZoneAmbiguousError || error instanceof SshZoneSlugError || error instanceof SshZoneArchivedError)
+    throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
   if (error instanceof SshCaNotFoundError || error instanceof SshSignCaNotFoundError)
     throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
   if (error instanceof SshCaAlgorithmError || error instanceof SshCaUnusableError || error instanceof SshCertTypeMismatchError)
@@ -56,8 +74,56 @@ function mapSshError(error: unknown): never {
 
 const svcCtx = (ctx: any) => ({ db: ctx.db, ipAddress: ctx.req?.ip ?? null });
 
+// Zone management (decision-017 §7). CRUD is admin-tier like CA management;
+// reads are protected. resolveZone is fail-closed — see ssh-zone.service.
+const zoneRouter = router({
+  list: sshProtectedProcedure.input(listZonesSchema).query(async ({ ctx, input }) =>
+    getSshZoneService().list(svcCtx(ctx), { includeArchived: input?.includeArchived })
+  ),
+  get: sshProtectedProcedure.input(zoneRefInputSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshZoneService().get(svcCtx(ctx), input.ref);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  create: sshAdminProcedure.input(createZoneSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshZoneService().create(svcCtx(ctx), input);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  update: sshAdminProcedure.input(updateZoneSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshZoneService().update(svcCtx(ctx), input.ref, {
+        displayName: input.displayName,
+        description: input.description,
+      });
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  archive: sshAdminProcedure.input(zoneRefInputSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshZoneService().archive(svcCtx(ctx), input.ref);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  unarchive: sshAdminProcedure.input(zoneRefInputSchema).mutation(async ({ ctx, input }) => {
+    try {
+      return await getSshZoneService().unarchive(svcCtx(ctx), input.ref);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+});
+
 const caRouter = router({
-  list: sshProtectedProcedure.query(async ({ ctx }) => getSshCaService().list(svcCtx(ctx))),
+  list: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) =>
+    getSshCaService().list(svcCtx(ctx), { zoneId: input?.zoneId })
+  ),
   get: sshProtectedProcedure.input(sshCaIdSchema).query(async ({ ctx, input }) => {
     try {
       return await getSshCaService().get(svcCtx(ctx), input.id);
@@ -65,10 +131,16 @@ const caRouter = router({
       mapSshError(e);
     }
   }),
-  trustAnchors: sshProtectedProcedure.query(async ({ ctx }) => getSshCaService().getTrustAnchors(svcCtx(ctx))),
+  trustAnchors: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshCaService().getTrustAnchors(svcCtx(ctx), input?.zoneId);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
   create: sshAdminProcedure.input(createSshCaSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshCaService().create(svcCtx(ctx), { caType: input.caType, label: input.label });
+      return await getSshCaService().create(svcCtx(ctx), { caType: input.caType, label: input.label, zone: input.zone });
     } catch (e) {
       mapSshError(e);
     }
@@ -80,6 +152,7 @@ const caRouter = router({
         label: input.label,
         kmsKeyId: input.kmsKeyId,
         kmsPublicKeyId: input.kmsPublicKeyId,
+        zone: input.zone,
       });
     } catch (e) {
       mapSshError(e);
@@ -109,7 +182,9 @@ const caRouter = router({
 });
 
 const hostRouter = router({
-  list: sshProtectedProcedure.query(async ({ ctx }) => getSshHostService().list(svcCtx(ctx))),
+  list: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) =>
+    getSshHostService().list(svcCtx(ctx), { zoneId: input?.zoneId })
+  ),
   // BLK-08 read model: who can reach this host (entitlement join + blocks + state).
   access: sshProtectedProcedure.input(hostIdSchema).query(async ({ ctx, input }) => {
     try {
@@ -133,6 +208,7 @@ const hostRouter = router({
         displayName: input.displayName,
         addresses: input.addresses,
         opensshHostPubkey: input.opensshHostPubkey,
+        zone: input.zone,
       });
     } catch (e) {
       mapSshError(e);
@@ -184,13 +260,16 @@ const hostRouter = router({
 });
 
 const userRouter = router({
-  listIdentities: sshProtectedProcedure.query(async ({ ctx }) => getSshUserService().listIdentities(svcCtx(ctx))),
+  listIdentities: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) =>
+    getSshUserService().listIdentities(svcCtx(ctx), { zoneId: input?.zoneId })
+  ),
   createIdentity: sshProtectedProcedure.input(createIdentitySchema).mutation(async ({ ctx, input }) => {
     try {
       return await getSshUserService().createIdentity(svcCtx(ctx), {
         subject: input.subject,
         email: input.email,
         externalSubject: input.externalSubject,
+        zone: input.zone,
       });
     } catch (e) {
       mapSshError(e);
@@ -244,11 +323,13 @@ const userRouter = router({
 });
 
 const principalRouter = router({
-  list: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().listPrincipals(svcCtx(ctx))),
+  list: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) =>
+    getSshPrincipalService().listPrincipals(svcCtx(ctx), { zoneId: input?.zoneId })
+  ),
   mappingsByPrincipal: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().mappingsByPrincipal(svcCtx(ctx))),
   create: sshProtectedProcedure.input(createPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
-      return await getSshPrincipalService().createPrincipal(svcCtx(ctx), { name: input.name, description: input.description });
+      return await getSshPrincipalService().createPrincipal(svcCtx(ctx), { name: input.name, description: input.description, zone: input.zone });
     } catch (e) {
       mapSshError(e);
     }
@@ -307,6 +388,7 @@ const tokenRouter = router({
           userCaId: input.userCaId,
           hostCaId: input.hostCaId,
           opSet: input.opSet,
+          zone: input.zone,
         });
       } catch (e) {
         mapSshError(e);
@@ -422,11 +504,20 @@ const blockRouter = router({
 
 const monRouter = router({
   metrics: sshProtectedProcedure
-    .input(z.object({ ttlWindowSeconds: z.number().int().positive().optional(), pullIntervalSeconds: z.number().int().positive().optional() }).optional())
+    .input(
+      z
+        .object({
+          ttlWindowSeconds: z.number().int().positive().optional(),
+          pullIntervalSeconds: z.number().int().positive().optional(),
+          zoneId: z.string().min(1).optional(),
+        })
+        .optional()
+    )
     .query(async ({ ctx, input }) => getSshMonService().metrics(svcCtx(ctx), input)),
 });
 
 export const sshRouter = router({
+  zone: zoneRouter,
   ca: caRouter,
   host: hostRouter,
   user: userRouter,

@@ -15,6 +15,7 @@ import {
 } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
 import { isValidPrincipalName, isValidAccountName } from './ssh-config.js';
+import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
 export class SshPrincipalError extends Error {
@@ -24,8 +25,17 @@ export class SshPrincipalError extends Error {
   }
 }
 
+/** A grant/map that would cross a zone trust boundary (decision-017 §4/§5). */
+export class SshCrossZoneError extends SshPrincipalError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SshCrossZoneError';
+  }
+}
+
 export interface PrincipalDto {
   id: string;
+  zoneId: string;
   name: string;
   description: string | null;
 }
@@ -47,24 +57,34 @@ export interface MarkPushedResult {
 }
 
 export class SshPrincipalService {
-  async createPrincipal(ctx: ServiceContext, params: { name: string; description?: string }): Promise<PrincipalDto> {
+  async createPrincipal(
+    ctx: ServiceContext,
+    params: { name: string; description?: string; zone?: string }
+  ): Promise<PrincipalDto> {
     if (!isValidPrincipalName(params.name)) throw new SshPrincipalError(`invalid principal name '${params.name}'`);
+    const zone = await resolveZone(ctx, params.zone);
+    await assertZoneUsable(ctx, zone.id);
     const id = randomUUID();
-    await ctx.db.insert(sshPrincipals).values({ id, name: params.name, description: params.description ?? null } as any);
+    await ctx.db
+      .insert(sshPrincipals)
+      .values({ id, zoneId: zone.id, name: params.name, description: params.description ?? null } as any);
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.principal.create',
       entityType: 'ssh_principal',
       entityId: id,
       status: 'success',
-      details: { name: params.name },
+      details: { name: params.name, zone: zone.name },
       ipAddress: ctx.ipAddress ?? undefined,
     });
-    return { id, name: params.name, description: params.description ?? null };
+    return { id, zoneId: zone.id, name: params.name, description: params.description ?? null };
   }
 
-  async listPrincipals(ctx: ServiceContext): Promise<PrincipalDto[]> {
-    return (await ctx.db.select().from(sshPrincipals)).map((r: any) => ({ id: r.id, name: r.name, description: r.description ?? null }));
+  async listPrincipals(ctx: ServiceContext, opts?: { zoneId?: string }): Promise<PrincipalDto[]> {
+    const rows = opts?.zoneId
+      ? await ctx.db.select().from(sshPrincipals).where(eq(sshPrincipals.zoneId, opts.zoneId))
+      : await ctx.db.select().from(sshPrincipals);
+    return (rows as any[]).map((r: any) => ({ id: r.id, zoneId: r.zoneId, name: r.name, description: r.description ?? null }));
   }
 
   /**
@@ -109,6 +129,18 @@ export class SshPrincipalService {
 
   /** Grant an identity the right to encode a principal. */
   async grantToIdentity(ctx: ServiceContext, params: { identityId: string; principalId: string }): Promise<void> {
+    // Cross-zone invariant (decision-017 §4): an identity may only be entitled to
+    // principals of its OWN zone — a grant across the boundary is meaningless
+    // trust and is refused loudly rather than silently written.
+    const identity = (await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, params.identityId)).limit(1))[0];
+    if (!identity) throw new SshPrincipalError(`identity ${params.identityId} not found`);
+    const principal = (await ctx.db.select().from(sshPrincipals).where(eq(sshPrincipals.id, params.principalId)).limit(1))[0];
+    if (!principal) throw new SshPrincipalError(`principal ${params.principalId} not found`);
+    if (identity.zoneId !== principal.zoneId) {
+      throw new SshCrossZoneError(
+        `cannot grant principal '${principal.name}' — it belongs to a different zone than identity '${identity.subject}'`
+      );
+    }
     await ctx.db
       .insert(sshUserPrincipals)
       .values({ id: randomUUID(), identityId: params.identityId, principalId: params.principalId } as any)
@@ -130,6 +162,17 @@ export class SshPrincipalService {
     params: { hostId: string; principalId: string; localAccount: string }
   ): Promise<void> {
     if (!isValidAccountName(params.localAccount)) throw new SshPrincipalError(`invalid local account '${params.localAccount}'`);
+    // Cross-zone invariant (decision-017 §5): a host may only map principals of
+    // its OWN zone into its AuthorizedPrincipalsFile.
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, params.hostId)).limit(1))[0];
+    if (!host) throw new SshPrincipalError(`host ${params.hostId} not found`);
+    const principal = (await ctx.db.select().from(sshPrincipals).where(eq(sshPrincipals.id, params.principalId)).limit(1))[0];
+    if (!principal) throw new SshPrincipalError(`principal ${params.principalId} not found`);
+    if (host.zoneId !== principal.zoneId) {
+      throw new SshCrossZoneError(
+        `cannot map principal '${principal.name}' on host '${host.fqdn}' — they belong to different zones`
+      );
+    }
     await ctx.db.insert(sshHostPrincipalMaps).values({
       id: randomUUID(),
       hostId: params.hostId,

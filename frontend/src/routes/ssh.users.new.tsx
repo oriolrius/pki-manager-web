@@ -9,6 +9,7 @@ import {
 } from '@/components/SshCapabilityEditor';
 import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
 import { useToast } from '@/components/ui';
+import { useZone } from '@/lib/zone-context';
 import { type SshKeyType } from '@/lib/ssh';
 
 export const Route = createFileRoute('/ssh/users/new')({
@@ -24,10 +25,14 @@ function IssueUserCert() {
   const utils = trpc.useUtils();
   const { identityId: initialIdentityId } = Route.useSearch();
 
-  const identitiesQuery = trpc.ssh.user.listIdentities.useQuery();
-  const trustAnchorsQuery = trpc.ssh.ca.trustAnchors.useQuery();
-  const principalsQuery = trpc.ssh.principal.list.useQuery();
+  const { zoneId } = useZone();
+  const identitiesQuery = trpc.ssh.user.listIdentities.useQuery({ zoneId });
   const [identityId, setIdentityId] = useState(initialIdentityId ?? '');
+  // Trust anchors and principals are per-zone; key them off the SELECTED
+  // identity's own zone (issuance resolves the CA from the identity's zone).
+  const selectedZoneId = (identitiesQuery.data ?? []).find((i) => i.id === identityId)?.zoneId;
+  const trustAnchorsQuery = trpc.ssh.ca.trustAnchors.useQuery({ zoneId: selectedZoneId }, { enabled: !!selectedZoneId });
+  const principalsQuery = trpc.ssh.principal.list.useQuery({ zoneId: selectedZoneId }, { enabled: !!selectedZoneId });
   const [cap, setCap] = useState<SshCapabilityValue>(defaultCapabilityValue());
   const [result, setResult] = useState<{
     certOpenssh: string;

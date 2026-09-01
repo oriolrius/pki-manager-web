@@ -106,7 +106,12 @@ export class SshHostKrlService {
     // 1. Union of every non-retired CA's revocation set (host CAs — the set the
     //    composed artifact displaces, pinned req #2 — AND user CAs — the bonus
     //    fix: revoked user certs finally reach ECIES-pulling hosts).
-    const unionCas = allCas.filter((c) => c.status !== 'retired');
+    //    ZONE-05 (decision-017 §5): narrow the union to the host's OWN zone. A
+    //    host in zone Z trusts only Z's user CAs, so a foreign zone's revocation
+    //    set must never enter this host's KRL. In a migrated single-zone install
+    //    the composed bytes are byte-identical; the change is observable only once
+    //    a second zone exists — exactly the intended trust boundary.
+    const unionCas = allCas.filter((c) => c.status !== 'retired' && c.zoneId === host.zoneId);
     const unionCaIds = unionCas.map((c) => c.id);
     if (unionCaIds.length) {
       const revokedCerts = (await ctx.db
@@ -245,10 +250,12 @@ export class SshHostKrlService {
       const ca = cert ? caById.get(cert.caId) : undefined;
       if (ca && ca.caType === 'host' && ca.status !== 'retired') return ca;
     }
+    // Fallback signing CA must come from the host's OWN zone (ZONE-05) — never a
+    // foreign zone's host CA.
     const active = (await ctx.db
       .select()
       .from(sshCas)
-      .where(and(eq(sshCas.caType, 'host'), ne(sshCas.status, 'retired')))
+      .where(and(eq(sshCas.zoneId, host.zoneId), eq(sshCas.caType, 'host'), ne(sshCas.status, 'retired')))
       .limit(1))[0];
     if (!active) throw new SshHostKrlError('no non-retired host CA available to sign the composed KRL');
     return active;

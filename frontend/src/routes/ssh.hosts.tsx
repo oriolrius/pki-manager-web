@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/r
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { SearchInput } from '@/components/ui';
+import { useZone } from '@/lib/zone-context';
 
 export const Route = createFileRoute('/ssh/hosts')({
   component: SshHosts,
@@ -19,7 +20,8 @@ function SshHosts() {
   const isNew = matchRoute({ to: '/ssh/hosts/new' });
   const isDetail = matchRoute({ to: '/ssh/hosts/$id', fuzzy: false });
 
-  const hostsQuery = trpc.ssh.host.list.useQuery();
+  const { zoneId, isAll, zoneNameById } = useZone();
+  const hostsQuery = trpc.ssh.host.list.useQuery({ zoneId });
   const [filter, setFilter] = useState('');
 
   if (isNew || isDetail) {
@@ -70,6 +72,7 @@ function SshHosts() {
             <thead className="border-b bg-muted/50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium">FQDN</th>
+                {isAll && <th className="px-4 py-3 text-left text-sm font-medium">Zone</th>}
                 <th className="px-4 py-3 text-left text-sm font-medium">Addresses</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Certificate</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
@@ -78,13 +81,13 @@ function SshHosts() {
             <tbody className="divide-y">
               {hosts.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={isAll ? 5 : 4} className="px-4 py-8 text-center text-muted-foreground">
                     No hosts registered yet.
                   </td>
                 </tr>
               ) : filteredHosts.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={isAll ? 5 : 4} className="px-4 py-8 text-center text-muted-foreground">
                     No hosts match “{filter}”.
                   </td>
                 </tr>
@@ -99,6 +102,11 @@ function SshHosts() {
                       <div className="text-sm font-medium">{h.fqdn}</div>
                       {h.displayName && <div className="text-xs text-muted-foreground">{h.displayName}</div>}
                     </td>
+                    {isAll && (
+                      <td className="px-4 py-3 text-sm">
+                        <code className="text-xs font-mono">{zoneNameById(h.zoneId)}</code>
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
                       {h.addresses.length ? h.addresses.join(', ') : '—'}
                     </td>

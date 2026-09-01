@@ -8,6 +8,8 @@ import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
 import { keyTypeFromCertOpenssh } from '@/lib/ssh';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
 import { useToast, useConfirm, Combobox, SearchInput } from '@/components/ui';
+import { useZone } from '@/lib/zone-context';
+import { ZonePicker } from '@/components/ssh/ZonePicker';
 
 /** A row from ssh.user.listCertificates (service returns loosely-typed rows). */
 type CertRow = {
@@ -37,10 +39,12 @@ function SshUsers() {
   const utils = trpc.useUtils();
   const toast = useToast();
   const confirm = useConfirm();
-  const identitiesQuery = trpc.ssh.user.listIdentities.useQuery();
+  const { zoneId, isAll, zoneNameById } = useZone();
+  const identitiesQuery = trpc.ssh.user.listIdentities.useQuery({ zoneId });
 
   const [newSubject, setNewSubject] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newZone, setNewZone] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [filter, setFilter] = useState('');
   const createMutation = trpc.ssh.user.createIdentity.useMutation();
@@ -63,8 +67,12 @@ function SshUsers() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newZone) {
+      toast.error('Pick a zone for the identity');
+      return;
+    }
     createMutation.mutate(
-      { subject: newSubject.trim(), email: newEmail.trim() || undefined },
+      { subject: newSubject.trim(), email: newEmail.trim() || undefined, zone: newZone },
       {
         onSuccess: () => {
           utils.ssh.user.listIdentities.invalidate();
@@ -147,9 +155,13 @@ function SshUsers() {
               className="w-full px-3 py-2 border rounded-md bg-background"
             />
           </div>
+          <div className="min-w-[160px]">
+            <label className="block text-sm font-medium mb-1">Zone *</label>
+            <ZonePicker value={newZone} onChange={setNewZone} />
+          </div>
           <button
             type="submit"
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || !newZone}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 font-medium"
           >
             {createMutation.isPending ? 'Creating...' : 'Create'}
@@ -170,12 +182,18 @@ function SshUsers() {
             </div>
           ) : (
             filteredIdentities.map((identity) => (
-              <IdentityCard
-                key={identity.id}
-                identity={identity}
-                onDisable={() => handleDisable(identity.id)}
-                onIssue={() => navigate({ to: '/ssh/users/new', search: { identityId: identity.id } })}
-              />
+              <div key={identity.id}>
+                {isAll && (
+                  <div className="text-xs text-muted-foreground mb-1 ml-1">
+                    Zone: <code className="font-mono">{zoneNameById(identity.zoneId)}</code>
+                  </div>
+                )}
+                <IdentityCard
+                  identity={identity}
+                  onDisable={() => handleDisable(identity.id)}
+                  onIssue={() => navigate({ to: '/ssh/users/new', search: { identityId: identity.id } })}
+                />
+              </div>
             ))
           )}
         </div>

@@ -1,5 +1,10 @@
 # SSH Principals — a practical guide
 
+> **Zones:** principals are **per zone** ([SSH zones](zones.md)). `admins` in `prod`
+> and `admins` in `staging` are different rows; a grant or host-mapping across zones
+> is refused, because a host only ever consults its own zone's principal maps.
+
+
 Principals are the piece that makes the whole SSH CA "click", and they are the
 #1 thing people get stuck on. This guide fixes the mental model and then walks a
 concrete fleet (20 servers, three user profiles) end to end. Read

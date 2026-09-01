@@ -10,12 +10,14 @@ import { getKMSService } from '../kms/service.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
+import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
 export type SshCaType = 'user' | 'host';
 
 export interface SshCaDto {
   id: string;
+  zoneId: string;
   caType: SshCaType;
   label: string | null;
   opensshPublicKey: string;
@@ -35,8 +37,12 @@ export interface TrustAnchors {
 }
 
 export class SshCaExistsError extends Error {
-  constructor(caType: string) {
-    super(`an active ${caType} SSH CA already exists (one active CA per type)`);
+  constructor(caType: string, zone?: string) {
+    super(
+      zone
+        ? `an active ${caType} SSH CA already exists in zone '${zone}' (one active CA per type per zone)`
+        : `an active ${caType} SSH CA already exists (one active CA per type)`
+    );
     this.name = 'SshCaExistsError';
   }
 }
@@ -56,6 +62,7 @@ export class SshCaNotFoundError extends Error {
 function toDto(row: any): SshCaDto {
   return {
     id: row.id,
+    zoneId: row.zoneId,
     caType: row.caType,
     label: row.label ?? null,
     opensshPublicKey: row.opensshPublicKey,
@@ -69,16 +76,19 @@ function toDto(row: any): SshCaDto {
 }
 
 export class SshCaService {
-  /** Create a non-exportable ECDSA-P256 SSH CA (decision-011). */
-  async create(ctx: ServiceContext, params: { caType: SshCaType; label?: string }): Promise<SshCaDto> {
+  /** Create a non-exportable ECDSA-P256 SSH CA (decision-011), scoped to a zone. */
+  async create(ctx: ServiceContext, params: { caType: SshCaType; label?: string; zone?: string }): Promise<SshCaDto> {
     const kms = getKMSService();
     const id = randomUUID();
-    // Guard against a second active CA of this type before touching the KMS.
+    // Resolve + gate the zone (fail-closed if ambiguous; blocked if archived).
+    const zone = await resolveZone(ctx, params.zone);
+    await assertZoneUsable(ctx, zone.id);
+    // Guard against a second active CA of this type IN THIS ZONE before the KMS.
     const existing = await ctx.db
       .select()
       .from(sshCas)
-      .where(and(eq(sshCas.caType, params.caType), eq(sshCas.status, 'active')));
-    if (existing.length) throw new SshCaExistsError(params.caType);
+      .where(and(eq(sshCas.zoneId, zone.id), eq(sshCas.caType, params.caType), eq(sshCas.status, 'active')));
+    if (existing.length) throw new SshCaExistsError(params.caType, zone.name);
 
     let kmsKeyId = '';
     let kmsPublicKeyId = '';
@@ -91,6 +101,7 @@ export class SshCaService {
 
       await ctx.db.insert(sshCas).values({
         id,
+        zoneId: zone.id,
         caType: params.caType,
         label: params.label ?? null,
         kmsKeyId,
@@ -107,7 +118,7 @@ export class SshCaService {
         entityType: 'ssh_ca',
         entityId: id,
         status: 'success',
-        details: { caType: params.caType, fingerprint: parsed.fingerprintSha256, kmsKeyId },
+        details: { caType: params.caType, zone: zone.name, fingerprint: parsed.fingerprintSha256, kmsKeyId },
         ipAddress: ctx.ipAddress ?? undefined,
       });
       logger.info({ id, caType: params.caType, fingerprint: parsed.fingerprintSha256 }, 'Created SSH CA');
@@ -133,14 +144,16 @@ export class SshCaService {
    */
   async import(
     ctx: ServiceContext,
-    params: { caType: SshCaType; label?: string; kmsKeyId: string; kmsPublicKeyId: string }
+    params: { caType: SshCaType; label?: string; kmsKeyId: string; kmsPublicKeyId: string; zone?: string }
   ): Promise<SshCaDto> {
     const kms = getKMSService();
+    const zone = await resolveZone(ctx, params.zone);
+    await assertZoneUsable(ctx, zone.id);
     const existing = await ctx.db
       .select()
       .from(sshCas)
-      .where(and(eq(sshCas.caType, params.caType), eq(sshCas.status, 'active')));
-    if (existing.length) throw new SshCaExistsError(params.caType);
+      .where(and(eq(sshCas.zoneId, zone.id), eq(sshCas.caType, params.caType), eq(sshCas.status, 'active')));
+    if (existing.length) throw new SshCaExistsError(params.caType, zone.name);
 
     const line = await kms.getSshPublicKeyLine(params.kmsPublicKeyId, params.label ?? `ssh-${params.caType}-ca`);
     const parsed = parseSshPublicKey(line);
@@ -155,6 +168,7 @@ export class SshCaService {
     const id = randomUUID();
     await ctx.db.insert(sshCas).values({
       id,
+      zoneId: zone.id,
       caType: params.caType,
       label: params.label ?? null,
       kmsKeyId: params.kmsKeyId,
@@ -176,8 +190,11 @@ export class SshCaService {
     return toDto((await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0]);
   }
 
-  async list(ctx: ServiceContext): Promise<SshCaDto[]> {
-    return (await ctx.db.select().from(sshCas)).map(toDto);
+  async list(ctx: ServiceContext, opts?: { zoneId?: string }): Promise<SshCaDto[]> {
+    const rows = opts?.zoneId
+      ? await ctx.db.select().from(sshCas).where(eq(sshCas.zoneId, opts.zoneId))
+      : await ctx.db.select().from(sshCas);
+    return (rows as any[]).map(toDto);
   }
 
   async get(ctx: ServiceContext, id: string): Promise<SshCaDto> {
@@ -187,11 +204,14 @@ export class SshCaService {
   }
 
   /**
-   * Publish trust anchors. During rotation both the active successor and the
-   * 'rotating' predecessor of each type are emitted so no valid cert is rejected.
+   * Publish trust anchors for a zone (decision-017 §5 — the zone IS the trust
+   * boundary). During rotation both the active successor and the 'rotating'
+   * predecessor of each type are emitted so no valid cert is rejected. The zone
+   * is resolved fail-closed (A1): omit it only while a single zone exists.
    */
-  async getTrustAnchors(ctx: ServiceContext): Promise<TrustAnchors> {
-    const cas = await ctx.db.select().from(sshCas);
+  async getTrustAnchors(ctx: ServiceContext, zone?: string): Promise<TrustAnchors> {
+    const z = await resolveZone(ctx, zone);
+    const cas = await ctx.db.select().from(sshCas).where(eq(sshCas.zoneId, z.id));
     const usable = cas.filter((c: any) => c.status === 'active' || c.status === 'rotating');
     return {
       userCaKeys: usable.filter((c: any) => c.caType === 'user').map((c: any) => c.opensshPublicKey),
@@ -216,7 +236,12 @@ export class SshCaService {
       .set({ status: 'rotating', retireAfter: new Date(Date.now() + overlapSeconds * 1000), updatedAt: new Date() })
       .where(eq(sshCas.id, id));
 
-    const successor = await this.create(ctx, { caType: old.caType, label: `${old.label ?? old.caType} (rotated ${new Date().toISOString().slice(0, 10)})` });
+    // Successor inherits the predecessor's zone (decision-017 §6 rotation).
+    const successor = await this.create(ctx, {
+      caType: old.caType,
+      label: `${old.label ?? old.caType} (rotated ${new Date().toISOString().slice(0, 10)})`,
+      zone: old.zoneId,
+    });
     await ctx.db.update(sshCas).set({ predecessorCaId: id, updatedAt: new Date() }).where(eq(sshCas.id, successor.id));
 
     await createAuditLog({
