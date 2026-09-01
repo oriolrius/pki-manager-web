@@ -46,9 +46,11 @@ Path parameter naming: find-my-way rejects two different parameter names at the 
 - [x] #2 Every SSH list endpoint accepts a zone filter and every creation endpoint accepts an explicit zone
 - [x] #3 All new endpoints appear in the OpenAPI spec and are callable from Swagger UI at /api/docs
 - [x] #4 The REST/tRPC parity test passes with no exemptions, so no zone operation is tRPC-only
-- [ ] #5 A duplicate zone slug returns a conflict and an unknown zone returns 404 rather than 500
+- [x] #5 A duplicate zone slug returns a conflict and an unknown zone returns 404 rather than 500
 - [ ] #6 A REST-only client can create a second zone, provision its CAs, enroll a host into it and issue a user certificate there
 <!-- AC:END -->
+
+
 
 
 
