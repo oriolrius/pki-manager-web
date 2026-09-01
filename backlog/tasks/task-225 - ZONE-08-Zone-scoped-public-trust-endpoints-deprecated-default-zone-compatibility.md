@@ -58,10 +58,12 @@ Note the shadowing caveat recorded in TASK-209: these root-mounted public routes
 - [x] #1 A host can download the trusted user CA keys, host CA keys and @cert-authority lines for a named zone, and gets only that zone's material
 - [x] #2 The existing unscoped trust URLs keep working and serve the default zone, so already-enrolled hosts and the pinned Ansible collection do not break
 - [x] #3 Responses from the unscoped URLs announce that they are deprecated and name both the successor URL and the zone that answered
-- [ ] #4 With more than one zone configured, the unscoped URLs still serve only the default zone and never a union of zones
+- [x] #4 With more than one zone configured, the unscoped URLs still serve only the default zone and never a union of zones
 - [ ] #5 An unknown zone slug returns 404
 - [ ] #6 The in-repo Ansible end-to-end suite passes unmodified
 <!-- AC:END -->
+
+
 
 
 
