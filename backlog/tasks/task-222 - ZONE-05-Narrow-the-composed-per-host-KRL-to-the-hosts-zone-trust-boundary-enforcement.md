@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-01 04:47'
+updated_date: '2026-09-01 05:29'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -44,7 +45,7 @@ Also in scope, because it is the operator's view of the same boundary:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A host's KRL contains revocations from its own zone only, verified by decoding the actual KRL bytes
+- [x] #1 A host's KRL contains revocations from its own zone only, verified by decoding the actual KRL bytes
 - [ ] #2 A host's KRL is signed by a Host CA from its own zone, and that signature does not verify against another zone's Host CA key
 - [ ] #3 Per-host access blocks keep working within a zone exactly as they did before
 - [ ] #4 KRL numbers remain strictly increasing across all hosts regardless of zone, so no client rejects a KRL as a rollback
@@ -52,6 +53,8 @@ Also in scope, because it is the operator's view of the same boundary:
 - [ ] #6 On a single-zone installation the composed KRL bytes are unchanged
 - [ ] #7 SSH monitoring metrics can be read per zone as well as installation-wide
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
