@@ -4,7 +4,7 @@ title: 'ZONE-06: tRPC zone router + zone filters on every SSH procedure'
 status: To Do
 assignee: []
 created_date: '2026-09-01 04:47'
-updated_date: '2026-09-01 05:40'
+updated_date: '2026-09-01 05:41'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -47,11 +47,13 @@ Error mapping: SshZoneNotFoundError -> NOT_FOUND, SshZoneAmbiguousError / SshZon
 <!-- AC:BEGIN -->
 - [x] #1 Zones can be listed, created, renamed, archived and un-archived over tRPC
 - [x] #2 Zone mutations require an admin, matching how CA management is already guarded
-- [ ] #3 Every SSH list procedure can be filtered to one zone, and returns all zones when no filter is given
+- [x] #3 Every SSH list procedure can be filtered to one zone, and returns all zones when no filter is given
 - [ ] #4 CAs, hosts, identities and principals can be created into an explicitly named zone
 - [ ] #5 An unknown zone returns not-found and an ambiguous omitted zone returns a bad-request naming the available zones
 - [ ] #6 Existing frontend tRPC calls that pass no arguments still compile and behave as before
 <!-- AC:END -->
+
+
 
 
 
