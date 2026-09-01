@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-01 09:35'
-updated_date: '2026-09-01 09:43'
+updated_date: '2026-09-01 11:32'
 labels: []
 dependencies: []
 ordinal: 60014
@@ -29,7 +29,7 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Audit the existing KRL route, queries, mutations, and related SSH UI conventions.
-2. Reorganize the page around an operator workflow: choose CA, assess current state, revoke, generate, then confirm fleet distribution.
+2. Replace the upfront CA selector with an operational KRL overview: each active CA shows its own KRL health and exposes an explicit management entry point.
 3. Preserve every existing mutation and data view while adding responsive layout, explicit loading/empty states, and high-clarity risk guidance.
 4. Run frontend typecheck, lint, and relevant tests; review the final diff and record PR-ready notes.
 <!-- SECTION:PLAN:END -->
