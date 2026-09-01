@@ -4,6 +4,7 @@ title: 'ZONE-13: Zone documentation + production migration runbook'
 status: To Do
 assignee: []
 created_date: '2026-09-01 04:51'
+updated_date: '2026-09-01 05:49'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -47,13 +48,15 @@ Write what shipped, including what did not. decision-017 defers cross-zone trust
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The SSH concept, setup, deployment, principals and blocks guides all explain zones as the trust boundary
+- [x] #1 The SSH concept, setup, deployment, principals and blocks guides all explain zones as the trust boundary
 - [ ] #2 An operator can follow a written runbook to upgrade the live installation, including backup, verification and rollback steps
 - [ ] #3 Every command in the runbook has been executed against a copy of the production database rather than only written down
 - [ ] #4 The runbook states explicitly at what point rollback stops being safe
 - [ ] #5 The docs name the downstream consumers that are not updated by this milestone and what each still needs
 - [ ] #6 The deferred items from decision-017 are documented as deferred rather than left ambiguous
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
