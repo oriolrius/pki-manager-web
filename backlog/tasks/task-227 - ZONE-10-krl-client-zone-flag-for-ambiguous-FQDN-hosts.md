@@ -1,7 +1,7 @@
 ---
 id: TASK-227
 title: 'ZONE-10: krl-client --zone flag for ambiguous-FQDN hosts'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:49'
 updated_date: '2026-09-01 05:44'
@@ -48,18 +48,6 @@ Do not change the decryption model, the trust anchor, the anti-rollback comparis
 - [x] #6 The README documents the new option and how to diagnose the ambiguity error
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -70,3 +58,9 @@ Do not change the decryption model, the trust anchor, the anti-rollback comparis
 5. Update the generated sshd drop-in / documented client invocation if either pins a full command line (check backend/src/services/ssh-config.ts and docs/ssh/*).
 6. `make test` (and `make build`) in krl-client/; verify against a two-zone dev backend that a colliding FQDN fails without --zone and succeeds with it.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+krl-client (Go): added Config.Zone + --zone flag + KRL_CLIENT_ZONE env + zone: config key (same flag>env>file precedence as every string option; whitelisted in configKeys). Client.SetZone() adds a "zone" field to the POST /krl body only when non-empty (single-zone body byte-identical when unset). run.go wires client.SetZone(cfg.Zone). Tests: TestFetchKRL_ZoneInBody (body present/absent), TestPrecedence_Zone. README flag table updated. go test ./... = 91 pass.
+<!-- SECTION:NOTES:END -->
