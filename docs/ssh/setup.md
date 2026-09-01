@@ -1,5 +1,12 @@
 # Host & client setup
 
+> **Zones:** if this installation uses [SSH zones](zones.md), every trust file
+> below (User CA key, `@cert-authority` line, host cert, KRL) is **per zone** — a
+> host trusts only its own zone's user CAs. Fetch trust material from the
+> zone-scoped endpoints (`/ssh/zones/<zone>/…`) or, for a single-zone install, the
+> unchanged default-zone routes.
+
+
 How to set up an **SSH server** and an **SSH client** by hand. For automated host
 setup, use the [Ansible role](../../ansible/README.md) instead — it performs the
 server steps below. Read [the concept page](concept.md) first.

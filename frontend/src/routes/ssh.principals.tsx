@@ -5,6 +5,8 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
 import { HostPrincipalMappingCard, StalePill } from '@/components/ssh/HostPrincipalMappingCard';
 import { useToast, useConfirm } from '@/components/ui';
+import { useZone } from '@/lib/zone-context';
+import { ZonePicker } from '@/components/ssh/ZonePicker';
 
 export const Route = createFileRoute('/ssh/principals')({
   component: SshPrincipals,
@@ -14,12 +16,14 @@ function SshPrincipals() {
   const toast = useToast();
   const confirm = useConfirm();
   const utils = trpc.useUtils();
-  const principalsQuery = trpc.ssh.principal.list.useQuery();
-  const hostsQuery = trpc.ssh.host.list.useQuery();
+  const { zoneId, isAll, zoneNameById } = useZone();
+  const principalsQuery = trpc.ssh.principal.list.useQuery({ zoneId });
+  const hostsQuery = trpc.ssh.host.list.useQuery({ zoneId });
   const staleQuery = trpc.ssh.principal.staleHosts.useQuery();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [formZone, setFormZone] = useState('');
   const [selectedHostId, setSelectedHostId] = useState('');
   const createMutation = trpc.ssh.principal.create.useMutation();
   const deleteMutation = trpc.ssh.principal.delete.useMutation();
@@ -32,8 +36,12 @@ function SshPrincipals() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formZone) {
+      toast.error('Pick a zone for the principal');
+      return;
+    }
     createMutation.mutate(
-      { name: name.trim(), description: description.trim() || undefined },
+      { name: name.trim(), description: description.trim() || undefined, zone: formZone },
       {
         onSuccess: () => {
           toast.success(`Principal "${name.trim()}" created`);
@@ -102,9 +110,13 @@ function SshPrincipals() {
                 className="w-full px-3 py-2 border rounded-md bg-background"
               />
             </div>
+            <div className="min-w-[160px]">
+              <label className="block text-sm font-medium mb-1">Zone *</label>
+              <ZonePicker value={formZone} onChange={setFormZone} />
+            </div>
             <button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || !formZone}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 font-medium"
             >
               <Plus className="h-4 w-4" />
@@ -122,6 +134,7 @@ function SshPrincipals() {
                 <thead className="border-b bg-muted/50">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Name</th>
+                    {isAll && <th className="px-3 py-2 text-left font-medium">Zone</th>}
                     <th className="px-3 py-2 text-left font-medium">Description</th>
                     <th className="px-3 py-2"></th>
                   </tr>
@@ -130,6 +143,11 @@ function SshPrincipals() {
                   {principals.map((p) => (
                     <tr key={p.id}>
                       <td className="px-3 py-2 font-mono">{p.name}</td>
+                      {isAll && (
+                        <td className="px-3 py-2">
+                          <code className="text-xs font-mono">{zoneNameById(p.zoneId)}</code>
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-muted-foreground">{p.description || '—'}</td>
                       <td className="px-3 py-2 text-right">
                         <button

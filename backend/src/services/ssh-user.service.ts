@@ -12,6 +12,7 @@ import { parseSshPublicKey, type SshKeyAlgo } from '../crypto/ssh/pubkey.js';
 import { DEFAULT_USER_EXTENSIONS } from '../crypto/ssh/openssh-cert.js';
 import { getSshCertService } from './ssh-cert.service.js';
 import { sshClientConfig, validateCidrList, isValidPrincipalName } from './ssh-config.js';
+import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
 const DEFAULT_USER_TTL = 7 * 24 * 3600; // +1w
@@ -25,6 +26,7 @@ export class SshUserError extends Error {
 
 export interface SshIdentityDto {
   id: string;
+  zoneId: string;
   subject: string;
   email: string | null;
   status: 'active' | 'disabled';
@@ -34,6 +36,7 @@ export interface SshIdentityDto {
 function identityDto(row: any): SshIdentityDto {
   return {
     id: row.id,
+    zoneId: row.zoneId,
     subject: row.subject,
     email: row.email ?? null,
     status: row.status,
@@ -43,6 +46,8 @@ function identityDto(row: any): SshIdentityDto {
 
 export interface IssueUserCertParams {
   identityId: string;
+  /** Optional explicit CA override (validated to be a User CA). Not surfaced in
+   *  the issuance API/UI — the zone's active User CA is resolved implicitly. */
   caId?: string;
   sshPublicKey: string;
   principals: string[];
@@ -60,12 +65,15 @@ export interface IssueUserCertParams {
 export class SshUserService {
   async createIdentity(
     ctx: ServiceContext,
-    params: { subject: string; email?: string; externalSubject?: string }
+    params: { subject: string; email?: string; externalSubject?: string; zone?: string }
   ): Promise<SshIdentityDto> {
     if (!params.subject?.trim()) throw new SshUserError('identity subject is required');
+    const zone = await resolveZone(ctx, params.zone);
+    await assertZoneUsable(ctx, zone.id);
     const id = randomUUID();
     await ctx.db.insert(sshIdentities).values({
       id,
+      zoneId: zone.id,
       subject: params.subject,
       email: params.email ?? null,
       externalSubject: params.externalSubject ?? null,
@@ -78,14 +86,21 @@ export class SshUserService {
       entityType: 'ssh_identity',
       entityId: id,
       status: 'success',
-      details: { subject: params.subject },
+      details: { subject: params.subject, zone: zone.name },
       ipAddress: ctx.ipAddress ?? undefined,
     });
     return identityDto((await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, id)).limit(1))[0]);
   }
 
-  async listIdentities(ctx: ServiceContext): Promise<SshIdentityDto[]> {
-    return (await ctx.db.select().from(sshIdentities).orderBy(desc(sshIdentities.createdAt))).map(identityDto);
+  async listIdentities(ctx: ServiceContext, opts?: { zoneId?: string }): Promise<SshIdentityDto[]> {
+    const rows = opts?.zoneId
+      ? await ctx.db
+          .select()
+          .from(sshIdentities)
+          .where(eq(sshIdentities.zoneId, opts.zoneId))
+          .orderBy(desc(sshIdentities.createdAt))
+      : await ctx.db.select().from(sshIdentities).orderBy(desc(sshIdentities.createdAt));
+    return (rows as any[]).map(identityDto);
   }
 
   /** Disable an identity (no new certs); revocation of existing certs is separate. */
@@ -140,6 +155,9 @@ export class SshUserService {
     const identity = (await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, params.identityId)).limit(1))[0];
     if (!identity) throw new SshUserError(`identity ${params.identityId} not found`);
     if (identity.status !== 'active') throw new SshUserError('identity is disabled; cannot issue certificates');
+    // Archived zones block new issuance (amendment A3) but keep serving existing
+    // trust material — see the KRL / trust-download paths, which do not gate.
+    await assertZoneUsable(ctx, identity.zoneId);
 
     const parsedKey = parseSshPublicKey(params.sshPublicKey); // reject private key / garbage early; algo drives client filenames
     if (params.principals.length === 0) throw new SshUserError('at least one principal (role) is required');
@@ -152,7 +170,9 @@ export class SshUserService {
     }
     if (params.enforceEntitlement) await this.assertEntitled(ctx, params.identityId, params.principals);
 
-    const ca = await this.resolveUserCa(ctx, params.caId);
+    // Issuance uses the active User CA of the identity's OWN zone (decision-017
+    // §6). The zone comes from the subject entity, never a UI-supplied caId.
+    const ca = await this.resolveUserCa(ctx, identity.zoneId, params.caId);
     const criticalOptions =
       params.forceCommand || params.sourceAddress
         ? { forceCommand: params.forceCommand, sourceAddress: params.sourceAddress }
@@ -235,17 +255,22 @@ export class SshUserService {
     if (denied.length) throw new SshUserError(`identity not entitled to principals: ${denied.join(', ')}`);
   }
 
-  private async resolveUserCa(ctx: ServiceContext, caId?: string): Promise<any> {
+  private async resolveUserCa(ctx: ServiceContext, zoneId: string, caId?: string): Promise<any> {
     if (caId) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
       if (!ca) throw new SshUserError(`CA ${caId} not found`);
       if (ca.caType !== 'user') throw new SshUserError('selected CA is not a User CA');
+      if (ca.zoneId !== zoneId) throw new SshUserError('selected CA belongs to a different zone');
       return ca;
     }
     const ca = (
-      await ctx.db.select().from(sshCas).where(and(eq(sshCas.caType, 'user'), eq(sshCas.status, 'active'))).limit(1)
+      await ctx.db
+        .select()
+        .from(sshCas)
+        .where(and(eq(sshCas.zoneId, zoneId), eq(sshCas.caType, 'user'), eq(sshCas.status, 'active')))
+        .limit(1)
     )[0];
-    if (!ca) throw new SshUserError('no active User CA — create one first');
+    if (!ca) throw new SshUserError('no active User CA in this zone — create one first');
     return ca;
   }
 }

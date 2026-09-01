@@ -11,6 +11,7 @@ import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
 import { certAuthorityLine, hostCertFilename, SSHD_DROPIN_FILENAME } from '../../services/ssh-config.js';
+import { DEFAULT_ZONE_ID } from '../../services/ssh-zone.service.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 
 export function registerSshPublicRoutes(server: FastifyInstance): void {
@@ -172,6 +173,27 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     if (filename) reply.header('Content-Disposition', `attachment; filename="${filename}"`);
   };
 
+  // ZONE-08 (decision-017 §7): trust anchors are per-zone. The zoned routes are
+  // authoritative; the legacy unscoped routes below serve the DEFAULT zone with
+  // a Deprecation header so hosts already enrolled against production (the c1h1
+  // VM against pki.joor.net) never break. resolveZone throws on an unknown zone.
+  const renderUserCa = (reply: any, anchors: { userCaKeys: string[] }) => {
+    text(reply, 'ssh-user-ca.pub');
+    return anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : '');
+  };
+  const renderHostCa = (reply: any, anchors: { hostCaKeys: string[] }) => {
+    text(reply, 'ssh-host-ca.pub');
+    return anchors.hostCaKeys.map((k) => k.trim()).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
+  };
+  const renderCertAuthority = (reply: any, anchors: { hostCaKeys: string[] }, pattern: string) => {
+    text(reply);
+    return anchors.hostCaKeys.map((k) => certAuthorityLine(k, pattern)).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
+  };
+  const deprecate = (reply: any, zonedPath: string) => {
+    reply.header('Deprecation', 'true');
+    reply.header('Link', `<${zonedPath}>; rel="successor-version"`);
+  };
+
   // A single CA's OpenSSH public key.
   server.get('/ssh/cas/:id/ca.pub', { schema: { hide: true } }, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -185,11 +207,41 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     }
   });
 
-  // TrustedUserCAKeys file contents (all active/rotating User CAs).
+  // ── Zone-scoped trust endpoints (authoritative) ────────────────────────────
+  server.get('/ssh/zones/:zone/trusted-user-ca-keys', { schema: { hide: true } }, async (req, reply) => {
+    const { zone } = req.params as { zone: string };
+    try {
+      return renderUserCa(reply, await getSshCaService().getTrustAnchors(ctx, zone));
+    } catch {
+      reply.code(404);
+      return 'zone not found\n';
+    }
+  });
+  server.get('/ssh/zones/:zone/host-ca-keys', { schema: { hide: true } }, async (req, reply) => {
+    const { zone } = req.params as { zone: string };
+    try {
+      return renderHostCa(reply, await getSshCaService().getTrustAnchors(ctx, zone));
+    } catch {
+      reply.code(404);
+      return 'zone not found\n';
+    }
+  });
+  server.get('/ssh/zones/:zone/cert-authority', { schema: { hide: true } }, async (req, reply) => {
+    const { zone } = req.params as { zone: string };
+    const pattern = ((req.query as any)?.pattern as string) || '*';
+    try {
+      return renderCertAuthority(reply, await getSshCaService().getTrustAnchors(ctx, zone), pattern);
+    } catch {
+      reply.code(404);
+      return 'zone not found\n';
+    }
+  });
+
+  // ── Legacy unscoped trust endpoints (serve the DEFAULT zone, deprecated) ────
+  // TrustedUserCAKeys file contents (default zone's active/rotating User CAs).
   server.get('/ssh/trusted-user-ca-keys', { schema: { hide: true } }, async (_req, reply) => {
-    const anchors = await getSshCaService().getTrustAnchors(ctx);
-    text(reply, 'ssh-user-ca.pub');
-    return anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : '');
+    deprecate(reply, '/ssh/zones/default/trusted-user-ca-keys');
+    return renderUserCa(reply, await getSshCaService().getTrustAnchors(ctx, DEFAULT_ZONE_ID));
   });
 
   // Host CA public key(s) — the KRL puller trust anchor (BLK-10). Installed at
@@ -197,17 +249,15 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   // default --ca-pubkey. Composed per-host KRLs are signed with the Host-CA
   // key (decision-016 pinned req #1) — NOT the User CA.
   server.get('/ssh/host-ca-keys', { schema: { hide: true } }, async (_req, reply) => {
-    const anchors = await getSshCaService().getTrustAnchors(ctx);
-    text(reply, 'ssh-host-ca.pub');
-    return anchors.hostCaKeys.map((k) => k.trim()).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
+    deprecate(reply, '/ssh/zones/default/host-ca-keys');
+    return renderHostCa(reply, await getSshCaService().getTrustAnchors(ctx, DEFAULT_ZONE_ID));
   });
 
   // @cert-authority known_hosts lines for the Host CA(s), for a pattern.
   server.get('/ssh/cert-authority', { schema: { hide: true } }, async (req, reply) => {
     const pattern = ((req.query as any)?.pattern as string) || '*';
-    const anchors = await getSshCaService().getTrustAnchors(ctx);
-    text(reply);
-    return anchors.hostCaKeys.map((k) => certAuthorityLine(k, pattern)).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
+    deprecate(reply, '/ssh/zones/default/cert-authority');
+    return renderCertAuthority(reply, await getSshCaService().getTrustAnchors(ctx, DEFAULT_ZONE_ID), pattern);
   });
 
   // A host's current certificate (HostCertificate).

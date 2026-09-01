@@ -160,6 +160,7 @@ The env var for a flag is `KRL_CLIENT_` + the flag name upper-cased with `-`→`
 |---|---|---|---|
 | `--server-url` | `SERVER_URL` / `server-url` | — (**required**) | PKI-Manager base URL |
 | `--host-id` | `HOST_ID` / `host-id` | `hostname -f` | host FQDN sent in the request body |
+| `--zone` | `ZONE` / `zone` | — (empty) | zone id or slug added to the request body; needed **only** when this FQDN exists in more than one zone (decision-017). Empty is the single-zone default and changes nothing |
 | `--host-key` | `HOST_KEY` / `host-key` | `/etc/ssh/ssh_host_ecdsa_key` | ECDSA key used to decrypt locally (host key by default; a dedicated `keygen` key otherwise — see [above](#decryption-key-ecies)) |
 | `--ca-pubkey` | `CA_PUBKEY` / `ca-pubkey` | `/etc/ssh/ssh-host-ca.pub` | Host-CA public key for signature verify (composed KRLs are Host-CA-signed — BLK-10) |
 | `--krl-file` | `KRL_FILE` / `krl-file` | `/etc/ssh/revoked_keys` | install target (sshd `RevokedKeys`) |

@@ -21,6 +21,13 @@ import { sshRouter } from '../../trpc/procedures/ssh.js';
  * Values are "<METHOD> <path>" as they appear in the generated OpenAPI.
  */
 const REST_TWIN: Record<string, string> = {
+  // Zones (decision-017)
+  'zone.list': 'GET /ssh/zones',
+  'zone.get': 'GET /ssh/zones/{ref}',
+  'zone.create': 'POST /ssh/zones',
+  'zone.update': 'POST /ssh/zones/{ref}',
+  'zone.archive': 'POST /ssh/zones/{ref}/archive',
+  'zone.unarchive': 'POST /ssh/zones/{ref}/unarchive',
   // CA lifecycle
   'ca.list': 'GET /ssh/cas',
   'ca.get': 'GET /ssh/cas/{caId}',

@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { ArrowLeft, Info } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/components/ui';
+import { ZonePicker } from '@/components/ssh/ZonePicker';
 
 export const Route = createFileRoute('/ssh/cas/new')({
   component: NewSshCa,
@@ -19,13 +20,18 @@ function NewSshCa() {
 
   const [caType, setCaType] = useState<'user' | 'host'>(initialType ?? 'user');
   const [label, setLabel] = useState('');
+  const [zone, setZone] = useState('');
 
   const createMutation = trpc.ssh.ca.create.useMutation();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!zone) {
+      toast.error('Pick a zone for the CA');
+      return;
+    }
     createMutation.mutate(
-      { caType, label: label.trim() || undefined },
+      { caType, label: label.trim() || undefined, zone },
       {
         onSuccess: (ca) => {
           utils.ssh.ca.list.invalidate();
@@ -71,6 +77,14 @@ function NewSshCa() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium mb-2">Zone *</label>
+            <ZonePicker value={zone} onChange={setZone} />
+            <p className="text-xs text-muted-foreground mt-1">
+              The CA is scoped to this zone; a host in the zone trusts only its zone's user CAs.
+            </p>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium mb-2">Label (optional)</label>
             <input
               type="text"
@@ -100,7 +114,7 @@ function NewSshCa() {
             </button>
             <button
               type="submit"
-              disabled={createMutation.isPending}
+              disabled={createMutation.isPending || !zone}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 font-medium shadow-sm"
             >
               {createMutation.isPending ? 'Creating...' : 'Create SSH CA'}

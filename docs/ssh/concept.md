@@ -49,6 +49,17 @@ state.
   fetches the **User CA's** KRL (`/krl/<userCaId>.bin`) into
   `/etc/ssh/revoked_keys`. (Host-cert revocation is enforced client-side.)
 
+## Zones — the trust boundary (optional)
+
+By default everything above lives in a single trust domain. If you need **several
+independent SSH trust domains** in one PKI Manager — prod vs staging, customer A
+vs customer B — put them in separate **zones**. A zone is a real trust boundary,
+not a label: each zone has its **own** User CA and Host CA, and **a host in a zone
+trusts only that zone's user CAs**. Hosts, identities and principals each belong
+to exactly one zone; the same FQDN or principal name can be reused across zones.
+A single-zone install behaves exactly as this guide describes and needs nothing
+new. Full model: **[SSH Zones](zones.md)**.
+
 ## Prerequisite everywhere: an accurate clock
 
 Certificate validity (and KRL freshness) depend on time, so **NTP/chrony must be
@@ -68,4 +79,5 @@ running** on every server and client.
 [Host & client setup](setup.md) ·
 [Principals guide](principals-guide.md) ·
 [Per-host access blocks](host-blocks-runbook.md) ·
+[SSH Zones](zones.md) · [Zones migration runbook](zones-migration-runbook.md) ·
 [Automation API contract](../ssh-api-contract.md)

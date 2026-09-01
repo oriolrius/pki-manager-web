@@ -21,7 +21,10 @@ import {
   blockHostSchema,
   unblockHostSchema,
   mintTokenSchema,
+  createZoneSchema,
+  updateZoneSchema,
 } from '../../trpc/ssh-schemas.js';
+import { getSshZoneService } from '../../services/ssh-zone.service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
@@ -107,17 +110,17 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   api.post('/cas', postSchema('Create an SSH CA (User or Host)', createSshCaSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(createSshCaSchema, req.body);
-    return getSshCaService().create(ctx(req), { caType: input.caType, label: input.label });
+    return getSshCaService().create(ctx(req), { caType: input.caType, label: input.label, zone: input.zone });
   });
 
-  api.get('/cas', listSchema('List SSH CAs'), async (req) => {
+  api.get('/cas', listSchema('List SSH CAs (optionally filter by ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    return getSshCaService().list(ctx(req));
+    return getSshCaService().list(ctx(req), { zoneId: (req.query as any)?.zoneId });
   });
 
-  api.get('/trust-anchors', objectSchema('SSH trust anchors (TrustedUserCAKeys / @cert-authority)'), async (req) => {
+  api.get('/trust-anchors', objectSchema('SSH trust anchors (TrustedUserCAKeys / @cert-authority; ?zoneId= for one zone)'), async (req) => {
     ensureSshAllowed();
-    return getSshCaService().getTrustAnchors(ctx(req));
+    return getSshCaService().getTrustAnchors(ctx(req), (req.query as any)?.zoneId);
   });
 
   // TASK-216 — CA lifecycle after create was tRPC-only, so a REST client could
@@ -138,6 +141,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       label: input.label,
       kmsKeyId: input.kmsKeyId,
       kmsPublicKeyId: input.kmsPublicKeyId,
+      zone: input.zone,
     });
   });
 
@@ -168,12 +172,13 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       displayName: input.displayName,
       addresses: input.addresses ?? [],
       opensshHostPubkey: input.opensshHostPubkey,
+      zone: input.zone,
     });
   });
 
-  api.get('/hosts', listSchema('List hosts (optionally filter by ?fqdn=)'), async (req) => {
+  api.get('/hosts', listSchema('List hosts (optionally filter by ?fqdn= and/or ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    const hosts = await getSshHostService().list(ctx(req));
+    const hosts = await getSshHostService().list(ctx(req), { zoneId: (req.query as any)?.zoneId });
     const fqdn = (req.query as any)?.fqdn as string | undefined;
     return fqdn ? hosts.filter((h) => h.fqdn === fqdn) : hosts;
   });
@@ -233,6 +238,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       subject: input.subject,
       email: input.email,
       externalSubject: input.externalSubject,
+      zone: input.zone,
     });
   });
 
@@ -256,9 +262,9 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   // TASK-216 — identity twins. Listing identities was tRPC-only, which is why a
   // REST client could not check whether a subject already existed before
   // creating one (ssh_identities.subject is UNIQUE).
-  api.get('/identities', listSchema('List user identities'), async (req) => {
+  api.get('/identities', listSchema('List user identities (optionally filter by ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    return getSshUserService().listIdentities(ctx(req));
+    return getSshUserService().listIdentities(ctx(req), { zoneId: (req.query as any)?.zoneId });
   });
 
   api.post('/identities/:id/disable', postSchema('Disable an identity (blocks further issuance)'), async (req) => {
@@ -283,15 +289,15 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // --- Principals: RBAC catalog + per-host account mapping (renders AuthorizedPrincipalsFile) ---
-  api.get('/principals', listSchema('List SSH principals (roles)'), async (req) => {
+  api.get('/principals', listSchema('List SSH principals (roles; optionally filter by ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    return getSshPrincipalService().listPrincipals(ctx(req));
+    return getSshPrincipalService().listPrincipals(ctx(req), { zoneId: (req.query as any)?.zoneId });
   });
 
   api.post('/principals', postSchema('Create an SSH principal (role)', createPrincipalSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(createPrincipalSchema, req.body);
-    return getSshPrincipalService().createPrincipal(ctx(req), { name: input.name, description: input.description });
+    return getSshPrincipalService().createPrincipal(ctx(req), { name: input.name, description: input.description, zone: input.zone });
   });
 
   api.post('/principals/map', postSchema('Map a principal to a local account on a host', mapPrincipalSchema), async (req) => {
@@ -341,6 +347,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       userCaId: input.userCaId,
       hostCaId: input.hostCaId,
       opSet: input.opSet,
+      zone: input.zone,
     });
   });
 
@@ -509,9 +516,47 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshBlockService().fleetDistribution(ctx(req));
   });
 
-  api.get('/metrics', objectSchema('SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts)'), async (req) => {
+  api.get('/metrics', objectSchema('SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts; ?zoneId= to scope)'), async (req) => {
     ensureSshAllowed();
-    return getSshMonService().metrics(ctx(req));
+    return getSshMonService().metrics(ctx(req), { zoneId: (req.query as any)?.zoneId });
+  });
+
+  // ---- Zones (decision-017 §7). CRUD over the trust-boundary grouping. ----
+  api.get('/zones', listSchema('List zones (?includeArchived=true to include archived)'), async (req) => {
+    ensureSshAllowed();
+    const includeArchived = (req.query as any)?.includeArchived === 'true' || (req.query as any)?.includeArchived === true;
+    return getSshZoneService().list(ctx(req), { includeArchived });
+  });
+
+  api.post('/zones', postSchema('Create a zone', createZoneSchema), async (req) => {
+    ensureSshAllowed();
+    const input = parse(createZoneSchema, req.body);
+    return getSshZoneService().create(ctx(req), input);
+  });
+
+  api.get('/zones/:ref', objectSchema('Get one zone by id or slug'), async (req) => {
+    ensureSshAllowed();
+    const { ref } = req.params as { ref: string };
+    return getSshZoneService().get(ctx(req), ref);
+  });
+
+  api.post('/zones/:ref', postSchema('Update a zone (display name / description; slug is immutable)', updateZoneSchema.omit({ ref: true })), async (req) => {
+    ensureSshAllowed();
+    const { ref } = req.params as { ref: string };
+    const input = parse(updateZoneSchema.omit({ ref: true }), req.body);
+    return getSshZoneService().update(ctx(req), ref, input);
+  });
+
+  api.post('/zones/:ref/archive', { ...postSchema('Archive a zone (blocks new entities/issuance; keeps serving existing trust material)'), ...optionalBody }, async (req) => {
+    ensureSshAllowed();
+    const { ref } = req.params as { ref: string };
+    return getSshZoneService().archive(ctx(req), ref);
+  });
+
+  api.post('/zones/:ref/unarchive', { ...postSchema('Reactivate an archived zone'), ...optionalBody }, async (req) => {
+    ensureSshAllowed();
+    const { ref } = req.params as { ref: string };
+    return getSshZoneService().unarchive(ctx(req), ref);
   });
 
   // Translate our HttpError into the standard {error:{code,message}} shape.
@@ -519,7 +564,14 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     if (error instanceof HttpError) {
       return reply.status(error.statusCode).send({ error: { code: error.code, message: error.message } });
     }
-    const status = /not found/i.test(error?.message ?? '') ? 404 : 400;
+    // Typed service errors carry their class name; a "…ExistsError" is a 409
+    // conflict, a "…not found" is 404, everything else a 400 bad request.
+    const name = error?.name ?? '';
+    const status = /ExistsError$/.test(name)
+      ? 409
+      : /not found/i.test(error?.message ?? '')
+        ? 404
+        : 400;
     return reply.status(status).send({ error: { code: 'SSH_ERROR', message: error?.message ?? 'SSH operation failed' } });
   });
 }

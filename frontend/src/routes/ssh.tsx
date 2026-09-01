@@ -1,10 +1,15 @@
 import { createFileRoute, Outlet, Link, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Terminal, ShieldCheck, Server, Users, Tags, Ban, CheckCircle2, Circle, Lock, ArrowRight } from 'lucide-react';
+import { Terminal, ShieldCheck, Server, Users, Tags, Ban, Boxes, CheckCircle2, Circle, Lock, ArrowRight } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
+import { ZoneProvider, useZone } from '@/lib/zone-context';
+import { ZoneSwitcher } from '@/components/ssh/ZoneSwitcher';
 
 export const Route = createFileRoute('/ssh')({
   component: SshSection,
+  validateSearch: (search: Record<string, unknown>): { zone?: string } => ({
+    zone: typeof search.zone === 'string' && search.zone ? search.zone : undefined,
+  }),
 });
 
 const SUB_NAV = [
@@ -13,24 +18,34 @@ const SUB_NAV = [
   { to: '/ssh/hosts', label: 'Hosts', icon: Server },
   { to: '/ssh/users', label: 'Users', icon: Users },
   { to: '/ssh/krl', label: 'KRL', icon: Ban },
+  { to: '/ssh/zones', label: 'Zones', icon: Boxes },
 ] as const;
 
 function SshSection() {
+  return (
+    <ZoneProvider>
+      <SshSectionInner />
+    </ZoneProvider>
+  );
+}
+
+function SshSectionInner() {
   const matchRoute = useMatchRoute();
   const isIndex = matchRoute({ to: '/ssh', fuzzy: false });
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
           <Terminal className="h-5 w-5 text-primary" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold">SSH Certificate Manager</h1>
           <p className="text-sm text-muted-foreground">
             Issue and manage OpenSSH user &amp; host certificates, principals, and KRLs.
           </p>
         </div>
+        <ZoneSwitcher />
       </div>
 
       {/* Second-level sub-nav */}
@@ -39,6 +54,7 @@ function SshSection() {
           <Link
             key={to}
             to={to}
+            search={(prev) => prev}
             className="px-3 py-2 text-sm font-medium rounded-t-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors flex items-center gap-2 border-b-2 border-transparent"
             activeProps={{
               className:
@@ -57,8 +73,9 @@ function SshSection() {
 }
 
 function SshLanding() {
-  const casQuery = trpc.ssh.ca.list.useQuery();
-  const hostsQuery = trpc.ssh.host.list.useQuery();
+  const { zoneId } = useZone();
+  const casQuery = trpc.ssh.ca.list.useQuery({ zoneId });
+  const hostsQuery = trpc.ssh.host.list.useQuery({ zoneId });
   const mappingsQuery = trpc.ssh.principal.mappingsByPrincipal.useQuery();
   const certsQuery = trpc.ssh.user.listCertificates.useQuery({});
 

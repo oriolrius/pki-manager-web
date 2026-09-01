@@ -18,6 +18,7 @@ import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
 import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
+import { resolveZone, SshZoneNotFoundError } from '../../services/ssh-zone.service.js';
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
@@ -116,13 +117,20 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const ctx = { db, ipAddress: req.ip };
 
     try {
-      // Upsert host by fqdn.
-      let host = (await db.select().from(sshHosts).where(eq(sshHosts.fqdn, body.fqdn)).limit(1))[0];
+      // Upsert host by fqdn WITHIN THE TOKEN'S ZONE (decision-017 A2): the fleet
+      // token's zone is authoritative, so automation never adopts a foreign
+      // zone's same-named host row.
+      let host = (await db
+        .select()
+        .from(sshHosts)
+        .where(andcol(eqcol(sshHosts.zoneId, token.zoneId), eqcol(sshHosts.fqdn, body.fqdn)))
+        .limit(1))[0];
       if (!host) {
         const created = await getSshHostService().register(ctx, {
           fqdn: body.fqdn,
           addresses: body.addresses,
           opensshHostPubkey: body.opensshHostPubkey,
+          zone: token.zoneId,
         });
         host = (await db.select().from(sshHosts).where(eq(sshHosts.id, created.id)).limit(1))[0];
       } else if (host.opensshHostPubkey !== body.opensshHostPubkey.trim()) {
@@ -166,9 +174,14 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const ctx = { db, ipAddress: req.ip };
 
     try {
-      let ident = (await db.select().from(sshIdentities).where(eq(sshIdentities.subject, body.subject)).limit(1))[0];
+      // Upsert identity by subject WITHIN THE TOKEN'S ZONE (decision-017 A2).
+      let ident = (await db
+        .select()
+        .from(sshIdentities)
+        .where(andcol(eqcol(sshIdentities.zoneId, token.zoneId), eqcol(sshIdentities.subject, body.subject)))
+        .limit(1))[0];
       if (!ident) {
-        const created = await getSshUserService().createIdentity(ctx, { subject: body.subject });
+        const created = await getSshUserService().createIdentity(ctx, { subject: body.subject, zone: token.zoneId });
         ident = (await db.select().from(sshIdentities).where(eq(sshIdentities.id, created.id)).limit(1))[0];
       }
       const issued = await getSshUserService().issue(ctx, {
@@ -217,7 +230,11 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
     const fqdn = (req.body as any)?.fqdn ?? (req.body as any)?.host_id;
     if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'fqdn required');
-    const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, fqdn)).limit(1))[0];
+    const host = (await db
+      .select()
+      .from(sshHosts)
+      .where(andcol(eqcol(sshHosts.zoneId, token.zoneId), eqcol(sshHosts.fqdn, fqdn)))
+      .limit(1))[0];
     if (!host) return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
     try {
       return await getSshHostService().registerEciesKey({ db, ipAddress: req.ip }, host.id);
@@ -243,7 +260,11 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     if (!token) return;
     const fqdn = (req.params as any)?.fqdn as string;
     if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'invalid fqdn');
-    const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, fqdn)).limit(1))[0];
+    const host = (await db
+      .select()
+      .from(sshHosts)
+      .where(andcol(eqcol(sshHosts.zoneId, token.zoneId), eqcol(sshHosts.fqdn, fqdn)))
+      .limit(1))[0];
     if (!host) return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
     try {
       const render = await getSshPrincipalService().render({ db, ipAddress: req.ip }, host.id);
@@ -268,6 +289,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         additionalProperties: true,
         properties: {
           host_id: { type: 'string', description: 'Target host FQDN' },
+          zone: { type: 'string', description: 'Zone id or slug — required only when the FQDN exists in more than one zone (decision-017 A2)' },
         },
       },
     },
@@ -276,7 +298,26 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
     const hostId = (req.body as any)?.host_id;
     if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');
-    const host = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId)).limit(1))[0];
+    // Amendment A2: this route has NO app auth (ECIES is the authentication) and
+    // resolves the host by FQDN alone. Now that (zone_id, fqdn) is unique, the
+    // same FQDN can exist in several zones — disambiguate by an optional `zone`.
+    const zoneRef = (req.body as any)?.zone as string | undefined;
+    const matches = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId))) as any[];
+    let host: any;
+    if (zoneRef) {
+      let zone;
+      try {
+        zone = await resolveZone({ db, ipAddress: req.ip }, zoneRef);
+      } catch (e) {
+        if (e instanceof SshZoneNotFoundError) return err(reply, 404, 'NOT_FOUND', `zone '${zoneRef}' not found`);
+        throw e;
+      }
+      host = matches.find((h) => h.zoneId === zone.id);
+    } else if (matches.length > 1) {
+      return err(reply, 409, 'AMBIGUOUS_HOST', `host '${hostId}' exists in multiple zones — specify "zone" in the body`);
+    } else {
+      host = matches[0];
+    }
     if (!host || !host.opensshHostPubkey) return err(reply, 404, 'NOT_FOUND', 'host not registered for KRL distribution');
     // Offboard is terminal: the per-host lineage is retired, so keep-alive
     // serving would hand a decommissioned host a frozen KRL with a fresh
@@ -314,7 +355,8 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         caId = c?.caId;
       }
       if (!caId) {
-        const ca = (await db.select().from(sshCas).where(andcol(eqcol(sshCas.caType, 'host'), eqcol(sshCas.status, 'active'))).limit(1))[0];
+        // Scope the fallback host CA to the host's OWN zone (ZONE-05/09).
+        const ca = (await db.select().from(sshCas).where(andcol(eqcol(sshCas.zoneId, host.zoneId), eqcol(sshCas.caType, 'host'), eqcol(sshCas.status, 'active'))).limit(1))[0];
         caId = ca?.id;
       }
       if (!caId) return err(reply, 503, 'NO_CA', 'no host CA available');

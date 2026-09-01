@@ -14,7 +14,7 @@ const mig = (f: string) => readFileSync(join(here, '../db/migrations', f), 'utf8
 function freshDb() {
   const sqlite = new Database(':memory:');
   sqlite.pragma('foreign_keys = ON');
-  for (const file of ['0006_ssh_certificate_manager.sql', '0007_ssh_fleet_tokens.sql', '0008_ssh_host_blocks.sql']) {
+  for (const file of ['0006_ssh_certificate_manager.sql', '0007_ssh_fleet_tokens.sql', '0008_ssh_host_blocks.sql', '0009_stiff_wallflower.sql']) {
     for (const stmt of mig(file).split('--> statement-breakpoint')) {
       const s = stmt.trim();
       if (s) sqlite.exec(s);

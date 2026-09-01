@@ -10,7 +10,7 @@ import (
 // configKeys is the closed set of keys accepted in the config file. They mirror
 // the flag names (kebab-case); --config and --version are CLI-only and rejected.
 var configKeys = map[string]bool{
-	"server-url": true, "host-id": true, "host-key": true, "krl-file": true,
+	"server-url": true, "host-id": true, "zone": true, "host-key": true, "krl-file": true,
 	"ca-pubkey": true, "state-dir": true, "ca-bundle": true, "insecure": true,
 	"allow-unsigned": true, "timeout": true, "retries": true, "clock-skew": true,
 	"max-response-bytes": true, "dry-run": true, "quiet": true, "verbose": true,

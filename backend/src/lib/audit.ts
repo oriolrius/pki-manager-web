@@ -57,7 +57,11 @@ export type AuditOperation =
   | 'ssh.token.mint'
   | 'ssh.token.revoke'
   | 'ssh.external.sign'
-  | 'ssh.external.principals.fetch';
+  | 'ssh.external.principals.fetch'
+  // SSH Zones (decision-017)
+  | 'ssh.zone.create'
+  | 'ssh.zone.update'
+  | 'ssh.zone.archive';
 
 export type AuditEntityType =
   | 'ca'
@@ -73,7 +77,8 @@ export type AuditEntityType =
   | 'ssh_principal'
   | 'ssh_krl'
   | 'ssh_host_krl'
-  | 'ssh_token';
+  | 'ssh_token'
+  | 'zone';
 
 export interface AuditLogOptions {
   db: BetterSQLite3Database<any>;

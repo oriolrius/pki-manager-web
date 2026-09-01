@@ -269,3 +269,28 @@ func TestNegativeRetriesRejected(t *testing.T) {
 	_, err := parse([]string{"--server-url", "x", "--host-id", "h", "--retries", "-1"}, "t", noEnv, noFile)
 	wantUsageErr(t, err, "retries")
 }
+
+// ZONE-10: --zone / KRL_CLIENT_ZONE / zone: follow the same precedence as every
+// other string option, and default to empty (single-zone, no behaviour change).
+func TestPrecedence_Zone(t *testing.T) {
+	base := []string{"--server-url", "https://x", "--host-id", "h"}
+	e := envMap(map[string]string{"KRL_CLIENT_ZONE": "env-zone"})
+	f := fileWith("zone: file-zone\n")
+
+	cfg, _ := parse(append(base, "--zone", "flag-zone"), "t", e, f)
+	if cfg.Zone != "flag-zone" {
+		t.Errorf("flag should win, got %q", cfg.Zone)
+	}
+	cfg, _ = parse(base, "t", e, f)
+	if cfg.Zone != "env-zone" {
+		t.Errorf("env should win, got %q", cfg.Zone)
+	}
+	cfg, _ = parse(base, "t", noEnv, f)
+	if cfg.Zone != "file-zone" {
+		t.Errorf("file should win, got %q", cfg.Zone)
+	}
+	cfg, _ = parse(base, "t", noEnv, noFile)
+	if cfg.Zone != "" {
+		t.Errorf("zone should default to empty, got %q", cfg.Zone)
+	}
+}

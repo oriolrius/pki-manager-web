@@ -79,6 +79,14 @@ export class SshBlockService {
       const identity = (await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, identityId)).limit(1))[0];
       if (!identity) throw new SshBlockError(`identity ${identityId} not found`);
       // identity.status === 'disabled' is fine: pre-emptive block still denies unexpired certs.
+      // Cross-zone invariant (decision-017 §5): a per-host block only makes sense
+      // within one trust boundary — the host's KRL never carries a foreign zone's
+      // identity, so a cross-zone block would be silently inert.
+      if (host.zoneId !== identity.zoneId) {
+        throw new SshBlockError(
+          `cannot block ${identity.subject} on ${host.fqdn} — the host and identity are in different zones`
+        );
+      }
 
       const existing = (await ctx.db
         .select()

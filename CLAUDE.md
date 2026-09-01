@@ -40,7 +40,7 @@ docker/       Full-stack Compose + Dockerfile          → DEPLOYMENT.md
 keycloak/     Keycloak dev IdP + realm import          → KEYCLOAK.md
 kms/          Cosmian KMS dev stack                    → kms/README.md
 ansible/      SSH host-cert deploy role                → ansible/README.md
-docs/ssh/     SSH onboarding guides (concept/quickstart/setup) → docs/ssh/concept.md
+docs/ssh/     SSH onboarding guides (concept/quickstart/setup/zones) → docs/ssh/concept.md
 tests/        Playwright E2E (auth, RBAC, screenshots)
 backlog/      Backlog.md tasks / docs / decisions
 ```
@@ -63,6 +63,12 @@ The `services/` layer is exposed over **two APIs**: typed tRPC (`/trpc`, used by
 frontend) and REST/OpenAPI (`/api/v1`, Swagger at `/api/docs`), plus a cluster-token
 external-issuer API. **OIDC is optional** — with no `OIDC_ISSUER`/`OIDC_AUDIENCE` set, the
 backend runs fully unauthenticated.
+
+**SSH Zones** (decision-017): a generic `zones` table makes the SSH manager multi-tenant —
+`ssh_cas/hosts/identities/principals/fleet_tokens` carry a `zone_id` and a host trusts only
+its own zone's user CAs. Zone resolution is **fail-closed** (`resolveZone`): implicit while
+one zone exists, an error once several do. Single-zone installs are unchanged. See
+[docs/ssh/zones.md](docs/ssh/zones.md).
 
 ## Tech Stack
 

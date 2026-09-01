@@ -246,3 +246,42 @@ func TestTimeoutAborts(t *testing.T) {
 		t.Fatalf("expected Network (timeout), got %v", err)
 	}
 }
+
+// ZONE-10 (decision-017 A2): SetZone adds a "zone" field to the request body;
+// unset keeps the single-zone body (no "zone" key) byte-for-byte.
+func TestFetchKRL_ZoneInBody(t *testing.T) {
+	var sawZone, sawHostID string
+	var hadZoneKey bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var raw map[string]string
+		_ = json.Unmarshal(b, &raw)
+		sawHostID = raw["host_id"]
+		sawZone, hadZoneKey = raw["zone"]
+		w.Header().Set("X-KRL-Version", "v1")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("CT"))
+	}))
+	defer srv.Close()
+
+	c, err := New(srv.URL, "", false, 5*time.Second, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Default: no zone key in the body.
+	if _, err := c.FetchKRL(context.Background(), "web1.example.com", ""); err != nil {
+		t.Fatal(err)
+	}
+	if hadZoneKey {
+		t.Fatalf("expected no zone key by default, saw %q", sawZone)
+	}
+
+	// With a zone set, it is sent alongside host_id.
+	c.SetZone("staging")
+	if _, err := c.FetchKRL(context.Background(), "web1.example.com", ""); err != nil {
+		t.Fatal(err)
+	}
+	if sawHostID != "web1.example.com" || !hadZoneKey || sawZone != "staging" {
+		t.Fatalf("expected zone=staging in body, saw host_id=%q zone=%q present=%v", sawHostID, sawZone, hadZoneKey)
+	}
+}
