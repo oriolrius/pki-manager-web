@@ -33,11 +33,13 @@ This task writes no production code. It produces the pinned facts that TASK-218 
 <!-- AC:BEGIN -->
 - [x] #1 The migration head tag and index are recorded in the task, read from _journal.json at execution time rather than assumed
 - [x] #2 A file:line inventory of every zone-coupled call site and every unique index that must be rekeyed is written down and usable as the checklist for TASK-218 through TASK-222
-- [ ] #3 The rebuild-and-copy migration has been executed against a byte copy of the production database and the copy comes out with identical row counts in every ssh_* table
+- [x] #3 The rebuild-and-copy migration has been executed against a byte copy of the production database and the copy comes out with identical row counts in every ssh_* table
 - [ ] #4 PRAGMA foreign_key_check returns empty on the migrated copy with foreign_keys ON, proving the rebuild preserved every reference
 - [ ] #5 Every pre-existing ssh_cas, ssh_hosts, ssh_identities, ssh_principals and ssh_fleet_tokens row on the migrated copy carries the seeded default zone
 - [ ] #6 The live production database was never written to during the rehearsal
 <!-- AC:END -->
+
+
 
 
 
