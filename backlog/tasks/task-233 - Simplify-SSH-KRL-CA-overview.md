@@ -1,9 +1,11 @@
 ---
 id: TASK-233
 title: Simplify SSH KRL CA overview
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-09-01 14:12'
+updated_date: '2026-09-01 14:13'
 labels: []
 dependencies: []
 ordinal: 60014
