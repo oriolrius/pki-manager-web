@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-01 04:46'
+updated_date: '2026-09-01 05:29'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -50,7 +51,7 @@ SshHostDto, SshIdentityDto and PrincipalDto gain the zone (id + slug) so list pa
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Hosts, identities and principals are created inside a zone and report which zone they belong to
+- [x] #1 Hosts, identities and principals are created inside a zone and report which zone they belong to
 - [ ] #2 A host certificate is always signed by a Host CA from that host's own zone, and a user certificate by a User CA from that identity's own zone
 - [ ] #3 Passing a CA id from another zone into an issuance call is refused rather than honoured
 - [ ] #4 A host's deploy bundle publishes only its own zone's User CA key
@@ -59,6 +60,8 @@ SshHostDto, SshIdentityDto and PrincipalDto gain the zone (id + slug) so list pa
 - [ ] #7 Hosts, identities, principals and certificates can be listed for one zone or across all zones
 - [ ] #8 Every pre-existing backend test still passes without being edited
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
