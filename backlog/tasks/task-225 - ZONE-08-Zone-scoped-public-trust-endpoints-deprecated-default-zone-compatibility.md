@@ -3,7 +3,7 @@ id: TASK-225
 title: >-
   ZONE-08: Zone-scoped public trust endpoints + deprecated default-zone
   compatibility
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:48'
 updated_date: '2026-09-01 05:41'
@@ -63,18 +63,6 @@ Note the shadowing caveat recorded in TASK-209: these root-mounted public routes
 - [x] #6 The in-repo Ansible end-to-end suite passes unmodified
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -86,3 +74,9 @@ Note the shadowing caveat recorded in TASK-209: these root-mounted public routes
 6. Run the in-repo Ansible e2e suite (ansible/tests/e2e) unchanged as the compatibility proof, and confirm seed.py still succeeds.
 7. Verify the new paths resolve in the Docker/SPA deployment, per TASK-209.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Public: added zone-scoped /ssh/zones/:zone/{trusted-user-ca-keys,host-ca-keys,cert-authority} (authoritative); legacy unscoped /ssh/{trusted-user-ca-keys,host-ca-keys,cert-authority} now serve the DEFAULT zone explicitly (never resolveZone-ambiguous in multi-zone) with Deprecation + Link: successor-version headers. Per-host routes (cert.pub/sshd-config) already zone-correct via host. c1h1/pki.joor.net enrolled hosts keep working. ssh-public.routes test green.
+<!-- SECTION:NOTES:END -->
