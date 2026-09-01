@@ -10,9 +10,9 @@ export function ZoneSwitcher() {
   const { selection, setSelection, zones } = useZone();
 
   return (
-    <label className="flex items-center gap-2 text-sm" title="Filter the SSH section by zone">
+    <label className="flex w-full items-center justify-between gap-2 text-sm sm:w-auto sm:justify-start" title="Filter the SSH section by zone">
       <Layers className="h-4 w-4 text-muted-foreground" />
-      <span className="text-muted-foreground hidden sm:inline">Zone</span>
+      <span className="text-muted-foreground">Zone</span>
       <select
         value={selection}
         onChange={(e) => setSelection(e.target.value)}
