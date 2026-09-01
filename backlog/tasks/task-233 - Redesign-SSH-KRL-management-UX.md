@@ -1,9 +1,11 @@
 ---
 id: TASK-233
 title: Redesign SSH KRL management UX
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-09-01 09:35'
+updated_date: '2026-09-01 09:35'
 labels: []
 dependencies: []
 ordinal: 60014
