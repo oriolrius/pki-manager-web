@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-09-01 04:45'
-updated_date: '2026-09-01 05:24'
+updated_date: '2026-09-01 05:26'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -40,13 +40,15 @@ Service shape follows the existing SSH services (ssh-ca.service.ts): a class, a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An operator can create, list, rename the display name of, archive and un-archive a zone
+- [x] #1 An operator can create, list, rename the display name of, archive and un-archive a zone
 - [ ] #2 On an installation with a single zone, every existing call that does not mention a zone keeps working exactly as before
 - [ ] #3 Once a second zone exists, a call that does not name a zone fails with an error that names the available zones instead of silently picking one
 - [ ] #4 A zone can be addressed by its slug as well as by its id
 - [ ] #5 Creating a CA, host, identity, principal or certificate in an archived zone is refused, while trust material already in that zone is still served
 - [ ] #6 Every zone create, update and archive writes an audit_log row
 <!-- AC:END -->
+
+
 
 ## Implementation Plan
 
