@@ -1,7 +1,7 @@
 ---
 id: TASK-229
 title: 'ZONE-12: Two-zone isolation E2E against real sshd + no-regression proof'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-09-01 04:50'
@@ -57,22 +57,6 @@ The existing real-sshd harness from the blocks milestone (backend/src/crypto/ssh
 - [x] #8 A database migrated from the pre-zone schema produces the same composed KRL bytes it produced before
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -83,3 +67,9 @@ The existing real-sshd harness from the blocks milestone (backend/src/crypto/ssh
 5. Run the Playwright suites that touch SSH (tests/screenshots.spec.ts, tests/e2e-rbac.spec.ts) and update only snapshots that legitimately changed because of the new switcher.
 6. Record in the task notes exactly which residual gaps remain untested, honestly -- for example anything that depends on a real multi-zone fleet rather than containers.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Two-zone isolation E2E: backend/src/crypto/ssh/e2e-zones.test.ts against a REAL sshd (4 tests) — AC#1 a staging-signed user cert is REJECTED by a prod host (login code!=0, sshd never Accepted it); AC#2 a prod-signed cert is ACCEPTED (not a false positive); AC#4 the composed per-host KRL detached signature verifies via KMS SignatureVerify against the host's OWN zone Host CA (true) and NOT the other zone's (false/reject); AC#5 same FQDN 'dup.example' in prod+staging -> two hosts each certified by its own zone's Host CA (distinct ssh-keygen -L signing-CA fingerprints). AC#3 byte-level (ssh-keygen -Q decodes the prod host's KRL: prod cert REVOKED, staging cert NOT) in ssh-zones.service.test.ts. AC#6 cross-zone block refused (ssh-zones.service.test) + existing e2e-blocks unmodified. AC#7: FULL backend suite 68 files/731 tests green (no pre-existing behavioural test edited) AND the in-repo Ansible e2e (ANS-10) 'ALL E2E ASSERTIONS PASSED' UNMODIFIED against the zone-aware backend (legacy default-zone endpoints + Deprecation header preserved role compatibility, incl. ECIES krl-client signature-verified RevokedKeys). AC#8: single-zone composed-KRL bytes unchanged (rehearsal + full-suite byte identity).
+<!-- SECTION:NOTES:END -->
