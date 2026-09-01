@@ -55,8 +55,10 @@ The migration must seed one zone (name 'default', display_name 'Default'), backf
 - [x] #3 The same host FQDN, the same identity subject and the same principal name can each exist once per zone and not twice within a zone
 - [x] #4 Running the migration on an existing single-zone database leaves every SSH row intact and attached to a seeded 'default' zone
 - [x] #5 A zone that still owns CAs, hosts, identities or principals cannot be deleted
-- [ ] #6 pnpm typecheck is clean and the full backend suite passes with no pre-existing test edited
+- [x] #6 pnpm typecheck is clean and the full backend suite passes with no pre-existing test edited
 <!-- AC:END -->
+
+
 
 
 
