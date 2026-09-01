@@ -58,8 +58,10 @@ SshHostDto, SshIdentityDto and PrincipalDto gain the zone (id + slug) so list pa
 - [x] #5 Granting a principal, mapping it to a host, or blocking an identity on a host is refused whenever the two entities live in different zones
 - [x] #6 Two hosts with the same FQDN in different zones each get a certificate from their own zone's CA
 - [x] #7 Hosts, identities, principals and certificates can be listed for one zone or across all zones
-- [ ] #8 Every pre-existing backend test still passes without being edited
+- [x] #8 Every pre-existing backend test still passes without being edited
 <!-- AC:END -->
+
+
 
 
 
