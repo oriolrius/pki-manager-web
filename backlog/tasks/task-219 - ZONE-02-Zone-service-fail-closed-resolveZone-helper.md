@@ -1,9 +1,11 @@
 ---
 id: TASK-219
 title: 'ZONE-02: Zone service + fail-closed resolveZone() helper'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-09-01 04:45'
+updated_date: '2026-09-01 05:24'
 labels:
   - ssh-zones
   - ssh-cert-manager
