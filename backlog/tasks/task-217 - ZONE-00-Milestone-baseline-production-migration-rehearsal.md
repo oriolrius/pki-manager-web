@@ -36,8 +36,10 @@ This task writes no production code. It produces the pinned facts that TASK-218 
 - [x] #3 The rebuild-and-copy migration has been executed against a byte copy of the production database and the copy comes out with identical row counts in every ssh_* table
 - [x] #4 PRAGMA foreign_key_check returns empty on the migrated copy with foreign_keys ON, proving the rebuild preserved every reference
 - [x] #5 Every pre-existing ssh_cas, ssh_hosts, ssh_identities, ssh_principals and ssh_fleet_tokens row on the migrated copy carries the seeded default zone
-- [ ] #6 The live production database was never written to during the rehearsal
+- [x] #6 The live production database was never written to during the rehearsal
 <!-- AC:END -->
+
+
 
 
 
