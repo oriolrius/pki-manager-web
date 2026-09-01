@@ -1,7 +1,7 @@
 ---
 id: TASK-219
 title: 'ZONE-02: Zone service + fail-closed resolveZone() helper'
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-09-01 04:45'
@@ -48,18 +48,6 @@ Service shape follows the existing SSH services (ssh-ca.service.ts): a class, a 
 - [x] #6 Every zone create, update and archive writes an audit_log row
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -75,3 +63,9 @@ Service shape follows the existing SSH services (ssh-ca.service.ts): a class, a 
 4. Unit tests (new file, no KMS needed): single-zone implicit resolution returns the seeded default; after creating a second zone an omitted zone throws SshZoneAmbiguousError and the message names both slugs; an archived-only install still resolves implicitly (archived zones are excluded from the "exactly one" count -- decide and TEST the edge where the only zone is archived: it must still resolve, otherwise an install can brick itself); resolution by slug and by id both work; slug validation rejects uppercase/underscore/leading dash.
 5. pnpm typecheck + backend suite.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+SshZoneService (create/list/get/update/archive/unarchive) + shared resolveZone() helper (fail-closed A1: explicit id-or-slug else single non-archived zone else SshZoneAmbiguousError naming slugs) + assertZoneUsable (A3 archived gate) in src/services/ssh-zone.service.ts. Typed errors: SshZoneNotFound/Ambiguous/Exists/Slug/Archived. Archived zones block new CA/host/identity/principal/issuance (assertZoneUsable added to ca.create/import, host.register+issue, user.createIdentity+issue, principal.create) but keep serving trust material (KRL/trust-download paths don't gate). audit rows on create/update/archive. Slug+id addressing. Tests: src/services/ssh-zone.service.test.ts (6, non-KMS) + ssh-zones.service.test.ts (4, KMS). Full suite green; typecheck clean.
+<!-- SECTION:NOTES:END -->
