@@ -3,7 +3,7 @@ id: TASK-221
 title: >-
   ZONE-04: Host, identity and principal services scoped to a zone + cross-zone
   guards
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:46'
 updated_date: '2026-09-01 05:29'
@@ -61,22 +61,6 @@ SshHostDto, SshIdentityDto and PrincipalDto gain the zone (id + slug) so list pa
 - [x] #8 Every pre-existing backend test still passes without being edited
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -95,3 +79,9 @@ SshHostDto, SshIdentityDto and PrincipalDto gain the zone (id + slug) so list pa
    - single-zone behaviour unchanged (existing tests must pass unedited)
 8. pnpm typecheck + full backend suite.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+host/user/principal services scoped: register/createIdentity/createPrincipal resolveZone+assertZoneUsable+zoneId; resolveHostCa/resolveUserCa scoped to entity.zoneId (explicit caId still validated for type AND rejected if cross-zone); deploy bundle userCa+trustAnchors from host.zoneId only; list({zoneId?}) on all; DTOs carry zoneId. Cross-zone guards (SshCrossZoneError): grantToIdentity (identity.zone==principal.zone), mapToHost (host.zone==principal.zone), block (host.zone==identity.zone). Same-FQDN-different-zone supported via (zone,fqdn) unique + zone-scoped issuance. AC#8: full suite 709 green, no pre-existing behavioral test edited.
+<!-- SECTION:NOTES:END -->
