@@ -1,7 +1,7 @@
 ---
 id: TASK-223
 title: 'ZONE-06: tRPC zone router + zone filters on every SSH procedure'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:47'
 updated_date: '2026-09-01 05:41'
@@ -53,18 +53,6 @@ Error mapping: SshZoneNotFoundError -> NOT_FOUND, SshZoneAmbiguousError / SshZon
 - [x] #6 Existing frontend tRPC calls that pass no arguments still compile and behave as before
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -74,3 +62,9 @@ Error mapping: SshZoneNotFoundError -> NOT_FOUND, SshZoneAmbiguousError / SshZon
 4. Tests: extend trpc/procedures/ssh.integration.test.ts (or add ssh-zone-api.test.ts) -- zone CRUD round trip, admin guard on mutations, zoneId filters return only that zone's rows, an unknown zone yields NOT_FOUND, an ambiguous omitted zone yields BAD_REQUEST.
 5. pnpm typecheck (frontend too -- the tRPC types are shared) + backend suite.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+tRPC: new ssh.zone router (list/get/create/update/archive/unarchive; CRUD admin-tier, reads protected); optional zoneId filter (zoneFilterSchema) on ca.list/trustAnchors, host.list, user.listIdentities, principal.list, mon.metrics; optional zone on ca.create/import, host.register, user.createIdentity, principal.create, token.mint; DTOs carry zoneId. Zone errors mapped to TRPCError (CONFLICT/NOT_FOUND/BAD_REQUEST). tRPC integration test green.
+<!-- SECTION:NOTES:END -->
