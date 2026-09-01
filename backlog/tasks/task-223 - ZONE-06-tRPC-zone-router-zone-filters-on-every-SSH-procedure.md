@@ -46,12 +46,14 @@ Error mapping: SshZoneNotFoundError -> NOT_FOUND, SshZoneAmbiguousError / SshZon
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Zones can be listed, created, renamed, archived and un-archived over tRPC
-- [ ] #2 Zone mutations require an admin, matching how CA management is already guarded
+- [x] #2 Zone mutations require an admin, matching how CA management is already guarded
 - [ ] #3 Every SSH list procedure can be filtered to one zone, and returns all zones when no filter is given
 - [ ] #4 CAs, hosts, identities and principals can be created into an explicitly named zone
 - [ ] #5 An unknown zone returns not-found and an ambiguous omitted zone returns a bad-request naming the available zones
 - [ ] #6 Existing frontend tRPC calls that pass no arguments still compile and behave as before
 <!-- AC:END -->
+
+
 
 
 
