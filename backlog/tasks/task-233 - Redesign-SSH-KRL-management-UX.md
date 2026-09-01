@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-01 09:35'
-updated_date: '2026-09-01 11:34'
+updated_date: '2026-09-01 11:37'
 labels: []
 dependencies: []
 ordinal: 60014
@@ -20,17 +20,17 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 KRL status, history, and operational actions are presented in a clear, scannable hierarchy
-- [x] #2 All existing controls and capabilities remain available, including revocation and KRL distribution actions
-- [x] #3 The responsive page provides contextual guidance and clear destructive-action affordances
-- [ ] #4 Frontend typecheck, lint, and relevant tests pass
+- [x] #2 The responsive page provides contextual guidance and clear destructive-action affordances
+- [ ] #3 Frontend typecheck, lint, and relevant tests pass
+- [ ] #4 Only User CAs are available for KRL management; host-specific KRL management and distribution monitoring are excluded from this page
 <!-- AC:END -->
 
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Audit the existing KRL route, queries, mutations, and related SSH UI conventions.
-2. Replace the upfront CA selector with an operational KRL overview: each available CA shows its own KRL health and exposes an explicit management entry point.
-3. Preserve every existing mutation and data view while adding responsive layout, explicit loading/empty states, and high-clarity risk guidance.
+2. Reorient `/ssh/krl` around user-certificate revocation: list only User CAs and remove host-specific KRL management and distribution monitoring from this page.
+3. Preserve the user-revocation lifecycle while adding focused loading, error, empty, and destructive-action states.
 4. Run frontend typecheck, lint, and relevant tests; review the final diff and record PR-ready notes.
 <!-- SECTION:PLAN:END -->
 
