@@ -53,13 +53,15 @@ SshHostDto, SshIdentityDto and PrincipalDto gain the zone (id + slug) so list pa
 <!-- AC:BEGIN -->
 - [x] #1 Hosts, identities and principals are created inside a zone and report which zone they belong to
 - [x] #2 A host certificate is always signed by a Host CA from that host's own zone, and a user certificate by a User CA from that identity's own zone
-- [ ] #3 Passing a CA id from another zone into an issuance call is refused rather than honoured
+- [x] #3 Passing a CA id from another zone into an issuance call is refused rather than honoured
 - [ ] #4 A host's deploy bundle publishes only its own zone's User CA key
 - [ ] #5 Granting a principal, mapping it to a host, or blocking an identity on a host is refused whenever the two entities live in different zones
 - [ ] #6 Two hosts with the same FQDN in different zones each get a certificate from their own zone's CA
 - [ ] #7 Hosts, identities, principals and certificates can be listed for one zone or across all zones
 - [ ] #8 Every pre-existing backend test still passes without being edited
 <!-- AC:END -->
+
+
 
 
 
