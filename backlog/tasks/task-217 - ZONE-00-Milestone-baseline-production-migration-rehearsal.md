@@ -1,9 +1,11 @@
 ---
 id: TASK-217
 title: 'ZONE-00: Milestone baseline + production migration rehearsal'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-09-01 04:44'
+updated_date: '2026-09-01 05:06'
 labels:
   - ssh-zones
   - ssh-cert-manager
