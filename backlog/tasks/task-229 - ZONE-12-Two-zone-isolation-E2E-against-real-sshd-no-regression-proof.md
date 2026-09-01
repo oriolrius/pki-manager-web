@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@myself'
 created_date: '2026-09-01 04:50'
-updated_date: '2026-09-01 05:58'
+updated_date: '2026-09-01 06:03'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -53,9 +53,11 @@ The existing real-sshd harness from the blocks milestone (backend/src/crypto/ssh
 - [x] #4 A host's KRL signature verifies against its own zone's Host CA and fails against the other zone's
 - [x] #5 The same FQDN registered in two zones yields two independently certified hosts, each able to decrypt only its own KRL envelope
 - [x] #6 Per-host access blocks still behave as specified within a zone
-- [ ] #7 The Ansible end-to-end suite passes unmodified and the full backend suite passes with no pre-existing test edited
+- [x] #7 The Ansible end-to-end suite passes unmodified and the full backend suite passes with no pre-existing test edited
 - [x] #8 A database migrated from the pre-zone schema produces the same composed KRL bytes it produced before
 <!-- AC:END -->
+
+
 
 
 
