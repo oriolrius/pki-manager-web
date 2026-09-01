@@ -1,6 +1,6 @@
-import { createFileRoute, Outlet, Link, useMatchRoute } from '@tanstack/react-router';
+import { createFileRoute, Outlet, Link, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Terminal, ShieldCheck, Server, Users, Tags, Ban, Boxes, CheckCircle2, Circle, Lock, ArrowRight } from 'lucide-react';
+import { Terminal, ShieldCheck, Server, Users, Tags, Ban, Boxes, CheckCircle2, Circle, Lock, ArrowRight, ChevronDown, LayoutDashboard } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
 import { ZoneProvider, useZone } from '@/lib/zone-context';
 import { ZoneSwitcher } from '@/components/ssh/ZoneSwitcher';
@@ -12,13 +12,32 @@ export const Route = createFileRoute('/ssh')({
   }),
 });
 
-const SUB_NAV = [
-  { to: '/ssh/cas', label: 'Certificate Authorities', icon: ShieldCheck },
-  { to: '/ssh/principals', label: 'Principals', icon: Tags },
-  { to: '/ssh/hosts', label: 'Hosts', icon: Server },
-  { to: '/ssh/users', label: 'Users', icon: Users },
-  { to: '/ssh/krl', label: 'KRL', icon: Ban },
-  { to: '/ssh/zones', label: 'Zones', icon: Boxes },
+const SSH_NAV_GROUPS = [
+  {
+    label: 'Trust',
+    items: [{ to: '/ssh/cas', label: 'Certificate authorities', icon: ShieldCheck }],
+  },
+  {
+    label: 'Access',
+    items: [
+      { to: '/ssh/principals', label: 'Principals', icon: Tags },
+      { to: '/ssh/hosts', label: 'Hosts', icon: Server },
+      { to: '/ssh/users', label: 'User certificates', icon: Users },
+    ],
+  },
+  {
+    label: 'Security',
+    items: [{ to: '/ssh/krl', label: 'Revocation & KRL', icon: Ban }],
+  },
+  {
+    label: 'Administration',
+    items: [{ to: '/ssh/zones', label: 'Zones', icon: Boxes }],
+  },
+] as const;
+
+const SSH_NAV_ITEMS = [
+  { to: '/ssh', label: 'Overview', icon: LayoutDashboard },
+  ...SSH_NAV_GROUPS.flatMap((group) => group.items),
 ] as const;
 
 function SshSection() {
@@ -31,41 +50,105 @@ function SshSection() {
 
 function SshSectionInner() {
   const matchRoute = useMatchRoute();
+  const navigate = useNavigate();
   const isIndex = matchRoute({ to: '/ssh', fuzzy: false });
+  const activeItem = SSH_NAV_ITEMS.find(({ to }) => matchRoute({ to, fuzzy: true })) ?? SSH_NAV_ITEMS[0];
+
+  const navigateTo = (to: typeof SSH_NAV_ITEMS[number]['to']) => {
+    navigate({ to, search: (prev) => prev });
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Terminal className="h-5 w-5 text-primary" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <Terminal className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold">SSH Certificate Manager</h1>
+            <p className="text-sm text-muted-foreground">
+              Issue and manage OpenSSH user &amp; host certificates, principals, and KRLs.
+            </p>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold">SSH Certificate Manager</h1>
-          <p className="text-sm text-muted-foreground">
-            Issue and manage OpenSSH user &amp; host certificates, principals, and KRLs.
-          </p>
+        <div className="sm:ml-auto">
+          <ZoneSwitcher />
         </div>
-        <ZoneSwitcher />
       </div>
 
-      {/* Second-level sub-nav */}
-      <div className="flex flex-wrap gap-1 border-b">
-        {SUB_NAV.map(({ to, label, icon: Icon }) => (
+      <nav aria-label="SSH workspace" className="border-y bg-muted/30">
+        <div className="hidden min-h-12 items-stretch md:flex">
           <Link
-            key={to}
-            to={to}
+            to="/ssh"
             search={(prev) => prev}
-            className="px-3 py-2 text-sm font-medium rounded-t-md text-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors flex items-center gap-2 border-b-2 border-transparent"
-            activeProps={{
-              className:
-                'px-3 py-2 text-sm font-medium rounded-t-md text-primary bg-primary/10 transition-colors flex items-center gap-2 border-b-2 border-primary',
-            }}
+            className="flex items-center gap-2 border-r px-4 text-sm font-medium text-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
+            activeProps={{ className: 'flex items-center gap-2 border-r bg-primary/10 px-4 text-sm font-medium text-primary' }}
+            activeOptions={{ exact: true }}
           >
-            <Icon className="h-4 w-4" />
-            {label}
+            <LayoutDashboard className="h-4 w-4" />
+            Overview
           </Link>
-        ))}
-      </div>
+          {SSH_NAV_GROUPS.map((group) => {
+            const groupActive = group.items.some(({ to }) => matchRoute({ to, fuzzy: true }));
+            return (
+              <details
+                key={group.label}
+                className="group relative border-r"
+                data-navigation-menu
+              >
+                <summary
+                  onClick={(event) => {
+                    const currentMenu = event.currentTarget.parentElement;
+                    document.querySelectorAll<HTMLDetailsElement>('details[data-navigation-menu]').forEach((menu) => {
+                      if (menu !== currentMenu) menu.open = false;
+                    });
+                  }}
+                  className={`flex h-full cursor-pointer list-none items-center gap-2 px-4 text-sm font-medium transition-colors hover:bg-accent/50 hover:text-foreground [&::-webkit-details-marker]:hidden ${
+                    groupActive ? 'bg-primary/10 text-primary' : 'text-foreground/70'
+                  }`}
+                >
+                  {group.label}
+                  <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="absolute left-0 top-full z-30 mt-px min-w-60 rounded-b-md border border-t-0 bg-popover p-1 shadow-lg">
+                  {group.items.map(({ to, label, icon: Icon }) => (
+                    <Link
+                      key={to}
+                      to={to}
+                      search={(prev) => prev}
+                      className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
+                      activeProps={{ className: 'flex items-center gap-2 rounded-sm bg-primary/10 px-3 py-2 text-sm text-primary' }}
+                      onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+        <label className="flex items-center gap-3 px-3 py-2 md:hidden">
+          <span className="text-sm font-medium text-muted-foreground">Section</span>
+          <select
+            value={activeItem.to}
+            onChange={(event) => navigateTo(event.target.value as typeof SSH_NAV_ITEMS[number]['to'])}
+            className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+            data-testid="ssh-section-switcher"
+          >
+            <option value="/ssh">Overview</option>
+            {SSH_NAV_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.items.map(({ to, label }) => (
+                  <option key={to} value={to}>{label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+      </nav>
 
       {isIndex ? <SshLanding /> : <Outlet />}
     </div>
@@ -191,10 +274,11 @@ function SshLanding() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {SUB_NAV.map(({ to, label, icon: Icon }) => (
+        {SSH_NAV_GROUPS.flatMap((group) => group.items).map(({ to, label, icon: Icon }) => (
           <Link
             key={to}
             to={to}
+            search={(prev) => prev}
             className="rounded-lg border bg-card p-5 hover:bg-muted/50 transition-colors flex items-center gap-3"
           >
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
