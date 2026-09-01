@@ -1,7 +1,7 @@
 ---
 id: TASK-226
 title: 'ZONE-09: External/fleet API zone scoping + ECIES FQDN disambiguation'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:49'
 updated_date: '2026-09-01 05:41'
@@ -57,18 +57,6 @@ TASK-227 adds the matching --zone flag to krl-client.
 - [x] #6 A host that names its zone receives an envelope only its own key can decrypt
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -86,3 +74,9 @@ TASK-227 adds the matching --zone flag to krl-client.
    - minting a token whose CA pair is from another zone is refused
 6. pnpm typecheck + full backend suite; smoke against the dev backend with a real fleet token.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+External/fleet: fleet token gains zoneId (mint validates the user/host CA pair belongs to the zone; inferred from CA pair or explicit or fail-closed; VerifiedToken carries zoneId). sign-host upsert-by-fqdn + sign-user upsert-by-subject + register-host-pubkey + auth-principals all zone-scoped to token.zoneId. ECIES POST /krl (unauth) gains optional zone body field: omitted+1 match->serve, omitted+>1->409 AMBIGUOUS_HOST, explicit->scope (amendment A2). Legacy per-CA fallback host-CA scoped to host.zoneId. Proven: ssh-external-zones.integration.test.ts (409 + zone-scoped upsert). Full suite 727 green.
+<!-- SECTION:NOTES:END -->
