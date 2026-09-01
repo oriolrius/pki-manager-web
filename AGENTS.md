@@ -1,4 +1,57 @@
 
+# PKI Manager - Codex Instructions
+
+This repository supports both Codex and Claude Code. Keep `CLAUDE.md` files in place;
+`AGENTS.md` is the Codex-facing equivalent. When guidance changes, update the matching
+files so the two assistants follow the same project workflow.
+
+## Repository
+
+PKI Manager is a pnpm workspace with a React SPA, a Fastify API, and a standalone Go
+cert-manager external issuer. X.509 private keys are held by Cosmian KMS; application
+metadata is stored in SQLite.
+
+| Area | Location | Guidance |
+| --- | --- | --- |
+| API, crypto, KMS, database | `backend/` | `backend/AGENTS.md` |
+| React SPA | `frontend/` | `frontend/AGENTS.md` |
+| cert-manager external issuer | `k8s/issuer/` | `k8s/issuer/AGENTS.md` |
+| KMS, Keycloak, deployment | `kms/`, `keycloak/`, `docker/` | their READMEs and root docs |
+
+Read the closest applicable `AGENTS.md` before editing a subsystem. `CLAUDE.md` files are
+reference material for details that have not yet been duplicated here.
+
+## Commands
+
+- Root: `pnpm build`, `pnpm test`, `pnpm typecheck`, and `pnpm lint` run across workspaces.
+- Backend: run `pnpm typecheck`, tests, and lint from `backend/`. `pnpm build` is relaxed;
+  a successful build does not replace strict typechecking.
+- Frontend: run commands from `frontend/` with **npm**, not pnpm. `npm run typecheck` is
+  stricter than the Docker build.
+- Issuer: run `make build`, `make test`, `make vet`, or `make fmt` from `k8s/issuer/`.
+- Do not background `pnpm dev`: it starts an mprocs TUI and needs a real TTY. Consult
+  `DEVELOPMENT.md` before launching the full stack.
+
+## Engineering Rules
+
+- Put backend business logic in `backend/src/services/`; tRPC and REST routes must delegate
+  to the shared service layer.
+- For a database change, update `backend/src/db/schema.ts`, then run `pnpm db:generate` and
+  `pnpm db:migrate` from `backend/`.
+- Every state-changing backend operation must write an `audit_log` entry for success and failure.
+- Create frontend routes in `frontend/src/routes/`. Never edit `frontend/src/routeTree.gen.ts`;
+  the TanStack Router plugin generates it.
+- OIDC is optional. When `OIDC_ISSUER` and `OIDC_AUDIENCE` are unset, backend OIDC and admin
+  checks are disabled. Cluster-token authentication for `/api/v1/external` is separate.
+- Do not add private-key persistence outside Cosmian KMS.
+
+## Task Workflow
+
+Use the `backlog` CLI for all task reads and mutations. Start an implementation by assigning
+the task and setting it to `In Progress`, add an implementation plan, check each completed
+acceptance criterion, add PR-ready notes, and only then set it to `Done`. Never manually edit
+files under `backlog/tasks/` or `backlog/drafts/`.
+
 <!-- BACKLOG.MD GUIDELINES START -->
 # Instructions for the usage of Backlog.md CLI Tool
 
