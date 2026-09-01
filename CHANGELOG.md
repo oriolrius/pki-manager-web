@@ -1,3 +1,9 @@
+## v3.11.0 (2026-09-01)
+
+### Feat
+
+- **ssh-ui**: streamline workspace navigation
+
 ## v3.10.0 (2026-09-01)
 
 **SSH Zones — run many independent SSH trust domains in one installation**
