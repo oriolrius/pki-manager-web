@@ -50,9 +50,11 @@ Also in scope, because it is the operator's view of the same boundary:
 - [x] #3 Per-host access blocks keep working within a zone exactly as they did before
 - [x] #4 KRL numbers remain strictly increasing across all hosts regardless of zone, so no client rejects a KRL as a rollback
 - [x] #5 The per-CA KRL of one zone never contains a serial issued in another zone
-- [ ] #6 On a single-zone installation the composed KRL bytes are unchanged
+- [x] #6 On a single-zone installation the composed KRL bytes are unchanged
 - [ ] #7 SSH monitoring metrics can be read per zone as well as installation-wide
 <!-- AC:END -->
+
+
 
 
 
