@@ -53,8 +53,10 @@ Write what shipped, including what did not. decision-017 defers cross-zone trust
 - [x] #3 Every command in the runbook has been executed against a copy of the production database rather than only written down
 - [x] #4 The runbook states explicitly at what point rollback stops being safe
 - [x] #5 The docs name the downstream consumers that are not updated by this milestone and what each still needs
-- [ ] #6 The deferred items from decision-017 are documented as deferred rather than left ambiguous
+- [x] #6 The deferred items from decision-017 are documented as deferred rather than left ambiguous
 <!-- AC:END -->
+
+
 
 
 
