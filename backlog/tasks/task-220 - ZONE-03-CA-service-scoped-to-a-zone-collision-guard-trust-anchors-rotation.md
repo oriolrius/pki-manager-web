@@ -43,8 +43,10 @@ Rotation, retire and revoke semantics themselves are unchanged -- decision-017 p
 - [x] #3 The published trust anchors for a zone contain only that zone's CA keys and never another zone's
 - [x] #4 Rotating a CA produces a successor in the same zone as its predecessor
 - [x] #5 CAs can be listed for one zone or across all zones, and each CA reports which zone it belongs to
-- [ ] #6 On a single-zone installation every CA operation behaves exactly as it did before
+- [x] #6 On a single-zone installation every CA operation behaves exactly as it did before
 <!-- AC:END -->
+
+
 
 
 
