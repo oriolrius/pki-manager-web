@@ -54,8 +54,10 @@ TASK-227 adds the matching --zone flag to krl-client.
 - [x] #3 Minting a token with CAs from a different zone than the token is refused
 - [x] #4 A host pulling its encrypted KRL without naming a zone still succeeds whenever its FQDN is unambiguous
 - [x] #5 A host pulling its encrypted KRL when its FQDN exists in several zones gets a clear ambiguity error instead of another zone's envelope
-- [ ] #6 A host that names its zone receives an envelope only its own key can decrypt
+- [x] #6 A host that names its zone receives an envelope only its own key can decrypt
 <!-- AC:END -->
+
+
 
 
 
