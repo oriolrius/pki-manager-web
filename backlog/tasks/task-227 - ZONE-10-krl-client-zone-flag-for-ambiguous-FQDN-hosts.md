@@ -43,10 +43,12 @@ Do not change the decryption model, the trust anchor, the anti-rollback comparis
 - [x] #1 A host can be told which zone it belongs to via a flag, an environment variable or the config file, following the client's existing precedence rules
 - [x] #2 A host that does not set a zone behaves exactly as before, so no deployed client needs changing
 - [x] #3 A host whose FQDN exists in several zones pulls its own KRL successfully once its zone is set
-- [ ] #4 An ambiguity error is reported as an actionable configuration problem and is not retried as if it were transient
+- [x] #4 An ambiguity error is reported as an actionable configuration problem and is not retried as if it were transient
 - [ ] #5 The client's on-host path defaults and trust-anchor behaviour are unchanged and the existing defaults test still passes
 - [ ] #6 The README documents the new option and how to diagnose the ambiguity error
 <!-- AC:END -->
+
+
 
 
 
