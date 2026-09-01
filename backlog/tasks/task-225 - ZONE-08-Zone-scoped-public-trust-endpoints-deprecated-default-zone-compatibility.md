@@ -60,8 +60,10 @@ Note the shadowing caveat recorded in TASK-209: these root-mounted public routes
 - [x] #3 Responses from the unscoped URLs announce that they are deprecated and name both the successor URL and the zone that answered
 - [x] #4 With more than one zone configured, the unscoped URLs still serve only the default zone and never a union of zones
 - [x] #5 An unknown zone slug returns 404
-- [ ] #6 The in-repo Ansible end-to-end suite passes unmodified
+- [x] #6 The in-repo Ansible end-to-end suite passes unmodified
 <!-- AC:END -->
+
+
 
 
 
