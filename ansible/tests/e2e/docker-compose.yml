@@ -5,11 +5,14 @@
 name: ssh-host-cert-e2e
 
 services:
-  # Mirror the proven dev KMS (kms/docker-compose.yml): :latest + mounted
-  # kms.toml + COSMIAN_KMS_CONF. The default-config mode of pinned images
-  # rejects the KMIP Activate op the CA-create path needs. Fresh DB via tmpfs.
+  # Mirror the proven dev KMS (kms/docker-compose.yml): a PINNED cosmian/kms +
+  # mounted kms.toml + COSMIAN_KMS_CONF (config-file mode — the default-config
+  # mode rejects the KMIP Activate op the CA-create path needs). Fresh DB via
+  # tmpfs. Pinned (NOT :latest) so CI is reproducible: :latest moved to 5.26.0,
+  # which changed the [logging] config schema (`level` -> `rust_log`) and fails
+  # to start with this kms.toml. 5.24.0 is the version dev + prod run.
   kms:
-    image: ghcr.io/cosmian/kms:latest
+    image: ghcr.io/cosmian/kms:5.24.0
     environment:
       - RUST_LOG=info
       - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml

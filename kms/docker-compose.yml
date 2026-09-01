@@ -1,6 +1,10 @@
 services:
   kms:
-    image: ghcr.io/cosmian/kms:latest
+    # Pinned (NOT :latest): :latest moved to 5.26.0, which renamed the [logging]
+    # config key (`level` -> `rust_log`) and refuses to start with this kms.toml.
+    # 5.24.0 is the version prod runs; keep it in sync with the e2e stack
+    # (ansible/tests/e2e/docker-compose.yml).
+    image: ghcr.io/cosmian/kms:5.24.0
     container_name: pki-manager-kms
     restart: unless-stopped
     ports:
