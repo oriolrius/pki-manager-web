@@ -51,10 +51,12 @@ Write what shipped, including what did not. decision-017 defers cross-zone trust
 - [x] #1 The SSH concept, setup, deployment, principals and blocks guides all explain zones as the trust boundary
 - [x] #2 An operator can follow a written runbook to upgrade the live installation, including backup, verification and rollback steps
 - [x] #3 Every command in the runbook has been executed against a copy of the production database rather than only written down
-- [ ] #4 The runbook states explicitly at what point rollback stops being safe
+- [x] #4 The runbook states explicitly at what point rollback stops being safe
 - [ ] #5 The docs name the downstream consumers that are not updated by this milestone and what each still needs
 - [ ] #6 The deferred items from decision-017 are documented as deferred rather than left ambiguous
 <!-- AC:END -->
+
+
 
 
 
