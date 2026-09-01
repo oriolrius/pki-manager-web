@@ -24,3 +24,12 @@ Present KRL capabilities as separate, compact User CA and Host CA lists while re
 - [ ] #3 KRL generation, all revocation modes, revocation history, and host distribution remain available
 - [ ] #4 Frontend typecheck, lint, and relevant tests pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Review the restored KRL route and retain every existing query and mutation.
+2. Replace the upfront CA selector with separate compact User CA and Host CA KRL lists.
+3. Route each list entry into the existing per-CA management view, retaining generation, revocation, history, and distribution functionality.
+4. Run focused frontend validation and document the result.
+<!-- SECTION:PLAN:END -->
