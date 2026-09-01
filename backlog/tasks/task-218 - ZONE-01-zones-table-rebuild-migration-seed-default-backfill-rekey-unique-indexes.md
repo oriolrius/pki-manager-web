@@ -3,9 +3,11 @@ id: TASK-218
 title: >-
   ZONE-01: zones table + rebuild migration (seed default, backfill, rekey unique
   indexes)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-09-01 04:45'
+updated_date: '2026-09-01 05:08'
 labels:
   - ssh-zones
   - ssh-cert-manager
