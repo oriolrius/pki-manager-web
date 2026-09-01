@@ -1,7 +1,7 @@
 ---
 id: TASK-228
 title: 'ZONE-11: Frontend zone switcher, zone filters and zone management page'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:50'
 updated_date: '2026-09-01 06:03'
@@ -48,20 +48,6 @@ Archived zones stay visible in the switcher only when they are the current selec
 - [x] #7 Frontend tests and typecheck pass, and the change is verified in a running browser with two zones configured
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -74,3 +60,9 @@ Archived zones stay visible in the switcher only when they are the current selec
 7. Update tests/screenshots.spec.ts if the SSH nav shot changes; run pnpm --filter frontend test and pnpm typecheck.
 8. Verify in the browser through the Orca CLI (dev stack per DEVELOPMENT.md) with two real zones, not only in tests.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Frontend (fork-implemented, independently re-verified): src/lib/zone-context.tsx (ZoneProvider + useZone; selection 'all'|slug persisted to localStorage['ssh.selectedZone'] AND /ssh ?zone= search param, URL wins on load, slug->id resolution); components/ssh/ZoneSwitcher.tsx (header, All zones + active) and ZonePicker.tsx (active-only, prefilled). List pages (cas/hosts/principals/users/krl) gained zone filter + a Zone column under All-zones. Create forms (cas.new/hosts.new/users identity) require a zone picker (archived excluded). New /ssh/zones management page (list incl. archived, create, archive/unarchive, rename display name). Landing checklist scoped to the selected zone. Verified: tsc --noEmit clean; vitest 57 pass (8 files, incl. new zone-context.test.tsx 5/5); browser (Orca, two zones prod+staging) confirmed switcher, URL persistence, Zone column under All-zones, active-only picker, /ssh/zones CRUD. (npm lint broken env-wide by a pre-existing ajv/@eslint conflict — typecheck is the gate.)
+<!-- SECTION:NOTES:END -->
