@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-01 09:35'
-updated_date: '2026-09-01 11:37'
+updated_date: '2026-09-01 11:39'
 labels: []
 dependencies: []
 ordinal: 60014
@@ -22,7 +22,7 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 - [x] #1 KRL status, history, and operational actions are presented in a clear, scannable hierarchy
 - [x] #2 The responsive page provides contextual guidance and clear destructive-action affordances
 - [ ] #3 Frontend typecheck, lint, and relevant tests pass
-- [ ] #4 Only User CAs are available for KRL management; host-specific KRL management and distribution monitoring are excluded from this page
+- [x] #4 Only User CAs are available for KRL management; host-specific KRL management and distribution monitoring are excluded from this page
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,9 +39,10 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 <!-- SECTION:NOTES:BEGIN -->
 ## Summary
 
-- Rebuilt `/ssh/krl` around the operator sequence: select CA, assess the current KRL, record a revocation, generate an updated KRL, then inspect host-level enforcement.
-- Preserved all existing KRL queries and actions (`getLatest`, `listRevocations`, generate, and serial/key/certificate revocation) plus the per-host distribution view.
-- Added loading, error, and empty states; responsive mobile cards; clearer endpoint and lifecycle guidance; and a danger-styled, confirmation-gated permanent revocation action.
+- Reframed `/ssh/krl` as a focused emergency user-certificate revocation workflow.
+- The overview lists only User CAs, with the current user revocation-list version, revocation count, and expiry; operators open a User CA only when they need to manage its list.
+- Removed Host CA KRL management and per-host distribution monitoring from this route. Host-specific access-block delivery remains in the user/host access workflows where it can be acted on.
+- Preserved User CA KRL generation, serial/key/certificate revocation, revocation history, endpoint visibility, responsive states, and confirmation before irreversible revocation.
 
 ## Validation
 
@@ -49,10 +50,4 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 - Passed: `npm run test` (8 files, 57 tests)
 - Blocked outside this change: `npm run lint` crashes during ESLint/AJV initialization before linting source (`Cannot set properties of undefined (setting defaultMeta)`).
 - Also attempted `npm run build`; it is blocked by existing backend/frontend TypeScript errors outside this route.
-
-## Follow-up UX refinement
-
-- Replaced the upfront CA dropdown with a per-CA KRL overview. Operators now see the operational state for each available CA before choosing “Manage this KRL.”
-- The CA is still visible when required for the underlying per-CA revocation model, but it is no longer the page’s first decision.
-- Re-ran `npm run typecheck` successfully after the refinement; the existing ESLint initialization blocker remains unchanged.
 <!-- SECTION:NOTES:END -->
