@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-09-01 09:35'
-updated_date: '2026-09-01 11:32'
+updated_date: '2026-09-01 11:34'
 labels: []
 dependencies: []
 ordinal: 60014
@@ -49,4 +49,10 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 - Passed: `npm run test` (8 files, 57 tests)
 - Blocked outside this change: `npm run lint` crashes during ESLint/AJV initialization before linting source (`Cannot set properties of undefined (setting defaultMeta)`).
 - Also attempted `npm run build`; it is blocked by existing backend/frontend TypeScript errors outside this route.
+
+## Follow-up UX refinement
+
+- Replaced the upfront CA dropdown with a per-CA KRL overview. Operators now see the operational state for each available CA before choosing “Manage this KRL.”
+- The CA is still visible when required for the underlying per-CA revocation model, but it is no longer the page’s first decision.
+- Re-ran `npm run typecheck` successfully after the refinement; the existing ESLint initialization blocker remains unchanged.
 <!-- SECTION:NOTES:END -->
