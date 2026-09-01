@@ -45,8 +45,10 @@ Archived zones stay visible in the switcher only when they are the current selec
 - [x] #4 Creating a CA, host or identity requires choosing a zone, prefilled from the switcher, and archived zones are not offered
 - [x] #5 A zone can be created, renamed, archived and un-archived from a management page in the SSH section
 - [x] #6 The getting-started checklist on the SSH landing page reflects the selected zone rather than the whole installation
-- [ ] #7 Frontend tests and typecheck pass, and the change is verified in a running browser with two zones configured
+- [x] #7 Frontend tests and typecheck pass, and the change is verified in a running browser with two zones configured
 <!-- AC:END -->
+
+
 
 
 
