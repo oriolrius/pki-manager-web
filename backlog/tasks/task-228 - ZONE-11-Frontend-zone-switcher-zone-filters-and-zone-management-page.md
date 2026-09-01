@@ -42,11 +42,13 @@ Archived zones stay visible in the switcher only when they are the current selec
 - [x] #1 An operator can switch the SSH section between zones and see only that zone's CAs, hosts, users, principals and KRLs
 - [x] #2 The selected zone survives a page reload and is carried in the URL so a link opens on the same zone
 - [x] #3 An All-zones view exists and shows which zone each row belongs to
-- [ ] #4 Creating a CA, host or identity requires choosing a zone, prefilled from the switcher, and archived zones are not offered
+- [x] #4 Creating a CA, host or identity requires choosing a zone, prefilled from the switcher, and archived zones are not offered
 - [ ] #5 A zone can be created, renamed, archived and un-archived from a management page in the SSH section
 - [ ] #6 The getting-started checklist on the SSH landing page reflects the selected zone rather than the whole installation
 - [ ] #7 Frontend tests and typecheck pass, and the change is verified in a running browser with two zones configured
 <!-- AC:END -->
+
+
 
 
 
