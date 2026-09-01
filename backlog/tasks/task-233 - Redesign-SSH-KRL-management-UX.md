@@ -29,7 +29,7 @@ Improve the /ssh/krl page's information hierarchy and operator workflow without 
 
 <!-- SECTION:PLAN:BEGIN -->
 1. Audit the existing KRL route, queries, mutations, and related SSH UI conventions.
-2. Replace the upfront CA selector with an operational KRL overview: each active CA shows its own KRL health and exposes an explicit management entry point.
+2. Replace the upfront CA selector with an operational KRL overview: each available CA shows its own KRL health and exposes an explicit management entry point.
 3. Preserve every existing mutation and data view while adding responsive layout, explicit loading/empty states, and high-clarity risk guidance.
 4. Run frontend typecheck, lint, and relevant tests; review the final diff and record PR-ready notes.
 <!-- SECTION:PLAN:END -->
