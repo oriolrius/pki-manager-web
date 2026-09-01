@@ -1,7 +1,7 @@
 ---
 id: TASK-224
 title: 'ZONE-07: REST/OpenAPI zone endpoints + zone filters, parity guard green'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:48'
 updated_date: '2026-09-01 05:41'
@@ -50,18 +50,6 @@ Path parameter naming: find-my-way rejects two different parameter names at the 
 - [x] #6 A REST-only client can create a second zone, provision its CAs, enroll a host into it and issue a user certificate there
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -74,3 +62,9 @@ Path parameter naming: find-my-way rejects two different parameter names at the 
 7. Smoke the routes against the dev backend and check they render in Swagger UI at /api/docs.
 8. pnpm typecheck + full backend suite.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+REST: /api/v1/ssh/zones CRUD (GET list ?includeArchived, POST create, GET/POST :ref, POST :ref/archive|unarchive); ?zoneId= on /cas,/hosts,/identities,/principals,/metrics,/trust-anchors; zone in create/import/register/identity/principal/token bodies. Error handler maps *ExistsError->409. ssh-rest-parity guard green (61 tests, all 6 zone procedures have REST twins). ssh-openapi test green.
+<!-- SECTION:NOTES:END -->
