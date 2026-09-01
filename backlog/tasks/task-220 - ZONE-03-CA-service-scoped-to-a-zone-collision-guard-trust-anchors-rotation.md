@@ -3,10 +3,10 @@ id: TASK-220
 title: >-
   ZONE-03: CA service scoped to a zone (collision guard, trust anchors,
   rotation)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:46'
-updated_date: '2026-09-01 05:28'
+updated_date: '2026-09-01 05:29'
 labels:
   - ssh-zones
   - ssh-cert-manager
@@ -46,18 +46,6 @@ Rotation, retire and revoke semantics themselves are unchanged -- decision-017 p
 - [x] #6 On a single-zone installation every CA operation behaves exactly as it did before
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -69,3 +57,9 @@ Rotation, retire and revoke semantics themselves are unchanged -- decision-017 p
 6. Tests: two zones each get their own active user CA; the second in one zone is rejected with a zone-naming message; getTrustAnchors(zoneA) never contains zone B's key; rotate keeps the zone; list filters.
 7. pnpm typecheck + backend suite.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-ca.service scoped: create/import resolveZone+assertZoneUsable, per-(zone,ca_type) active-CA collision guard (SshCaExistsError now names the zone), list({zoneId?}), getTrustAnchors(zone) filters to that zone only, rotate() successor inherits predecessor.zoneId, DTO carries zoneId. Proven by ssh-zones.service.test.ts (per-zone CAs, cross-zone-anchor isolation, fail-closed). Single-zone unchanged: full suite green.
+<!-- SECTION:NOTES:END -->
