@@ -3,7 +3,7 @@ id: TASK-222
 title: >-
   ZONE-05: Narrow the composed per-host KRL to the host's zone (trust boundary
   enforcement)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-01 04:47'
 updated_date: '2026-09-01 05:29'
@@ -54,20 +54,6 @@ Also in scope, because it is the operator's view of the same boundary:
 - [x] #7 SSH monitoring metrics can be read per zone as well as installation-wide
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -82,3 +68,9 @@ Also in scope, because it is the operator's view of the same boundary:
    - the per-CA ssh_krls lineage for zone A contains no zone-B serial
 5. pnpm typecheck + full backend suite (ssh-host-krl, ssh-krl-triggers, ssh-block, ssh-mon suites are the ones at risk).
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ssh-host-krl.service: composed union narrowed to allCas.filter(status!=='retired' && zoneId===host.zoneId); fallback signing host-CA scoped to host.zoneId. ssh_krl_seq stays global (strictly-increasing across zones preserved). Per-CA KRL is inherently zone-correct (a CA is in one zone). ssh-mon.metrics gained optional zoneId scoping (certs via caId, cas/hosts by zone) + zoneId echoed. AC#1 proven at BYTE level: ssh-keygen -Q on the actual composed KRL bytes marks the prod cert REVOKED and the staging cert NOT revoked (ssh-zones.service.test.ts). Single-zone bytes unchanged (full suite green). Full byte+sshd isolation is ZONE-12.
+<!-- SECTION:NOTES:END -->
