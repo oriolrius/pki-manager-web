@@ -1,9 +1,11 @@
 ---
 id: TASK-229
 title: 'ZONE-12: Two-zone isolation E2E against real sshd + no-regression proof'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-09-01 04:50'
+updated_date: '2026-09-01 05:58'
 labels:
   - ssh-zones
   - ssh-cert-manager
