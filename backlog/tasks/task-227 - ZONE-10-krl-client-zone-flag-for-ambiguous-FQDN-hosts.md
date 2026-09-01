@@ -45,8 +45,10 @@ Do not change the decryption model, the trust anchor, the anti-rollback comparis
 - [x] #3 A host whose FQDN exists in several zones pulls its own KRL successfully once its zone is set
 - [x] #4 An ambiguity error is reported as an actionable configuration problem and is not retried as if it were transient
 - [x] #5 The client's on-host path defaults and trust-anchor behaviour are unchanged and the existing defaults test still passes
-- [ ] #6 The README documents the new option and how to diagnose the ambiguity error
+- [x] #6 The README documents the new option and how to diagnose the ambiguity error
 <!-- AC:END -->
+
+
 
 
 
