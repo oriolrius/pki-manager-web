@@ -1,3 +1,34 @@
+## v3.10.0 (2026-09-01)
+
+**SSH Zones — run many independent SSH trust domains in one installation**
+
+One PKI Manager can now host N independent SSH trust domains (prod vs staging,
+customer A vs B, datacenter vs lab). A generic `zones` table becomes a real
+**trust boundary**, not a UI label: **a host in a zone trusts only that zone's
+user CAs**. Each zone has its own `active` + `rotating` User and Host CA, and
+hosts, identities and principals each belong to exactly one zone (the same FQDN,
+subject or principal name can be reused across zones).
+
+A migrated single-zone installation is **behaviourally identical** — every
+existing row is backfilled to a seeded `default` zone, the legacy unscoped trust
+endpoints keep serving it (with a `Deprecation` header), and the Ansible role,
+`pki-manager-cli` and `krl-client` keep working untouched. Zone resolution is
+**fail-closed**: implicit while one zone exists, an explicit error once several
+do — so an un-scoped caller never silently signs with the wrong trust domain's
+CA. Upgrade steps, including backup and rollback, are in
+[docs/ssh/zones-migration-runbook.md](docs/ssh/zones-migration-runbook.md);
+concepts in [docs/ssh/zones.md](docs/ssh/zones.md).
+
+Highlights: migration `0009` (rebuild-and-copy, seeds `default`); zone-scoped CA/
+host/user/principal services and per-host KRLs; tRPC `ssh.zone` router + REST
+`/ssh/zones` + `?zoneId=` filters; fleet-token zones and an ECIES
+`409 AMBIGUOUS_HOST` disambiguation; `krl-client --zone`; a frontend zone switcher
+(URL + localStorage), filters, pickers and a `/ssh/zones` management page.
+
+### Feat
+
+- **ssh**: SSH Zones — multi-CA grouping and trust boundary (decision-017)
+
 ## v3.9.6 (2026-08-31)
 
 ### Feat
