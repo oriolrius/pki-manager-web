@@ -50,12 +50,14 @@ TASK-227 adds the matching --zone flag to krl-client.
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 A fleet token belongs to one zone and can only sign, adopt or re-key entities inside it
-- [ ] #2 Automation signing a host or user whose name also exists in another zone creates or updates the entity in the token's own zone, never the other zone's
+- [x] #2 Automation signing a host or user whose name also exists in another zone creates or updates the entity in the token's own zone, never the other zone's
 - [ ] #3 Minting a token with CAs from a different zone than the token is refused
 - [ ] #4 A host pulling its encrypted KRL without naming a zone still succeeds whenever its FQDN is unambiguous
 - [ ] #5 A host pulling its encrypted KRL when its FQDN exists in several zones gets a clear ambiguity error instead of another zone's envelope
 - [ ] #6 A host that names its zone receives an envelope only its own key can decrypt
 <!-- AC:END -->
+
+
 
 
 
