@@ -1,5 +1,8 @@
 # PKI Manager - AI Assistant Instructions
 
+Codex uses the parallel `AGENTS.md` guides. Keep the corresponding Claude and Codex guidance
+aligned when repository workflows, commands, or architecture change.
+
 Web PKI manager: CA hierarchies, X.509 issue/renew/revoke, CRLs, and a cert-manager
 external issuer for Kubernetes. Private keys live in a **Cosmian KMS**; metadata in SQLite.
 
