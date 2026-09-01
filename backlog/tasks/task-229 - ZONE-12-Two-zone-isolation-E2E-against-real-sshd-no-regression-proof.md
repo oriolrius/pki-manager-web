@@ -51,11 +51,13 @@ The existing real-sshd harness from the blocks milestone (backend/src/crypto/ssh
 - [x] #2 A user certificate issued in the same zone as the host is accepted, so the isolation result is not a false positive
 - [x] #3 Revoking a certificate in one zone changes only that zone's hosts' KRLs, verified by decoding the KRL bytes
 - [x] #4 A host's KRL signature verifies against its own zone's Host CA and fails against the other zone's
-- [ ] #5 The same FQDN registered in two zones yields two independently certified hosts, each able to decrypt only its own KRL envelope
+- [x] #5 The same FQDN registered in two zones yields two independently certified hosts, each able to decrypt only its own KRL envelope
 - [ ] #6 Per-host access blocks still behave as specified within a zone
 - [ ] #7 The Ansible end-to-end suite passes unmodified and the full backend suite passes with no pre-existing test edited
 - [ ] #8 A database migrated from the pre-zone schema produces the same composed KRL bytes it produced before
 <!-- AC:END -->
+
+
 
 
 
