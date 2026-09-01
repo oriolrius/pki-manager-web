@@ -41,10 +41,12 @@ Rotation, retire and revoke semantics themselves are unchanged -- decision-017 p
 - [x] #1 Each zone can hold its own active User CA and Host CA, created through the normal CA creation flow
 - [x] #2 Attempting a second active CA of the same type in the same zone is refused with a message that names the zone
 - [x] #3 The published trust anchors for a zone contain only that zone's CA keys and never another zone's
-- [ ] #4 Rotating a CA produces a successor in the same zone as its predecessor
+- [x] #4 Rotating a CA produces a successor in the same zone as its predecessor
 - [ ] #5 CAs can be listed for one zone or across all zones, and each CA reports which zone it belongs to
 - [ ] #6 On a single-zone installation every CA operation behaves exactly as it did before
 <!-- AC:END -->
+
+
 
 
 
