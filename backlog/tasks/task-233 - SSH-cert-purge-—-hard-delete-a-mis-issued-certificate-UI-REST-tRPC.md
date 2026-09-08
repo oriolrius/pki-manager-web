@@ -1,7 +1,7 @@
 ---
 id: TASK-233
 title: SSH cert purge — hard-delete a mis-issued certificate (UI + REST + tRPC)
-status: In Progress
+status: Done
 assignee:
   - '@myself'
 created_date: '2026-09-08 04:48'
@@ -27,14 +27,6 @@ Add a 'purge' operation that fully removes an SSH certificate row and all its DB
 - [x] #4 Operation is exposed over both tRPC (ssh.krl.purgeCert) and REST (DELETE /api/v1/ssh/certs/:id) with rich OpenAPI + UI help text explaining pure vs preserve vs dropRevocation
 <!-- AC:END -->
 
-
-
-
-
-
-
-
-
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
@@ -44,3 +36,19 @@ Add a 'purge' operation that fully removes an SSH certificate row and all its DB
 4. Frontend Purge button + state-aware confirm dialog (dropRevocation checkbox) in ssh.users.tsx
 5. Tests: ssh-cert-purge.integration.test.ts (6 cases) + parity guard
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented cert purge across service + both APIs + UI, all typecheck/lint clean, 738 backend tests pass (incl. 6 new purge cases + the REST/tRPC parity guard).
+
+Backend:
+- SshKrlService.purgeCert(ctx, certId, {force, dropRevocation, reason}) in ssh-krl.service.ts — state-branched: active=pure purge (no KRL regen, serial never in KRL); revoked+valid needs force and by default materialises the serial as a standalone ssh_revocations directive (kill-switch survives the row); dropRevocation removes it from the KRL; expired purges freely. Detaches superseded_by self-FK + ssh_hosts.current_cert_id pointer, clears ssh_idempotency, deletes cert row. Always writes ssh.cert.purge audit_log.
+- SshCertPurgeForbiddenError -> 409 CERT_REVOKED_NEEDS_FORCE (REST setErrorHandler) / CONFLICT (tRPC mapSshError).
+- tRPC ssh.krl.purgeCert; REST DELETE /api/v1/ssh/certs/:id?force=&dropRevocation= with a long OpenAPI description explaining the credential/KRL model; parity map entry added.
+- ssh.cert.purge added to AuditOperation union.
+
+Frontend (ssh.users.tsx): per-cert Purge button + state-aware confirm dialog (PurgeDialogBody) that explains pure vs preserve vs dropRevocation and offers the dropRevocation checkbox only for revoked+still-valid certs.
+
+NOTE: not yet committed or deployed — awaiting review. Complementary to the peer's proposed host-level DELETE /ssh/hosts/:id (decommission), which is a separate op.
+<!-- SECTION:NOTES:END -->
