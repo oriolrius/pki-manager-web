@@ -1,9 +1,11 @@
 ---
 id: TASK-233
 title: SSH cert purge — hard-delete a mis-issued certificate (UI + REST + tRPC)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@myself'
 created_date: '2026-09-08 04:48'
+updated_date: '2026-09-08 04:59'
 labels:
   - ssh
   - security
@@ -24,3 +26,13 @@ Add a 'purge' operation that fully removes an SSH certificate row and all its DB
 - [ ] #3 Every purge writes an ssh.cert.purge audit_log row (serial, reason, operator, whether KRL was regenerated); a second purge of the same id is 404, never 500
 - [ ] #4 Operation is exposed over both tRPC (ssh.krl.purgeCert) and REST (DELETE /api/v1/ssh/certs/:id) with rich OpenAPI + UI help text explaining pure vs preserve vs dropRevocation
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. SshKrlService.purgeCert() — branch by state (active=pure, revoked+valid=force+preserve/drop, expired=free); always audit; regen KRL only when revoked
+2. SshCertPurgeForbiddenError -> 409/CONFLICT in REST + tRPC
+3. tRPC ssh.krl.purgeCert + REST DELETE /ssh/certs/:id with rich OpenAPI docs; parity map entry
+4. Frontend Purge button + state-aware confirm dialog (dropRevocation checkbox) in ssh.users.tsx
+5. Tests: ssh-cert-purge.integration.test.ts (6 cases) + parity guard
+<!-- SECTION:PLAN:END -->
