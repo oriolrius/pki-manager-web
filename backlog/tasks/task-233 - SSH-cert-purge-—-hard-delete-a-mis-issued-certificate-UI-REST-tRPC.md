@@ -22,10 +22,12 @@ Add a 'purge' operation that fully removes an SSH certificate row and all its DB
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Admin can purge an active (never-revoked), non-expired cert and it disappears with zero KRL change; the serial can be re-issued
-- [ ] #2 Purging a revoked, still-valid cert without force returns 409; with force (default) the serial is preserved in the KRL via a serial directive; with force+dropRevocation the serial is removed from the KRL
+- [x] #2 Purging a revoked, still-valid cert without force returns 409; with force (default) the serial is preserved in the KRL via a serial directive; with force+dropRevocation the serial is removed from the KRL
 - [ ] #3 Every purge writes an ssh.cert.purge audit_log row (serial, reason, operator, whether KRL was regenerated); a second purge of the same id is 404, never 500
 - [ ] #4 Operation is exposed over both tRPC (ssh.krl.purgeCert) and REST (DELETE /api/v1/ssh/certs/:id) with rich OpenAPI + UI help text explaining pure vs preserve vs dropRevocation
 <!-- AC:END -->
+
+
 
 
 
