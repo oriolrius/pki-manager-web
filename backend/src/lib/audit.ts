@@ -45,6 +45,7 @@ export type AuditOperation =
   | 'ssh.cert.issue'
   | 'ssh.cert.renew'
   | 'ssh.cert.revoke'
+  | 'ssh.cert.purge'
   | 'ssh.principal.create'
   | 'ssh.principal.update'
   | 'ssh.principal.delete'

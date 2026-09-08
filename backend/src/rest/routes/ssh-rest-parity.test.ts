@@ -80,6 +80,7 @@ const REST_TWIN: Record<string, string> = {
   'krl.listRevocations': 'GET /ssh/cas/{caId}/revocations',
   'krl.generate': 'POST /ssh/cas/{caId}/krl',
   'krl.revokeCert': 'POST /ssh/certs/{id}/revoke',
+  'krl.purgeCert': 'DELETE /ssh/certs/{id}',
   'krl.revokeSerial': 'POST /ssh/cas/{caId}/revoke-serial',
   'krl.revokeKey': 'POST /ssh/cas/{caId}/revoke-key',
   // Per-host access blocks

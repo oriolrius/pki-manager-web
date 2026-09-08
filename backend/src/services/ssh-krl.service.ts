@@ -7,7 +7,7 @@
  */
 import { randomUUID } from 'crypto';
 import { eq, and, desc } from 'drizzle-orm';
-import { sshCas, sshCertificates, sshRevocations, sshKrls } from '../db/schema.js';
+import { sshCas, sshCertificates, sshRevocations, sshKrls, sshHosts, sshIdempotency } from '../db/schema.js';
 import { allocateKrlNumber } from '../db/krl-seq.js';
 import { getKMSService } from '../kms/service.js';
 import { createAuditLog } from '../lib/audit.js';
@@ -25,6 +25,19 @@ export class SshKrlError extends Error {
   }
 }
 
+/**
+ * Thrown by purgeCert when asked to hard-delete a cert that is BOTH revoked AND
+ * still within its validity window, without `force`. Purging such a cert is a
+ * security-relevant act (its serial is the KRL kill-switch), so the caller must
+ * opt in explicitly. Maps to HTTP 409 / tRPC CONFLICT.
+ */
+export class SshCertPurgeForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SshCertPurgeForbiddenError';
+  }
+}
+
 export interface SshKrlDto {
   id: string;
   caId: string;
@@ -34,6 +47,17 @@ export interface SshKrlDto {
   thisUpdate: string;
   nextUpdate: string;
   hasSignature: boolean;
+}
+
+export interface SshCertPurgeResult {
+  ok: true;
+  purged: { id: string; serial: string; caId: string; certType: string };
+  /** true when the removed cert was revoked+valid and its serial was re-anchored as a standalone KRL directive so it stays revoked. */
+  preservedSerial: boolean;
+  /** true when a revoked+still-valid cert's serial was deliberately dropped from the KRL (re-enables any copy in the wild). */
+  removedFromKrl: boolean;
+  /** the regenerated CA KRL, present only when the purge could have changed it (i.e. the cert was revoked). */
+  krl: SshKrlDto | null;
 }
 
 export function fingerprintToHash(fp: string): Buffer | null {
@@ -104,6 +128,120 @@ export class SshKrlService {
     } as any);
     await this.invalidateHostLineages(ctx);
     return this.generate(ctx, caId);
+  }
+
+  /**
+   * Hard-delete a certificate and every DB trace of it — the "undo a mis-issued
+   * cert" primitive (as opposed to revoke, which keeps the row and adds it to the
+   * KRL). Guard-railed because a certificate is a self-contained signed credential
+   * that may already exist in copies outside this DB; deleting the row does NOT
+   * recall it. The KRL is the ONLY thing that stops a still-valid copy, and the
+   * KRL is *derived* from DB state, so this method is careful about it:
+   *
+   *   - `active` (never revoked) cert  → PURE PURGE. Its serial was never in the
+   *     KRL, so deleting the row is KRL-neutral. This is the intended case: a cert
+   *     created by mistake that never left the server.
+   *   - `revoked` + still valid        → requires `force`. By DEFAULT the serial is
+   *     re-anchored as a standalone `serial` directive so the KRL keeps revoking it
+   *     (the cert record disappears, the kill-switch survives). Pass
+   *     `dropRevocation` to ALSO remove it from the KRL — this re-enables any copy
+   *     still in the wild, so it is a deliberate, separately-flagged act.
+   *   - `expired` (any)                → purge freely; the clock already rejects it.
+   *
+   * Always writes an `ssh.cert.purge` audit row (the cert is gone, but the ACT of
+   * removing it is not) — the project's state-change audit invariant.
+   */
+  async purgeCert(
+    ctx: ServiceContext,
+    certId: string,
+    opts: { force?: boolean; dropRevocation?: boolean; reason?: string } = {}
+  ): Promise<SshCertPurgeResult> {
+    const cert = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.id, certId)).limit(1))[0];
+    if (!cert) throw new SshKrlError(`certificate ${certId} not found`);
+
+    const expired = new Date(cert.validBefore).getTime() <= Date.now();
+    const revoked = cert.status === 'revoked';
+    const force = opts.force === true;
+    const dropRevocation = opts.dropRevocation === true;
+
+    // Eligibility gate: purging a revoked, still-valid cert un-arms the KRL for it.
+    if (revoked && !expired && !force) {
+      throw new SshCertPurgeForbiddenError(
+        `certificate ${certId} (serial ${cert.serial}) is revoked and still valid: purging it removes its record, ` +
+          `and its serial is what the KRL uses to keep it revoked. Pass force=true to proceed — by default the serial ` +
+          `is preserved in the KRL. Add dropRevocation=true to ALSO drop it from the KRL, which re-enables any copy ` +
+          `still in the wild (only safe if this certificate never left the server).`
+      );
+    }
+
+    const needRegen = revoked; // an active cert's serial was never in the KRL
+    let preservedSerial = false;
+    let removedFromKrl = false;
+
+    // 1. Remove any revocation directive that points at this cert (targetType='cert').
+    await ctx.db.delete(sshRevocations).where(eq(sshRevocations.certId, certId));
+
+    // 2. Keep a revoked+still-valid serial revoked unless the caller explicitly drops it.
+    if (revoked && !expired && !dropRevocation) {
+      await ctx.db.insert(sshRevocations).values({
+        id: randomUUID(),
+        caId: cert.caId,
+        targetType: 'serial',
+        serial: cert.serial,
+        reason: opts.reason ? `purge(preserve): ${opts.reason}` : 'purge: preserved revocation of removed cert',
+        revokedBy: ctx.ipAddress ?? null,
+      } as any);
+      preservedSerial = true;
+    } else if (revoked) {
+      // expired-revoked (harmless) or explicit dropRevocation → serial leaves the KRL
+      removedFromKrl = !expired;
+    }
+
+    // 3. Detach dangling references so the row can be deleted / no pointer is left behind.
+    await ctx.db.update(sshCertificates).set({ supersededBy: null, updatedAt: new Date() }).where(eq(sshCertificates.supersededBy, certId));
+    await ctx.db.update(sshHosts).set({ currentCertId: null, updatedAt: new Date() }).where(eq(sshHosts.currentCertId, certId));
+    await ctx.db.delete(sshIdempotency).where(eq(sshIdempotency.certId, certId));
+
+    // 4. Delete the cert row itself.
+    await ctx.db.delete(sshCertificates).where(eq(sshCertificates.id, certId));
+
+    // 5. Audit the ACT (the cert is gone; the record that it was purged is not).
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.cert.purge',
+      entityType: 'ssh_certificate',
+      entityId: certId,
+      status: 'success',
+      details: {
+        caId: cert.caId,
+        serial: cert.serial,
+        certType: cert.certType,
+        priorStatus: cert.status,
+        expired,
+        force,
+        dropRevocation,
+        preservedSerial,
+        removedFromKrl,
+        reason: opts.reason ?? null,
+      },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+
+    // 6. Rebuild the CA KRL only when this cert could have been in it.
+    let krl: SshKrlDto | null = null;
+    if (needRegen) {
+      await this.invalidateHostLineages(ctx);
+      krl = await this.generate(ctx, cert.caId);
+    }
+
+    logger.info({ certId, serial: cert.serial, caId: cert.caId, preservedSerial, removedFromKrl }, 'Purged SSH certificate');
+    return {
+      ok: true,
+      purged: { id: certId, serial: cert.serial, caId: cert.caId, certType: cert.certType },
+      preservedSerial,
+      removedFromKrl,
+      krl,
+    };
   }
 
   /**

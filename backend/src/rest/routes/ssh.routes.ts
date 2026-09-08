@@ -386,6 +386,73 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshKrlService().revokeByCert(ctx(req), id, body.reason);
   });
 
+  // Purge (hard-delete) a certificate — the "undo a mis-issued cert" op, distinct
+  // from revoke (which keeps the row + adds it to the KRL). The long description is
+  // deliberately explicit: an admin driving this over REST must understand that a
+  // certificate is a signed credential that may exist in copies OUTSIDE this DB,
+  // and that the KRL is the only thing stopping a still-valid copy.
+  api.delete(
+    '/certs/:id',
+    {
+      schema: {
+        tags: tag,
+        summary: 'Purge (hard-delete) an SSH certificate — erase all DB trace of a mis-issued cert',
+        description: [
+          'Permanently deletes the certificate row and every DB trace of it. Use this to undo a certificate',
+          'that was created by mistake and never left the server — NOT to decommission a deployed host',
+          '(offboard the host instead). Always writes an `ssh.cert.purge` audit_log entry.',
+          '',
+          'A certificate is a self-contained signed credential: once issued, copies may exist outside this',
+          'database (on hosts, in ~/.ssh, in backups, or in an attacker\'s hands). Deleting the row does NOT',
+          'recall those copies. The KRL — which is *rebuilt from DB state* — is the only thing that stops a',
+          'still-valid copy. Behaviour therefore depends on the cert\'s state:',
+          '',
+          '• active (never revoked): PURE PURGE. Its serial was never in the KRL, so removal is KRL-neutral.',
+          '  This is the intended case. `force` is not required.',
+          '• revoked + still valid: requires `force=true`. By DEFAULT the serial is preserved in the KRL (via a',
+          '  standalone directive) so it stays revoked until it expires — the record is gone, the kill-switch',
+          '  survives. Add `dropRevocation=true` to ALSO remove it from the KRL, which RE-ENABLES any copy still',
+          '  in the wild — only safe if the certificate truly never left the server.',
+          '• expired: purged freely; the clock already rejects it.',
+          '',
+          'Idempotent: purging an unknown id returns 404. Reason (optional) may be sent as `{ "reason": "..." }`.',
+        ].join('\n'),
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', description: 'Certificate id to purge' } },
+          required: ['id'],
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            force: {
+              type: 'boolean',
+              description: 'Required to purge a certificate that is revoked AND still within its validity window.',
+            },
+            dropRevocation: {
+              type: 'boolean',
+              description:
+                'With force, also removes the serial from the KRL (re-enabling any copy in the wild). Ignored for active/expired certs. DANGEROUS — only when the cert never left the server.',
+            },
+          },
+        },
+        response: { 200: okObjectResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
+      },
+    },
+    async (req) => {
+      ensureSshAllowed();
+      const { id } = req.params as { id: string };
+      const q = (req.query ?? {}) as Record<string, unknown>;
+      const truthy = (v: unknown) => v === true || v === 'true' || v === '1';
+      const body = parse(reasonSchema, (req.body ?? {}) as unknown);
+      return getSshKrlService().purgeCert(ctx(req), id, {
+        force: truthy(q.force),
+        dropRevocation: truthy(q.dropRevocation),
+        reason: body.reason,
+      });
+    }
+  );
+
   api.post('/cas/:caId/krl', postSchema('Generate / rebuild the KRL for a CA'), async (req) => {
     ensureSshAllowed();
     const { caId } = req.params as { caId: string };
@@ -563,6 +630,11 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   api.setErrorHandler((error: any, _req, reply) => {
     if (error instanceof HttpError) {
       return reply.status(error.statusCode).send({ error: { code: error.code, message: error.message } });
+    }
+    // A revoked+still-valid cert purged without force is a deliberate 409 with a
+    // dedicated code so callers can prompt for the force/dropRevocation choice.
+    if (error?.name === 'SshCertPurgeForbiddenError') {
+      return reply.status(409).send({ error: { code: 'CERT_REVOKED_NEEDS_FORCE', message: error.message } });
     }
     // Typed service errors carry their class name; a "…ExistsError" is a 409
     // conflict, a "…not found" is 404, everything else a 400 bad request.

@@ -45,7 +45,7 @@ import { getSshUserService, SshUserError } from '../../services/ssh-user.service
 import { getSshPrincipalService, SshPrincipalError } from '../../services/ssh-principal.service.js';
 import { getSshFleetTokenService, SshTokenError } from '../../services/ssh-fleet-token.service.js';
 import { getSshBulkService } from '../../services/ssh-bulk.service.js';
-import { getSshKrlService, SshKrlError } from '../../services/ssh-krl.service.js';
+import { getSshKrlService, SshKrlError, SshCertPurgeForbiddenError } from '../../services/ssh-krl.service.js';
 import { getSshBlockService, SshBlockError } from '../../services/ssh-block.service.js';
 import { getSshMonService } from '../../services/ssh-mon.service.js';
 import {
@@ -55,7 +55,7 @@ import {
 } from '../../services/ssh-cert.service.js';
 
 function mapSshError(error: unknown): never {
-  if (error instanceof SshCaExistsError || error instanceof SshZoneExistsError)
+  if (error instanceof SshCaExistsError || error instanceof SshZoneExistsError || error instanceof SshCertPurgeForbiddenError)
     throw new TRPCError({ code: 'CONFLICT', message: error.message });
   if (error instanceof SshZoneNotFoundError)
     throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
@@ -437,6 +437,30 @@ const krlRouter = router({
       mapSshError(e);
     }
   }),
+  // Hard-delete (purge) a mis-issued certificate — see SshKrlService.purgeCert.
+  // `active` certs purge purely (never in the KRL); a `revoked`+still-valid cert
+  // needs `force` and, by default, has its serial preserved in the KRL unless
+  // `dropRevocation` is set (which re-enables any copy still in the wild).
+  purgeCert: sshProtectedProcedure
+    .input(
+      z.object({
+        certId: z.string().min(1),
+        force: z.boolean().optional(),
+        dropRevocation: z.boolean().optional(),
+        reason: z.string().max(256).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await getSshKrlService().purgeCert(svcCtx(ctx), input.certId, {
+          force: input.force,
+          dropRevocation: input.dropRevocation,
+          reason: input.reason,
+        });
+      } catch (e) {
+        mapSshError(e);
+      }
+    }),
   revokeSerial: sshProtectedProcedure
     .input(z.object({ caId: z.string().min(1), serial: z.string().regex(/^\d+$/), reason: z.string().max(256).optional() }))
     .mutation(async ({ ctx, input }) => {

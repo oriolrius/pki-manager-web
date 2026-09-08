@@ -6,6 +6,7 @@ import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { HostAccessCard } from '@/components/ssh/HostAccessCard';
 import { HostPrincipalMappingCard } from '@/components/ssh/HostPrincipalMappingCard';
 import { useToast, useConfirm } from '@/components/ui';
+import { HoverHint } from '@/components/ssh/HoverHint';
 import type { CodeLanguage } from '@/lib/highlight';
 
 /** Pick syntax highlighting for a host deploy file by its name/filename. */
@@ -160,30 +161,60 @@ function SshHostDetail() {
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={handleRenew}
-              disabled={issueMutation.isPending || host.status === 'offboarded'}
-              className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted text-sm disabled:opacity-50"
+            <HoverHint
+              align="right"
+              hint={
+                <>
+                  Issue a fresh certificate for this host (new serial and key-id). If one already exists it is superseded;
+                  the old cert keeps working until it expires unless you also revoke it.
+                </>
+              }
             >
-              <RefreshCw className="h-4 w-4" />
-              {host.currentCertId ? 'Renew' : 'Issue'}
-            </button>
-            <button
-              onClick={handleRevoke}
-              disabled={revokeMutation.isPending || !host.currentCertId}
-              className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted text-sm text-destructive disabled:opacity-50"
+              <button
+                onClick={handleRenew}
+                disabled={issueMutation.isPending || host.status === 'offboarded'}
+                className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted text-sm disabled:opacity-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+                {host.currentCertId ? 'Renew' : 'Issue'}
+              </button>
+            </HoverHint>
+            <HoverHint
+              align="right"
+              hint={
+                <>
+                  <strong>Revoke</strong> this host's current certificate: adds it to the KRL so clients stop trusting the
+                  host right away. Issue/Renew to give the host a new certificate.
+                </>
+              }
             >
-              <XCircle className="h-4 w-4" />
-              Revoke
-            </button>
-            <button
-              onClick={handleOffboard}
-              disabled={offboardMutation.isPending || host.status === 'offboarded'}
-              className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted text-sm text-destructive disabled:opacity-50"
+              <button
+                onClick={handleRevoke}
+                disabled={revokeMutation.isPending || !host.currentCertId}
+                className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted text-sm text-destructive disabled:opacity-50"
+              >
+                <XCircle className="h-4 w-4" />
+                Revoke
+              </button>
+            </HoverHint>
+            <HoverHint
+              align="right"
+              hint={
+                <>
+                  <strong>Offboard</strong> (terminal): revokes the host's live certificates, retires its per-host KRL
+                  lineage, and destroys its KMS key. Use when decommissioning a host for good — it cannot be undone.
+                </>
+              }
             >
-              <LogOut className="h-4 w-4" />
-              Offboard
-            </button>
+              <button
+                onClick={handleOffboard}
+                disabled={offboardMutation.isPending || host.status === 'offboarded'}
+                className="flex items-center gap-2 px-3 py-2 border rounded-md hover:bg-muted text-sm text-destructive disabled:opacity-50"
+              >
+                <LogOut className="h-4 w-4" />
+                Offboard
+              </button>
+            </HoverHint>
           </div>
         </div>
       </div>
