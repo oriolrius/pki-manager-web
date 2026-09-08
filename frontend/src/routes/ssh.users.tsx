@@ -2,8 +2,9 @@ import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/r
 import { createPortal } from 'react-dom';
 import { trpc } from '@/lib/trpc';
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff, Download, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff, Download, X, Trash2 } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
+import { HoverHint } from '@/components/ssh/HoverHint';
 import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
 import { keyTypeFromCertOpenssh } from '@/lib/ssh';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
@@ -267,6 +268,75 @@ function StatusPill({ status, title }: { status: string; title?: string }) {
   );
 }
 
+/**
+ * Confirm-dialog body for purge (hard-delete). Explains, per cert state, exactly
+ * what is about to happen — the admin must understand that a certificate is a
+ * signed credential that may exist in copies outside this DB, and that the KRL is
+ * the only thing stopping a still-valid copy. For a revoked+still-valid cert it
+ * also offers the DANGEROUS `dropRevocation` opt-in (writes to `dropRef`).
+ */
+function PurgeDialogBody({
+  serial,
+  neverRevoked,
+  expired,
+  revokedStillValid,
+  dropRef,
+}: {
+  serial: string;
+  neverRevoked: boolean;
+  expired: boolean;
+  revokedStillValid: boolean;
+  dropRef: { current: boolean };
+}) {
+  const [drop, setDrop] = useState(false);
+  return (
+    <div className="space-y-2">
+      <p>
+        This <strong>permanently deletes</strong> certificate <span className="font-mono">#{serial}</span> and every trace of
+        it from this database. It cannot be undone. Use it to undo a certificate created by mistake — not to decommission a
+        deployed host (offboard the host instead).
+      </p>
+      <p className="text-xs text-muted-foreground">
+        A certificate is a signed credential: copies may already exist outside this database (on hosts, in{' '}
+        <span className="font-mono">~/.ssh</span>, in backups). Deleting the record does not recall them — the KRL is what
+        stops a still-valid copy.
+      </p>
+      {neverRevoked && !expired && (
+        <p className="text-xs">
+          This certificate was never revoked, so its serial is not in the KRL. Purging it leaves <strong>zero trace</strong>{' '}
+          and nothing to un-revoke — the safe case.
+        </p>
+      )}
+      {expired && (
+        <p className="text-xs">This certificate has expired; the clock already rejects it, so purging has no security impact.</p>
+      )}
+      {revokedStillValid && (
+        <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-700 dark:bg-amber-950/30">
+          <p>
+            This certificate is <strong>revoked and still valid</strong>. By default its serial stays revoked in the KRL after
+            the purge — the record disappears, the kill-switch survives.
+          </p>
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={drop}
+              onChange={(e) => {
+                setDrop(e.target.checked);
+                dropRef.current = e.target.checked;
+              }}
+            />
+            <span>
+              <strong className="text-destructive">Also remove it from the KRL</strong> — re-enables any copy still in the
+              wild. Only tick this if the certificate <em>truly never left the server</em>.
+            </span>
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Scannable relative expiry ("in 29 days" / "3 days ago") with urgency colouring. */
 function relativeExpiry(iso: string): { text: string; tone: string } {
   const ms = new Date(iso).getTime() - Date.now();
@@ -324,6 +394,7 @@ function IdentityCard({
   const [detailCert, setDetailCert] = useState<CertRow | null>(null);
   const trustAnchorsQuery = trpc.ssh.ca.trustAnchors.useQuery(undefined, { enabled: open });
   const revokeCertMutation = trpc.ssh.user.revoke.useMutation();
+  const purgeCertMutation = trpc.ssh.krl.purgeCert.useMutation();
   const visibleCerts = showAllCerts ? certs : certs.slice(0, 3);
   const handleRevokeCert = async (certId: string, serial: string) => {
     const { confirmed, reason } = await confirm({
@@ -342,6 +413,48 @@ function IdentityCard({
           utils.ssh.user.listCertificates.invalidate({ identityId: identity.id });
         },
         onError: (e) => toast.error(`Failed to revoke: ${e.message}`),
+      }
+    );
+  };
+  const handlePurgeCert = async (c: CertRow) => {
+    const expired = new Date(c.validBefore).getTime() < Date.now();
+    const neverRevoked = c.status !== 'revoked';
+    const revokedStillValid = c.status === 'revoked' && !expired;
+    const dropRef = { current: false };
+    const { confirmed, reason } = await confirm({
+      title: `Purge certificate #${c.serial}?`,
+      tone: 'danger',
+      confirmLabel: 'Purge permanently',
+      reason: { label: 'Reason (recorded in the audit log)', placeholder: 'e.g. issued by mistake', required: true },
+      description: (
+        <PurgeDialogBody
+          serial={c.serial}
+          neverRevoked={neverRevoked}
+          expired={expired}
+          revokedStillValid={revokedStillValid}
+          dropRef={dropRef}
+        />
+      ),
+    });
+    if (!confirmed) return;
+    purgeCertMutation.mutate(
+      {
+        certId: c.id,
+        force: revokedStillValid,
+        dropRevocation: revokedStillValid && dropRef.current,
+        reason,
+      },
+      {
+        onSuccess: (res: { preservedSerial?: boolean; removedFromKrl?: boolean }) => {
+          const suffix = res?.preservedSerial
+            ? ' — serial kept revoked in the KRL'
+            : res?.removedFromKrl
+              ? ' — serial removed from the KRL'
+              : '';
+          toast.success(`Certificate #${c.serial} purged${suffix}`);
+          utils.ssh.user.listCertificates.invalidate({ identityId: identity.id });
+        },
+        onError: (e) => toast.error(`Failed to purge: ${e.message}`),
       }
     );
   };
@@ -416,17 +529,37 @@ function IdentityCard({
           >
             {identity.status}
           </span>
-          <button onClick={onIssue} className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted">
-            Issue
-          </button>
-          {identity.status === 'active' && (
-            <button
-              onClick={onDisable}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted text-destructive"
-            >
-              <UserX className="h-3.5 w-3.5" />
-              Disable
+          <HoverHint
+            align="right"
+            hint={
+              <>
+                <strong>Issue</strong> a new SSH user certificate for this identity. Opens the issuing form (CA,
+                principals, validity, public key). Existing certificates are unaffected.
+              </>
+            }
+          >
+            <button onClick={onIssue} className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted">
+              Issue
             </button>
+          </HoverHint>
+          {identity.status === 'active' && (
+            <HoverHint
+              align="right"
+              hint={
+                <>
+                  <strong>Disable</strong> this identity: blocks any future certificate issuance for it. Already-issued
+                  certificates stay valid until they expire or are revoked — this does not touch the KRL.
+                </>
+              }
+            >
+              <button
+                onClick={onDisable}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted text-destructive"
+              >
+                <UserX className="h-3.5 w-3.5" />
+                Disable
+              </button>
+            </HoverHint>
           )}
         </div>
       </div>
@@ -631,17 +764,48 @@ function IdentityCard({
                                 )}
                               </button>
                               {status !== 'revoked' && (
+                                <HoverHint
+                                  align="right"
+                                  hint={
+                                    <>
+                                      <strong>Revoke</strong> adds this certificate's serial to the CA's KRL so hosts reject
+                                      it right away. The record is kept (unlike Purge) as revocation history. Cannot be
+                                      undone — issue a new certificate to replace it.
+                                    </>
+                                  }
+                                >
+                                  <button
+                                    onClick={() => handleRevokeCert(c.id, c.serial)}
+                                    disabled={revokeCertMutation.isPending}
+                                    aria-label="Revoke certificate"
+                                    className="inline-flex items-center gap-1 text-xs text-destructive hover:underline disabled:opacity-50"
+                                  >
+                                    <ShieldOff className="h-3.5 w-3.5" />
+                                    Revoke
+                                  </button>
+                                </HoverHint>
+                              )}
+                              <HoverHint
+                                align="right"
+                                hint={
+                                  <>
+                                    <strong>Purge</strong> permanently deletes this certificate and every trace of it from
+                                    the database — to undo a certificate created by mistake, not to decommission a deployed
+                                    host. The KRL keeps a still-valid revoked copy revoked. You'll confirm and give a reason
+                                    first.
+                                  </>
+                                }
+                              >
                                 <button
-                                  onClick={() => handleRevokeCert(c.id, c.serial)}
-                                  disabled={revokeCertMutation.isPending}
-                                  title="Revoke certificate"
-                                  aria-label="Revoke certificate"
+                                  onClick={() => handlePurgeCert(c)}
+                                  disabled={purgeCertMutation.isPending}
+                                  aria-label="Purge certificate"
                                   className="inline-flex items-center gap-1 text-xs text-destructive hover:underline disabled:opacity-50"
                                 >
-                                  <ShieldOff className="h-3.5 w-3.5" />
-                                  Revoke
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Purge
                                 </button>
-                              )}
+                              </HoverHint>
                             </div>
                           </td>
                         </tr>
