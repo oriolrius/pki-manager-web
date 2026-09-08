@@ -1,3 +1,9 @@
+## v3.12.0 (2026-09-08)
+
+### Feat
+
+- **ssh**: add certificate purge (hard-delete) with KRL-safe semantics
+
 ## v3.11.0 (2026-09-01)
 
 ### Feat
