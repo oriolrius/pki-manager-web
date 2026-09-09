@@ -29,8 +29,11 @@ reference material for details that have not yet been duplicated here.
 - Frontend: run commands from `frontend/` with **npm**, not pnpm. `npm run typecheck` is
   stricter than the Docker build.
 - Issuer: run `make build`, `make test`, `make vet`, or `make fmt` from `k8s/issuer/`.
-- Do not background `pnpm dev`: it starts an mprocs TUI and needs a real TTY. Consult
-  `DEVELOPMENT.md` before launching the full stack.
+- Start the stack only with `pnpm dev` (`scripts/dev-session.sh`), never bare `mprocs`: it
+  is idempotent and reattaches to the `dev-pki-manager` tmux session instead of starting a
+  duplicate stack on shifted ports. It works without a TTY (the session is created
+  detached); read it with `tmux capture-pane -p -t dev-pki-manager`, inspect with
+  `pnpm dev:status`, tear down with `pnpm dev:stop`. Consult `DEVELOPMENT.md` first.
 
 ## Engineering Rules
 

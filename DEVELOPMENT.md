@@ -45,16 +45,35 @@ defaults.
 
 ## Launching the Dev Stack
 
-`pnpm dev` at the root runs **[mprocs](https://github.com/pvolok/mprocs)** (see
-`mprocs.yaml`), a TUI that supervises three panes: `backend`, `frontend`, `backlog`.
+`pnpm dev` at the root runs **`scripts/dev-session.sh`**, which keeps
+**[mprocs](https://github.com/pvolok/mprocs)** (see `mprocs.yaml` — three panes:
+`backend`, `frontend`, `backlog`) inside a **tmux session named `dev-pki-manager`**.
 
-> **mprocs needs a TTY.** Backgrounding it from a script or an agent shell dies
-> immediately with `Error: Stdin is not a tty.` Either run it in a real terminal, or
-> start the panes individually (`cd backend && pnpm dev`, `cd frontend && pnpm dev`).
+| Command | Does |
+|---|---|
+| `pnpm dev` | attach-or-create: reattaches if the stack is already up, else starts it |
+| `pnpm dev:status` | is it running, who owns our ports, current mprocs screen |
+| `pnpm dev:stop` | kill the session, then sweep leftovers of *this* repo |
+| `pnpm dev:raw` | bare `mprocs`, no session — only from inside the tmux session |
+
+**Why the wrapper.** The terminal pane is not the owner of the stack: Orca restarts its
+panes on every app update, the pane dies, and mprocs keeps running detached. A bare
+`mprocs` relaunch then starts a *second* stack whose Vite hops to another port, and you
+end up debugging the wrong server. `pnpm dev` is idempotent, so after an Orca update you
+just run it again and land back in the same stack.
+
+It never matches processes by name — other projects run their own mprocs. It keys off
+this repo's session name, and off the **cwd of whoever holds our ports**: an intruder
+from another path aborts the launch, an orphan from this repo is offered for cleanup
+(`--force` to skip the prompt).
+
+> **mprocs needs a TTY**, but the wrapper creates the session detached and only attaches
+> when it has one — so an agent can `pnpm dev` headlessly without `Stdin is not a tty`,
+> then read the stack with `tmux capture-pane -p -t dev-pki-manager`.
 
 ### Inside Orca (preferred)
 
-Launch mprocs in its own visible Orca terminal tab rather than as a background process:
+Launch it in its own visible Orca terminal tab:
 
 ```bash
 orca terminal create \
@@ -64,11 +83,13 @@ orca terminal create \
 
 orca terminal read --terminal term_<uuid>   # read pane state / logs without a TTY
 orca terminal switch --terminal term_<uuid> # bring the tab to the foreground
-orca terminal stop  --worktree path:/home/oriol/miimetiq3/pki-manager
 ```
 
-`orca terminal read` shows the mprocs process list (`backend UP`, `frontend UP`,
-`backlog UP`) plus the focused pane's output — enough to verify the stack headlessly.
+After an Orca update leaves you at a bare shell, **do not relaunch blindly** — just run
+`pnpm dev` (or `tmux attach -t dev-pki-manager`) and you are back in the running stack.
+
+To really stop it use `pnpm dev:stop`; `orca terminal stop` only kills the pane, and the
+tmux session (and the ports) survive by design.
 
 ### Verifying
 
@@ -100,7 +121,9 @@ Always confirm the bind is `0.0.0.0:PORT` (not `*:PORT`) before sending someone 
 
 ### Cleaning up stale servers
 
-Ports are shared with other projects in the runtime, so kill by PID, not by name:
+`pnpm dev:stop` is the normal way — it kills the tmux session and then sweeps only the
+leftovers whose cwd is inside this repo. For anything it misses, kill by PID, never by
+name (other projects run the same binaries):
 
 ```bash
 for p in 52080 52081 6430 52091; do
@@ -575,7 +598,9 @@ Services:
 | **Frontend can't connect** | Check `VITE_API_URL` in frontend env |
 | **Database locked** | Close Drizzle Studio (`pnpm db:studio`) |
 | **Port in use** | Kill by PID: `ss -ltnp \| grep :52081` then `kill <pid>` |
-| **`pnpm dev` exits with `Stdin is not a tty`** | mprocs needs a real terminal — see [Launching the Dev Stack](#launching-the-dev-stack) |
+| **`pnpm dev` exits with `Stdin is not a tty`** | You ran `mprocs` directly; `pnpm dev` wraps it in tmux and works headlessly — see [Launching the Dev Stack](#launching-the-dev-stack) |
+| **Orca update left a bare shell where mprocs was** | The stack is still running detached; `pnpm dev` reattaches. Never relaunch `mprocs` by hand |
+| **Vite fails with "Port 52080 is already in use"** | Intentional (`strictPort`): a stale stack owns it. `pnpm dev:status` says who, `pnpm dev:stop` clears it |
 | **Browser shows `ERR_EMPTY_RESPONSE` / `chrome-error://`** | Server bound IPv6 (`*:PORT`); WSL2 only forwards `0.0.0.0` — see the reachability gotcha above |
 | **Container marked `unhealthy` but works** | Known for the KMS/Keycloak dev images; probe the HTTP endpoint instead |
 | **KMS connection fails** | Verify KMS is running: `curl http://localhost:42998/version` |

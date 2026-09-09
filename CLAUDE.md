@@ -86,7 +86,8 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 
 | Command | Action |
 |---|---|
-| `pnpm dev` | **mprocs** TUI: `backend` + `frontend` + `backlog` panes (needs a TTY) |
+| `pnpm dev` | attach-or-create the `dev-pki-manager` tmux session running **mprocs** (`backend` + `frontend` + `backlog`) |
+| `pnpm dev:status` / `dev:stop` | inspect / tear down that session and its ports |
 | `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
 | `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
 
@@ -101,17 +102,20 @@ cd keycloak && docker compose up -d     # Keycloak     (:42997, admin/admin)
 pnpm install
 cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
 cd backend && pnpm db:migrate
-pnpm dev                                # mprocs: backend :52081 + frontend :52080 + backlog :6430
+pnpm dev                                # backend :52081 + frontend :52080 + backlog :6430
 ```
 
 **Launching the stack as an agent — read
 [DEVELOPMENT.md § Launching the Dev Stack](DEVELOPMENT.md#launching-the-dev-stack) first.**
-Two things bite every time: `pnpm dev` runs **mprocs**, which dies with `Stdin is not a
-tty` if backgrounded — launch it in a real terminal
-(`orca terminal create --worktree path:<repo> --title "DEV STACK" --command "pnpm dev"`,
-then `orca terminal read`); and WSL2 only forwards **IPv4** binds to the Windows browser,
-so anything on the IPv6 wildcard (`*:PORT`, e.g. `backlog browser` on 6430) needs a socat
-relay. That doc also has the real port table, verify commands, and cleanup-by-PID recipe.
+`pnpm dev` (= `scripts/dev-session.sh`) is idempotent: it keeps mprocs in the
+`dev-pki-manager` **tmux** session and reattaches instead of starting a second stack —
+which matters because Orca restarts its panes on every update while the stack keeps
+running detached. **Never launch bare `mprocs`.** Since the session is created detached,
+you can run `pnpm dev` headlessly (no `Stdin is not a tty`) and then read the stack with
+`tmux capture-pane -p -t dev-pki-manager`. The remaining gotcha: WSL2 only forwards
+**IPv4** binds to the Windows browser, so anything on the IPv6 wildcard (`*:PORT`, e.g.
+`backlog browser` on 6430) needs a socat relay. That doc also has the real port table,
+verify commands, and the cleanup recipe.
 
 The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` port range — see
 [frontend/CLAUDE.md](frontend/CLAUDE.md) and edit the `.env` files for local-only dev.
