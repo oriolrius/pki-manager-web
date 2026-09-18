@@ -1,3 +1,9 @@
+## v3.12.1 (2026-09-18)
+
+### Fix
+
+- **nginx**: proxy zone-scoped SSH trust routes to the backend (TASK-076)
+
 ## v3.12.0 (2026-09-08)
 
 ### Feat
