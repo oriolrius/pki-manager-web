@@ -1,3 +1,9 @@
+## v3.12.2 (2026-09-21)
+
+### Fix
+
+- **ssh**: make CA rotate() atomic + archived-zone-safe (TASK-235)
+
 ## v3.12.1 (2026-09-18)
 
 ### Fix
