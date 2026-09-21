@@ -230,30 +230,74 @@ export class SshCaService {
     if (!old) throw new SshCaNotFoundError(id);
     if (old.status !== 'active') throw new SshCaAlgorithmError(`only an active CA can be rotated (status: ${old.status})`);
 
-    // Demote predecessor to 'rotating' first so the active-per-type slot is free.
-    await ctx.db
-      .update(sshCas)
-      .set({ status: 'rotating', retireAfter: new Date(Date.now() + overlapSeconds * 1000), updatedAt: new Date() })
-      .where(eq(sshCas.id, id));
+    // (1) VALIDATE ZONE up front, before any write. An archived (or otherwise
+    // unusable) zone aborts here so a rotation can never strand the predecessor
+    // — the old code demoted first and only then discovered the zone was
+    // archived, leaving the zone with a 'rotating'-only CA and no active one.
+    const zone = await resolveZone(ctx, old.zoneId);
+    await assertZoneUsable(ctx, zone.id);
 
-    // Successor inherits the predecessor's zone (decision-017 §6 rotation).
-    const successor = await this.create(ctx, {
-      caType: old.caType,
-      label: `${old.label ?? old.caType} (rotated ${new Date().toISOString().slice(0, 10)})`,
-      zone: old.zoneId,
-    });
-    await ctx.db.update(sshCas).set({ predecessorCaId: id, updatedAt: new Date() }).where(eq(sshCas.id, successor.id));
+    // (2) CREATE SUCCESSOR keypair in the KMS (async/external) BEFORE touching
+    // the DB. A KMS failure leaves the predecessor active and untouched.
+    const successorId = randomUUID();
+    const label = `${old.label ?? old.caType} (rotated ${new Date().toISOString().slice(0, 10)})`;
+    const kms = getKMSService();
+    try {
+      const keys = await kms.createSshCaKeyPair({ tags: [`ssh-${old.caType}-ca`, 'ssh-ca'], sensitive: true, entityId: successorId });
+      const line = await kms.getSshPublicKeyLine(keys.publicKeyId, label);
+      const parsed = parseSshPublicKey(line);
+
+      // (3) ATOMIC SWAP: demote predecessor + insert active successor in a
+      // single synchronous better-sqlite3 transaction, so the DB never shows a
+      // partial state (either both apply or neither). The demote must run
+      // before the insert because uq_ssh_cas_active_type forbids two 'active'
+      // CAs per (zone, ca_type); wrapping both in one transaction makes the
+      // physical order invisible to any other reader.
+      ctx.db.transaction((tx: any) => {
+        tx.update(sshCas)
+          .set({ status: 'rotating', retireAfter: new Date(Date.now() + overlapSeconds * 1000), updatedAt: new Date() })
+          .where(eq(sshCas.id, id))
+          .run();
+        tx.insert(sshCas)
+          .values({
+            id: successorId,
+            zoneId: zone.id,
+            caType: old.caType,
+            label,
+            kmsKeyId: keys.privateKeyId,
+            kmsPublicKeyId: keys.publicKeyId,
+            opensshPublicKey: line,
+            fingerprintSha256: parsed.fingerprintSha256,
+            keyAlgorithm: 'ECDSA-P256',
+            status: 'active',
+            predecessorCaId: id,
+          } as any)
+          .run();
+      });
+    } catch (error) {
+      await createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.ca.rotate',
+        entityType: 'ssh_ca',
+        entityId: successorId,
+        status: 'failure',
+        details: { predecessor: id, caType: old.caType, error: String(error) },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+      throw error;
+    }
 
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.ca.rotate',
       entityType: 'ssh_ca',
-      entityId: successor.id,
+      entityId: successorId,
       status: 'success',
       details: { predecessor: id, caType: old.caType },
       ipAddress: ctx.ipAddress ?? undefined,
     });
-    return { predecessor: await this.get(ctx, id), successor: await this.get(ctx, successor.id) };
+    logger.info({ predecessor: id, successor: successorId, caType: old.caType }, 'Rotated SSH CA');
+    return { predecessor: await this.get(ctx, id), successor: await this.get(ctx, successorId) };
   }
 
   /** Retire a 'rotating' predecessor once its certs have expired. */
