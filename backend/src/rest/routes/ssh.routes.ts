@@ -164,6 +164,16 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshCaService().retire(ctx(req), caId);
   });
 
+  api.get(
+    '/cas/:caId/reissue-report',
+    objectSchema('Fleet re-issue report for a CA — the decision-028 §4 retirement gate (safeToRetire + the certs still under it)'),
+    async (req) => {
+      ensureSshAllowed();
+      const { caId } = req.params as { caId: string };
+      return getSshCaService().reissueReport(ctx(req), caId);
+    }
+  );
+
   api.post('/hosts', postSchema('Register a host by its public host key', registerHostSchema), async (req) => {
     ensureSshAllowed();
     const input = parse(registerHostSchema, req.body);

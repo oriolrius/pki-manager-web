@@ -77,6 +77,39 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     expect(casInZone[0].status).toBe('active');
   });
 
+  it('reissue report gates CA retirement: unsafe until every host re-issues under the successor (task-103 AC#4)', async () => {
+    const zone = await getSshZoneService().create(ctx, { name: 'reissue-gate' });
+    const hostCa = await getSshCaService().create(ctx, { caType: 'host', zone: zone.id });
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'rh'), '-N', '', '-q']);
+    const host = await getSshHostService().register(ctx, {
+      fqdn: 'rep.reissue.local',
+      addresses: ['10.0.0.99'],
+      opensshHostPubkey: readFileSync(join(work, 'rh.pub'), 'utf8'),
+      zone: zone.id,
+    });
+    await getSshHostService().issue(ctx, { hostId: host.id });
+
+    const { predecessor, successor } = await getSshCaService().rotate(ctx, hostCa.id);
+
+    // The host still holds a live cert under the predecessor → NOT safe to retire.
+    let rep = await getSshCaService().reissueReport(ctx, predecessor.id);
+    expect(rep.safeToRetire).toBe(false);
+    expect(rep.liveCertsUnderThisCa).toBe(1);
+    expect(rep.successorCaId).toBe(successor.id);
+    expect(rep.pending.map((p) => p.subject)).toContain('rep.reissue.local');
+
+    // Re-issue under the active successor → the predecessor now signs nothing live.
+    await getSshHostService().issue(ctx, { hostId: host.id });
+    rep = await getSshCaService().reissueReport(ctx, predecessor.id);
+    expect(rep.safeToRetire).toBe(true);
+    expect(rep.liveCertsUnderThisCa).toBe(0);
+    expect(rep.reissuedUnderSuccessor).toBeGreaterThanOrEqual(1);
+
+    // Archive this extra zone so later tests' implicit zone resolution stays
+    // unambiguous (only the seeded 'default' zone remains non-archived).
+    await getSshZoneService().archive(ctx, zone.id);
+  });
+
   it('offboards a host in one action: revokes its cert, removes maps, sets offboarded', async () => {
     await getSshCaService().create(ctx, { caType: 'host' });
     execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'h'), '-N', '', '-q']);

@@ -4,8 +4,8 @@
  * public key — no X.509 cert. Trust anchors publish both keys during rotation.
  */
 import { randomUUID } from 'crypto';
-import { eq, and } from 'drizzle-orm';
-import { sshCas } from '../db/schema.js';
+import { eq, and, gt, inArray, isNull } from 'drizzle-orm';
+import { sshCas, sshCertificates, sshHosts } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
@@ -27,6 +27,28 @@ export interface SshCaDto {
   nextSerial: number;
   predecessorCaId: string | null;
   createdAt: string;
+}
+
+/** Fleet re-issue report for a CA — the decision-028 §4 retirement gate. */
+export interface CaReissueReport {
+  ca: { id: string; caType: SshCaType; status: string; zoneId: string; label: string | null };
+  /** The active CA of the same (zone, type) that subjects should re-issue under. */
+  successorCaId: string | null;
+  now: string;
+  /** Still-live certs signed by this CA — retiring it would invalidate these. */
+  liveCertsUnderThisCa: number;
+  /** Informational: live certs already re-issued under the successor. */
+  reissuedUnderSuccessor: number;
+  /** Safe to retire iff no live cert is still under this CA. */
+  safeToRetire: boolean;
+  pending: Array<{
+    certId: string;
+    certType: SshCaType;
+    serial: string;
+    keyId: string;
+    subject: string | null;
+    validBefore: string;
+  }>;
 }
 
 export interface TrustAnchors {
@@ -315,6 +337,88 @@ export class SshCaService {
       ipAddress: ctx.ipAddress ?? undefined,
     });
     return this.get(ctx, id);
+  }
+
+  /**
+   * Fleet re-issue report for a CA — the retirement gate (decision-028 §4). A CA
+   * is safe to retire once it has signed ZERO still-live certificates: retiring
+   * it invalidates everything it signed, so any subject whose LIVE cert is still
+   * under this CA has not yet re-issued under the zone's active successor.
+   *
+   * "live" = status 'active' AND not past validBefore. `pending` lists exactly
+   * the certs (with host fqdn where known) that block retirement.
+   */
+  async reissueReport(ctx: ServiceContext, caId: string): Promise<CaReissueReport> {
+    const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
+    if (!ca) throw new SshCaNotFoundError(caId);
+
+    // The active CA of the same (zone, type) — what subjects should re-issue under.
+    const successor = (
+      await ctx.db
+        .select()
+        .from(sshCas)
+        .where(and(eq(sshCas.zoneId, ca.zoneId), eq(sshCas.caType, ca.caType), eq(sshCas.status, 'active')))
+        .limit(1)
+    )[0];
+
+    const now = new Date();
+    // A cert counts as "live" only if it is the operative one: active, not past
+    // validBefore, and NOT superseded by a renewal (renew() sets supersededBy but
+    // leaves status='active', so a re-issued cert's predecessor must be excluded
+    // or the gate would never open).
+    const liveUnderOld = (await ctx.db
+      .select()
+      .from(sshCertificates)
+      .where(
+        and(
+          eq(sshCertificates.caId, caId),
+          eq(sshCertificates.status, 'active'),
+          isNull(sshCertificates.supersededBy),
+          gt(sshCertificates.validBefore, now)
+        )
+      )) as any[];
+
+    const reissuedUnderSuccessor = successor
+      ? (
+          (await ctx.db
+            .select()
+            .from(sshCertificates)
+            .where(
+              and(
+                eq(sshCertificates.caId, successor.id),
+                eq(sshCertificates.status, 'active'),
+                isNull(sshCertificates.supersededBy),
+                gt(sshCertificates.validBefore, now)
+              )
+            )) as any[]
+        ).length
+      : 0;
+
+    // Resolve host fqdns for the blocking certs (user certs carry identityId instead).
+    const hostIds = [...new Set(liveUnderOld.map((c) => c.hostId).filter(Boolean) as string[])];
+    const hosts = hostIds.length
+      ? ((await ctx.db.select().from(sshHosts).where(inArray(sshHosts.id, hostIds))) as any[])
+      : [];
+    const fqdnById = new Map(hosts.map((h) => [h.id, h.fqdn as string]));
+
+    const pending = liveUnderOld.map((c) => ({
+      certId: c.id as string,
+      certType: c.certType as SshCaType,
+      serial: c.serial as string,
+      keyId: c.keyId as string,
+      subject: c.hostId ? (fqdnById.get(c.hostId) ?? null) : ((c.identityId as string | null) ?? null),
+      validBefore: new Date(c.validBefore).toISOString(),
+    }));
+
+    return {
+      ca: { id: ca.id, caType: ca.caType, status: ca.status, zoneId: ca.zoneId, label: ca.label ?? null },
+      successorCaId: successor?.id ?? null,
+      now: now.toISOString(),
+      liveCertsUnderThisCa: liveUnderOld.length,
+      reissuedUnderSuccessor,
+      safeToRetire: liveUnderOld.length === 0,
+      pending,
+    };
   }
 
   /** Retire (revoke) a CA. */
