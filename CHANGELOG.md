@@ -1,3 +1,9 @@
+## v3.12.3 (2026-09-21)
+
+### Feat
+
+- **ssh**: CA fleet re-issue report endpoint — the rotation retirement gate (TASK-236)
+
 ## v3.12.2 (2026-09-21)
 
 ### Fix
