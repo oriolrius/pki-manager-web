@@ -14,6 +14,7 @@ import { getKMSService } from '../kms/service.js';
 import { getSshCaService } from './ssh-ca.service.js';
 import { getSshHostService } from './ssh-host.service.js';
 import { getSshUserService } from './ssh-user.service.js';
+import { getSshZoneService } from './ssh-zone.service.js';
 
 const KMS = process.env.KMS_AVAILABLE === 'true';
 const ctx = { db, ipAddress: null };
@@ -59,6 +60,21 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     const retired = await getSshCaService().retire(ctx, predecessor.id);
     expect(retired.status).toBe('retired');
     expect((await getSshCaService().getTrustAnchors(ctx)).userCaKeys).toHaveLength(1);
+  });
+
+  it('rotate() on an archived zone aborts atomically: predecessor stays active, no successor (task-235)', async () => {
+    const zone = await getSshZoneService().create(ctx, { name: 'rot-archived' });
+    const ca = await getSshCaService().create(ctx, { caType: 'user', zone: zone.id });
+    await getSshZoneService().archive(ctx, zone.id);
+
+    // The zone guard must fire BEFORE any mutation.
+    await expect(getSshCaService().rotate(ctx, ca.id)).rejects.toThrow(/archived/i);
+
+    // Predecessor untouched (still active) and no successor was created.
+    const casInZone = (await db.select().from(sshCas).where(eq(sshCas.zoneId, zone.id))) as any[];
+    expect(casInZone).toHaveLength(1);
+    expect(casInZone[0].id).toBe(ca.id);
+    expect(casInZone[0].status).toBe('active');
   });
 
   it('offboards a host in one action: revokes its cert, removes maps, sets offboarded', async () => {
