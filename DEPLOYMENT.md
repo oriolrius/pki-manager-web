@@ -330,7 +330,8 @@ Add these to your `.env` file:
 |----------|---------|-------------|
 | `OIDC_ISSUER` | `https://keycloak.example.com/realms/pki` | OIDC provider base URL (must match token `iss` claim) |
 | `OIDC_AUDIENCE` | `pki-web,pki-service` | Expected audience claim(s), comma-separated |
-| `OIDC_ROLES_CLAIM` | `realm_access.roles` | JWT path to roles (provider-specific) |
+| `OIDC_ROLES_SOURCE` | `token` | Role source: `token` (default) or `userinfo` (Pocket ID) |
+| `OIDC_ROLES_CLAIM` | `realm_access.roles` | Path to roles in the selected claim source; `groups` for Pocket ID |
 | `OIDC_DISCOVERY_BASE_URL` | _(optional)_ | Override URL for fetching OIDC discovery (for Docker networking) |
 
 **Provider-specific issuer URLs:**
@@ -817,6 +818,46 @@ For issues or questions:
 - Project Instructions: [CLAUDE.md](CLAUDE.md)
 
 ### Pocket ID (including v2.18.0): admin groups through UserInfo
+
+Complete provider-specific templates are included:
+
+- `backend/.env.pocket-id.example`: backend development settings.
+- `frontend/.env.pocket-id.example`: frontend development settings, including `groups` scope.
+- `docker/.env.pocket-id.example`: Docker Compose backend settings.
+- `docker/config.pocket-id.example.json`: frontend runtime configuration for Docker.
+
+For a new local development setup, run from the repository root:
+
+```bash
+cp -n backend/.env.pocket-id.example backend/.env
+cp -n frontend/.env.pocket-id.example frontend/.env
+```
+
+For a new Docker setup, run from the repository root:
+
+```bash
+cp -n docker/.env.pocket-id.example docker/.env
+cp -n docker/config.pocket-id.example.json docker/config.json
+```
+
+These commands preserve existing files. If configuration already exists, merge the
+Pocket ID settings into it instead. Replace `id.example.com`,
+`REPLACE_WITH_POCKET_ID_CLIENT_ID` and `REPLACE_WITH_ACCESS_TOKEN_AUDIENCE` before
+starting. Set API and frontend URLs to your deployment's browser-accessible URLs;
+the templates use local development ports. Actual `.env` files are local
+configuration and are not committed.
+
+For Docker, `.env` configures the backend; the SPA separately reads
+`docker/config.json`, which Compose already mounts. Setting only `VITE_OIDC_*` in
+`docker/.env` does not configure frontend OIDC. After editing the files:
+
+```bash
+cd docker
+docker compose up -d --force-recreate backend frontend
+```
+
+For local development, start/restart the stack using `pnpm dev` as documented in
+`DEVELOPMENT.md` (stop an existing session with `pnpm dev:stop` first).
 
 Pocket ID supplies user groups through ID tokens and UserInfo rather than the
 access-token role claim used by the default backend configuration. Enable the
