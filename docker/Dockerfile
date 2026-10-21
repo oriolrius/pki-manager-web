@@ -101,12 +101,13 @@ RUN npm run build:docker
 FROM node:22-alpine AS backend
 
 # Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan, then
-# install dumb-init for signal handling and OpenJDK for keytool (JKS generation).
+# install dumb-init for signal handling, the openssl CLI (PKCS#12 export + encrypted key
+# downloads, see backend/src/crypto/pkcs12.ts) and OpenJDK for keytool (JKS generation).
 # The runtime is pure `node` (see entrypoint + CMD), so pnpm is never installed here and
 # the bundled npm/npx are removed — this keeps their vulnerable transitive deps
 # (sigstore, tar, ...) and the corepack pnpm cache out of the shipped image.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache dumb-init openjdk17-jre-headless && \
+    apk add --no-cache dumb-init openssl openjdk17-jre-headless && \
     rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Create non-root user
