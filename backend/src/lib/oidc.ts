@@ -23,6 +23,10 @@ export interface OIDCConfig {
   /** Path to roles claim in JWT payload (e.g., "realm_access.roles" for Keycloak) */
   rolesClaimPath: string;
 
+  /** Opt-in role lookup using the validated access token. */
+  rolesSource?: 'token' | 'userinfo';
+  userinfoEndpoint?: string;
+
   /** JWKS URI (derived from discovery or constructed from issuer) */
   jwksUri: string;
 
@@ -147,6 +151,11 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
     return cachedConfig;
   }
 
+  const rolesSource = process.env.OIDC_ROLES_SOURCE || 'token';
+  if (rolesSource !== 'token' && rolesSource !== 'userinfo') {
+    throw new Error('OIDC_ROLES_SOURCE must be token or userinfo');
+  }
+
   const issuer = process.env.OIDC_ISSUER!;
   const audiences = parseAudiences(process.env.OIDC_AUDIENCE!);
   const rolesClaimPath = process.env.OIDC_ROLES_CLAIM || 'realm_access.roles';
@@ -155,6 +164,22 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
 
   // Fetch discovery document to get JWKS URI
   const discovery = await fetchDiscoveryDocument(issuer);
+
+  if (rolesSource === 'userinfo') {
+    if (!discovery.userinfo_endpoint) {
+      throw new Error('OIDC discovery missing userinfo_endpoint');
+    }
+    const endpoint = new URL(discovery.userinfo_endpoint);
+    const issuerUrl = new URL(discovery.issuer);
+    const isLoopbackHttp = endpoint.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
+    if (
+      endpoint.origin !== issuerUrl.origin || endpoint.username || endpoint.password ||
+      (endpoint.protocol !== 'https:' && !isLoopbackHttp)
+    ) {
+      throw new Error('UserInfo endpoint must use the issuer origin and HTTPS (except loopback development)');
+    }
+  }
 
   // Validate issuer matches
   if (discovery.issuer !== issuer) {
@@ -180,6 +205,8 @@ export async function initializeOIDC(): Promise<OIDCConfig> {
     issuer: discovery.issuer,
     audiences,
     rolesClaimPath,
+    rolesSource,
+    userinfoEndpoint: discovery.userinfo_endpoint,
     jwksUri,
     enabled: true,
   };
@@ -279,4 +306,28 @@ export function isOIDCEnabled(): boolean {
 export function resetOIDCConfig(): void {
   cachedConfig = null;
   cachedJWKS = null;
+}
+
+/**
+ * Resolve roles only after local signature, issuer, audience and subject validation.
+ * No cache: group removals take effect on the next request if UserInfo reflects them.
+ */
+export async function resolveRoles(token: string, payload: Record<string, unknown>): Promise<string[]> {
+  const config = getOIDCConfig();
+  if (config.rolesSource !== 'userinfo') return extractRoles(payload);
+  if (typeof payload.sub !== 'string' || !payload.sub || !config.userinfoEndpoint) {
+    throw new Error('UserInfo role lookup requires a token subject and endpoint');
+  }
+  const response = await fetch(config.userinfoEndpoint, {
+    headers: { Authorization: `Bearer ${token}` },
+    redirect: 'error',
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) throw new Error('UserInfo role lookup failed');
+  const claims: unknown = await response.json();
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims) ||
+      (claims as Record<string, unknown>).sub !== payload.sub) {
+    throw new Error('UserInfo subject does not match the access token');
+  }
+  return extractRoles(claims as Record<string, unknown>);
 }
