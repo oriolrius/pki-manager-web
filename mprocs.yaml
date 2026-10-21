@@ -1,0 +1,13 @@
+procs:
+  backend:
+    shell: pnpm dev
+    cwd: <CONFIG_DIR>/backend
+  frontend:
+    shell: pnpm dev
+    cwd: <CONFIG_DIR>/frontend
+  backlog:
+    # capped at 1G RAM / no swap: backlog browser leaks heap on a churning repo (hit 16G);
+    # the kernel kills only it, autorestart brings it back.
+    shell: systemd-run --user --scope -q -p MemoryMax=1G -p MemorySwapMax=0 backlog browser --no-open
+    cwd: <CONFIG_DIR>
+    autorestart: true

@@ -89,6 +89,15 @@ describe('TASK-207 — SSH & external OpenAPI schemas', () => {
       expect(schema).toBeDefined();
       expect(schema!.type).toBe('array');
     });
+
+    // TASK-215: markPushed used to be tRPC-only, so it was absent from the spec
+    // and unreachable from Swagger / a generated client.
+    it('POST /ssh/hosts/{id}/auth-principals/pushed is in the spec with a 200 response', () => {
+      const item = pathItem(spec, '/ssh/hosts/{id}/auth-principals/pushed');
+      expect(item, 'markPushed path missing from OpenAPI').toBeDefined();
+      expect(item!.post, 'markPushed must be a POST').toBeDefined();
+      expect(responseSchema(spec, '/ssh/hosts/{id}/auth-principals/pushed', 'post')).toBeDefined();
+    });
   });
 
   describe('AC#1/#2 — external issuer routes document requestBody + 200 response', () => {

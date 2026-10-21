@@ -101,12 +101,13 @@ RUN npm run build:docker
 FROM node:22-alpine AS backend
 
 # Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan, then
-# install dumb-init for signal handling and OpenJDK for keytool (JKS generation).
+# install dumb-init for signal handling, the openssl CLI (PKCS#12 export + encrypted key
+# downloads, see backend/src/crypto/pkcs12.ts) and OpenJDK for keytool (JKS generation).
 # The runtime is pure `node` (see entrypoint + CMD), so pnpm is never installed here and
 # the bundled npm/npx are removed — this keeps their vulnerable transitive deps
 # (sigstore, tar, ...) and the corepack pnpm cache out of the shipped image.
 RUN apk upgrade --no-cache && \
-    apk add --no-cache dumb-init openjdk17-jre-headless && \
+    apk add --no-cache dumb-init openssl openjdk17-jre-headless && \
     rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Create non-root user
@@ -140,8 +141,13 @@ RUN mkdir -p /app/backend/data && \
 # Switch to non-root user
 USER nodejs
 
-# Set environment variables with production defaults
+# Set environment variables with production defaults.
+# NODE_OPTIONS=--use-openssl-ca makes Node verify outbound TLS (KMS, OIDC discovery/JWKS)
+# against the OS store (/etc/ssl/certs, kept current by the `apk upgrade` above) instead of
+# the root store compiled into the Node binary, so a root/intermediate distrust (e.g. the
+# eMudhra compromise, #9) lands on the next image rebuild without waiting for a Node release.
 ENV NODE_ENV=production \
+    NODE_OPTIONS=--use-openssl-ca \
     PORT=3000 \
     HOST=0.0.0.0 \
     DATABASE_PATH=/app/backend/data/pki.db \

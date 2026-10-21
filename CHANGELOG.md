@@ -1,3 +1,88 @@
+## v3.12.4 (2026-10-21)
+
+### Fix
+
+- **security**: stop trusting compromised eMudhra intermediates
+- **docker**: install openssl CLI in backend runtime image
+
+## v3.12.3 (2026-09-21)
+
+### Feat
+
+- **ssh**: CA fleet re-issue report endpoint — the rotation retirement gate (TASK-236)
+
+## v3.12.2 (2026-09-21)
+
+### Fix
+
+- **ssh**: make CA rotate() atomic + archived-zone-safe (TASK-235)
+
+## v3.12.1 (2026-09-18)
+
+### Fix
+
+- **nginx**: proxy zone-scoped SSH trust routes to the backend (TASK-076)
+
+## v3.12.0 (2026-09-08)
+
+### Feat
+
+- **ssh**: add certificate purge (hard-delete) with KRL-safe semantics
+
+## v3.11.0 (2026-09-01)
+
+### Feat
+
+- **ssh-ui**: streamline workspace navigation
+
+## v3.10.0 (2026-09-01)
+
+**SSH Zones — run many independent SSH trust domains in one installation**
+
+One PKI Manager can now host N independent SSH trust domains (prod vs staging,
+customer A vs B, datacenter vs lab). A generic `zones` table becomes a real
+**trust boundary**, not a UI label: **a host in a zone trusts only that zone's
+user CAs**. Each zone has its own `active` + `rotating` User and Host CA, and
+hosts, identities and principals each belong to exactly one zone (the same FQDN,
+subject or principal name can be reused across zones).
+
+A migrated single-zone installation is **behaviourally identical** — every
+existing row is backfilled to a seeded `default` zone, the legacy unscoped trust
+endpoints keep serving it (with a `Deprecation` header), and the Ansible role,
+`pki-manager-cli` and `krl-client` keep working untouched. Zone resolution is
+**fail-closed**: implicit while one zone exists, an explicit error once several
+do — so an un-scoped caller never silently signs with the wrong trust domain's
+CA. Upgrade steps, including backup and rollback, are in
+[docs/ssh/zones-migration-runbook.md](docs/ssh/zones-migration-runbook.md);
+concepts in [docs/ssh/zones.md](docs/ssh/zones.md).
+
+Highlights: migration `0009` (rebuild-and-copy, seeds `default`); zone-scoped CA/
+host/user/principal services and per-host KRLs; tRPC `ssh.zone` router + REST
+`/ssh/zones` + `?zoneId=` filters; fleet-token zones and an ECIES
+`409 AMBIGUOUS_HOST` disambiguation; `krl-client --zone`; a frontend zone switcher
+(URL + localStorage), filters, pickers and a `/ssh/zones` management page.
+
+### Feat
+
+- **ssh**: SSH Zones — multi-CA grouping and trust boundary (decision-017)
+
+## v3.9.6 (2026-08-31)
+
+### Feat
+
+- **ssh**: full REST/OpenAPI parity with tRPC (TASK-216)
+
+### Fix
+
+- **ui**: theme the Swagger page so /api-docs is readable in dark mode
+
+## v3.9.5 (2026-08-25)
+
+### Feat
+
+- **ssh-ui**: reusable PrincipalSelect and per-host mapping card
+- **ssh**: expose markPushed over REST (TASK-215)
+
 ## v3.9.4 (2026-07-14)
 
 **Require ECDSA host keys for SSH**

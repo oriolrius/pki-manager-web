@@ -1,5 +1,8 @@
 # PKI Manager - AI Assistant Instructions
 
+Codex uses the parallel `AGENTS.md` guides. Keep the corresponding Claude and Codex guidance
+aligned when repository workflows, commands, or architecture change.
+
 Web PKI manager: CA hierarchies, X.509 issue/renew/revoke, CRLs, and a cert-manager
 external issuer for Kubernetes. Private keys live in a **Cosmian KMS**; metadata in SQLite.
 
@@ -40,7 +43,7 @@ docker/       Full-stack Compose + Dockerfile          → DEPLOYMENT.md
 keycloak/     Keycloak dev IdP + realm import          → KEYCLOAK.md
 kms/          Cosmian KMS dev stack                    → kms/README.md
 ansible/      SSH host-cert deploy role                → ansible/README.md
-docs/ssh/     SSH onboarding guides (concept/quickstart/setup) → docs/ssh/concept.md
+docs/ssh/     SSH onboarding guides (concept/quickstart/setup/zones) → docs/ssh/concept.md
 tests/        Playwright E2E (auth, RBAC, screenshots)
 backlog/      Backlog.md tasks / docs / decisions
 ```
@@ -64,6 +67,12 @@ frontend) and REST/OpenAPI (`/api/v1`, Swagger at `/api/docs`), plus a cluster-t
 external-issuer API. **OIDC is optional** — with no `OIDC_ISSUER`/`OIDC_AUDIENCE` set, the
 backend runs fully unauthenticated.
 
+**SSH Zones** (decision-017): a generic `zones` table makes the SSH manager multi-tenant —
+`ssh_cas/hosts/identities/principals/fleet_tokens` carry a `zone_id` and a host trusts only
+its own zone's user CAs. Zone resolution is **fail-closed** (`resolveZone`): implicit while
+one zone exists, an error once several do. Single-zone installs are unchanged. See
+[docs/ssh/zones.md](docs/ssh/zones.md).
+
 ## Tech Stack
 
 | Area | Stack |
@@ -77,7 +86,8 @@ backend runs fully unauthenticated.
 
 | Command | Action |
 |---|---|
-| `pnpm dev` | backend + frontend dev servers (`--parallel -r`) |
+| `pnpm dev` | attach-or-create the `dev-pki-manager` tmux session running **mprocs** (`backend` + `frontend` + `backlog`) |
+| `pnpm dev:status` / `dev:stop` | inspect / tear down that session and its ports |
 | `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
 | `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
 
@@ -92,8 +102,20 @@ cd keycloak && docker compose up -d     # Keycloak     (:42997, admin/admin)
 pnpm install
 cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
 cd backend && pnpm db:migrate
-pnpm dev                                # backend :3000 + frontend
+pnpm dev                                # backend :52081 + frontend :52080 + backlog :6430
 ```
+
+**Launching the stack as an agent — read
+[DEVELOPMENT.md § Launching the Dev Stack](DEVELOPMENT.md#launching-the-dev-stack) first.**
+`pnpm dev` (= `scripts/dev-session.sh`) is idempotent: it keeps mprocs in the
+`dev-pki-manager` **tmux** session and reattaches instead of starting a second stack —
+which matters because Orca restarts its panes on every update while the stack keeps
+running detached. **Never launch bare `mprocs`.** Since the session is created detached,
+you can run `pnpm dev` headlessly (no `Stdin is not a tty`) and then read the stack with
+`tmux capture-pane -p -t dev-pki-manager`. The remaining gotcha: WSL2 only forwards
+**IPv4** binds to the Windows browser, so anything on the IPv6 wildcard (`*:PORT`, e.g.
+`backlog browser` on 6430) needs a socat relay. That doc also has the real port table,
+verify commands, and the cleanup recipe.
 
 The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` port range — see
 [frontend/CLAUDE.md](frontend/CLAUDE.md) and edit the `.env` files for local-only dev.

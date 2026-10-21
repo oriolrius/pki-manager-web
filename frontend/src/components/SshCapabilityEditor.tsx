@@ -1,5 +1,5 @@
 import { ShieldAlert } from 'lucide-react';
-import { TagInput } from './TagInput';
+import { PrincipalSelect, type PrincipalOption } from './PrincipalSelect';
 
 export type SshExtension =
   | 'permit-X11-forwarding'
@@ -49,6 +49,8 @@ export const defaultCapabilityValue = (): SshCapabilityValue => ({
 export interface SshCapabilityEditorProps {
   value: SshCapabilityValue;
   onChange: (value: SshCapabilityValue) => void;
+  /** Principal catalog offered in the principals dropdown; the caller fetches it. */
+  principalCatalog?: PrincipalOption[];
 }
 
 /**
@@ -57,7 +59,7 @@ export interface SshCapabilityEditorProps {
  * extensions, force-command + source-address critical options, a TTL picker,
  * and a paste-your-public-key field. Renders a live summary of what will be set.
  */
-export function SshCapabilityEditor({ value, onChange }: SshCapabilityEditorProps) {
+export function SshCapabilityEditor({ value, onChange, principalCatalog = [] }: SshCapabilityEditorProps) {
   const set = (patch: Partial<SshCapabilityValue>) => onChange({ ...value, ...patch });
 
   const toggleExtension = (ext: SshExtension) => {
@@ -73,12 +75,12 @@ export function SshCapabilityEditor({ value, onChange }: SshCapabilityEditorProp
 
   return (
     <div className="space-y-6">
-      <TagInput
+      <PrincipalSelect
         label="Principals (roles) *"
-        tags={value.principals}
+        options={principalCatalog}
+        value={value.principals}
         onChange={(principals) => set({ principals })}
-        placeholder="e.g. admins (press Enter)"
-        help="At least one principal is required. These are matched against AuthorizedPrincipalsFile on hosts."
+        help="At least one principal is required. These are matched against AuthorizedPrincipalsFile on hosts. Pick from the catalog; a name that isn't in it is marked, since a typo yields a certificate that is denied login everywhere."
       />
 
       <div>

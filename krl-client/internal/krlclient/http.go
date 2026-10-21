@@ -31,7 +31,8 @@ type Client struct {
 	serverURL string
 	http      *http.Client
 	retries   int
-	maxBytes  int64 // ceiling on the accepted response-body size
+	maxBytes  int64  // ceiling on the accepted response-body size
+	zone      string // optional zone id/slug added to the request body (decision-017 A2)
 }
 
 // Result is the outcome of a KRL fetch.
@@ -79,11 +80,23 @@ func (c *Client) SetMaxResponseBytes(n int64) {
 	}
 }
 
-// FetchKRL POSTs {"host_id":hostID} to the encrypted KRL endpoint. When
-// ifNoneMatch is non-empty it is sent verbatim (the cached krl_version token, NOT
-// a hash of the local file) so an unchanged KRL returns 304.
+// SetZone sets the optional zone id/slug added to the KRL request body. Empty
+// (the default) keeps the single-zone behaviour byte-for-byte; a value is only
+// needed when this host's FQDN exists in more than one zone (decision-017 A2).
+func (c *Client) SetZone(zone string) {
+	c.zone = strings.TrimSpace(zone)
+}
+
+// FetchKRL POSTs {"host_id":hostID} (plus "zone" when configured) to the
+// encrypted KRL endpoint. When ifNoneMatch is non-empty it is sent verbatim (the
+// cached krl_version token, NOT a hash of the local file) so an unchanged KRL
+// returns 304.
 func (c *Client) FetchKRL(ctx context.Context, hostID, ifNoneMatch string) (*Result, error) {
-	body, _ := json.Marshal(map[string]string{"host_id": hostID})
+	reqBody := map[string]string{"host_id": hostID}
+	if c.zone != "" {
+		reqBody["zone"] = c.zone
+	}
+	body, _ := json.Marshal(reqBody)
 	url := c.serverURL + krlPath
 
 	var lastErr error

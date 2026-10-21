@@ -1,5 +1,12 @@
 # Deploy an SSH Server and an SSH User with PKI Manager — Operator Reference Guide
 
+> **Zones:** on a multi-zone installation ([SSH zones](zones.md)) a host and an
+> identity each belong to exactly one zone, and a host trusts only that zone's User
+> CA. Register the host, create the identity and issue certs **in the same zone**;
+> pick it from the zone switcher (UI) or pass `zone` (API). Single-zone installs
+> follow this guide unchanged.
+
+
 *Automation-first, end-to-end. This is the current counterpart to the legacy manual/UI walkthrough in [operator-quickstart.md](operator-quickstart.md).*
 
 **What you'll end up with:** a fleet of SSH servers that trust user certificates issued by PKI Manager (no per-user `authorized_keys`), clients that connect with **no host-key TOFU prompt**, principal-based RBAC deciding which local accounts a user may log into, unattended host-cert renewal, and a live revocation channel. User certs are short-lived (default 7 days); host certs long-lived (default ~1 year). Private keys never leave the KMS (CA keys) or the user's laptop (login keys).

@@ -14,6 +14,7 @@ import { getKMSService } from '../kms/service.js';
 import { getSshCaService } from './ssh-ca.service.js';
 import { getSshHostService } from './ssh-host.service.js';
 import { getSshUserService } from './ssh-user.service.js';
+import { getSshZoneService } from './ssh-zone.service.js';
 
 const KMS = process.env.KMS_AVAILABLE === 'true';
 const ctx = { db, ipAddress: null };
@@ -59,6 +60,54 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     const retired = await getSshCaService().retire(ctx, predecessor.id);
     expect(retired.status).toBe('retired');
     expect((await getSshCaService().getTrustAnchors(ctx)).userCaKeys).toHaveLength(1);
+  });
+
+  it('rotate() on an archived zone aborts atomically: predecessor stays active, no successor (task-235)', async () => {
+    const zone = await getSshZoneService().create(ctx, { name: 'rot-archived' });
+    const ca = await getSshCaService().create(ctx, { caType: 'user', zone: zone.id });
+    await getSshZoneService().archive(ctx, zone.id);
+
+    // The zone guard must fire BEFORE any mutation.
+    await expect(getSshCaService().rotate(ctx, ca.id)).rejects.toThrow(/archived/i);
+
+    // Predecessor untouched (still active) and no successor was created.
+    const casInZone = (await db.select().from(sshCas).where(eq(sshCas.zoneId, zone.id))) as any[];
+    expect(casInZone).toHaveLength(1);
+    expect(casInZone[0].id).toBe(ca.id);
+    expect(casInZone[0].status).toBe('active');
+  });
+
+  it('reissue report gates CA retirement: unsafe until every host re-issues under the successor (task-103 AC#4)', async () => {
+    const zone = await getSshZoneService().create(ctx, { name: 'reissue-gate' });
+    const hostCa = await getSshCaService().create(ctx, { caType: 'host', zone: zone.id });
+    execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(work, 'rh'), '-N', '', '-q']);
+    const host = await getSshHostService().register(ctx, {
+      fqdn: 'rep.reissue.local',
+      addresses: ['10.0.0.99'],
+      opensshHostPubkey: readFileSync(join(work, 'rh.pub'), 'utf8'),
+      zone: zone.id,
+    });
+    await getSshHostService().issue(ctx, { hostId: host.id });
+
+    const { predecessor, successor } = await getSshCaService().rotate(ctx, hostCa.id);
+
+    // The host still holds a live cert under the predecessor → NOT safe to retire.
+    let rep = await getSshCaService().reissueReport(ctx, predecessor.id);
+    expect(rep.safeToRetire).toBe(false);
+    expect(rep.liveCertsUnderThisCa).toBe(1);
+    expect(rep.successorCaId).toBe(successor.id);
+    expect(rep.pending.map((p) => p.subject)).toContain('rep.reissue.local');
+
+    // Re-issue under the active successor → the predecessor now signs nothing live.
+    await getSshHostService().issue(ctx, { hostId: host.id });
+    rep = await getSshCaService().reissueReport(ctx, predecessor.id);
+    expect(rep.safeToRetire).toBe(true);
+    expect(rep.liveCertsUnderThisCa).toBe(0);
+    expect(rep.reissuedUnderSuccessor).toBeGreaterThanOrEqual(1);
+
+    // Archive this extra zone so later tests' implicit zone resolution stays
+    // unambiguous (only the seeded 'default' zone remains non-archived).
+    await getSshZoneService().archive(ctx, zone.id);
   });
 
   it('offboards a host in one action: revokes its cert, removes maps, sets offboarded', async () => {

@@ -8,6 +8,7 @@ import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { sshFleetTokens, sshCas } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
+import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
 export type SshTokenOp = 'sign-host' | 'sign-user' | 'register-host-pubkey' | 'get-principals';
@@ -24,10 +25,12 @@ export interface MintTokenParams {
   userCaId?: string;
   hostCaId?: string;
   opSet: SshTokenOp[];
+  zone?: string;
 }
 
 export interface FleetTokenDto {
   id: string;
+  zoneId: string;
   name: string;
   tokenPrefix: string;
   userCaId: string | null;
@@ -40,6 +43,7 @@ export interface FleetTokenDto {
 
 export interface VerifiedToken {
   id: string;
+  zoneId: string;
   name: string;
   userCaId: string | null;
   hostCaId: string | null;
@@ -52,6 +56,7 @@ const hashToken = (plain: string) => createHash('sha256').update(plain).digest('
 function dto(row: any): FleetTokenDto {
   return {
     id: row.id,
+    zoneId: row.zoneId,
     name: row.name,
     tokenPrefix: row.tokenPrefix,
     userCaId: row.userCaId ?? null,
@@ -70,15 +75,30 @@ export class SshFleetTokenService {
     if (params.opSet.includes('sign-user') && !params.userCaId) throw new SshTokenError('sign-user requires a userCaId');
     if ((params.opSet.includes('sign-host') || params.opSet.includes('register-host-pubkey')) && !params.hostCaId)
       throw new SshTokenError('sign-host/register-host-pubkey require a hostCaId');
+    const providedCas: any[] = [];
     for (const caId of [params.userCaId, params.hostCaId].filter(Boolean) as string[]) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
       if (!ca) throw new SshTokenError(`CA ${caId} not found`);
+      providedCas.push(ca);
+    }
+    // The token's zone (decision-017 A2): explicit, else inferred from the CA
+    // pair, else fail-closed. The user/host CA pair MUST belong to that zone.
+    const zone = params.zone
+      ? await resolveZone(ctx, params.zone)
+      : providedCas.length
+        ? await resolveZone(ctx, providedCas[0].zoneId)
+        : await resolveZone(ctx);
+    await assertZoneUsable(ctx, zone.id);
+    for (const ca of providedCas) {
+      if (ca.zoneId !== zone.id)
+        throw new SshTokenError(`CA ${ca.id} belongs to a different zone than '${zone.name}'`);
     }
 
     const plain = PREFIX + randomBytes(24).toString('base64url');
     const id = randomUUID();
     await ctx.db.insert(sshFleetTokens).values({
       id,
+      zoneId: zone.id,
       name: params.name,
       tokenHash: hashToken(plain),
       tokenPrefix: plain.slice(0, 12),
@@ -93,7 +113,7 @@ export class SshFleetTokenService {
       entityType: 'ssh_token',
       entityId: id,
       status: 'success',
-      details: { name: params.name, opSet: params.opSet },
+      details: { name: params.name, opSet: params.opSet, zone: zone.name },
       ipAddress: ctx.ipAddress ?? undefined,
     });
     const record = dto((await ctx.db.select().from(sshFleetTokens).where(eq(sshFleetTokens.id, id)).limit(1))[0]);
@@ -130,7 +150,7 @@ export class SshFleetTokenService {
     const b = Buffer.from(row.tokenHash);
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
     await ctx.db.update(sshFleetTokens).set({ lastSeenAt: new Date(), lastSeenIp: ip ?? null }).where(eq(sshFleetTokens.id, row.id));
-    return { id: row.id, name: row.name, userCaId: row.userCaId ?? null, hostCaId: row.hostCaId ?? null, opSet: JSON.parse(row.opSet) };
+    return { id: row.id, zoneId: row.zoneId, name: row.name, userCaId: row.userCaId ?? null, hostCaId: row.hostCaId ?? null, opSet: JSON.parse(row.opSet) };
   }
 }
 

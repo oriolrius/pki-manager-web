@@ -5,13 +5,15 @@ import { RefreshCw, Ban } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
 import { useToast } from '@/components/ui';
+import { useZone } from '@/lib/zone-context';
 
 export const Route = createFileRoute('/ssh/krl')({
   component: SshKrl,
 });
 
 function SshKrl() {
-  const casQuery = trpc.ssh.ca.list.useQuery();
+  const { zoneId } = useZone();
+  const casQuery = trpc.ssh.ca.list.useQuery({ zoneId });
   const cas = (casQuery.data ?? []).filter((c) => c.status !== 'retired');
   const [selectedCaId, setSelectedCaId] = useState<string>('');
 

@@ -98,6 +98,7 @@ func (s *summary) execute(cfg *config.Config, log *slog.Logger) exitcodes.Code {
 		return s.fail(err)
 	}
 	client.SetMaxResponseBytes(int64(cfg.MaxResponseBytes))
+	client.SetZone(cfg.Zone)
 
 	st, err := state.Read(cfg.StateDir)
 	if err != nil {

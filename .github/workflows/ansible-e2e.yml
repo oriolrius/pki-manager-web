@@ -35,7 +35,7 @@ jobs:
       - name: Setup Go (build the krl-client static binary)
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.26.10'
 
       - name: Setup Python
         uses: actions/setup-python@v5

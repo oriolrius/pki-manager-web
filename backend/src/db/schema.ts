@@ -208,11 +208,35 @@ export const auditLog = sqliteTable(
 // signed cert/KRL blobs (re-signing is non-deterministic, like crls.crl_pem).
 // ============================================================================
 
+// Zones (decision-017) — a first-class grouping that is a real SSH trust
+// boundary: a host in zone Z trusts only Z's user CAs. Deliberately GENERIC
+// (not ssh_zones) so the X.509 side can adopt `zone_id` later without a rename.
+// `name` is a globally unique URL-safe slug; the migration seeds `default`.
+export const zones = sqliteTable(
+  'zones',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull().unique(), // slug, e.g. 'prod' — URL/API key
+    displayName: text('display_name').notNull(),
+    description: text('description'),
+    status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    statusIdx: index('idx_zones_status').on(table.status),
+  })
+);
+
 // SSH Certificate Authorities — one ECDSA-P256 KMS keypair per role, no X.509 cert.
 export const sshCas = sqliteTable(
   'ssh_cas',
   {
     id: text('id').primaryKey(),
+    zoneId: text('zone_id')
+      .notNull()
+      .default('default') // seeded zone; new entities land here unless a zone is given (services resolve fail-closed)
+      .references(() => zones.id, { onDelete: 'restrict' }),
     caType: text('ca_type', { enum: ['user', 'host'] }).notNull(),
     label: text('label'),
     // KMS references (the private key never leaves the KMS — decision-011).
@@ -238,13 +262,16 @@ export const sshCas = sqliteTable(
   },
   (table) => ({
     caTypeIdx: index('idx_ssh_cas_type').on(table.caType),
+    zoneIdx: index('idx_ssh_cas_zone').on(table.zoneId),
     statusIdx: index('idx_ssh_cas_status').on(table.status),
     fpIdx: index('idx_ssh_cas_fp').on(table.fingerprintSha256),
+    // One active + one rotating CA per (zone, ca_type) — decision-017 rescopes
+    // these from (ca_type) alone. Implicit CA resolution survives, now per zone.
     oneActivePerType: uniqueIndex('uq_ssh_cas_active_type')
-      .on(table.caType)
+      .on(table.zoneId, table.caType)
       .where(sql`status = 'active'`),
     oneRotatingPerType: uniqueIndex('uq_ssh_cas_rotating_type')
-      .on(table.caType)
+      .on(table.zoneId, table.caType)
       .where(sql`status = 'rotating'`),
   })
 );
@@ -254,7 +281,11 @@ export const sshHosts = sqliteTable(
   'ssh_hosts',
   {
     id: text('id').primaryKey(),
-    fqdn: text('fqdn').notNull().unique(),
+    zoneId: text('zone_id')
+      .notNull()
+      .default('default') // seeded zone; new entities land here unless a zone is given (services resolve fail-closed)
+      .references(() => zones.id, { onDelete: 'restrict' }),
+    fqdn: text('fqdn').notNull(), // unique per zone — see uq_ssh_hosts_zone_fqdn
     displayName: text('display_name'),
     addresses: text('addresses'), // JSON string[] — host-cert principals
     opensshHostPubkey: text('openssh_host_pubkey'),
@@ -276,6 +307,11 @@ export const sshHosts = sqliteTable(
   (table) => ({
     statusIdx: index('idx_ssh_hosts_status').on(table.status),
     kmsPubkeyIdx: index('idx_ssh_hosts_kms_pubkey').on(table.kmsPubkeyId),
+    zoneIdx: index('idx_ssh_hosts_zone').on(table.zoneId),
+    // FQDN is unique WITHIN a zone (decision-017) — the same fqdn may exist in
+    // prod and staging. The unauthenticated ECIES /krl route disambiguates by
+    // an optional `zone` body field (amendment A2).
+    zoneFqdnUq: uniqueIndex('uq_ssh_hosts_zone_fqdn').on(table.zoneId, table.fqdn),
   })
 );
 
@@ -284,7 +320,11 @@ export const sshIdentities = sqliteTable(
   'ssh_identities',
   {
     id: text('id').primaryKey(),
-    subject: text('subject').notNull().unique(),
+    zoneId: text('zone_id')
+      .notNull()
+      .default('default') // seeded zone; new entities land here unless a zone is given (services resolve fail-closed)
+      .references(() => zones.id, { onDelete: 'restrict' }),
+    subject: text('subject').notNull(), // unique per zone — see uq_ssh_identities_zone_subject
     externalSubject: text('external_subject'), // OIDC sub, optional
     email: text('email'),
     opensshUserPubkey: text('openssh_user_pubkey'),
@@ -299,6 +339,10 @@ export const sshIdentities = sqliteTable(
   (table) => ({
     statusIdx: index('idx_ssh_identities_status').on(table.status),
     extSubIdx: index('idx_ssh_identities_ext_sub').on(table.externalSubject),
+    zoneIdx: index('idx_ssh_identities_zone').on(table.zoneId),
+    // subject is unique WITHIN a zone (decision-017): one identity row per
+    // person per zone is the deliberate price of a hard trust boundary.
+    zoneSubjectUq: uniqueIndex('uq_ssh_identities_zone_subject').on(table.zoneId, table.subject),
   })
 );
 
@@ -344,12 +388,25 @@ export const sshCertificates = sqliteTable(
 );
 
 // RBAC catalog — role-principals (the picklist / source of truth).
-export const sshPrincipals = sqliteTable('ssh_principals', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  description: text('description'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-});
+export const sshPrincipals = sqliteTable(
+  'ssh_principals',
+  {
+    id: text('id').primaryKey(),
+    zoneId: text('zone_id')
+      .notNull()
+      .default('default') // seeded zone; new entities land here unless a zone is given (services resolve fail-closed)
+      .references(() => zones.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(), // unique per zone — see uq_ssh_principals_zone_name
+    description: text('description'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    zoneIdx: index('idx_ssh_principals_zone').on(table.zoneId),
+    // principal name is unique WITHIN a zone: `admin` in prod and `admin` in
+    // staging are different rows (decision-017 § Accepted costs).
+    zoneNameUq: uniqueIndex('uq_ssh_principals_zone_name').on(table.zoneId, table.name),
+  })
+);
 
 // Which principals an identity's certs may carry.
 export const sshUserPrincipals = sqliteTable(
@@ -518,6 +575,10 @@ export const sshFleetTokens = sqliteTable(
   'ssh_fleet_tokens',
   {
     id: text('id').primaryKey(),
+    zoneId: text('zone_id')
+      .notNull()
+      .default('default') // seeded zone; new entities land here unless a zone is given (services resolve fail-closed)
+      .references(() => zones.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     tokenHash: text('token_hash').notNull(),
     tokenPrefix: text('token_prefix').notNull(), // display only, e.g. pkimg_ab12…
@@ -531,6 +592,7 @@ export const sshFleetTokens = sqliteTable(
   },
   (table) => ({
     hashIdx: uniqueIndex('uq_ssh_fleet_tokens_hash').on(table.tokenHash),
+    zoneIdx: index('idx_ssh_fleet_tokens_zone').on(table.zoneId),
   })
 );
 
@@ -560,6 +622,8 @@ export type Cluster = typeof clusters.$inferSelect;
 export type NewCluster = typeof clusters.$inferInsert;
 
 // --- SSH Certificate Manager types ---
+export type Zone = typeof zones.$inferSelect;
+export type NewZone = typeof zones.$inferInsert;
 export type SshCa = typeof sshCas.$inferSelect;
 export type NewSshCa = typeof sshCas.$inferInsert;
 export type SshHost = typeof sshHosts.$inferSelect;
