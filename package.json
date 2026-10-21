@@ -8,6 +8,7 @@
     "dev": "bash scripts/dev-session.sh up",
     "dev:status": "bash scripts/dev-session.sh status",
     "dev:stop": "bash scripts/dev-session.sh stop",
+    "dev:down": "bash scripts/dev-session.sh down",
     "dev:raw": "mprocs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",

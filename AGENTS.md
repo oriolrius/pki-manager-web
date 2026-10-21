@@ -33,7 +33,7 @@ reference material for details that have not yet been duplicated here.
   is idempotent and reattaches to the `dev-pki-manager` tmux session instead of starting a
   duplicate stack on shifted ports. It works without a TTY (the session is created
   detached); read it with `tmux capture-pane -p -t dev-pki-manager`, inspect with
-  `pnpm dev:status`, tear down with `pnpm dev:stop`. Consult `DEVELOPMENT.md` first.
+  `pnpm dev:status`, tear down with `pnpm dev:stop` (processes) or `pnpm dev:down` (also KMS + Keycloak). Consult `DEVELOPMENT.md` first.
 
 ## Engineering Rules
 
