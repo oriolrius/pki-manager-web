@@ -1,23 +1,25 @@
 /**
- * Tests for the manual OIDC access-token refresh path (TASK-193).
+ * Tests for getAccessToken() on-demand renewal (TASK-193, reworked for PR #7).
  *
- * The production login uses the hand-rolled manual token flow, whose tokens are
- * NOT managed by oidc-client-ts, so they must be refreshed on demand via the
- * stored refresh_token. These tests exercise that path (UserManager mocked to
- * hold no user, so getAccessToken() falls back to manual storage).
+ * Tokens are owned by the single oidc-client-ts UserManager. When the access token is
+ * expired or about to expire, getAccessToken() renews it through the library
+ * (`signinSilent`, single-flight) instead of a hand-rolled token-endpoint call.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const STORAGE_KEY = 'oidc.user:https://iam.example/realms/pki:pki-web';
-const AUTHORITY = 'https://iam.example/realms/pki';
-const NOW_SECONDS = 1_000_000;
 
-// NOTE: vi.mock is hoisted above the module's top-level consts, so the factory
-// must use literals (not STORAGE_KEY / AUTHORITY) — they match the consts below.
+// NOTE: vi.mock is hoisted above the module's top-level consts, so factories must use
+// literals or vi.hoisted values.
+const mgr = vi.hoisted(() => ({
+  getUser: vi.fn(),
+  signinSilent: vi.fn(),
+  constructed: 0,
+}));
+
 vi.mock('./config', () => ({
   isOIDCEnabledAsync: vi.fn().mockResolvedValue(true),
-  getStorageKeyAsync: vi.fn().mockResolvedValue('oidc.user:https://iam.example/realms/pki:pki-web'),
   getAuthority: vi.fn().mockResolvedValue('https://iam.example/realms/pki'),
   getClientId: vi.fn().mockResolvedValue('pki-web'),
   buildOIDCSettings: vi
@@ -25,121 +27,121 @@ vi.mock('./config', () => ({
     .mockResolvedValue({ authority: 'https://iam.example/realms/pki', client_id: 'pki-web' }),
 }));
 
-// No library-managed user -> getAccessToken() falls back to manual storage.
 vi.mock('oidc-client-ts', () => ({
   UserManager: class {
-    async getUser() {
-      return null;
+    constructor() {
+      mgr.constructed += 1;
+    }
+    getUser() {
+      return mgr.getUser();
+    }
+    signinSilent() {
+      return mgr.signinSilent();
     }
   },
 }));
 
-import { getAccessToken, resetUserManager, resetTokenRefreshState } from './token';
+import { getAccessToken, getUserManager, resetUserManager, resetTokenRefreshState } from './token';
 
-function setStored(tokens: Record<string, unknown>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens));
+function user(accessToken: string, expiresIn: number | undefined) {
+  return { access_token: accessToken, expires_in: expiresIn };
 }
 
-function tokenResponse(body: Record<string, unknown>, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-describe('getAccessToken — manual token on-demand refresh', () => {
+describe('getAccessToken — library-managed renewal', () => {
   beforeEach(() => {
     localStorage.clear();
     resetUserManager();
     resetTokenRefreshState();
-    vi.spyOn(Date, 'now').mockReturnValue(NOW_SECONDS * 1000);
+    mgr.getUser.mockReset();
+    mgr.signinSilent.mockReset();
+    mgr.constructed = 0;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('returns a still-valid token without hitting the token endpoint', async () => {
-    setStored({ access_token: 'valid-abc', refresh_token: 'r1', expires_at: NOW_SECONDS + 600 });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+  it('returns a still-valid token without renewing', async () => {
+    mgr.getUser.mockResolvedValue(user('valid-abc', 600));
 
     await expect(getAccessToken()).resolves.toBe('valid-abc');
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mgr.signinSilent).not.toHaveBeenCalled();
   });
 
-  it('refreshes an expired token via the refresh_token and persists the rotated tokens', async () => {
-    setStored({ access_token: 'old', refresh_token: 'r1', expires_at: NOW_SECONDS - 10 });
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        tokenResponse({ access_token: 'new-xyz', refresh_token: 'r2', token_type: 'Bearer', expires_in: 300 })
-      );
-
-    await expect(getAccessToken()).resolves.toBe('new-xyz');
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0];
-    expect(String(url)).toBe(`${AUTHORITY}/protocol/openid-connect/token`);
-    const body = (init as RequestInit).body as URLSearchParams;
-    expect(body.get('grant_type')).toBe('refresh_token');
-    expect(body.get('refresh_token')).toBe('r1');
-    expect(body.get('client_id')).toBe('pki-web');
-
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
-    expect(saved.access_token).toBe('new-xyz');
-    expect(saved.refresh_token).toBe('r2'); // rotated
-    expect(saved.expires_at).toBe(NOW_SECONDS + 300);
-  });
-
-  it('refreshes a token that is within the 60s expiry buffer (not yet expired)', async () => {
-    setStored({ access_token: 'old', refresh_token: 'r1', expires_at: NOW_SECONDS + 30 });
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(tokenResponse({ access_token: 'fresh', expires_in: 300 }));
-
-    await expect(getAccessToken()).resolves.toBe('fresh');
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('deduplicates concurrent refreshes into a single token request (single-flight)', async () => {
-    setStored({ access_token: 'old', refresh_token: 'r1', expires_at: NOW_SECONDS - 10 });
-
-    let resolveFetch!: (r: Response) => void;
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockReturnValue(new Promise<Response>((resolve) => {
-        resolveFetch = resolve;
-      }));
-
-    const p1 = getAccessToken();
-    const p2 = getAccessToken();
-    // Let both callers reach the shared single-flight promise, then resolve.
-    await Promise.resolve();
-    resolveFetch(tokenResponse({ access_token: 'shared-new', refresh_token: 'r2', expires_in: 300 }));
-
-    await expect(Promise.all([p1, p2])).resolves.toEqual(['shared-new', 'shared-new']);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it('clears the stored token and returns null when the refresh_token is rejected', async () => {
-    setStored({ access_token: 'old', refresh_token: 'bad', expires_at: NOW_SECONDS - 10 });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(tokenResponse({ error: 'invalid_grant' }, 400));
+  it('returns null when there is no signed-in user', async () => {
+    mgr.getUser.mockResolvedValue(null);
 
     await expect(getAccessToken()).resolves.toBeNull();
+    expect(mgr.signinSilent).not.toHaveBeenCalled();
+  });
+
+  it('renews a token within the 60s expiry buffer and returns the new one', async () => {
+    mgr.getUser.mockResolvedValue(user('old', 30));
+    mgr.signinSilent.mockResolvedValue(user('renewed', 300));
+
+    await expect(getAccessToken()).resolves.toBe('renewed');
+    expect(mgr.signinSilent).toHaveBeenCalledTimes(1);
+  });
+
+  it('renews an already-expired token', async () => {
+    mgr.getUser.mockResolvedValue(user('expired', -5));
+    mgr.signinSilent.mockResolvedValue(user('renewed', 300));
+
+    await expect(getAccessToken()).resolves.toBe('renewed');
+  });
+
+  it('deduplicates concurrent renewals into a single signinSilent call (single-flight)', async () => {
+    mgr.getUser.mockResolvedValue(user('old', 10));
+    let resolve!: (u: unknown) => void;
+    mgr.signinSilent.mockReturnValue(new Promise((r) => (resolve = r)));
+
+    const calls = Promise.all([getAccessToken(), getAccessToken(), getAccessToken()]);
+    await vi.waitFor(() => expect(mgr.signinSilent).toHaveBeenCalled());
+    resolve(user('renewed', 300));
+
+    await expect(calls).resolves.toEqual(['renewed', 'renewed', 'renewed']);
+    expect(mgr.signinSilent).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null when renewal fails (session ended at the provider)', async () => {
+    mgr.getUser.mockResolvedValue(user('old', 10));
+    mgr.signinSilent.mockRejectedValue(new Error('login_required'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(getAccessToken()).resolves.toBeNull();
+  });
+
+  it('shares one UserManager between all callers', async () => {
+    mgr.getUser.mockResolvedValue(user('valid', 600));
+
+    const [a, b] = await Promise.all([getUserManager(), getUserManager()]);
+    await getAccessToken();
+
+    expect(a).toBe(b);
+    expect(mgr.constructed).toBe(1);
+  });
+});
+
+describe('legacy manual-token cleanup', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetUserManager();
+  });
+
+  it('removes a pre-library token blob (no profile) under the library key', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ access_token: 'legacy', expires_at: 1 }));
+
+    await getUserManager();
+
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
-  it('returns null when the token is expired and there is no refresh_token', async () => {
-    setStored({ access_token: 'old', expires_at: NOW_SECONDS - 10 });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+  it('keeps a library-managed user', async () => {
+    const libraryUser = JSON.stringify({ access_token: 'lib', profile: { sub: 'u1' } });
+    localStorage.setItem(STORAGE_KEY, libraryUser);
 
-    await expect(getAccessToken()).resolves.toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
+    await getUserManager();
 
-  it('returns null when there is no stored token at all', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    await expect(getAccessToken()).resolves.toBeNull();
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(libraryUser);
   });
 });

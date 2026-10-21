@@ -1,18 +1,15 @@
 /**
  * AuthGuard Component
  *
- * Enforces authentication at the application level.
+ * Enforces authentication at the application root level.
  * Redirects unauthenticated users to the OIDC provider login.
  *
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
-import {
-  hasValidManualTokensAsync,
-  isOIDCEnabledAsync,
-} from './config';
+import { isOIDCEnabledAsync } from './config';
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -26,14 +23,8 @@ function AuthLoading() {
     <div className="min-h-[60vh] flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-
-        <h1 className="text-xl font-semibold mb-2">
-          Checking authentication...
-        </h1>
-
-        <p className="text-muted-foreground">
-          Please wait.
-        </p>
+        <h1 className="text-xl font-semibold mb-2">Checking authentication...</h1>
+        <p className="text-muted-foreground">Please wait.</p>
       </div>
     </div>
   );
@@ -47,14 +38,8 @@ function AuthRedirecting() {
     <div className="min-h-[60vh] flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-
-        <h1 className="text-xl font-semibold mb-2">
-          Authentication Required
-        </h1>
-
-        <p className="text-muted-foreground">
-          Redirecting to login...
-        </p>
+        <h1 className="text-xl font-semibold mb-2">Authentication Required</h1>
+        <p className="text-muted-foreground">Redirecting to login...</p>
       </div>
     </div>
   );
@@ -66,80 +51,42 @@ function AuthRedirecting() {
  */
 function AuthGuardInner({ children }: AuthGuardProps) {
   const auth = useAuth();
-
-  // Check for previously stored tokens.
-  const [hasManualTokens, setHasManualTokens] = useState(false);
-  const [tokensChecked, setTokensChecked] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  // A ref, not state: StrictMode runs effects twice before a state update lands, which
+  // fired two signinRedirect() calls (two auth requests racing on the login page).
+  const redirectStarted = useRef(false);
 
   // Do not start another redirect while processing the OIDC callback.
   const isCallbackRoute = window.location.pathname === '/callback';
-
-  // Re-check stored tokens when the component mounts or auth state changes.
-  useEffect(() => {
-    hasValidManualTokensAsync()
-      .then((hasTokens) => {
-        setHasManualTokens(hasTokens);
-        setTokensChecked(true);
-      })
-      .catch((error) => {
-        console.error(
-          '[AuthGuard] Failed to check stored tokens:',
-          error,
-        );
-
-        setHasManualTokens(false);
-        setTokensChecked(true);
-      });
-  }, [auth.isAuthenticated]);
-
-  // Consider the user authenticated if the OIDC client or existing tokens
-  // indicate a valid authenticated session.
-  const isAuthenticated =
-    auth.isAuthenticated || hasManualTokens;
 
   // Redirect to the OIDC provider when authentication is required.
   useEffect(() => {
     if (
       isCallbackRoute ||
       auth.isLoading ||
-      !tokensChecked ||
-      isAuthenticated ||
+      auth.isAuthenticated ||
       auth.activeNavigator ||
-      isRedirecting
+      redirectStarted.current
     ) {
       return;
     }
 
-    setIsRedirecting(true);
+    redirectStarted.current = true;
 
     // Store the current URL so the callback route can restore it after login.
-    sessionStorage.setItem(
-      'returnUrl',
-      window.location.pathname + window.location.search,
-    );
-
-    console.log(
-      '[AuthGuard] User not authenticated, redirecting to login...',
-    );
+    sessionStorage.setItem('returnUrl', window.location.pathname + window.location.search);
+    console.log('[AuthGuard] User not authenticated, redirecting to login...');
 
     // Let oidc-client-ts discover the provider endpoints and handle PKCE.
     auth.signinRedirect().catch((error) => {
-      console.error(
-        '[AuthGuard] OIDC redirect failed:',
-        error,
-      );
-
-      setIsRedirecting(false);
+      console.error('[AuthGuard] OIDC redirect failed:', error);
+      redirectStarted.current = false;
     });
   }, [
     isCallbackRoute,
     auth.isLoading,
+    auth.isAuthenticated,
     auth.activeNavigator,
     auth.signinRedirect,
-    tokensChecked,
-    isAuthenticated,
-    isRedirecting,
   ]);
 
   // Allow the callback route to render while authentication is processed.
@@ -147,13 +94,11 @@ function AuthGuardInner({ children }: AuthGuardProps) {
     return <>{children}</>;
   }
 
-  // Wait for the OIDC client and stored-token check.
-  if (auth.isLoading || !tokensChecked) {
+  if (auth.isLoading) {
     return <AuthLoading />;
   }
 
-  // Show a loading state while redirecting to the OIDC provider.
-  if (!isAuthenticated) {
+  if (!auth.isAuthenticated) {
     return <AuthRedirecting />;
   }
 
@@ -168,20 +113,13 @@ function AuthGuardInner({ children }: AuthGuardProps) {
  * - If unauthenticated, redirects to the OIDC provider.
  */
 export function AuthGuard({ children }: AuthGuardProps) {
-  const [oidcEnabled, setOidcEnabled] =
-    useState<boolean | null>(null);
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
-    isOIDCEnabledAsync()
-      .then(setOidcEnabled)
-      .catch((error) => {
-        console.error(
-          '[AuthGuard] Failed to load OIDC configuration:',
-          error,
-        );
-
-        setOidcEnabled(false);
-      });
+    // No catch on purpose: falling back to "OIDC disabled" on an error would render the
+    // app unauthenticated (fail-open). isOIDCEnabledAsync already treats a missing
+    // config.json as "use build-time settings".
+    isOIDCEnabledAsync().then(setOidcEnabled);
   }, []);
 
   // OIDC configuration is still loading.
@@ -194,9 +132,5 @@ export function AuthGuard({ children }: AuthGuardProps) {
     return <>{children}</>;
   }
 
-  return (
-    <AuthGuardInner>
-      {children}
-    </AuthGuardInner>
-  );
+  return <AuthGuardInner>{children}</AuthGuardInner>;
 }
