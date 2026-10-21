@@ -141,8 +141,13 @@ RUN mkdir -p /app/backend/data && \
 # Switch to non-root user
 USER nodejs
 
-# Set environment variables with production defaults
+# Set environment variables with production defaults.
+# NODE_OPTIONS=--use-openssl-ca makes Node verify outbound TLS (KMS, OIDC discovery/JWKS)
+# against the OS store (/etc/ssl/certs, kept current by the `apk upgrade` above) instead of
+# the root store compiled into the Node binary, so a root/intermediate distrust (e.g. the
+# eMudhra compromise, #9) lands on the next image rebuild without waiting for a Node release.
 ENV NODE_ENV=production \
+    NODE_OPTIONS=--use-openssl-ca \
     PORT=3000 \
     HOST=0.0.0.0 \
     DATABASE_PATH=/app/backend/data/pki.db \
