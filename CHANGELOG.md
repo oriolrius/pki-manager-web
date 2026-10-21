@@ -1,3 +1,10 @@
+## v3.13.0 (2026-10-21)
+
+### Feat
+
+- **auth**: provider-agnostic OIDC login via react-oidc-context (#7)
+- **auth**: finish provider-agnostic OIDC on top of PR #7
+
 ## v3.12.4 (2026-10-21)
 
 ### Fix
