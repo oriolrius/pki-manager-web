@@ -25,8 +25,8 @@ import { test, expect, type Page } from '@playwright/test';
  *   pnpm playwright test tests/auth.spec.ts
  *
  *   # With custom URLs:
- *   PLAYWRIGHT_BASE_URL=http://wsl.ymbihq.local:52080 \
- *   KEYCLOAK_URL=http://wsl.ymbihq.local:42997 \
+ *   PLAYWRIGHT_BASE_URL=http://localhost:52080 \
+ *   KEYCLOAK_URL=http://localhost:42997 \
  *   pnpm playwright test tests/auth.spec.ts
  */
 
@@ -218,15 +218,8 @@ test.describe('Authentication Flow - OIDC Enabled', () => {
     await page.getByRole('button', { name: /admin user/i }).click();
     await page.getByRole('button', { name: /logout/i }).click();
 
-    // Should redirect to Keycloak logout confirmation
-    await page.waitForURL(/.*protocol\/openid-connect\/logout/, {
-      timeout: 10000,
-    });
-
-    // Confirm logout
-    await page.getByRole('button', { name: /logout/i }).click();
-
-    // Should redirect back to login page
+    // signoutRedirect sends id_token_hint, so Keycloak ends the session without a
+    // confirmation page and returns to the app, which redirects to the login page
     await page.waitForURL(/.*realms.*protocol\/openid-connect\/auth/, {
       timeout: 10000,
     });
@@ -479,6 +472,45 @@ test.describe('Session Management', () => {
     expect(tokenData.expires_at).toBeDefined();
   });
 
+  test('an expiring access token is renewed without a new login', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForURL(/.*realms.*protocol\/openid-connect\/auth/, {
+      timeout: 10000,
+    });
+    await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
+    await waitForAppLoaded(page);
+
+    // Make the stored token look like it expires in 10s (inside the 60s renewal buffer)
+    const oldToken = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((k) => k.startsWith('oidc.user:'))!;
+      const data = JSON.parse(localStorage.getItem(key)!);
+      data.expires_at = Math.floor(Date.now() / 1000) + 10;
+      localStorage.setItem(key, JSON.stringify(data));
+      return data.access_token as string;
+    });
+
+    // Reload: API calls must go out with a renewed token (refresh_token grant), no 401s
+    const unauthorized: string[] = [];
+    page.on('response', (r) => {
+      if (r.url().includes('/trpc') && r.status() === 401) unauthorized.push(r.url());
+    });
+    await page.reload();
+    await waitForAppLoaded(page);
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const key = Object.keys(localStorage).find((k) => k.startsWith('oidc.user:'))!;
+            return JSON.parse(localStorage.getItem(key)!).access_token as string;
+          }),
+        { timeout: 15000 }
+      )
+      .not.toBe(oldToken);
+    expect(page.url()).not.toContain('realms');
+    expect(unauthorized).toEqual([]);
+  });
+
   test('logout clears tokens from localStorage', async ({ page }) => {
     // Login
     await page.goto('/');
@@ -498,12 +530,8 @@ test.describe('Session Management', () => {
     // Logout
     await page.getByRole('button', { name: /admin user/i }).click();
     await page.getByRole('button', { name: /logout/i }).click();
-    await page.waitForURL(/.*protocol\/openid-connect\/logout/, {
-      timeout: 10000,
-    });
-    await page.getByRole('button', { name: /logout/i }).click();
 
-    // Wait for redirect back to login
+    // Wait for redirect back to login (no Keycloak confirmation page: id_token_hint is sent)
     await page.waitForURL(/.*realms.*protocol\/openid-connect\/auth/, {
       timeout: 10000,
     });

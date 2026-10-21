@@ -10,7 +10,7 @@
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import { useAuth, isOIDCEnabledAsync, hasValidManualTokensAsync, getStorageKeyAsync, getAuthority, getClientId, getScope } from '@/lib/auth';
+import { useAuth, isOIDCEnabledAsync, getAuthority } from '@/lib/auth';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faUser,
@@ -20,30 +20,6 @@ import {
   faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
 import { useState, useRef, useEffect } from 'react';
-
-/**
- * Gets user info from manually stored tokens using a specific storage key
- */
-function getManualUserInfoFromStorage(storageKey: string): { name?: string; email?: string } | null {
-  try {
-    const stored = localStorage.getItem(storageKey);
-    if (!stored) return null;
-
-    const data = JSON.parse(stored);
-    if (!data.id_token) return null;
-
-    // Decode JWT payload (id_token contains user claims)
-    const payload = data.id_token.split('.')[1];
-    const decoded = JSON.parse(atob(payload));
-
-    return {
-      name: decoded.name || decoded.preferred_username,
-      email: decoded.email,
-    };
-  } catch {
-    return null;
-  }
-}
 
 export function UserMenu() {
   // useAuth() throws/returns undefined when no OIDCAuthProvider wraps the tree
@@ -57,51 +33,19 @@ export function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
-  const [oidcConfig, setOidcConfig] = useState<{ authority: string; clientId: string; scope: string } | null>(null);
+  const [authority, setAuthority] = useState<string | null>(null);
 
-  // Check for manual tokens
-  const [hasManualTokens, setHasManualTokens] = useState(false);
-  const [manualUserInfo, setManualUserInfo] = useState<{ name?: string; email?: string } | null>(null);
-
-  // Check if OIDC is enabled and load config (supports runtime config)
+  // Check if OIDC is enabled and load the authority (supports runtime config)
   useEffect(() => {
     async function loadOIDCConfig() {
       const enabled = await isOIDCEnabledAsync();
       setOidcEnabled(enabled);
       if (enabled) {
-        const [authority, clientId, scope] = await Promise.all([
-          getAuthority(),
-          getClientId(),
-          getScope(),
-        ]);
-        setOidcConfig({ authority, clientId, scope });
-
-        // Check for manual tokens
-        const hasTokens = await hasValidManualTokensAsync();
-        setHasManualTokens(hasTokens);
-        if (hasTokens) {
-          const storageKey = await getStorageKeyAsync();
-          setManualUserInfo(getManualUserInfoFromStorage(storageKey));
-        }
+        setAuthority(await getAuthority());
       }
     }
     loadOIDCConfig();
   }, []);
-
-  // Re-check manual tokens when auth state changes
-  useEffect(() => {
-    async function checkTokens() {
-      const hasTokens = await hasValidManualTokensAsync();
-      setHasManualTokens(hasTokens);
-      if (hasTokens) {
-        const storageKey = await getStorageKeyAsync();
-        setManualUserInfo(getManualUserInfoFromStorage(storageKey));
-      } else {
-        setManualUserInfo(null);
-      }
-    }
-    checkTokens();
-  }, [auth?.isAuthenticated]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -121,7 +65,7 @@ export function UserMenu() {
   }
 
   // Still loading OIDC config
-  if (oidcEnabled === null || !oidcConfig) {
+  if (oidcEnabled === null || authority === null || !auth) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
@@ -129,52 +73,33 @@ export function UserMenu() {
     );
   }
 
-  // Handle login - redirect to OIDC provider
+  // Handle login - redirect to OIDC provider (discovery + PKCE handled by the library)
   const handleLogin = () => {
     // Store current path for redirect after login
-    sessionStorage.setItem('returnUrl', window.location.pathname);
-
-    // Use manual redirect (signinRedirect doesn't work reliably in non-HTTPS)
-    const redirectUri = encodeURIComponent(window.location.origin + '/callback');
-    const encodedScope = encodeURIComponent(oidcConfig.scope);
-    const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
-    const state = randomString();
-    const nonce = randomString();
-
-    sessionStorage.setItem('oidc_state', state);
-    sessionStorage.setItem('oidc_nonce', nonce);
-
-    const url = `${oidcConfig.authority}/protocol/openid-connect/auth?client_id=${oidcConfig.clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodedScope}&state=${state}&nonce=${nonce}`;
-    window.location.href = url;
+    sessionStorage.setItem('returnUrl', window.location.pathname + window.location.search);
+    auth.signinRedirect().catch((error) => console.error('[UserMenu] Login redirect failed:', error));
   };
 
-  // Handle logout - clear tokens and redirect to OIDC provider logout
+  // Handle logout - end the provider session (end_session_endpoint from discovery). The
+  // library drops the local user first, so the app never shows a stale signed-in state.
   const handleLogout = () => {
-    // Clear manual tokens (use oidcConfig which is already loaded)
-    const storageKey = `oidc.user:${oidcConfig.authority}:${oidcConfig.clientId}`;
-    localStorage.removeItem(storageKey);
-    sessionStorage.removeItem('oidc_state');
-    sessionStorage.removeItem('oidc_nonce');
     sessionStorage.removeItem('returnUrl');
-
-    // Redirect to Keycloak logout
-    const redirectUri = encodeURIComponent(window.location.origin);
-    const logoutUrl = `${oidcConfig.authority}/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=${oidcConfig.clientId}`;
-    window.location.href = logoutUrl;
+    auth.signoutRedirect().catch(async (error) => {
+      // Provider without RP-initiated logout: at least end the local session.
+      console.warn('[UserMenu] Provider logout failed, clearing local session:', error);
+      await auth.removeUser();
+      window.location.assign('/');
+    });
   };
 
-  // Gets the account management URL for the OIDC provider
-  const getAccountUrl = (): string | null => {
-    if (!oidcConfig.authority) return null;
-    // For Keycloak, account page is at /account
-    return `${oidcConfig.authority}/account`;
-  };
+  // Account management page — only Keycloak has a well-known one (<realm>/account).
+  const getAccountUrl = (): string | null =>
+    /\/realms\/[^/]+\/?$/.test(authority) ? `${authority.replace(/\/$/, '')}/account` : null;
 
-  // Consider authenticated if library says so OR we have valid manual tokens
-  const isAuthenticated = auth?.isAuthenticated || hasManualTokens;
+  const isAuthenticated = auth.isAuthenticated;
 
   // Loading state
-  if (auth?.isLoading) {
+  if (auth.isLoading) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-muted-foreground">
         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
@@ -196,10 +121,9 @@ export function UserMenu() {
   }
 
   // Authenticated - show user menu
-  // Use library user info if available, otherwise use manual token info
-  const user = auth?.user;
-  const displayName = user?.profile?.name || user?.profile?.preferred_username || user?.profile?.email || manualUserInfo?.name || 'User';
-  const email = user?.profile?.email || manualUserInfo?.email;
+  const user = auth.user;
+  const displayName = user?.profile?.name || user?.profile?.preferred_username || user?.profile?.email || 'User';
+  const email = user?.profile?.email;
   const accountUrl = getAccountUrl();
 
   return (
