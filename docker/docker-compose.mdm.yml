@@ -1,0 +1,12 @@
+# Generic MDM validator overlay, applied after docker-compose.scep.yml.
+services:
+  scep:
+    environment:
+      SCEP_AUTH_MODE: webhook
+      SCEP_MDM_VALIDATION_URL: ${SCEP_MDM_VALIDATION_URL:?Set the trusted HTTPS MDM validation endpoint}
+      SCEP_MDM_VALIDATION_TOKEN_FILE: /run/secrets/scep_mdm_validation_token
+    secrets:
+      - scep_mdm_validation_token
+secrets:
+  scep_mdm_validation_token:
+    file: ${SCEP_MDM_VALIDATION_TOKEN_FILE:-./scep-secrets/mdm-validation-token}

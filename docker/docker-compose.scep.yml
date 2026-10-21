@@ -1,0 +1,44 @@
+# Optional overlay: docker compose -f docker-compose.yml -f docker-compose.scep.yml ...
+services:
+  scep:
+    profiles: [scep]
+    image: ${SCEP_IMAGE:-pki-manager-scep:local}
+    build:
+      context: ..
+      dockerfile: scep/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: '10001:10001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      SCEP_AUTH_MODE: ${SCEP_AUTH_MODE:-shared}
+      NO_PROXY: backend,kms,127.0.0.1,localhost
+      SCEP_BACKEND_URL: http://backend:3000
+      SCEP_BACKEND_TOKEN_FILE: /run/secrets/scep_backend_token
+      SCEP_KMS_URL: http://kms:9998
+      SCEP_KMS_API_KEY_FILE: /run/secrets/scep_kms_api_key
+      SCEP_CHALLENGE_FILE: /run/secrets/scep_challenge
+      SCEP_VALIDITY_DAYS: ${SCEP_VALIDITY_DAYS:-90}
+    secrets:
+      - scep_backend_token
+      - scep_challenge
+      - scep_kms_api_key
+    volumes:
+      - scep-state:/data
+    networks: [pki-network]
+    ports:
+      - '127.0.0.1:${SCEP_EXTERNAL_PORT:-8085}:8085'
+    depends_on:
+      backend:
+        condition: service_healthy
+secrets:
+  scep_backend_token:
+    file: ${SCEP_BACKEND_TOKEN_FILE:-./scep-secrets/backend-token}
+  scep_challenge:
+    file: ${SCEP_CHALLENGE_FILE:-./scep-secrets/challenge}
+  scep_kms_api_key:
+    file: ${SCEP_KMS_API_KEY_FILE:-./scep-secrets/kms-api-key}
+volumes:
+  scep-state:

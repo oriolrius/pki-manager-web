@@ -168,6 +168,66 @@ describe('External /sign wiring (KMS certify)', () => {
     expect(signCertificate).toHaveBeenCalledTimes(1);
   });
 
+  it('does not return a revoked certificate for an enrollment retry', async () => {
+    const csrPem = makeCsr();
+    const requestUid = randomUUID();
+    const first = await postSign({ csrPem, requestUid });
+    expect(first.statusCode).toBe(200);
+    await db.update(certificates).set({ status: 'revoked' }).where(eq(certificates.id, first.json().id));
+    const retry = await postSign({ csrPem, requestUid });
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe('CERTIFICATE_NOT_ACTIVE');
+    expect(signCertificate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not serve the enrollment CA bundle after CA revocation', async () => {
+    await db.update(certificateAuthorities).set({ status: 'revoked' }).where(eq(certificateAuthorities.id, caId));
+    try {
+      const res = await app.inject({ method: 'GET', url: '/api/v1/external/ca-bundle', headers: { authorization: 'Bearer test-token' } });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe('CA_NOT_ACTIVE');
+    } finally {
+      await db.update(certificateAuthorities).set({ status: 'active' }).where(eq(certificateAuthorities.id, caId));
+    }
+  });
+
+  it('checks renewal signer ownership and revocation with canonical serial numbers', async () => {
+    const result = await postSign({ csrPem: makeCsr(), requestUid: randomUUID() });
+    expect(result.statusCode).toBe(200);
+    const cert = result.json();
+    const serial = cert.serialNumber.replace(/^0+/, '').toUpperCase();
+    const check = () => app.inject({ method: 'GET', url: `/api/v1/external/certificate-status/${serial}`, headers: { authorization: 'Bearer test-token' } });
+    expect((await check()).json().active).toBe(true);
+    await db.update(certificates).set({ k8sClusterId: null }).where(eq(certificates.id, cert.id));
+    expect((await check()).json().active).toBe(false);
+    await db.update(certificates).set({ k8sClusterId: clusterId, status: 'revoked' }).where(eq(certificates.id, cert.id));
+    expect((await check()).json().active).toBe(false);
+  });
+
+  it('preserves CA:false requested by MDM clients without duplicating basicConstraints', async () => {
+    const kp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const csr = forge.pki.createCertificationRequest();
+    csr.publicKey = kp.publicKey;
+    csr.setSubject([{ name: 'commonName', value: 'mdm-device' }]);
+    csr.setAttributes([{ name: 'extensionRequest', extensions: [{ name: 'basicConstraints', cA: false }] }]);
+    csr.sign(kp.privateKey, forge.md.sha256.create());
+    const res = await postSign({ csrPem: forge.pki.certificationRequestToPem(csr), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(200);
+    expect(signCertificate.mock.calls[0][0].x509Extensions).not.toContain('basicConstraints');
+  });
+
+  it('rejects CA:true enrollment requests', async () => {
+    const kp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const csr = forge.pki.createCertificationRequest();
+    csr.publicKey = kp.publicKey;
+    csr.setSubject([{ name: 'commonName', value: 'invalid-ca' }]);
+    csr.setAttributes([{ name: 'extensionRequest', extensions: [{ name: 'basicConstraints', cA: true }] }]);
+    csr.sign(kp.privateKey, forge.md.sha256.create());
+    const res = await postSign({ csrPem: forge.pki.certificationRequestToPem(csr), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(signCertificate).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when csrPem/requestUid are missing', async () => {
     const res = await postSign({ requestUid: randomUUID() });
     expect(res.statusCode).toBe(400);
@@ -194,6 +254,19 @@ describe('External /sign wiring (KMS certify)', () => {
       if (saved === undefined) delete process.env.CRL_DISTRIBUTION_URL;
       else process.env.CRL_DISTRIBUTION_URL = saved;
     }
+  });
+
+  it('retries CRL publication when revocation persisted before a publication failure', async () => {
+    const first = await postSign({ csrPem: makeCsr(), requestUid: randomUUID() });
+    expect(first.statusCode).toBe(200);
+    const serialNumber = first.json().serialNumber.replace(/^0+/, '').toUpperCase();
+    const revoke = () => app.inject({ method: 'POST', url: '/api/v1/external/revoke', headers: { authorization: 'Bearer test-token' }, payload: { serialNumber } });
+    regenerateForCa.mockRejectedValueOnce(new Error('temporary publication failure'));
+    expect((await revoke()).statusCode).toBe(500);
+    const retry = await revoke();
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().status).toBe('revoked');
+    expect(regenerateForCa).toHaveBeenCalledTimes(2);
   });
 
   it('regenerates the CA CRL after /revoke (TASK-113)', async () => {

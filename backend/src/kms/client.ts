@@ -45,7 +45,9 @@ export class KMSClient {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
-    logger.debug({ request }, "Sending KMIP request");
+    // CSRs may contain SCEP/Intune challenges; KMIP responses can contain keys.
+    // Log operation metadata only, even when debug logging is enabled.
+    logger.debug({ operation: request.tag }, "Sending KMIP request");
 
     let lastError: Error | null = null;
 
@@ -78,7 +80,7 @@ export class KMSClient {
         }
 
         const responseData = (await response.json()) as KMIPResponse;
-        logger.debug({ response: responseData }, "Received KMIP response");
+        logger.debug({ operation: responseData.tag }, "Received KMIP response");
 
         return responseData;
       } catch (error) {

@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { KMSClient } from './client.js';
+import { logger } from '../lib/logger.js';
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
   const res = {
@@ -50,6 +51,16 @@ describe('KMSClient.getCertificatePrivateKeyId', () => {
       ]),
     );
     await expect(client.getCertificatePrivateKeyId('cert-id')).resolves.toBe('the-private-key-id');
+  });
+
+  it('does not log sensitive KMIP request or response payloads at debug level', async () => {
+    const debug = vi.spyOn(logger, 'debug').mockImplementation(() => undefined);
+    mockFetchOnce(attrsResponse([{ type: 'PrivateKeyLink', id: 'sensitive-response-marker' }]));
+    await client.getCertificatePrivateKeyId('sensitive-request-marker');
+    const logged = JSON.stringify(debug.mock.calls);
+    expect(logged).not.toContain('sensitive-request-marker');
+    expect(logged).not.toContain('sensitive-response-marker');
+    expect(logged).toContain('GetAttributes');
   });
 
   it('throws when there is no PrivateKeyLink', async () => {

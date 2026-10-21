@@ -815,3 +815,12 @@ For issues or questions:
 - GitHub Issues: [https://github.com/YOUR_ORG/pki-manager/issues](https://github.com/YOUR_ORG/pki-manager/issues)
 - Documentation: [README.md](README.md)
 - Project Instructions: [CLAUDE.md](CLAUDE.md)
+
+### Optional SCEP enrollment
+
+For RSA device/client enrollment, see [the SCEP gateway setup](scep/README.md).
+It provides a separate `/scep` endpoint with challenge authentication and KMS-held
+RA keys. Start it through `docker/docker-compose.scep.yml`; OIDC remains enabled
+for the management API. For managed SAN identities, dynamic Intune challenges,
+renewal and revocation setup, see [the Intune guide](scep/docs/intune.md).
+Live tenant/device acceptance testing is required before production rollout.
