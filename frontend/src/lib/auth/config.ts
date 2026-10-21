@@ -11,7 +11,7 @@
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import type { UserManagerSettings } from 'oidc-client-ts';
+import { WebStorageStateStore, type UserManagerSettings } from 'oidc-client-ts';
 
 /**
  * Runtime configuration loaded from /config.json
@@ -74,71 +74,11 @@ export async function isOIDCEnabledAsync(): Promise<boolean> {
 }
 
 /**
- * Gets the storage key for manual token storage (sync, build-time only)
- * @deprecated Use getStorageKeyAsync for runtime config support
+ * OIDC login needs a secure context: oidc-client-ts generates the PKCE challenge with
+ * `crypto.subtle`, which browsers only expose on HTTPS or `http://localhost`.
  */
-export function getStorageKey(): string {
-  const authority = import.meta.env.VITE_OIDC_AUTHORITY;
-  const clientId = import.meta.env.VITE_OIDC_CLIENT_ID;
-  return `oidc.user:${authority}:${clientId}`;
-}
-
-/**
- * Gets the storage key for manual token storage (async, supports runtime config)
- */
-export async function getStorageKeyAsync(): Promise<string> {
-  const authority = await getAuthority();
-  const clientId = await getClientId();
-  return `oidc.user:${authority}:${clientId}`;
-}
-
-/**
- * Checks if we have valid manually stored tokens (sync, build-time only)
- * @deprecated Use hasValidManualTokensAsync for runtime config support
- */
-export function hasValidManualTokens(): boolean {
-  try {
-    const storageKey = getStorageKey();
-    const stored = localStorage.getItem(storageKey);
-    if (!stored) return false;
-
-    const data = JSON.parse(stored);
-    if (!data.access_token) return false;
-
-    // Check expiration (with 30 second buffer)
-    if (data.expires_at) {
-      const now = Math.floor(Date.now() / 1000);
-      if (data.expires_at < now + 30) return false;
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Checks if we have valid manually stored tokens (async, supports runtime config)
- */
-export async function hasValidManualTokensAsync(): Promise<boolean> {
-  try {
-    const storageKey = await getStorageKeyAsync();
-    const stored = localStorage.getItem(storageKey);
-    if (!stored) return false;
-
-    const data = JSON.parse(stored);
-    if (!data.access_token) return false;
-
-    // Check expiration (with 30 second buffer)
-    if (data.expires_at) {
-      const now = Math.floor(Date.now() / 1000);
-      if (data.expires_at < now + 30) return false;
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
+export function isSecureContextForOIDC(): boolean {
+  return window.isSecureContext && !!globalThis.crypto?.subtle;
 }
 
 /**
@@ -192,8 +132,12 @@ export async function buildOIDCSettings(): Promise<UserManagerSettings> {
     authority,
     client_id: clientId,
     redirect_uri: `${origin}/callback`,
-    post_logout_redirect_uri: origin,
+    post_logout_redirect_uri: `${origin}/`,
     scope,
+
+    // Keep the session in localStorage (library default is sessionStorage) so it is shared
+    // across tabs and survives a browser restart, like the previous login flow.
+    userStore: new WebStorageStateStore({ store: window.localStorage }),
 
     // Use authorization code flow with PKCE (recommended for SPAs)
     response_type: 'code',

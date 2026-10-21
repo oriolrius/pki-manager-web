@@ -13,7 +13,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const KMS_URL = (process.env.KMS_URL || 'http://wsl.ymbihq.local:42998').replace(/\/$/, '');
+const KMS_URL = (process.env.KMS_URL || 'http://localhost:42998').replace(/\/$/, '');
 const COSMIAN = process.env.COSMIAN_BIN || 'cosmian';
 const cosmian = (args: string[]) => execFileSync(COSMIAN, ['--kms-url', KMS_URL, 'kms', ...args], { encoding: 'utf8' });
 

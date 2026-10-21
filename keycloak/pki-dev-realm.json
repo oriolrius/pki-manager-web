@@ -52,17 +52,15 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
-      "rootUrl": "http://localhost:5173",
+      "rootUrl": "http://localhost:52080",
       "baseUrl": "/",
       "redirectUris": [
-        "http://localhost:5173/*",
-        "http://localhost:8080/*",
-        "http://wsl.ymbihq.local:52080/*"
+        "http://localhost:52080/*",
+        "http://localhost:8080/*"
       ],
       "webOrigins": [
-        "http://localhost:5173",
-        "http://localhost:8080",
-        "http://wsl.ymbihq.local:52080"
+        "http://localhost:52080",
+        "http://localhost:8080"
       ],
       "defaultClientScopes": [
         "web-origins",
@@ -72,7 +70,11 @@
       ],
       "optionalClientScopes": [
         "offline_access"
-      ]
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      }
     }
   ],
   "users": [
