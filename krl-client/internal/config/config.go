@@ -58,6 +58,7 @@ const envPrefix = "KRL_CLIENT_"
 type Config struct {
 	ServerURL        string        // PKI-Manager base URL (required)
 	HostID           string        // host FQDN sent in the body (default: `hostname -f`)
+	Zone             string        // zone id/slug in the body; required only for an ambiguous FQDN across zones (decision-017 A2)
 	HostKey          string        // host's ecdsa ECIES private key (local decrypt)
 	KRLFile          string        // install target (sshd RevokedKeys)
 	CAPubkey         string        // CA public key for detached-signature verify
@@ -101,6 +102,7 @@ func parse(args []string, version string, getenv func(string) string, readFile f
 
 	fs.StringVar(&raw.ServerURL, "server-url", "", "PKI-Manager base URL (required)")
 	fs.StringVar(&raw.HostID, "host-id", "", "host FQDN in the request body (default: `hostname -f`)")
+	fs.StringVar(&raw.Zone, "zone", "", "zone id or slug in the request body; needed only when this FQDN exists in more than one zone (decision-017)")
 	fs.StringVar(&raw.HostKey, "host-key", DefaultHostKey, "host ecdsa ECIES private key (local decrypt)")
 	fs.StringVar(&raw.KRLFile, "krl-file", DefaultKRLFile, "install target (sshd RevokedKeys)")
 	fs.StringVar(&raw.CAPubkey, "ca-pubkey", DefaultCAPubkey, "CA public key for detached-signature verification")
@@ -210,6 +212,7 @@ func parse(args []string, version string, getenv func(string) string, readFile f
 		ConfigPath:       configPath,
 		ServerURL:        str("server-url", "server-url", raw.ServerURL, ""),
 		HostID:           str("host-id", "host-id", raw.HostID, ""),
+		Zone:             str("zone", "zone", raw.Zone, ""),
 		HostKey:          str("host-key", "host-key", raw.HostKey, DefaultHostKey),
 		KRLFile:          str("krl-file", "krl-file", raw.KRLFile, DefaultKRLFile),
 		CAPubkey:         str("ca-pubkey", "ca-pubkey", raw.CAPubkey, DefaultCAPubkey),

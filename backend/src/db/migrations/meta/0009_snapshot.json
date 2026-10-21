@@ -1,0 +1,2573 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "09cf9837-ff04-43e8-97f0-b8f958998733",
+  "prevId": "32d930bd-e8e1-4d9f-9079-238e966dd891",
+  "tables": {
+    "audit_log": {
+      "name": "audit_log",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'success'"
+        },
+        "details": {
+          "name": "details",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kms_operation_id": {
+          "name": "kms_operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_audit_timestamp": {
+          "name": "idx_audit_timestamp",
+          "columns": [
+            "timestamp"
+          ],
+          "isUnique": false
+        },
+        "idx_audit_entity": {
+          "name": "idx_audit_entity",
+          "columns": [
+            "entity_type",
+            "entity_id"
+          ],
+          "isUnique": false
+        },
+        "idx_audit_operation": {
+          "name": "idx_audit_operation",
+          "columns": [
+            "operation"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "certificate_authorities": {
+      "name": "certificate_authorities",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kms_certificate_id": {
+          "name": "kms_certificate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kms_key_id": {
+          "name": "kms_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_dn": {
+          "name": "subject_dn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "serial_number": {
+          "name": "serial_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_algorithm": {
+          "name": "key_algorithm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "not_before": {
+          "name": "not_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "not_after": {
+          "name": "not_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "revocation_date": {
+          "name": "revocation_date",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_reason": {
+          "name": "revocation_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "certificate_authorities_serial_number_unique": {
+          "name": "certificate_authorities_serial_number_unique",
+          "columns": [
+            "serial_number"
+          ],
+          "isUnique": true
+        },
+        "idx_ca_serial": {
+          "name": "idx_ca_serial",
+          "columns": [
+            "serial_number"
+          ],
+          "isUnique": false
+        },
+        "idx_ca_status": {
+          "name": "idx_ca_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_ca_kms_cert": {
+          "name": "idx_ca_kms_cert",
+          "columns": [
+            "kms_certificate_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "certificates": {
+      "name": "certificates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_id": {
+          "name": "ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kms_certificate_id": {
+          "name": "kms_certificate_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kms_key_id": {
+          "name": "kms_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "subject_dn": {
+          "name": "subject_dn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "serial_number": {
+          "name": "serial_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "certificate_type": {
+          "name": "certificate_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "not_before": {
+          "name": "not_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "not_after": {
+          "name": "not_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'manual'"
+        },
+        "k8s_cluster_id": {
+          "name": "k8s_cluster_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "k8s_namespace": {
+          "name": "k8s_namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "k8s_resource": {
+          "name": "k8s_resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "request_uid": {
+          "name": "request_uid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "revocation_date": {
+          "name": "revocation_date",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_reason": {
+          "name": "revocation_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "san_dns": {
+          "name": "san_dns",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "san_ip": {
+          "name": "san_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "san_email": {
+          "name": "san_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "certificate_pem": {
+          "name": "certificate_pem",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "renewed_from_id": {
+          "name": "renewed_from_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "certificates_serial_number_unique": {
+          "name": "certificates_serial_number_unique",
+          "columns": [
+            "serial_number"
+          ],
+          "isUnique": true
+        },
+        "idx_certificates_ca_id": {
+          "name": "idx_certificates_ca_id",
+          "columns": [
+            "ca_id"
+          ],
+          "isUnique": false
+        },
+        "idx_certificates_status": {
+          "name": "idx_certificates_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_certificates_serial": {
+          "name": "idx_certificates_serial",
+          "columns": [
+            "serial_number"
+          ],
+          "isUnique": false
+        },
+        "idx_certificates_type": {
+          "name": "idx_certificates_type",
+          "columns": [
+            "certificate_type"
+          ],
+          "isUnique": false
+        },
+        "idx_cert_kms_cert": {
+          "name": "idx_cert_kms_cert",
+          "columns": [
+            "kms_certificate_id"
+          ],
+          "isUnique": false
+        },
+        "idx_certificates_source": {
+          "name": "idx_certificates_source",
+          "columns": [
+            "source_type"
+          ],
+          "isUnique": false
+        },
+        "idx_certificates_k8s_cluster": {
+          "name": "idx_certificates_k8s_cluster",
+          "columns": [
+            "k8s_cluster_id"
+          ],
+          "isUnique": false
+        },
+        "idx_certificates_request_uid": {
+          "name": "idx_certificates_request_uid",
+          "columns": [
+            "request_uid"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "certificates_ca_id_certificate_authorities_id_fk": {
+          "name": "certificates_ca_id_certificate_authorities_id_fk",
+          "tableFrom": "certificates",
+          "tableTo": "certificate_authorities",
+          "columnsFrom": [
+            "ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "certificates_renewed_from_id_certificates_id_fk": {
+          "name": "certificates_renewed_from_id_certificates_id_fk",
+          "tableFrom": "certificates",
+          "tableTo": "certificates",
+          "columnsFrom": [
+            "renewed_from_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "clusters": {
+      "name": "clusters",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ca_id": {
+          "name": "ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_prefix": {
+          "name": "token_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_seen": {
+          "name": "last_seen",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_clusters_name": {
+          "name": "idx_clusters_name",
+          "columns": [
+            "name"
+          ],
+          "isUnique": false
+        },
+        "idx_clusters_ca_id": {
+          "name": "idx_clusters_ca_id",
+          "columns": [
+            "ca_id"
+          ],
+          "isUnique": false
+        },
+        "idx_clusters_token_prefix": {
+          "name": "idx_clusters_token_prefix",
+          "columns": [
+            "token_prefix"
+          ],
+          "isUnique": false
+        },
+        "idx_clusters_revoked": {
+          "name": "idx_clusters_revoked",
+          "columns": [
+            "revoked_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "clusters_ca_id_certificate_authorities_id_fk": {
+          "name": "clusters_ca_id_certificate_authorities_id_fk",
+          "tableFrom": "clusters",
+          "tableTo": "certificate_authorities",
+          "columnsFrom": [
+            "ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "crls": {
+      "name": "crls",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_id": {
+          "name": "ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "crl_number": {
+          "name": "crl_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "this_update": {
+          "name": "this_update",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_update": {
+          "name": "next_update",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "crl_pem": {
+          "name": "crl_pem",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_count": {
+          "name": "revoked_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_crls_ca_id": {
+          "name": "idx_crls_ca_id",
+          "columns": [
+            "ca_id"
+          ],
+          "isUnique": false
+        },
+        "idx_crls_number": {
+          "name": "idx_crls_number",
+          "columns": [
+            "ca_id",
+            "crl_number"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "crls_ca_id_certificate_authorities_id_fk": {
+          "name": "crls_ca_id_certificate_authorities_id_fk",
+          "tableFrom": "crls",
+          "tableTo": "certificate_authorities",
+          "columnsFrom": [
+            "ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_cas": {
+      "name": "ssh_cas",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "zone_id": {
+          "name": "zone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
+        "ca_type": {
+          "name": "ca_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kms_key_id": {
+          "name": "kms_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kms_public_key_id": {
+          "name": "kms_public_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "openssh_public_key": {
+          "name": "openssh_public_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fingerprint_sha256": {
+          "name": "fingerprint_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_algorithm": {
+          "name": "key_algorithm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'ECDSA-P256'"
+        },
+        "next_serial": {
+          "name": "next_serial",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "predecessor_ca_id": {
+          "name": "predecessor_ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "retire_after": {
+          "name": "retire_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_date": {
+          "name": "revocation_date",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_reason": {
+          "name": "revocation_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_ssh_cas_type": {
+          "name": "idx_ssh_cas_type",
+          "columns": [
+            "ca_type"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_cas_zone": {
+          "name": "idx_ssh_cas_zone",
+          "columns": [
+            "zone_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_cas_status": {
+          "name": "idx_ssh_cas_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_cas_fp": {
+          "name": "idx_ssh_cas_fp",
+          "columns": [
+            "fingerprint_sha256"
+          ],
+          "isUnique": false
+        },
+        "uq_ssh_cas_active_type": {
+          "name": "uq_ssh_cas_active_type",
+          "columns": [
+            "zone_id",
+            "ca_type"
+          ],
+          "isUnique": true,
+          "where": "status = 'active'"
+        },
+        "uq_ssh_cas_rotating_type": {
+          "name": "uq_ssh_cas_rotating_type",
+          "columns": [
+            "zone_id",
+            "ca_type"
+          ],
+          "isUnique": true,
+          "where": "status = 'rotating'"
+        }
+      },
+      "foreignKeys": {
+        "ssh_cas_zone_id_zones_id_fk": {
+          "name": "ssh_cas_zone_id_zones_id_fk",
+          "tableFrom": "ssh_cas",
+          "tableTo": "zones",
+          "columnsFrom": [
+            "zone_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ssh_cas_predecessor_ca_id_ssh_cas_id_fk": {
+          "name": "ssh_cas_predecessor_ca_id_ssh_cas_id_fk",
+          "tableFrom": "ssh_cas",
+          "tableTo": "ssh_cas",
+          "columnsFrom": [
+            "predecessor_ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_certificates": {
+      "name": "ssh_certificates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_id": {
+          "name": "ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cert_type": {
+          "name": "cert_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "identity_id": {
+          "name": "identity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "serial": {
+          "name": "serial",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "principals": {
+          "name": "principals",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "valid_after": {
+          "name": "valid_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "valid_before": {
+          "name": "valid_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "extensions": {
+          "name": "extensions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "critical_options": {
+          "name": "critical_options",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cert_openssh": {
+          "name": "cert_openssh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "subject_pubkey_fingerprint": {
+          "name": "subject_pubkey_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kms_signing_key_id": {
+          "name": "kms_signing_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "revocation_date": {
+          "name": "revocation_date",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revocation_reason": {
+          "name": "revocation_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'manual'"
+        },
+        "superseded_by": {
+          "name": "superseded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "uq_ssh_certs_ca_serial": {
+          "name": "uq_ssh_certs_ca_serial",
+          "columns": [
+            "ca_id",
+            "serial"
+          ],
+          "isUnique": true
+        },
+        "idx_ssh_certs_ca": {
+          "name": "idx_ssh_certs_ca",
+          "columns": [
+            "ca_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_certs_status": {
+          "name": "idx_ssh_certs_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_certs_type": {
+          "name": "idx_ssh_certs_type",
+          "columns": [
+            "cert_type"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_certs_host": {
+          "name": "idx_ssh_certs_host",
+          "columns": [
+            "host_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_certs_identity": {
+          "name": "idx_ssh_certs_identity",
+          "columns": [
+            "identity_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_certs_keyid": {
+          "name": "idx_ssh_certs_keyid",
+          "columns": [
+            "key_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_certs_fp": {
+          "name": "idx_ssh_certs_fp",
+          "columns": [
+            "subject_pubkey_fingerprint"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_certificates_ca_id_ssh_cas_id_fk": {
+          "name": "ssh_certificates_ca_id_ssh_cas_id_fk",
+          "tableFrom": "ssh_certificates",
+          "tableTo": "ssh_cas",
+          "columnsFrom": [
+            "ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ssh_certificates_host_id_ssh_hosts_id_fk": {
+          "name": "ssh_certificates_host_id_ssh_hosts_id_fk",
+          "tableFrom": "ssh_certificates",
+          "tableTo": "ssh_hosts",
+          "columnsFrom": [
+            "host_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "ssh_certificates_identity_id_ssh_identities_id_fk": {
+          "name": "ssh_certificates_identity_id_ssh_identities_id_fk",
+          "tableFrom": "ssh_certificates",
+          "tableTo": "ssh_identities",
+          "columnsFrom": [
+            "identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "ssh_certificates_superseded_by_ssh_certificates_id_fk": {
+          "name": "ssh_certificates_superseded_by_ssh_certificates_id_fk",
+          "tableFrom": "ssh_certificates",
+          "tableTo": "ssh_certificates",
+          "columnsFrom": [
+            "superseded_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_fleet_tokens": {
+      "name": "ssh_fleet_tokens",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "zone_id": {
+          "name": "zone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_prefix": {
+          "name": "token_prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_ca_id": {
+          "name": "user_ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "host_ca_id": {
+          "name": "host_ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "op_set": {
+          "name": "op_set",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked": {
+          "name": "revoked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_seen_ip": {
+          "name": "last_seen_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "uq_ssh_fleet_tokens_hash": {
+          "name": "uq_ssh_fleet_tokens_hash",
+          "columns": [
+            "token_hash"
+          ],
+          "isUnique": true
+        },
+        "idx_ssh_fleet_tokens_zone": {
+          "name": "idx_ssh_fleet_tokens_zone",
+          "columns": [
+            "zone_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_fleet_tokens_zone_id_zones_id_fk": {
+          "name": "ssh_fleet_tokens_zone_id_zones_id_fk",
+          "tableFrom": "ssh_fleet_tokens",
+          "tableTo": "zones",
+          "columnsFrom": [
+            "zone_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ssh_fleet_tokens_user_ca_id_ssh_cas_id_fk": {
+          "name": "ssh_fleet_tokens_user_ca_id_ssh_cas_id_fk",
+          "tableFrom": "ssh_fleet_tokens",
+          "tableTo": "ssh_cas",
+          "columnsFrom": [
+            "user_ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "ssh_fleet_tokens_host_ca_id_ssh_cas_id_fk": {
+          "name": "ssh_fleet_tokens_host_ca_id_ssh_cas_id_fk",
+          "tableFrom": "ssh_fleet_tokens",
+          "tableTo": "ssh_cas",
+          "columnsFrom": [
+            "host_ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_host_blocks": {
+      "name": "ssh_host_blocks",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "identity_id": {
+          "name": "identity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "lifted_by": {
+          "name": "lifted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lifted_at": {
+          "name": "lifted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_ssh_host_blocks_host": {
+          "name": "idx_ssh_host_blocks_host",
+          "columns": [
+            "host_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_host_blocks_identity": {
+          "name": "idx_ssh_host_blocks_identity",
+          "columns": [
+            "identity_id"
+          ],
+          "isUnique": false
+        },
+        "uq_ssh_host_blocks_active_pair": {
+          "name": "uq_ssh_host_blocks_active_pair",
+          "columns": [
+            "host_id",
+            "identity_id"
+          ],
+          "isUnique": true,
+          "where": "status = 'active'"
+        }
+      },
+      "foreignKeys": {
+        "ssh_host_blocks_host_id_ssh_hosts_id_fk": {
+          "name": "ssh_host_blocks_host_id_ssh_hosts_id_fk",
+          "tableFrom": "ssh_host_blocks",
+          "tableTo": "ssh_hosts",
+          "columnsFrom": [
+            "host_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ssh_host_blocks_identity_id_ssh_identities_id_fk": {
+          "name": "ssh_host_blocks_identity_id_ssh_identities_id_fk",
+          "tableFrom": "ssh_host_blocks",
+          "tableTo": "ssh_identities",
+          "columnsFrom": [
+            "identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_host_krls": {
+      "name": "ssh_host_krls",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "krl_number": {
+          "name": "krl_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version_hash": {
+          "name": "version_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "krl_blob": {
+          "name": "krl_blob",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_signature": {
+          "name": "ca_signature",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "this_update": {
+          "name": "this_update",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_update": {
+          "name": "next_update",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_count": {
+          "name": "revoked_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "block_count": {
+          "name": "block_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "uq_ssh_host_krls_host_number": {
+          "name": "uq_ssh_host_krls_host_number",
+          "columns": [
+            "host_id",
+            "krl_number"
+          ],
+          "isUnique": true
+        },
+        "idx_ssh_host_krls_version": {
+          "name": "idx_ssh_host_krls_version",
+          "columns": [
+            "version_hash"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_host_krls_host": {
+          "name": "idx_ssh_host_krls_host",
+          "columns": [
+            "host_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_host_krls_host_id_ssh_hosts_id_fk": {
+          "name": "ssh_host_krls_host_id_ssh_hosts_id_fk",
+          "tableFrom": "ssh_host_krls",
+          "tableTo": "ssh_hosts",
+          "columnsFrom": [
+            "host_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_host_principal_maps": {
+      "name": "ssh_host_principal_maps",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_id": {
+          "name": "host_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "local_account": {
+          "name": "local_account",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "uq_ssh_host_principal_maps": {
+          "name": "uq_ssh_host_principal_maps",
+          "columns": [
+            "host_id",
+            "principal_id",
+            "local_account"
+          ],
+          "isUnique": true
+        },
+        "idx_ssh_host_principal_maps_host": {
+          "name": "idx_ssh_host_principal_maps_host",
+          "columns": [
+            "host_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_host_principal_maps_host_id_ssh_hosts_id_fk": {
+          "name": "ssh_host_principal_maps_host_id_ssh_hosts_id_fk",
+          "tableFrom": "ssh_host_principal_maps",
+          "tableTo": "ssh_hosts",
+          "columnsFrom": [
+            "host_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ssh_host_principal_maps_principal_id_ssh_principals_id_fk": {
+          "name": "ssh_host_principal_maps_principal_id_ssh_principals_id_fk",
+          "tableFrom": "ssh_host_principal_maps",
+          "tableTo": "ssh_principals",
+          "columnsFrom": [
+            "principal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_hosts": {
+      "name": "ssh_hosts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "zone_id": {
+          "name": "zone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
+        "fqdn": {
+          "name": "fqdn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "addresses": {
+          "name": "addresses",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "openssh_host_pubkey": {
+          "name": "openssh_host_pubkey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "host_key_algorithm": {
+          "name": "host_key_algorithm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kms_pubkey_id": {
+          "name": "kms_pubkey_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "current_cert_id": {
+          "name": "current_cert_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "enrolled_at": {
+          "name": "enrolled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_krl_version": {
+          "name": "last_krl_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_krl_fetch_at": {
+          "name": "last_krl_fetch_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_principal_push_at": {
+          "name": "last_principal_push_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_ssh_hosts_status": {
+          "name": "idx_ssh_hosts_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_hosts_kms_pubkey": {
+          "name": "idx_ssh_hosts_kms_pubkey",
+          "columns": [
+            "kms_pubkey_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_hosts_zone": {
+          "name": "idx_ssh_hosts_zone",
+          "columns": [
+            "zone_id"
+          ],
+          "isUnique": false
+        },
+        "uq_ssh_hosts_zone_fqdn": {
+          "name": "uq_ssh_hosts_zone_fqdn",
+          "columns": [
+            "zone_id",
+            "fqdn"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "ssh_hosts_zone_id_zones_id_fk": {
+          "name": "ssh_hosts_zone_id_zones_id_fk",
+          "tableFrom": "ssh_hosts",
+          "tableTo": "zones",
+          "columnsFrom": [
+            "zone_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_idempotency": {
+      "name": "ssh_idempotency",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_id": {
+          "name": "token_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cert_id": {
+          "name": "cert_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "response": {
+          "name": "response",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_identities": {
+      "name": "ssh_identities",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "zone_id": {
+          "name": "zone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "external_subject": {
+          "name": "external_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "openssh_user_pubkey": {
+          "name": "openssh_user_pubkey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pubkey_source": {
+          "name": "pubkey_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'per_request'"
+        },
+        "kms_pubkey_id": {
+          "name": "kms_pubkey_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_ssh_identities_status": {
+          "name": "idx_ssh_identities_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_identities_ext_sub": {
+          "name": "idx_ssh_identities_ext_sub",
+          "columns": [
+            "external_subject"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_identities_zone": {
+          "name": "idx_ssh_identities_zone",
+          "columns": [
+            "zone_id"
+          ],
+          "isUnique": false
+        },
+        "uq_ssh_identities_zone_subject": {
+          "name": "uq_ssh_identities_zone_subject",
+          "columns": [
+            "zone_id",
+            "subject"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "ssh_identities_zone_id_zones_id_fk": {
+          "name": "ssh_identities_zone_id_zones_id_fk",
+          "tableFrom": "ssh_identities",
+          "tableTo": "zones",
+          "columnsFrom": [
+            "zone_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_krl_seq": {
+      "name": "ssh_krl_seq",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_krls": {
+      "name": "ssh_krls",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_id": {
+          "name": "ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "krl_number": {
+          "name": "krl_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version_hash": {
+          "name": "version_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "krl_blob": {
+          "name": "krl_blob",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_signature": {
+          "name": "ca_signature",
+          "type": "blob",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "this_update": {
+          "name": "this_update",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_update": {
+          "name": "next_update",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_count": {
+          "name": "revoked_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_ssh_krls_ca_number": {
+          "name": "idx_ssh_krls_ca_number",
+          "columns": [
+            "ca_id",
+            "krl_number"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_krls_version": {
+          "name": "idx_ssh_krls_version",
+          "columns": [
+            "version_hash"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_krls_ca_id_ssh_cas_id_fk": {
+          "name": "ssh_krls_ca_id_ssh_cas_id_fk",
+          "tableFrom": "ssh_krls",
+          "tableTo": "ssh_cas",
+          "columnsFrom": [
+            "ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_principals": {
+      "name": "ssh_principals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "zone_id": {
+          "name": "zone_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'default'"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_ssh_principals_zone": {
+          "name": "idx_ssh_principals_zone",
+          "columns": [
+            "zone_id"
+          ],
+          "isUnique": false
+        },
+        "uq_ssh_principals_zone_name": {
+          "name": "uq_ssh_principals_zone_name",
+          "columns": [
+            "zone_id",
+            "name"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "ssh_principals_zone_id_zones_id_fk": {
+          "name": "ssh_principals_zone_id_zones_id_fk",
+          "tableFrom": "ssh_principals",
+          "tableTo": "zones",
+          "columnsFrom": [
+            "zone_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_revocations": {
+      "name": "ssh_revocations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ca_id": {
+          "name": "ca_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cert_id": {
+          "name": "cert_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "serial": {
+          "name": "serial",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "key_fingerprint": {
+          "name": "key_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "key_id": {
+          "name": "key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_by": {
+          "name": "revoked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "idx_ssh_revocations_ca": {
+          "name": "idx_ssh_revocations_ca",
+          "columns": [
+            "ca_id"
+          ],
+          "isUnique": false
+        },
+        "idx_ssh_revocations_cert": {
+          "name": "idx_ssh_revocations_cert",
+          "columns": [
+            "cert_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_revocations_ca_id_ssh_cas_id_fk": {
+          "name": "ssh_revocations_ca_id_ssh_cas_id_fk",
+          "tableFrom": "ssh_revocations",
+          "tableTo": "ssh_cas",
+          "columnsFrom": [
+            "ca_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ssh_revocations_cert_id_ssh_certificates_id_fk": {
+          "name": "ssh_revocations_cert_id_ssh_certificates_id_fk",
+          "tableFrom": "ssh_revocations",
+          "tableTo": "ssh_certificates",
+          "columnsFrom": [
+            "cert_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "ssh_user_principals": {
+      "name": "ssh_user_principals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "identity_id": {
+          "name": "identity_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "principal_id": {
+          "name": "principal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "uq_ssh_user_principals": {
+          "name": "uq_ssh_user_principals",
+          "columns": [
+            "identity_id",
+            "principal_id"
+          ],
+          "isUnique": true
+        },
+        "idx_ssh_user_principals_identity": {
+          "name": "idx_ssh_user_principals_identity",
+          "columns": [
+            "identity_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ssh_user_principals_identity_id_ssh_identities_id_fk": {
+          "name": "ssh_user_principals_identity_id_ssh_identities_id_fk",
+          "tableFrom": "ssh_user_principals",
+          "tableTo": "ssh_identities",
+          "columnsFrom": [
+            "identity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ssh_user_principals_principal_id_ssh_principals_id_fk": {
+          "name": "ssh_user_principals_principal_id_ssh_principals_id_fk",
+          "tableFrom": "ssh_user_principals",
+          "tableTo": "ssh_principals",
+          "columnsFrom": [
+            "principal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "zones": {
+      "name": "zones",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "zones_name_unique": {
+          "name": "zones_name_unique",
+          "columns": [
+            "name"
+          ],
+          "isUnique": true
+        },
+        "idx_zones_status": {
+          "name": "idx_zones_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

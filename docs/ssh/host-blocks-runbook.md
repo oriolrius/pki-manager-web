@@ -1,5 +1,10 @@
 # Per-Host Access Blocks — Operator Guide & Cutover Runbook
 
+> **Zones:** a per-host block only makes sense **within one zone** ([SSH zones](zones.md)) —
+> the host and the blocked identity must be in the same zone, since a host's KRL
+> never carries a foreign zone's identity. Blocking across zones is refused.
+
+
 Implements [decision-016 — Per-Host User Access Blocks](../../backlog/decisions/decision-016%20-%20Per-Host-User-Access-Blocks-SSH.md)
 (milestone doc: [doc-008](../../backlog/docs/doc-008%20-%20SSH-Host-Access-Blocks-Milestone.md)).
 "Block **this user** on **this host**" is one reversible, audited click; the

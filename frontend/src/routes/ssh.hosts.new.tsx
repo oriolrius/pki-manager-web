@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import { TagInput } from '@/components/TagInput';
 import { useToast } from '@/components/ui';
+import { ZonePicker } from '@/components/ssh/ZonePicker';
 
 export const Route = createFileRoute('/ssh/hosts/new')({
   component: NewSshHost,
@@ -18,6 +19,7 @@ function NewSshHost() {
   const [displayName, setDisplayName] = useState('');
   const [addresses, setAddresses] = useState<string[]>([]);
   const [opensshHostPubkey, setOpensshHostPubkey] = useState('');
+  const [zone, setZone] = useState('');
   const [issueNow, setIssueNow] = useState(true);
 
   const registerMutation = trpc.ssh.host.register.useMutation();
@@ -33,12 +35,17 @@ function NewSshHost() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!zone) {
+      toast.error('Pick a zone for the host');
+      return;
+    }
     try {
       const host = await registerMutation.mutateAsync({
         fqdn: fqdn.trim(),
         displayName: displayName.trim() || undefined,
         addresses,
         opensshHostPubkey: opensshHostPubkey.trim(),
+        zone,
       });
       if (issueNow) {
         await issueMutation.mutateAsync({ hostId: host.id });
@@ -69,6 +76,14 @@ function NewSshHost() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          <div>
+            <label className="block text-sm font-medium mb-2">Zone *</label>
+            <ZonePicker value={zone} onChange={setZone} />
+            <p className="text-xs text-muted-foreground mt-1">
+              The host is enrolled in this zone and trusts only its zone's user CAs.
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-2">FQDN *</label>
             <input
@@ -141,7 +156,7 @@ function NewSshHost() {
             </button>
             <button
               type="submit"
-              disabled={pending || keyTypeWrong}
+              disabled={pending || keyTypeWrong || !zone}
               className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 font-medium shadow-sm"
             >
               {pending ? 'Working...' : issueNow ? 'Register & Issue' : 'Register Host'}

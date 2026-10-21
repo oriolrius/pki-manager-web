@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { Info } from 'lucide-react';
+import { useZone } from '@/lib/zone-context';
 
 export const Route = createFileRoute('/ssh/cas')({
   component: SshCas,
@@ -18,7 +19,8 @@ function SshCas() {
   const isNew = matchRoute({ to: '/ssh/cas/new' });
   const isDetail = matchRoute({ to: '/ssh/cas/$id', fuzzy: false });
 
-  const casQuery = trpc.ssh.ca.list.useQuery();
+  const { zoneId, isAll, zoneNameById } = useZone();
+  const casQuery = trpc.ssh.ca.list.useQuery({ zoneId });
 
   if (isNew || isDetail) {
     return <Outlet />;
@@ -69,6 +71,7 @@ function SshCas() {
             <thead className="border-b bg-muted/50">
               <tr>
                 <th className="px-4 py-3 text-left text-sm font-medium">Type</th>
+                {isAll && <th className="px-4 py-3 text-left text-sm font-medium">Zone</th>}
                 <th className="px-4 py-3 text-left text-sm font-medium">Label</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Fingerprint (SHA256)</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Algorithm</th>
@@ -78,7 +81,7 @@ function SshCas() {
             <tbody className="divide-y">
               {cas.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={isAll ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
                     No SSH certificate authorities yet. Create a User CA and a Host CA to begin.
                   </td>
                 </tr>
@@ -100,6 +103,11 @@ function SshCas() {
                         {ca.caType === 'user' ? 'User CA' : 'Host CA'}
                       </span>
                     </td>
+                    {isAll && (
+                      <td className="px-4 py-3 text-sm">
+                        <code className="text-xs font-mono">{zoneNameById(ca.zoneId)}</code>
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-sm">{ca.label || <span className="text-muted-foreground">—</span>}</td>
                     <td className="px-4 py-3">
                       <code className="text-xs text-muted-foreground font-mono break-all">{ca.fingerprintSha256}</code>

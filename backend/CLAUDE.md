@@ -53,6 +53,18 @@ Tables: `certificate_authorities`, `certificates` (CA FK; `source_type` manual|k
 `certificate_pem` cache for offline-signed), `clusters`, `crls`, `audit_log`.
 DB change: edit `schema.ts` → `pnpm db:generate` → `pnpm db:migrate`.
 
+**SSH Zones** (decision-017, migration `0009`): a generic `zones` table; `ssh_cas`,
+`ssh_hosts`, `ssh_identities`, `ssh_principals`, `ssh_fleet_tokens` carry a
+`zone_id NOT NULL DEFAULT 'default'` FK (`ON DELETE RESTRICT`); the CA partial-unique
+indexes are `(zone_id, ca_type)` and the natural keys `(zone_id, fqdn|subject|name)`. A host
+trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed KRL union to
+`host.zone_id`). Zone lookup is **fail-closed** via `resolveZone(ctx, explicit?)` in
+`services/ssh-zone.service.ts` (single zone → implicit; several → `SshZoneAmbiguousError`);
+`assertZoneUsable` gates new entities/issuance in an archived zone. **Migration gotcha**: the
+0009 rebuild DROPs FK-referenced parents, so `migrate.ts` toggles `foreign_keys=OFF` around
+`migrate()` (the `PRAGMA` inside the `.sql` is a no-op in drizzle's transaction) and asserts
+`foreign_key_check` after. Runbook: [docs/ssh/zones-migration-runbook.md](../docs/ssh/zones-migration-runbook.md).
+
 ## Gotchas
 
 - **KMS is a hard dependency** for almost all CA/cert paths; unreachable → most ops fail
