@@ -11,9 +11,9 @@ This guide covers setting up and running PKI Manager for local development.
 ## Quick Start
 
 ```bash
-# 1. Start infrastructure containers
+# 1. Infrastructure containers — `pnpm dev` starts them for you (step 5); manual equivalent:
 cd kms && docker compose up -d          # Cosmian KMS  :42998
-cd keycloak && docker compose up -d     # Keycloak     :42997 (optional, OIDC)
+cd keycloak && docker compose up -d     # Keycloak     :42997 (OIDC login, on by default)
 
 # 2. Install dependencies
 pnpm install
@@ -25,9 +25,13 @@ cp frontend/.env.example frontend/.env
 # 4. Run database migrations
 cd backend && pnpm db:migrate
 
-# 5. Start development servers (from root)
+# 5. Start development servers (from root) — also brings up KMS + Keycloak
 pnpm dev
 ```
+
+Then open **http://localhost:52080** and log in as **`admin` / `admin`** (realm role `admin`)
+or **`user` / `user`** (realm role `user`) — users of the dev realm `pki-dev`
+(`keycloak/pki-dev-realm.json`).
 
 ### Dev stack ports
 
@@ -204,21 +208,32 @@ DATABASE_PATH=./data/pki.db
 # Cosmian KMS
 KMS_URL=http://localhost:42998
 
-# SSH CA REST API without OIDC (dev only)
-ALLOW_UNAUTHENTICATED_SSH_CA=true
-
 # CRL Distribution Point
 CRL_DISTRIBUTION_URL=http://localhost:52081/crl
+
+# OIDC login — ON by default in dev (dev Keycloak, realm pki-dev)
+OIDC_ISSUER=http://localhost:42997/realms/pki-dev
+OIDC_AUDIENCE=pki-web,pki-service
 ```
 
-With no `OIDC_ISSUER`/`OIDC_AUDIENCE` set the backend runs **fully unauthenticated** and
-logs `OIDC authentication is disabled` on boot — that is the default dev posture even
-when the Keycloak container is up. See [OIDC.md](OIDC.md) to enable it.
+**OIDC login is the default dev posture**, so dev exercises the same auth path as
+production. `pnpm dev` starts the dev Keycloak when `OIDC_ISSUER` points at
+`localhost:42997` and waits for it before launching the backend; `pnpm dev:status` shows
+whether login is on.
+
+To run **without login** (quick UI work): comment out `OIDC_ISSUER`/`OIDC_AUDIENCE` here
+*and* `VITE_OIDC_AUTHORITY` in `frontend/.env`, and add `ALLOW_UNAUTHENTICATED_SSH_CA=true`
+(SSH CA routes are fail-closed without OIDC). The backend then logs
+`OIDC authentication is disabled`. See [OIDC.md](OIDC.md).
 
 ### Frontend (`frontend/.env`)
 
 ```env
 VITE_API_URL=http://localhost:52081/trpc
+
+# OIDC login — ON by default in dev
+VITE_OIDC_AUTHORITY=http://localhost:42997/realms/pki-dev
+VITE_OIDC_CLIENT_ID=pki-web
 ```
 
 ## Development Servers

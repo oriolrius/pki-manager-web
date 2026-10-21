@@ -41,6 +41,39 @@ done
 
 has_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
 
+# OIDC issuer from backend/.env (empty when the line is commented out = auth off).
+OIDC_ISSUER="$(sed -n 's/^OIDC_ISSUER=\(.*\)/\1/p' "$REPO/backend/.env" 2>/dev/null | head -1)"
+
+# Bring up the docker dependencies the stack needs before mprocs starts: the KMS
+# always, and the dev Keycloak when OIDC is on (login is the default dev posture).
+# Idempotent: `docker compose up -d` is a no-op for running containers.
+ensure_infra() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "warning: docker not found — start kms/ (and keycloak/) yourself" >&2
+    return 0
+  fi
+  local dirs=(kms)
+  [[ "$OIDC_ISSUER" == http://localhost:42997/* ]] && dirs+=(keycloak)
+  local d
+  for d in "${dirs[@]}"; do
+    docker compose --project-directory "$REPO/$d" -f "$REPO/$d/docker-compose.yml" up -d --quiet-pull 2>&1 \
+      | grep -vE '^\s*(Container .* (Running|Started)|$)' || true
+  done
+  if [[ " ${dirs[*]} " == *" keycloak "* ]]; then
+    printf 'waiting for Keycloak (%s) ' "$OIDC_ISSUER"
+    local i
+    for i in $(seq 1 60); do
+      if curl -sf -o /dev/null "$OIDC_ISSUER/.well-known/openid-configuration"; then
+        echo "ready"
+        return 0
+      fi
+      printf '.'
+      sleep 2
+    done
+    echo " not ready after 120s — the backend will fail OIDC init; check 'docker logs pki-manager-keycloak'" >&2
+  fi
+}
+
 # PID listening on $1, or empty. The trailing `|| true` matters: without it the
 # no-match grep exits 1 and, under `set -e -o pipefail`, kills the whole script
 # on the most common path of all — every port free.
@@ -77,6 +110,7 @@ status)
   else
     echo "tmux session '$SESSION': not running"
   fi
+  echo "OIDC login: ${OIDC_ISSUER:-off (backend/.env has no OIDC_ISSUER)}"
   echo
   scan_ports
   if ((${#OURS[@]} + ${#THEIRS[@]} == 0)); then
@@ -155,6 +189,8 @@ up)
     done
     sleep 2
   fi
+
+  ensure_infra
 
   # Create detached first so this works with or without a TTY, then attach if we
   # have one. `mprocs` itself always gets a real PTY from tmux, so it never hits

@@ -98,11 +98,11 @@ the Go issuer uses `make` from `k8s/issuer/`.
 
 ```bash
 cd kms && docker compose up -d          # Cosmian KMS  (:42998)
-cd keycloak && docker compose up -d     # Keycloak     (:42997, admin/admin)
+cd keycloak && docker compose up -d     # Keycloak     (:42997) — `pnpm dev` also starts both
 pnpm install
 cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
 cd backend && pnpm db:migrate
-pnpm dev                                # backend :52081 + frontend :52080 + backlog :6430
+pnpm dev                                # login at http://localhost:52080 as admin/admin (OIDC on by default); backend :52081 + frontend :52080 + backlog :6430
 ```
 
 **Launching the stack as an agent — read
