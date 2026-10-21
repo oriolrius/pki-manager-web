@@ -1,3 +1,10 @@
+## v3.12.4 (2026-10-21)
+
+### Fix
+
+- **security**: stop trusting compromised eMudhra intermediates
+- **docker**: install openssl CLI in backend runtime image
+
 ## v3.12.3 (2026-09-21)
 
 ### Feat
