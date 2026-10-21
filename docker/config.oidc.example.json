@@ -2,7 +2,7 @@
   "apiUrl": "http://localhost:3000/trpc",
   "oidc": {
     "authority": "https://id.example.com",
-    "clientId": "REPLACE_WITH_POCKET_ID_CLIENT_ID",
+    "clientId": "REPLACE_WITH_OIDC_CLIENT_ID",
     "scope": "openid profile email groups"
   }
 }
