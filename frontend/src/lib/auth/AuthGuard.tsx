@@ -1,15 +1,15 @@
 /**
  * AuthGuard Component
  *
- * Enforces authentication at the application level.
+ * Enforces authentication at the application root level.
  * Redirects unauthenticated users to the OIDC provider login.
  *
  * Reference: decision-009 - OIDC Authentication Implementation
  */
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { isOIDCEnabledAsync, hasValidManualTokensAsync, getAuthority, getClientId, getScope } from './config';
+import { isOIDCEnabledAsync } from './config';
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -31,7 +31,7 @@ function AuthLoading() {
 }
 
 /**
- * Redirecting message shown while navigating to OIDC provider
+ * Redirecting message shown while navigating to the OIDC provider
  */
 function AuthRedirecting() {
   return (
@@ -46,97 +46,88 @@ function AuthRedirecting() {
 }
 
 /**
- * Inner component that uses hooks - only rendered when OIDC is enabled
+ * Inner component that uses authentication hooks.
+ * Only rendered when OIDC is enabled.
  */
 function AuthGuardInner({ children }: AuthGuardProps) {
   const auth = useAuth();
-  // Check for manually stored tokens (from our custom callback handler)
-  const [hasManualTokens, setHasManualTokens] = useState(false);
-  const [tokensChecked, setTokensChecked] = useState(false);
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  // A ref, not state: StrictMode runs effects twice before a state update lands, which
+  // fired two signinRedirect() calls (two auth requests racing on the login page).
+  const redirectStarted = useRef(false);
 
-  // Check if we're on the callback route (don't redirect during OIDC callback)
+  // Do not start another redirect while processing the OIDC callback.
   const isCallbackRoute = window.location.pathname === '/callback';
 
-  // Re-check manual tokens when component mounts or auth state changes
+  // Redirect to the OIDC provider when authentication is required.
   useEffect(() => {
-    hasValidManualTokensAsync().then((hasTokens) => {
-      setHasManualTokens(hasTokens);
-      setTokensChecked(true);
-    });
-  }, [auth.isAuthenticated]);
-
-  // Consider authenticated if library says so OR we have valid manual tokens
-  const isAuthenticated = auth.isAuthenticated || hasManualTokens;
-
-  // Redirect to login if not authenticated (wait for token check to complete)
-  useEffect(() => {
-    if (!isCallbackRoute && !auth.isLoading && tokensChecked && !isAuthenticated && !auth.activeNavigator && !isRedirecting) {
-      setIsRedirecting(true);
-
-      // Store current path for redirect after login
-      sessionStorage.setItem('returnUrl', window.location.pathname + window.location.search);
-      console.log('[AuthGuard] User not authenticated, redirecting to login...');
-
-      // Fetch OIDC config asynchronously (supports runtime config.json)
-      Promise.all([getAuthority(), getClientId(), getScope()]).then(([authority, clientId, scope]) => {
-        const redirectUri = encodeURIComponent(window.location.origin + '/callback');
-        const encodedScope = encodeURIComponent(scope);
-        // Generate random state and nonce (works in non-HTTPS contexts)
-        const randomString = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
-        const state = randomString();
-        const nonce = randomString();
-
-        // Store state for validation
-        sessionStorage.setItem('oidc_state', state);
-        sessionStorage.setItem('oidc_nonce', nonce);
-
-        const url = `${authority}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${encodedScope}&state=${state}&nonce=${nonce}`;
-        console.log('[AuthGuard] Redirecting to:', url);
-        window.location.href = url;
-      });
+    if (
+      isCallbackRoute ||
+      auth.isLoading ||
+      auth.isAuthenticated ||
+      auth.activeNavigator ||
+      redirectStarted.current
+    ) {
+      return;
     }
-  }, [isCallbackRoute, auth.isLoading, tokensChecked, isAuthenticated, auth.activeNavigator, isRedirecting]);
 
-  // Allow callback route to render without auth check
+    redirectStarted.current = true;
+
+    // Store the current URL so the callback route can restore it after login.
+    sessionStorage.setItem('returnUrl', window.location.pathname + window.location.search);
+    console.log('[AuthGuard] User not authenticated, redirecting to login...');
+
+    // Let oidc-client-ts discover the provider endpoints and handle PKCE.
+    auth.signinRedirect().catch((error) => {
+      console.error('[AuthGuard] OIDC redirect failed:', error);
+      redirectStarted.current = false;
+    });
+  }, [
+    isCallbackRoute,
+    auth.isLoading,
+    auth.isAuthenticated,
+    auth.activeNavigator,
+    auth.signinRedirect,
+  ]);
+
+  // Allow the callback route to render while authentication is processed.
   if (isCallbackRoute) {
     return <>{children}</>;
   }
 
-  // Loading state (waiting for auth library or token check)
-  if (auth.isLoading || !tokensChecked) {
+  if (auth.isLoading) {
     return <AuthLoading />;
   }
 
-  // Not authenticated - show redirecting message
-  if (!isAuthenticated) {
+  if (!auth.isAuthenticated) {
     return <AuthRedirecting />;
   }
 
-  // Authenticated - render children
   return <>{children}</>;
 }
 
 /**
- * AuthGuard enforces authentication for wrapped content.
+ * Enforces authentication for wrapped content.
  *
- * - If OIDC is disabled, renders children without auth check
- * - If authenticated, renders children
- * - If not authenticated, redirects to OIDC login
+ * - If OIDC is disabled, renders children without an authentication check.
+ * - If authenticated, renders children.
+ * - If unauthenticated, redirects to the OIDC provider.
  */
 export function AuthGuard({ children }: AuthGuardProps) {
   const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // No catch on purpose: falling back to "OIDC disabled" on an error would render the
+    // app unauthenticated (fail-open). isOIDCEnabledAsync already treats a missing
+    // config.json as "use build-time settings".
     isOIDCEnabledAsync().then(setOidcEnabled);
   }, []);
 
-  // Still checking if OIDC is enabled
+  // OIDC configuration is still loading.
   if (oidcEnabled === null) {
     return <AuthLoading />;
   }
 
-  // If OIDC is not enabled, render children without auth check
+  // Render without authentication when OIDC is disabled.
   if (!oidcEnabled) {
     return <>{children}</>;
   }

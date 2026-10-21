@@ -2,7 +2,7 @@
 
 React 19 SPA: **TanStack Router** (file-based) + **TanStack Query** + a **tRPC v11** client
 that imports the backend's `AppRouter` type for end-to-end type safety. **OIDC** auth
-(oidc-client-ts + react-oidc-context, Keycloak-shaped), **Tailwind 4**, **Vite 7**, Vitest +
+(oidc-client-ts + react-oidc-context, provider-agnostic), **Tailwind 4**, **Vite 7**, Vitest +
 RTL. See the root `CLAUDE.md` for repo-wide rules.
 
 ## Commands
@@ -50,11 +50,15 @@ runtime `public/config.json` (fetched at startup; `apiUrl` + optional `oidc` blo
 with placeholder `{"apiUrl":"__API_URL__"}` substituted at deploy time. **OIDC is optional**
 — enabled only when an authority is set; otherwise the app runs unauthenticated.
 
-The library's PKCE/`signinRedirect` is unreliable over non-HTTPS, so `src/lib/auth/` has a
-**hand-rolled fallback**: a manual `/protocol/openid-connect/auth` URL with self-generated
-`state`/`nonce`; `callback.tsx` falls back to a manual token POST → `localStorage`;
-`token.ts` `getAccessToken()` tries the library `UserManager` then the manual token. Silent
-renew uses `public/silent-renew.html` (loads oidc-client-ts from a **CDN**).
+The whole flow is the library's (PR #7): endpoints come from OIDC discovery, login/logout are
+`signinRedirect`/`signoutRedirect`, PKCE + state/nonce are validated by oidc-client-ts. One
+**shared `UserManager`** (`token.ts` `getUserManager()`) feeds both `AuthProvider` (via its
+`userManager` prop) and the tRPC `getAccessToken()`, which renews on demand (`signinSilent`,
+single-flight, 60 s buffer). The session lives in **`localStorage`** (`userStore`), key
+`oidc.user:<authority>:<clientId>`. **Requires a secure context** (HTTPS or
+`http://localhost`): `AuthProvider` shows an explicit error otherwise. There is no
+non-HTTPS fallback any more — don't reintroduce one. Silent renew prefers the refresh
+token; the iframe fallback uses `public/silent-renew.html` (loads oidc-client-ts from a **CDN**).
 
 ## Styling
 
@@ -64,9 +68,7 @@ Tailwind **4** via PostCSS (no `tailwind.config.js`; tokens are CSS-first in `sr
 
 ## Gotchas
 
-- **Dev port `52080`**; `vite.config.ts` `allowedHosts` = `wsl.ymbihq.local`, `localhost`,
-  `.ymbihq.local` (wildcard) — other hostnames are blocked. Committed `.env` points at
-  `wsl.ymbihq.local` hosts; change it for local-only dev.
+- **Dev port `52080`, open it as `http://localhost:52080`.** `vite.config.ts` has no
+  `allowedHosts`, so only localhost/IPs are accepted, and only localhost is a secure context.
 - `build:docker`/`tsconfig.build.json` **relax strictness** — run `npm run typecheck` to catch real type errors.
-- Two token stores coexist (library `UserManager` + manual `localStorage`) — check both when debugging auth.
 - `silent-renew.html` pulls oidc-client-ts from a public CDN — silent renew breaks in air-gapped envs.

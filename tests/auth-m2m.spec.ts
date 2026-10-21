@@ -16,8 +16,8 @@ import { test, expect } from '@playwright/test';
  *   KEYCLOAK_URL - Keycloak base URL (default: http://localhost:42997)
  *
  * Usage:
- *   BACKEND_URL=http://wsl.ymbihq.local:52081 \
- *   KEYCLOAK_URL=http://wsl.ymbihq.local:42997 \
+ *   BACKEND_URL=http://localhost:52081 \
+ *   KEYCLOAK_URL=http://localhost:42997 \
  *   pnpm playwright test tests/auth-m2m.spec.ts
  */
 

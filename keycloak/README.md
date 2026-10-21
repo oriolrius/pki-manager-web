@@ -135,7 +135,7 @@ curl -X POST http://localhost:42997/realms/pki-dev/protocol/openid-connect/token
 ### Authorization Code Flow (pki-web)
 
 For web application authentication, use the `pki-web` client with redirect URIs:
-- `http://localhost:5173/*` (Vite dev server)
+- `http://localhost:52080/*` (Vite dev server)
 - `http://localhost:8080/*` (Production frontend)
 
 ## Persistent Data

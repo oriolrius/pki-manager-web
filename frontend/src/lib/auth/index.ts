@@ -14,10 +14,10 @@ export { AuthProvider } from './AuthProvider';
 export { AuthGuard } from './AuthGuard';
 
 // Re-export configuration utilities
-export { isOIDCEnabled, isOIDCEnabledAsync, getAuthority, getClientId, getScope, hasValidManualTokens, hasValidManualTokensAsync, getStorageKey, getStorageKeyAsync } from './config';
+export { isOIDCEnabled, isOIDCEnabledAsync, isSecureContextForOIDC, getAuthority, getClientId, getScope } from './config';
 
 // Re-export token utilities for tRPC client
-export { getAccessToken, getUser } from './token';
+export { getAccessToken, getUser, getUserManager } from './token';
 
 // Re-export useAuth hook from react-oidc-context
 export { useAuth } from 'react-oidc-context';

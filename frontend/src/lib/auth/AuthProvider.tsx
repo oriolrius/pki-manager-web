@@ -9,8 +9,9 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { AuthProvider as OIDCAuthProvider } from 'react-oidc-context';
-import type { UserManagerSettings } from 'oidc-client-ts';
-import { buildOIDCSettings, isOIDCEnabledAsync } from './config';
+import type { UserManager } from 'oidc-client-ts';
+import { isOIDCEnabledAsync, isSecureContextForOIDC } from './config';
+import { getUserManager } from './token';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -52,7 +53,7 @@ function AuthError({ message }: { message: string }) {
  * without authentication wrapper, allowing the app to run in unauthenticated mode.
  */
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [settings, setSettings] = useState<UserManagerSettings | null>(null);
+  const [userManager, setUserManager] = useState<UserManager | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -65,9 +66,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
 
+      // Fail with an actionable message instead of a cryptic crypto error at login time.
+      if (!isSecureContextForOIDC()) {
+        setError(
+          `Login requires a secure context. Open this app over HTTPS or via http://localhost ` +
+            `(current origin: ${window.location.origin}).`
+        );
+        setLoading(false);
+        return;
+      }
+
       try {
-        const oidcSettings = await buildOIDCSettings();
-        setSettings(oidcSettings);
+        setUserManager(await getUserManager());
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load OIDC configuration');
       } finally {
@@ -89,7 +99,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   // If OIDC is not enabled, render children without auth wrapper
-  if (!settings) {
+  if (!userManager) {
     return <>{children}</>;
   }
 
@@ -103,12 +113,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     window.history.replaceState({}, document.title, window.location.pathname);
   };
 
-  // Wrap with OIDC provider
+  // Wrap with OIDC provider (shares the UserManager used by the tRPC token lookup)
   return (
-    <OIDCAuthProvider
-      {...settings}
-      onSigninCallback={onSigninCallback}
-    >
+    <OIDCAuthProvider userManager={userManager} onSigninCallback={onSigninCallback}>
       {children}
     </OIDCAuthProvider>
   );
