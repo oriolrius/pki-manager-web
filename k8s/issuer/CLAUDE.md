@@ -45,7 +45,7 @@ JSON contract here is read from the Go structs; the server side lives in the TS 
 | `make docker-build` | `docker build -t $(IMG) .` (default `ghcr.io/oriolrius/pki-manager-issuer:dev`) |
 | `make e2e-in-cluster` | full kind e2e (KMS + backend + issuer + cert-manager); see `test/e2e/in-cluster/README.md` |
 
-`Dockerfile`: static `golang:1.23` build → distroless nonroot (UID 65532), binary `/manager`.
+`Dockerfile`: static `golang:1.26.10` build (module stays `go 1.23`) → distroless nonroot (UID 65532), binary `/manager`; the builder's patched CA bundle replaces distroless's stale one (#9).
 Install via Helm chart `deploy/helm/pki-manager-issuer/`:
 
 ```bash
