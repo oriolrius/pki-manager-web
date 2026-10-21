@@ -31,14 +31,20 @@ pnpm dev
 
 ### Dev stack ports
 
-The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` range
+The dev stack runs on **`localhost`** on the `42xxx`/`52xxx` range
 (`backend/.env`, `frontend/.env`, `frontend/vite.config.ts`) — **not** the 3000/5173
-defaults.
+defaults. Everything binds IPv4 `0.0.0.0`, so WSL2 forwards each port to Windows and the
+same `http://localhost:PORT` URLs work in Orca's browser **and** in any Windows browser.
+
+**Use `localhost`, not a LAN/WSL hostname.** OIDC login (PKCE) needs `crypto.subtle`, which
+browsers only expose in a secure context — HTTPS or `http://localhost`. Over plain HTTP on
+any other name (e.g. the old `wsl.ymbihq.local`) the app shows *"Login requires a secure
+context"*. Production must be served over HTTPS.
 
 | Service | URL | Bound by |
 |---|---|---|
-| Frontend (Vite) | http://wsl.ymbihq.local:52080 | `frontend/vite.config.ts` (`host: '0.0.0.0'`) |
-| Backend (Fastify) | http://wsl.ymbihq.local:52081 — Swagger at `/api/docs` | `backend/.env` `PORT`/`HOST` |
+| Frontend (Vite) | http://localhost:52080 | `frontend/vite.config.ts` (`host: '0.0.0.0'`) |
+| Backend (Fastify) | http://localhost:52081 — Swagger at `/api/docs` | `backend/.env` `PORT`/`HOST` |
 | Cosmian KMS | http://localhost:42998 | `kms/docker-compose.yml` |
 | Keycloak | http://localhost:42997 (admin/admin) | `keycloak/docker-compose.yml` |
 | Backlog.md web UI | http://localhost:6430 | `backlog/config.yml` `defaultPort` |
@@ -104,9 +110,19 @@ serving fine — probe the HTTP endpoints, don't trust the healthcheck label.
 
 ### WSL2 / Windows reachability gotcha
 
-The Orca browser and the user resolve `localhost` on **Windows**, and WSL2 only forwards
-**IPv4 (`0.0.0.0`)** binds. A server on the IPv6 wildcard (`*:PORT` in `ss`) works from
-inside WSL but gives `ERR_EMPTY_RESPONSE` / a `chrome-error://` page in the browser.
+The Orca browser and the user resolve `localhost` on **Windows**. How a Windows
+`localhost:PORT` reaches WSL depends on the machine:
+
+- **WSL default (`localhostForwarding=true`)**: WSL2 forwards **IPv4 (`0.0.0.0`)** binds
+  automatically. A server on the IPv6 wildcard (`*:PORT` in `ss`) works from inside WSL
+  but gives `ERR_EMPTY_RESPONSE` / a `chrome-error://` page in the browser.
+- **d0 (`localhostForwarding=false` in `%USERPROFILE%\.wslconfig`, on purpose)**: ports are
+  exposed with `netsh portproxy` rules instead. The dev stack's browser-facing ports are
+  forwarded loopback-only (`127.0.0.1:PORT → wsl.ymbihq.local:PORT`, not reachable from the
+  LAN) by `C:\tools\private\add-pki-manager-dev-ports.ps1` (elevated, additive):
+  **52080** frontend, **52081** API, **42997** Keycloak, **52091** backlog relay. A new
+  browser-facing port needs a rule there too. Check with
+  `netsh.exe interface portproxy show v4tov4`.
 
 - Backend and frontend already bind `0.0.0.0` — fine as-is.
 - **`backlog browser` binds the IPv6 wildcard on 6430** and has no `--host` flag, so it
@@ -180,7 +196,7 @@ HOST=0.0.0.0
 NODE_ENV=development
 
 # Frontend URL for CORS
-FRONTEND_URL=http://wsl.ymbihq.local:52080/
+FRONTEND_URL=http://localhost:52080
 
 # Database
 DATABASE_PATH=./data/pki.db
@@ -192,7 +208,7 @@ KMS_URL=http://localhost:42998
 ALLOW_UNAUTHENTICATED_SSH_CA=true
 
 # CRL Distribution Point
-CRL_DISTRIBUTION_URL=http://wsl.ymbihq.local:52081/crl
+CRL_DISTRIBUTION_URL=http://localhost:52081/crl
 ```
 
 With no `OIDC_ISSUER`/`OIDC_AUDIENCE` set the backend runs **fully unauthenticated** and
@@ -202,7 +218,7 @@ when the Keycloak container is up. See [OIDC.md](OIDC.md) to enable it.
 ### Frontend (`frontend/.env`)
 
 ```env
-VITE_API_URL=http://wsl.ymbihq.local:52081/trpc
+VITE_API_URL=http://localhost:52081/trpc
 ```
 
 ## Development Servers
@@ -223,8 +239,8 @@ Use this when you can't give mprocs a TTY (scripts, agents, CI-ish runs):
 |----------|-----------|---------|-----|
 | 1 | `kms/` | `docker compose up -d` | http://localhost:42998 |
 | 2 | `keycloak/` | `docker compose up -d` | http://localhost:42997 |
-| 3 | `backend/` | `pnpm dev` | http://wsl.ymbihq.local:52081 |
-| 4 | `frontend/` | `pnpm dev` | http://wsl.ymbihq.local:52080 |
+| 3 | `backend/` | `pnpm dev` | http://localhost:52081 |
+| 4 | `frontend/` | `pnpm dev` | http://localhost:52080 |
 | 5 | repo root | `backlog browser --no-open` | http://localhost:6430 |
 
 ## Available Scripts
