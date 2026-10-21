@@ -20,10 +20,8 @@ export default defineConfig({
     // Fail loudly instead of silently hopping to 52082 when a stale dev server
     // still owns the port — a shifted port is how you end up with two stacks.
     strictPort: true,
-    allowedHosts: [
-      'wsl.ymbihq.local',
-      'localhost',
-      '.ymbihq.local', // Allow all subdomains
-    ],
+    // No allowedHosts: Vite's default (localhost + IP literals) is exactly what dev needs.
+    // Open the app as http://localhost:52080 — WSL2 forwards it to the Windows browser,
+    // and localhost is a secure context, which OIDC login (PKCE / crypto.subtle) requires.
   },
 })

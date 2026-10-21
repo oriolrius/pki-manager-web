@@ -25,7 +25,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const KMS_URL = (process.env.KMS_URL || "http://wsl.ymbihq.local:42998").replace(/\/$/, "");
+const KMS_URL = (process.env.KMS_URL || "http://localhost:42998").replace(/\/$/, "");
 const COSMIAN_BIN = process.env.COSMIAN_BIN || "cosmian";
 
 type Probe = { path: string; ok: boolean; detail: string };

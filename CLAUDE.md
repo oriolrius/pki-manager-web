@@ -117,8 +117,9 @@ you can run `pnpm dev` headlessly (no `Stdin is not a tty`) and then read the st
 `backlog browser` on 6430) needs a socat relay. That doc also has the real port table,
 verify commands, and the cleanup recipe.
 
-The committed dev config targets `*.ymbihq.local` on the `42xxx`/`52xxx` port range — see
-[frontend/CLAUDE.md](frontend/CLAUDE.md) and edit the `.env` files for local-only dev.
+The dev stack runs on **`http://localhost`** (`42xxx`/`52xxx` ports, IPv4 binds, so the same
+URLs work in Orca's and in the Windows browser). Use `localhost`, never a LAN/WSL hostname:
+OIDC login needs a secure context (HTTPS or localhost) — see [frontend/CLAUDE.md](frontend/CLAUDE.md).
 Details: [DEVELOPMENT.md](DEVELOPMENT.md) (dev), [DEPLOYMENT.md](DEPLOYMENT.md) (Docker),
 [KEYCLOAK.md](KEYCLOAK.md) / [OIDC.md](OIDC.md) (auth).
 

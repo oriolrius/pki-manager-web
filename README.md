@@ -347,8 +347,8 @@ cd backend && pnpm db:migrate
 pnpm dev  # from root
 ```
 
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:3000
+- **Frontend**: http://localhost:52080
+- **Backend API**: http://localhost:52081
 - **Cosmian KMS**: http://localhost:42998
 - **Keycloak**: http://localhost:42997 (admin/admin)
 

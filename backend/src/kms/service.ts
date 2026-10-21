@@ -561,7 +561,7 @@ let kmsServiceInstance: KMSService | null = null;
  */
 export function getKMSService(): KMSService {
   if (!kmsServiceInstance) {
-    const kmsUrl = process.env.KMS_URL || 'http://wsl.ymbihq.local:42998';
+    const kmsUrl = process.env.KMS_URL || 'http://localhost:42998';
 
     kmsServiceInstance = new KMSService({
       kmsUrl,

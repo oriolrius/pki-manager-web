@@ -68,7 +68,7 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
 ## Gotchas
 
 - **KMS is a hard dependency** for almost all CA/cert paths; unreachable → most ops fail
-  (`CAKmsInconsistencyError`). `getKMSService()` defaults `KMS_URL` to `http://wsl.ymbihq.local:42998`.
+  (`CAKmsInconsistencyError`). `getKMSService()` defaults `KMS_URL` to `http://localhost:42998`.
 - KMS `certify` modes: pass a `publicKeyId` to certify a KMS-held key (CA creation, manual
   issuance); pass a `csr` + `preserveCsrKey` to sign a CSR's **own** public key (the external
   `/sign` path — the CA key stays in the KMS). The CSR goes in the KMIP `CertificateRequestValue`
