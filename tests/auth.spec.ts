@@ -39,9 +39,11 @@ const TEST_PASSWORD = process.env.TEST_PASSWORD || 'admin';
  * Helper: Clear all authentication state
  */
 async function clearAuthState(page: Page, baseUrl: string) {
-  // Navigate to the base URL first to access its localStorage
+  // Open a static same-origin file to reach the app's localStorage WITHOUT booting the
+  // SPA: loading the app itself starts a signinRedirect that can land after the test's
+  // own navigation and replace the Keycloak form mid-fill (flaky "Invalid password").
   try {
-    await page.goto(baseUrl, { waitUntil: 'commit', timeout: 5000 });
+    await page.goto(new URL('/config.json', baseUrl).toString(), { waitUntil: 'load', timeout: 5000 });
   } catch {
     // Ignore navigation errors during cleanup
   }
@@ -76,8 +78,11 @@ async function keycloakLogin(page: Page, username: string, password: string) {
   });
 
   // Fill credentials - use specific selectors for Keycloak's form
+  await page.waitForLoadState('load');
   await page.locator('#username').fill(username);
   await page.locator('#password').fill(password);
+  await expect(page.locator('#username')).toHaveValue(username);
+  await expect(page.locator('#password')).toHaveValue(password);
 
   // Click sign in
   await page.getByRole('button', { name: /sign in/i }).click();
