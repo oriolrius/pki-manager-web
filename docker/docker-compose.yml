@@ -53,6 +53,7 @@ services:
       # OIDC Authentication (optional - leave OIDC_ISSUER unset to disable)
       - OIDC_ISSUER=${OIDC_ISSUER:-}
       - OIDC_AUDIENCE=${OIDC_AUDIENCE:-}
+      - OIDC_ROLES_SOURCE=${OIDC_ROLES_SOURCE:-token}
       - OIDC_ROLES_CLAIM=${OIDC_ROLES_CLAIM:-realm_access.roles}
     ports:
       - "${BACKEND_EXTERNAL_PORT:-3000}:3000"
