@@ -18,7 +18,10 @@
 # name, only by this repo's session name and by cwd of the port holder.
 #
 # Usage:
-#   scripts/dev-session.sh [up|status|stop] [--force]
+#   scripts/dev-session.sh [up|status|stop|down] [--force]
+#
+#   stop  processes only (tmux session + leftovers); KMS/Keycloak keep running (fast restart)
+#   down  stop + the docker deps (KMS, Keycloak) + the backlog socat relay: nothing left running
 #
 set -euo pipefail
 
@@ -33,9 +36,9 @@ FORCE=0
 CMD="up"
 for arg in "$@"; do
   case "$arg" in
-    up|status|stop) CMD="$arg" ;;
+    up|status|stop|down) CMD="$arg" ;;
     --force|-f)     FORCE=1 ;;
-    *) echo "usage: $(basename "$0") [up|status|stop] [--force]" >&2; exit 2 ;;
+    *) echo "usage: $(basename "$0") [up|status|stop|down] [--force]" >&2; exit 2 ;;
   esac
 done
 
@@ -126,7 +129,7 @@ status)
   done
   ;;
 
-stop)
+stop|down)
   if has_session; then
     tmux kill-session -t "=$SESSION"
     echo "killed tmux session '$SESSION'"
@@ -141,7 +144,26 @@ stop)
   for e in ${THEIRS[@]+"${THEIRS[@]}"}; do
     echo "  left port ${e%%:*} alone — belongs to another project"
   done
-  echo "dev stack stopped."
+  if [ "$CMD" = stop ]; then
+    echo "dev stack stopped (KMS/Keycloak still running — use 'pnpm dev:down' to stop everything)."
+    exit 0
+  fi
+
+  # down: also the backlog IPv4 relay (DEVELOPMENT.md) and the docker deps.
+  # `stop`, not `down`: containers and data are kept, and a stopped container with
+  # `restart: unless-stopped` stays stopped across WSL restarts until the next `pnpm dev`.
+  relay="$(pgrep -f 'socat TCP4-LISTEN:52091' || true)"
+  if [ -n "$relay" ]; then
+    kill $relay 2>/dev/null || true
+    echo "  stopped backlog socat relay (52091)"
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    for d in keycloak kms; do
+      docker compose --project-directory "$REPO/$d" -f "$REPO/$d/docker-compose.yml" stop 2>&1 \
+        | grep -E 'Stopped' | sed 's/^ */  /' || true
+    done
+  fi
+  echo "dev stack down: processes, KMS and Keycloak stopped."
   ;;
 
 up)

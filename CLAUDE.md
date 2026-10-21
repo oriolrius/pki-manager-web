@@ -87,7 +87,8 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 | Command | Action |
 |---|---|
 | `pnpm dev` | attach-or-create the `dev-pki-manager` tmux session running **mprocs** (`backend` + `frontend` + `backlog`) |
-| `pnpm dev:status` / `dev:stop` | inspect / tear down that session and its ports |
+| `pnpm dev:status` / `dev:stop` | inspect / tear down that session and its ports (KMS + Keycloak keep running) |
+| `pnpm dev:down` | `dev:stop` + stop the KMS/Keycloak containers and the backlog relay — nothing left consuming resources |
 | `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
 | `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
 

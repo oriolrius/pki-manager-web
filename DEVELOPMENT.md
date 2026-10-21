@@ -63,7 +63,8 @@ context"*. Production must be served over HTTPS.
 |---|---|
 | `pnpm dev` | attach-or-create: reattaches if the stack is already up, else starts it |
 | `pnpm dev:status` | is it running, who owns our ports, current mprocs screen |
-| `pnpm dev:stop` | kill the session, then sweep leftovers of *this* repo |
+| `pnpm dev:stop` | kill the session, then sweep leftovers of *this* repo (KMS + Keycloak keep running, so the next `pnpm dev` is fast) |
+| `pnpm dev:down` | `dev:stop` + stop the KMS and Keycloak containers (~1 GB RAM) and the backlog socat relay. Containers are `stop`ped, not removed: data is kept and they stay down across WSL restarts until the next `pnpm dev` |
 | `pnpm dev:raw` | bare `mprocs`, no session — only from inside the tmux session |
 
 **Why the wrapper.** The terminal pane is not the owner of the stack: Orca restarts its
@@ -142,7 +143,8 @@ Always confirm the bind is `0.0.0.0:PORT` (not `*:PORT`) before sending someone 
 ### Cleaning up stale servers
 
 `pnpm dev:stop` is the normal way — it kills the tmux session and then sweeps only the
-leftovers whose cwd is inside this repo. For anything it misses, kill by PID, never by
+leftovers whose cwd is inside this repo. `pnpm dev:down` does the same and also stops the
+docker dependencies, for when you're done for the day. For anything it misses, kill by PID, never by
 name (other projects run the same binaries):
 
 ```bash
