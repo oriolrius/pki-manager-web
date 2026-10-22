@@ -126,3 +126,8 @@ certificates. Backend migrations 0011/0012 add this binding and lease state;
 back up the database before upgrading and restore the full pre-upgrade backup
 with the corresponding old images to roll back. Do not drop binding rows to
 retry provisioning without reconciling KMS objects first.
+
+Same-key RA renewal requires fresh certificate serials: use tested Cosmian KMS
+5.28.0. KMS 5.24 derives serials from the key; the backend rejects this collision
+and retains the previous binding. See the gateway deployment runbook before a
+KMS upgrade.

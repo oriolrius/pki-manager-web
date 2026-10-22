@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID, generateKeyPairSync } from 'node:crypto';
 import forge from 'node-forge';
 import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
+import { db, sqliteDb } from '../../db/client.js';
 import { auditLog, certificateAuthorities, certificates, integrationRAs, integrations } from '../../db/schema.js';
 import { externalRoutes } from './external.routes.js';
 import { IntegrationService } from '../../services/integration.service.js';
@@ -138,4 +138,24 @@ describe('backend-owned RA boundary', () => {
     signCertificate.mockClear(); expect((await request(first.token, 'renew')).statusCode).toBe(200);
     expect(signCertificate).not.toHaveBeenCalled();
   });
+  it('fails closed before KMS when the RA audit intent cannot persist', async () => {
+    sqliteDb.exec("CREATE TRIGGER reject_ra_audit BEFORE INSERT ON audit_log WHEN NEW.operation = 'scep.ra.sign' BEGIN SELECT RAISE(FAIL, 'simulated audit failure'); END");
+    try {
+      expect((await request(first.token, 'sign', { digest: Buffer.alloc(32).toString('base64') })).statusCode).toBe(500);
+      expect(operation).not.toHaveBeenCalled();
+    } finally { sqliteDb.exec('DROP TRIGGER reject_ra_audit'); }
+  });
+  it('rejects KMS serial reuse without publishing a replacement binding', async () => {
+    const [binding] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, first.id));
+    await db.update(certificates).set({ notBefore: new Date(Date.now() - 90 * 86400e3), notAfter: new Date(Date.now() - 1000) }).where(eq(certificates.id, binding.certificateId!));
+    const collision = forge.pki.certificateFromPem(certificate(binding.publicKeyId!, new Date(Date.now() - 1000), new Date(Date.now() + 100 * 86400e3)));
+    collision.serialNumber = forge.pki.certificateFromPem(binding.certificatePem!).serialNumber;
+    collision.sign(kp.privateKey, forge.md.sha256.create());
+    signCertificate.mockImplementationOnce(async () => { const id = randomUUID(); certs.set(id, forge.pki.certificateToPem(collision)); return { certificateId: id }; });
+    const response = await request(first.token, 'renew');
+    expect(response.statusCode, response.body).toBe(409); expect(response.json().error.message).toContain('serial');
+    const [unchanged] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, first.id));
+    expect(unchanged.certificateId).toBe(binding.certificateId); expect(unchanged.lease).toBeNull();
+  });
+
 });
