@@ -107,6 +107,31 @@ describe('KMSClient.certify — requested validity', () => {
     expect(attr).toContainEqual({ tag: 'AttributeValue', type: 'Integer', value: 3650 });
   });
 
+  it.each([undefined, 'issuing-ca-id'])('encodes CN-only subjects without inventing organization/country (issuer: %s)', async (issuerCertificateId) => {
+    const cap = captureFetch();
+    await client.certify({ subjectName: 'CN=SCEP Registration Authority', issuerCertificateId, publicKeyId: 'public-key-id' }).catch(() => {});
+    const attributes = cap.bodies[0].value.find((field: any) => field.tag === 'Attributes').value;
+    const fields = attributes.find((field: any) => field.tag === 'CertificateAttributes').value;
+    expect(fields).toContainEqual({ tag: 'CertificateSubjectCn', type: 'TextString', value: 'SCEP Registration Authority' });
+    for (const tag of ['CertificateSubjectO', 'CertificateSubjectC']) {
+      expect(fields.filter((field: any) => field.tag === tag)).toEqual([{ tag, type: 'TextString', value: '' }]);
+    }
+    if (!issuerCertificateId) {
+      for (const tag of ['CertificateIssuerO', 'CertificateIssuerC']) {
+        expect(fields).toContainEqual({ tag, type: 'TextString', value: '' });
+      }
+    }
+  });
+
+  it('preserves supplied organization and country without duplicate fallback fields', async () => {
+    const cap = captureFetch();
+    await client.certify({ subjectName: 'CN=Device,O=Existing Org,C=DE', publicKeyId: 'public-key-id' }).catch(() => {});
+    const attributes = cap.bodies[0].value.find((field: any) => field.tag === 'Attributes').value;
+    const fields = attributes.find((field: any) => field.tag === 'CertificateAttributes').value;
+    expect(fields.filter((field: any) => field.tag === 'CertificateSubjectO')).toEqual([{ tag: 'CertificateSubjectO', type: 'TextString', value: 'Existing Org' }]);
+    expect(fields.filter((field: any) => field.tag === 'CertificateSubjectC')).toEqual([{ tag: 'CertificateSubjectC', type: 'TextString', value: 'DE' }]);
+  });
+
   it('omits the validity attribute when daysValid is not provided', async () => {
     const cap = captureFetch();
     await client.certify({ subjectName: 'CN=test', keyAlgorithm: 'RSA-4096' }).catch(() => {});
