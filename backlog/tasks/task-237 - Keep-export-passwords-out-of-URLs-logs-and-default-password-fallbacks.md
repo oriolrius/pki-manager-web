@@ -4,6 +4,7 @@ title: 'Keep export passwords out of URLs, logs and default-password fallbacks'
 status: To Do
 assignee: []
 created_date: '2026-10-22 15:34'
+updated_date: '2026-10-22 15:37'
 labels:
   - backend
   - security
@@ -26,4 +27,5 @@ Follow-up from PR #14 review (2026-10-22). Export passwords for keystores/trusts
 - [ ] #3 Certificate exports from the UI do not keep the password or the exported file in the React Query cache
 - [ ] #4 API calls for P12/JKS truststore or keystore exports without a password are rejected with 400 instead of using 'changeit', across single, CA and bulk downloads
 - [ ] #5 Tests cover the new password transport, log redaction and missing-password rejection
+- [ ] #6 The CA detail page never displays or copies an export password inside a download URL (Storage & Download URLs panel and Copy Link), while direct downloads still apply the displayed password
 <!-- AC:END -->
