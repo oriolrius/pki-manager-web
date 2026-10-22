@@ -29,11 +29,16 @@ This keeps all services in the 42000-43000 range as per project requirements.
 
 ### kms.toml
 
-Main KMS configuration file. Includes:
-- Server configuration (host and port)
-- SQLite database for development
-- Logging level
-- Optional settings for authentication, TLS, and CORS (commented by default)
+Main KMS configuration file (Cosmian KMS 5.24 schema), loaded via `COSMIAN_KMS_CONF`:
+- `[http]` — host and port
+- `[db]` — SQLite database at `/cosmian-kms/sqlite-data` (the mounted `./data`)
+- `[workspace]` — working directories
+- `[logging] rust_log` — log level (env vars like `RUST_LOG` are ignored in config-file mode)
+
+The KMS **silently ignores unknown keys**. An older version of this file used
+`[server]`/`[database] type/path`, so the database lived only in the container's
+writable layer and recreating the container lost every key. After changing the
+file, check that `./data/kms.db` grows when you create a key.
 
 ### .env
 
@@ -88,6 +93,23 @@ KMS data (keys, configurations, etc.) is stored in the local `./data` directory.
 - Data persists between container restarts
 - Easy inspection and backup of the database
 - Version control friendly (database is gitignored)
+
+### Rescuing a database left inside the container
+
+If the container was created with the old config, the database is at
+`/var/lib/cosmian-kms/cosmian-kms/sqlite-data/` inside the container. Copy it out
+**before** recreating the container:
+
+```bash
+docker stop pki-manager-kms        # stop, do NOT remove
+mkdir -p rescued && docker export pki-manager-kms \
+  | tar -x -C rescued --strip-components=5 var/lib/cosmian-kms/cosmian-kms/sqlite-data/
+sqlite3 rescued/kms.db 'pragma integrity_check'
+cp rescued/kms.db* ./data/         # then: docker compose up -d
+```
+
+`docker export` also works when `docker cp` fails because a bind-mount source
+no longer exists.
 
 ## Development
 
