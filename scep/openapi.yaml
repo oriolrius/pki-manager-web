@@ -1,0 +1,96 @@
+openapi: 3.1.0
+info:
+  title: PKI Manager SCEP Gateway
+  version: 1.0.0
+  description: |
+    Separate device-enrollment gateway, not the backend REST API.
+    Configure the server URL to your gateway origin. Devices use the encrypted
+    PKCS#10 challengePassword or managed Intune/MDM validation, not an HTTP
+    bearer token. Never send the backend integration token to devices.
+    HTTP 200 PKIOperation responses may carry a SCEP CertRep failure;
+    inspect the signed message's pkiStatus. Messages are limited to 1 MiB.
+servers:
+  - url: https://scep.example.com
+    description: Replace with the actual gateway origin
+security: []
+paths:
+  /scep:
+    get:
+      operationId: getScepOperation
+      summary: Discover capabilities/CA certificates, or submit legacy enrollment
+      description: |
+        GetCACaps returns POSTPKIOperation, SHA-256 and AES; managed modes also
+        advertise Renewal. GetCACert returns a DER CMS CA/RA certificate bundle.
+        Legacy PKIOperation submits a URL-encoded base64 SCEP message and is
+        subject to HTTP header limits; POST is preferred.
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [GetCACaps, GetCACert, PKIOperation]
+        - name: message
+          in: query
+          required: false
+          description: Required for GET PKIOperation; URL-encode the base64 CMS message.
+          schema:
+            type: string
+            format: byte
+      responses:
+        '200':
+          description: Response content type depends on the requested operation.
+          content:
+            text/plain:
+              schema:
+                type: string
+            application/x-x509-ca-ra-cert:
+              schema:
+                type: string
+                format: binary
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported operation or malformed message.
+        '413':
+          description: Message exceeds the gateway size limit.
+        '503':
+          description: CA/RA unavailable, expired or revoked, or concurrent-request limit reached.
+    post:
+      operationId: postScepEnrollment
+      summary: Submit a SCEP enrollment or managed renewal message
+      description: |
+        The CMS message carries the signed/encrypted PKCS#10 CSR and challenge.
+        Shared mode accepts initial PKCSReq only and rejects SANs. Managed modes
+        authorize the exact CSR, and renewal additionally requires an active,
+        service-owned signer. A signed SCEP failure response can use HTTP 200.
+      parameters:
+        - name: operation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PKIOperation]
+      requestBody:
+        required: true
+        content:
+          application/x-pki-message:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: DER CMS SCEP CertRep; decode and check pkiStatus.
+          content:
+            application/x-pki-message:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid SCEP message/operation, message exceeds 1 MiB, or enrollment service unavailable.
+        '415':
+          description: Content-Type must be application/x-pki-message.
+        '503':
+          description: CA/RA unavailable, expired or revoked, or concurrent-request limit reached.

@@ -7,6 +7,11 @@ uses an encrypted PKCS#10 `challengePassword`. Choose shared challenges for gene
 clients, native Intune validation for managed devices, or a trusted MDM validation
 webhook. See [Intune device profiles and tenant setup](docs/intune.md).
 
+API references: [gateway OpenAPI specification](openapi.yaml) and
+[integration management / backend external issuer API](../docs/api/integrations.md).
+The backend Swagger UI uses the separate **integrationToken** authorization
+scheme for external issuance. The gateway `/scep` protocol runs on its own server.
+
 ## Supported profile
 
 | Operation / feature | Support |

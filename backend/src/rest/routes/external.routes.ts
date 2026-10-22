@@ -10,7 +10,8 @@ import { logger } from '../../lib/logger.js';
 import { parseCertificate } from '../../crypto/x509.js';
 import { integrationAuthPreHandler } from '../middleware/integration-auth.js';
 import { randomUUID } from 'crypto';
-import { okObjectResponse, errorResponse } from '../schemas/ssh-openapi-schemas.js';
+import { externalHealthResponse, externalBundleResponse, externalStatusResponse, externalSignResponse, externalRevokeResponse } from '../schemas/external-openapi-schemas.js';
+import { errorResponse } from '../schemas/ssh-openapi-schemas.js';
 
 // --- OpenAPI schemas (TASK-207) --------------------------------------------------------
 // The external issuer API is consumed by generated clients; document its request bodies and
@@ -30,17 +31,17 @@ const signBodySchema = {
     csrPem: { type: 'string', description: 'PEM-encoded PKCS#10 CSR to sign' },
     requestUid: {
       type: 'string',
-      description: 'Idempotency key; repeat calls for the same uid return the cached certificate',
+      description: 'Idempotency key scoped to this integration and CA. A retry returns the active cached certificate; revoked or expired cached certificates return 409.',
     },
     durationDays: {
       type: 'number',
       description: 'Requested validity in days (clamped server-side to 1..825; default 90)',
     },
-    certificateType: { type: 'string', enum: ['server', 'client', 'dual'] },
+    certificateType: { type: 'string', enum: ['server', 'client', 'dual'], description: 'Metadata hint only. Key usage and extended key usage are taken from the signed CSR.' },
     k8sNamespace: { type: 'string' },
     k8sResource: { type: 'string' },
-    sanDns: { type: 'array', items: { type: 'string' } },
-    sanIp: { type: 'array', items: { type: 'string' } },
+    sanDns: { type: 'array', items: { type: 'string' }, deprecated: true, description: 'Ignored compatibility field. SAN identities must be included in the signed CSR.' },
+    sanIp: { type: 'array', items: { type: 'string' }, deprecated: true, description: 'Ignored compatibility field. IP identities must be included in the signed CSR.' },
   },
 } as const;
 
@@ -129,7 +130,7 @@ function parseCsrPem(csrPem: string): ParsedCsr {
 }
 
 /**
- * External issuer API consumed by the cert-manager external issuer controller.
+ * External issuer API consumed by Kubernetes cert-manager, SCEP gateways and other integrations.
  * All routes require Bearer token auth scoped to a single CA via integrations.ca_id.
  *
  * Routes:
@@ -162,8 +163,9 @@ export async function externalRoutes(fastify: FastifyInstance) {
   fastify.get('/health', {
     schema: {
       tags: externalTag,
+      security: [{ integrationToken: [] }],
       summary: 'Liveness probe returning the authenticated integration identity',
-      response: { 200: okObjectResponse },
+      response: { 200: externalHealthResponse },
     },
   }, async (req) => {
     return {
@@ -179,11 +181,12 @@ export async function externalRoutes(fastify: FastifyInstance) {
   fastify.get('/ca-bundle', {
     schema: {
       tags: externalTag,
+      security: [{ integrationToken: [] }],
       summary: "PEM chain of the integration's bound CA",
       // 404 is declared because the handler emits an explicit `{ error: { code, message } }`
       // 404 (its shape matches errorResponse); this GET has no body schema, so there is no
       // Fastify default-shape validation error to corrupt.
-      response: { 200: okObjectResponse, 404: errorResponse, 409: errorResponse },
+      response: { 200: externalBundleResponse, 404: errorResponse, 409: errorResponse },
     },
   }, async (req, reply) => {
     const caId = req.integration!.caId;
@@ -215,9 +218,10 @@ export async function externalRoutes(fastify: FastifyInstance) {
   fastify.get<{ Params: { serial: string } }>('/certificate-status/:serial', {
     schema: {
       tags: externalTag,
+      security: [{ integrationToken: [] }],
       summary: 'Check whether a service-owned certificate is active for SCEP renewal',
       params: { type: 'object', required: ['serial'], properties: { serial: { type: 'string', pattern: '^[a-fA-F0-9]{1,128}$' } } },
-      response: { 200: okObjectResponse },
+      response: { 200: externalStatusResponse },
     },
   }, async (req) => {
     // X.509 serial numbers are integers: tolerate case and DER sign-padding zeros.
@@ -246,9 +250,10 @@ export async function externalRoutes(fastify: FastifyInstance) {
   }>('/sign', {
     schema: {
       tags: externalTag,
+      security: [{ integrationToken: [] }],
       summary: 'Sign a CSR with the integration CA (idempotent on requestUid)',
       body: signBodySchema,
-      response: { 200: okObjectResponse },
+      response: { 200: externalSignResponse },
     },
   }, async (req, reply) => {
     const body = req.body;
@@ -458,9 +463,10 @@ export async function externalRoutes(fastify: FastifyInstance) {
   }>('/revoke', {
     schema: {
       tags: externalTag,
+      security: [{ integrationToken: [] }],
       summary: 'Revoke a certificate the integration issued (idempotent)',
       body: revokeBodySchema,
-      response: { 200: okObjectResponse },
+      response: { 200: externalRevokeResponse },
     },
   }, async (req, reply) => {
     const body = req.body;
@@ -485,7 +491,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
     // Authorisation: integration may only revoke certs it issued
     if (cert[0].integrationId !== req.integration!.id || cert[0].caId !== req.integration!.caId) {
       return reply.code(403).send({
-        error: { code: 'FORBIDDEN', message: 'Cluster cannot revoke certificate it did not issue' },
+        error: { code: 'FORBIDDEN', message: 'Integration cannot revoke a certificate it did not issue' },
       });
     }
 
