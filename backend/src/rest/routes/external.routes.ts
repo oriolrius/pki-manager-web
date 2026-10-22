@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates, auditLog } from '../../db/schema.js';
@@ -8,9 +8,10 @@ import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { logger } from '../../lib/logger.js';
 import { parseCertificate } from '../../crypto/x509.js';
-import { clusterAuthPreHandler } from '../middleware/cluster-auth.js';
+import { integrationAuthPreHandler } from '../middleware/integration-auth.js';
 import { randomUUID } from 'crypto';
-import { okObjectResponse, errorResponse } from '../schemas/ssh-openapi-schemas.js';
+import { externalHealthResponse, externalBundleResponse, externalStatusResponse, externalSignResponse, externalRevokeResponse } from '../schemas/external-openapi-schemas.js';
+import { errorResponse } from '../schemas/ssh-openapi-schemas.js';
 
 // --- OpenAPI schemas (TASK-207) --------------------------------------------------------
 // The external issuer API is consumed by generated clients; document its request bodies and
@@ -30,17 +31,17 @@ const signBodySchema = {
     csrPem: { type: 'string', description: 'PEM-encoded PKCS#10 CSR to sign' },
     requestUid: {
       type: 'string',
-      description: 'Idempotency key; repeat calls for the same uid return the cached certificate',
+      description: 'Idempotency key scoped to this integration and CA. A retry returns the active cached certificate; revoked or expired cached certificates return 409.',
     },
     durationDays: {
       type: 'number',
       description: 'Requested validity in days (clamped server-side to 1..825; default 90)',
     },
-    certificateType: { type: 'string', enum: ['server', 'client', 'dual'] },
+    certificateType: { type: 'string', enum: ['server', 'client', 'dual'], description: 'Metadata hint only. Key usage and extended key usage are taken from the signed CSR.' },
     k8sNamespace: { type: 'string' },
     k8sResource: { type: 'string' },
-    sanDns: { type: 'array', items: { type: 'string' } },
-    sanIp: { type: 'array', items: { type: 'string' } },
+    sanDns: { type: 'array', items: { type: 'string' }, deprecated: true, description: 'Ignored compatibility field. SAN identities must be included in the signed CSR.' },
+    sanIp: { type: 'array', items: { type: 'string' }, deprecated: true, description: 'Ignored compatibility field. IP identities must be included in the signed CSR.' },
   },
 } as const;
 
@@ -55,9 +56,9 @@ const revokeBodySchema = {
 } as const;
 
 // Leaf extensions we add ourselves. SAN/keyUsage/extKeyUsage come from the CSR (Cosmian
-// copies the CSR's requested extensions verbatim), so we must NOT re-supply them here or
-// the issued certificate would carry duplicate, invalid extensions. CSRs never carry
-// basicConstraints, so adding CA:FALSE is safe and gives a proper end-entity cert.
+// copies the CSR's requested extensions verbatim), so we must NOT re-supply them here.
+// Add CA:FALSE only when absent from the CSR; explicit CA:FALSE is preserved.
+// CA:TRUE and path-length requests are rejected before issuance.
 const LEAF_X509_EXTENSIONS = `[ v3_ca ]
 basicConstraints=critical,CA:FALSE
 `;
@@ -67,14 +68,16 @@ basicConstraints=critical,CA:FALSE
  * (Cosmian copies them), so we add only basicConstraints CA:FALSE plus, when configured,
  * the issuing CA's CRL Distribution Point. CSRs never request a CDP, so no duplication.
  */
-function buildLeafExtensions(caId: string): string {
+function buildLeafExtensions(caId: string, hasBasicConstraints = false): string {
   const cdp = crlDistributionUrl(caId);
-  return cdp ? `${LEAF_X509_EXTENSIONS}crlDistributionPoints=URI:${cdp}\n` : LEAF_X509_EXTENSIONS;
+  const base = hasBasicConstraints ? '[ v3_ca ]\n' : LEAF_X509_EXTENSIONS;
+  return cdp ? `${base}crlDistributionPoints=URI:${cdp}\n` : base;
 }
 
 type ExternalCertType = 'server' | 'client' | 'dual';
 
 interface ParsedCsr {
+  hasBasicConstraints: boolean;
   subjectDn: string;
   cn: string;
   sanDns: string[];
@@ -105,10 +108,15 @@ function parseCsrPem(csrPem: string): ParsedCsr {
 
   // node-forge: extensionRequest attribute holds requested extensions
   const extReq = csr.getAttribute({ name: 'extensionRequest' }) as
-    | { extensions?: Array<{ name?: string; altNames?: Array<{ type: number; value?: string; ip?: string }> }> }
+    | { extensions?: Array<{ name?: string; cA?: boolean; pathLenConstraint?: number; altNames?: Array<{ type: number; value?: string; ip?: string }> }> }
     | undefined;
   const exts = extReq?.extensions ?? [];
+  let hasBasicConstraints = false;
   for (const ext of exts) {
+    if (ext.name === 'basicConstraints') {
+      if (ext.cA || ext.pathLenConstraint !== undefined) throw new Error('External enrollment cannot request a CA certificate');
+      hasBasicConstraints = true;
+    }
     if (ext.name === 'subjectAltName' && Array.isArray(ext.altNames)) {
       for (const an of ext.altNames) {
         // type 2=DNS, 7=IP, 1=email per RFC 5280
@@ -118,28 +126,28 @@ function parseCsrPem(csrPem: string): ParsedCsr {
       }
     }
   }
-  return { subjectDn, cn, sanDns, sanIp, sanEmail };
+  return { hasBasicConstraints, subjectDn, cn, sanDns, sanIp, sanEmail };
 }
 
 /**
- * External issuer API consumed by the cert-manager external issuer controller.
- * All routes require Bearer token auth scoped to a single CA via clusters.ca_id.
+ * External issuer API consumed by Kubernetes cert-manager, SCEP gateways and other integrations.
+ * All routes require Bearer token auth scoped to a single CA via integrations.ca_id.
  *
  * Routes:
- *   GET  /api/v1/external/health            - liveness check + cluster identity
- *   GET  /api/v1/external/ca-bundle         - PEM chain of cluster's CA
+ *   GET  /api/v1/external/health            - liveness check + integration identity
+ *   GET  /api/v1/external/ca-bundle         - PEM chain of integration's CA
  *   POST /api/v1/external/sign              - sign CSR (returns cert + chain)
  *   POST /api/v1/external/revoke            - revoke certificate by serial
  *
  * Idempotency: sign accepts request_uid; repeat calls return cached cert.
  *
- * Signing: the CSR is signed by the cluster CA via the KMS Certify operation
+ * Signing: the CSR is signed by the integration CA via the KMS Certify operation
  * (kms.signCertificate with preserveCsrKey). The CA private key never leaves the KMS,
  * and Cosmian signs the CSR's own public key + copies its requested extensions
  * (SAN/keyUsage/EKU). See TASK-109.22.
  */
 export async function externalRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', clusterAuthPreHandler);
+  fastify.addHook('preHandler', integrationAuthPreHandler);
 
   // Body-schema validation failures must use the API's standard
   // {error:{code,message}} shape (Fastify's default validation error would
@@ -155,29 +163,33 @@ export async function externalRoutes(fastify: FastifyInstance) {
   fastify.get('/health', {
     schema: {
       tags: externalTag,
-      summary: 'Liveness probe returning the authenticated cluster identity',
-      response: { 200: okObjectResponse },
+      security: [{ integrationToken: [] }],
+      summary: 'Liveness probe returning the authenticated integration identity',
+      response: { 200: externalHealthResponse },
     },
   }, async (req) => {
     return {
       status: 'ok',
-      cluster: { id: req.cluster!.id, name: req.cluster!.name, caId: req.cluster!.caId },
+      integration: req.integration!,
+      // Compatibility for existing cert-manager probes.
+      cluster: { id: req.integration!.id, name: req.integration!.name, caId: req.integration!.caId },
       timestamp: new Date().toISOString(),
     };
   });
 
-  // GET /ca-bundle - PEM chain for cluster's CA
+  // GET /ca-bundle - PEM chain for integration's CA
   fastify.get('/ca-bundle', {
     schema: {
       tags: externalTag,
-      summary: "PEM chain of the cluster's bound CA",
+      security: [{ integrationToken: [] }],
+      summary: "PEM chain of the integration's bound CA",
       // 404 is declared because the handler emits an explicit `{ error: { code, message } }`
       // 404 (its shape matches errorResponse); this GET has no body schema, so there is no
       // Fastify default-shape validation error to corrupt.
-      response: { 200: okObjectResponse, 404: errorResponse },
+      response: { 200: externalBundleResponse, 404: errorResponse, 409: errorResponse },
     },
   }, async (req, reply) => {
-    const caId = req.cluster!.caId;
+    const caId = req.integration!.caId;
     const ca = await db
       .select()
       .from(certificateAuthorities)
@@ -187,6 +199,11 @@ export async function externalRoutes(fastify: FastifyInstance) {
     if (!ca || ca.length === 0) {
       return reply.code(404).send({ error: { code: 'CA_NOT_FOUND', message: 'CA not found' } });
     }
+    // Enrollment gateways must stop using a revoked or expired issuing CA, even
+    // when retrying a previously signed CSR through the idempotency path.
+    if (ca[0].status !== 'active' || ca[0].notBefore > new Date() || ca[0].notAfter <= new Date()) {
+      return reply.code(409).send({ error: { code: 'CA_NOT_ACTIVE', message: 'CA is not currently valid and active' } });
+    }
     const kms = getKMSService();
     const pem = await kms.getCertificate(ca[0].kmsCertificateId, ca[0].id);
     return {
@@ -195,6 +212,27 @@ export async function externalRoutes(fastify: FastifyInstance) {
       certificatePem: pem,
       chainPem: pem,
     };
+  });
+
+  // SCEP renewals must not authenticate with revoked or unrelated certificates.
+  fastify.get<{ Params: { serial: string } }>('/certificate-status/:serial', {
+    schema: {
+      tags: externalTag,
+      security: [{ integrationToken: [] }],
+      summary: 'Check whether a service-owned certificate is active for SCEP renewal',
+      params: { type: 'object', required: ['serial'], properties: { serial: { type: 'string', pattern: '^[a-fA-F0-9]{1,128}$' } } },
+      response: { 200: externalStatusResponse },
+    },
+  }, async (req) => {
+    // X.509 serial numbers are integers: tolerate case and DER sign-padding zeros.
+    const serial = req.params.serial.toLowerCase().replace(/^0+/, '') || '0';
+    const rows = await db.select().from(certificates).where(and(
+      eq(certificates.caId, req.integration!.caId),
+      eq(certificates.integrationId, req.integration!.id),
+      sql`ltrim(lower(${certificates.serialNumber}), '0') = ${serial === '0' ? '' : serial}`,
+    )).limit(1);
+    const cert = rows[0];
+    return { active: !!cert && cert.status === 'active' && cert.notBefore <= new Date() && cert.notAfter > new Date() };
   });
 
   // POST /sign
@@ -212,9 +250,10 @@ export async function externalRoutes(fastify: FastifyInstance) {
   }>('/sign', {
     schema: {
       tags: externalTag,
-      summary: 'Sign a CSR with the cluster CA (idempotent on requestUid)',
+      security: [{ integrationToken: [] }],
+      summary: 'Sign a CSR with the integration CA (idempotent on requestUid)',
       body: signBodySchema,
-      response: { 200: okObjectResponse },
+      response: { 200: externalSignResponse },
     },
   }, async (req, reply) => {
     const body = req.body;
@@ -224,14 +263,17 @@ export async function externalRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Idempotency: return existing cert for same requestUid scoped to cluster
+    // Idempotency: return existing cert for same requestUid scoped to integration
     const existing = await db
       .select()
       .from(certificates)
-      .where(eq(certificates.requestUid, body.requestUid))
+      .where(and(eq(certificates.requestUid, body.requestUid), eq(certificates.integrationId, req.integration!.id), eq(certificates.caId, req.integration!.caId)))
       .limit(1);
 
-    if (existing.length > 0 && existing[0].k8sClusterId === req.cluster!.id) {
+    if (existing.length > 0 && existing[0].integrationId === req.integration!.id) {
+      if (existing[0].status !== 'active' || existing[0].notAfter <= new Date()) {
+        return reply.code(409).send({ error: { code: 'CERTIFICATE_NOT_ACTIVE', message: 'The existing certificate is revoked or expired; submit a new CSR' } });
+      }
       const kms = getKMSService();
       const certPem = (existing[0] as any).certificatePem
         ? (existing[0] as any).certificatePem
@@ -270,15 +312,15 @@ export async function externalRoutes(fastify: FastifyInstance) {
         error: { code: 'INVALID_CSR', message: 'CSR subject must include CN' },
       });
     }
-    // Load CA bound to this cluster
+    // Load CA bound to this integration
     const caRows = await db
       .select()
       .from(certificateAuthorities)
-      .where(eq(certificateAuthorities.id, req.cluster!.caId))
+      .where(eq(certificateAuthorities.id, req.integration!.caId))
       .limit(1);
     if (!caRows.length) {
       return reply.code(404).send({
-        error: { code: 'CA_NOT_FOUND', message: 'CA bound to cluster not found' },
+        error: { code: 'CA_NOT_FOUND', message: 'CA bound to integration not found' },
       });
     }
     const ca = caRows[0];
@@ -313,11 +355,11 @@ export async function externalRoutes(fastify: FastifyInstance) {
     let kmsCertificateId: string;
     try {
       logger.info(
-        { certId, clusterId: req.cluster!.id, cn: parsed.cn, caId: ca.id },
-        'Signing CSR via KMS for k8s cluster'
+        { certId, integrationId: req.integration!.id, cn: parsed.cn, caId: ca.id },
+        'Signing CSR via KMS for integration'
       );
 
-      // Sign the CSR with the cluster CA via the KMS. preserveCsrKey keeps the CSR's own
+      // Sign the CSR with the integration CA via the KMS. preserveCsrKey keeps the CSR's own
       // public key; the CA private key stays in the KMS (issuer resolved from the CA's
       // KMS certificate). Cosmian copies the CSR's SAN/keyUsage/EKU; we only add CA:FALSE.
       const certInfo = await kms.signCertificate({
@@ -325,9 +367,9 @@ export async function externalRoutes(fastify: FastifyInstance) {
         issuerCertificateId: ca.kmsCertificateId,
         daysValid: durationDays,
         preserveCsrKey: true,
-        x509Extensions: buildLeafExtensions(ca.id),
+        x509Extensions: buildLeafExtensions(ca.id, parsed.hasBasicConstraints),
         entityId: certId,
-        tags: ['k8s', `cluster:${req.cluster!.id}`, `ca:${ca.id}`],
+        tags: [req.integration!.kind, `integration:${req.integration!.id}`, `ca:${ca.id}`],
       });
       kmsCertificateId = certInfo.certificateId;
       certificatePem = await kms.getCertificate(kmsCertificateId, ca.id);
@@ -348,10 +390,11 @@ export async function externalRoutes(fastify: FastifyInstance) {
         sanDns: sanDns.length ? JSON.stringify(sanDns) : null,
         sanIp: sanIp.length ? JSON.stringify(sanIp) : null,
         sanEmail: sanEmail.length ? JSON.stringify(sanEmail) : null,
-        sourceType: 'k8s',
-        k8sClusterId: req.cluster!.id,
-        k8sNamespace: body.k8sNamespace ?? null,
-        k8sResource: body.k8sResource ?? null,
+        sourceType: req.integration!.kind === 'kubernetes' ? 'k8s' : req.integration!.kind === 'scep' ? 'scep' : 'integration',
+        integrationId: req.integration!.id,
+        k8sClusterId: req.integration!.kind === 'kubernetes' ? req.integration!.id : null,
+        k8sNamespace: req.integration!.kind === 'kubernetes' ? body.k8sNamespace ?? null : null,
+        k8sResource: req.integration!.kind === 'kubernetes' ? body.k8sResource ?? null : null,
         requestUid: body.requestUid,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -364,7 +407,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         entityId: certId,
         status: 'success',
         details: JSON.stringify({
-          clusterId: req.cluster!.id,
+          integrationId: req.integration!.id,
           caId: ca.id,
           requestUid: body.requestUid,
           subjectDn,
@@ -389,14 +432,14 @@ export async function externalRoutes(fastify: FastifyInstance) {
       };
     } catch (err) {
       logger.error(
-        { err, clusterId: req.cluster!.id, requestUid: body.requestUid },
+        { err, integrationId: req.integration!.id, requestUid: body.requestUid },
         'External /sign failed'
       );
       await db.insert(auditLog).values({
         id: randomUUID(),
         operation: 'external.sign',
-        entityType: 'cluster',
-        entityId: req.cluster!.id,
+        entityType: 'integration',
+        entityId: req.integration!.id,
         status: 'failure',
         details: JSON.stringify({
           requestUid: body.requestUid,
@@ -420,9 +463,10 @@ export async function externalRoutes(fastify: FastifyInstance) {
   }>('/revoke', {
     schema: {
       tags: externalTag,
-      summary: 'Revoke a certificate the cluster issued (idempotent)',
+      security: [{ integrationToken: [] }],
+      summary: 'Revoke a certificate the integration issued (idempotent)',
       body: revokeBodySchema,
-      response: { 200: okObjectResponse },
+      response: { 200: externalRevokeResponse },
     },
   }, async (req, reply) => {
     const body = req.body;
@@ -435,7 +479,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
     const cert = await db
       .select()
       .from(certificates)
-      .where(eq(certificates.serialNumber, body.serialNumber))
+      .where(sql`ltrim(lower(${certificates.serialNumber}), '0') = ${body.serialNumber.toLowerCase().replace(/^0+/, '')}`)
       .limit(1);
 
     if (!cert.length) {
@@ -444,14 +488,16 @@ export async function externalRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Authorisation: cluster may only revoke certs it issued
-    if (cert[0].k8sClusterId !== req.cluster!.id) {
+    // Authorisation: integration may only revoke certs it issued
+    if (cert[0].integrationId !== req.integration!.id || cert[0].caId !== req.integration!.caId) {
       return reply.code(403).send({
-        error: { code: 'FORBIDDEN', message: 'Cluster cannot revoke certificate it did not issue' },
+        error: { code: 'FORBIDDEN', message: 'Integration cannot revoke a certificate it did not issue' },
       });
     }
 
     if (cert[0].status === 'revoked') {
+      // Retry CRL publication too if the previous revoke persisted but publication failed.
+      await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, cert[0].caId);
       return {
         idempotent: true,
         id: cert[0].id,
@@ -479,7 +525,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
       entityId: cert[0].id,
       status: 'success',
       details: JSON.stringify({
-        clusterId: req.cluster!.id,
+        integrationId: req.integration!.id,
         serialNumber: body.serialNumber,
         reason: body.reason ?? 'unspecified',
       }),

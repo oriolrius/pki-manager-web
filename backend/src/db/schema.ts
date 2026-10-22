@@ -74,10 +74,12 @@ export const certificates = sqliteTable(
     notBefore: integer('not_before', { mode: 'timestamp' }).notNull(),
     notAfter: integer('not_after', { mode: 'timestamp' }).notNull(),
 
-    // Source tracking (manual = UI/tRPC, k8s = via external issuer controller)
-    sourceType: text('source_type', { enum: ['manual', 'k8s'] })
+    // Provenance: manual, Kubernetes, SCEP, or another service integration.
+    sourceType: text('source_type', { enum: ['manual', 'k8s', 'scep', 'integration'] })
       .notNull()
       .default('manual'),
+    integrationId: text('integration_id'),
+    // Deprecated compatibility field for existing Kubernetes API clients.
     k8sClusterId: text('k8s_cluster_id'),
     k8sNamespace: text('k8s_namespace'),
     k8sResource: text('k8s_resource'),
@@ -116,14 +118,15 @@ export const certificates = sqliteTable(
     typeIdx: index('idx_certificates_type').on(table.certificateType),
     kmsCertIdx: index('idx_cert_kms_cert').on(table.kmsCertificateId),
     sourceIdx: index('idx_certificates_source').on(table.sourceType),
+    integrationIdx: index('idx_certificates_integration').on(table.integrationId),
     k8sClusterIdx: index('idx_certificates_k8s_cluster').on(table.k8sClusterId),
     requestUidIdx: index('idx_certificates_request_uid').on(table.requestUid),
   })
 );
 
-// K8s clusters registered to consume external issuer API
-export const clusters = sqliteTable(
-  'clusters',
+// CA-bound service identities for Kubernetes, SCEP, and other integrations.
+export const integrations = sqliteTable(
+  'integrations',
   {
     id: text('id').primaryKey(),
     name: text('name').notNull(),
@@ -131,9 +134,10 @@ export const clusters = sqliteTable(
     caId: text('ca_id')
       .notNull()
       .references(() => certificateAuthorities.id, { onDelete: 'restrict' }),
-    // argon2 hash of bearer token. Token shown once on creation.
+    kind: text('kind', { enum: ['kubernetes', 'scep', 'generic'] }).notNull().default('generic'),
+    // SHA-256 hash of the high-entropy bearer token. Shown once at creation.
     tokenHash: text('token_hash').notNull(),
-    // first 8 chars of plaintext token, for UI display (token_id_xxxx...)
+    // First 12 characters of the token for display and candidate lookup.
     tokenPrefix: text('token_prefix').notNull(),
     createdBy: text('created_by'),
     lastSeen: integer('last_seen', { mode: 'timestamp' }),
@@ -146,10 +150,10 @@ export const clusters = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => ({
-    nameIdx: index('idx_clusters_name').on(table.name),
-    caIdIdx: index('idx_clusters_ca_id').on(table.caId),
-    prefixIdx: index('idx_clusters_token_prefix').on(table.tokenPrefix),
-    revokedIdx: index('idx_clusters_revoked').on(table.revokedAt),
+    nameIdx: index('idx_integrations_name').on(table.name),
+    caIdIdx: index('idx_integrations_ca_id').on(table.caId),
+    prefixIdx: index('idx_integrations_token_prefix').on(table.tokenPrefix),
+    revokedIdx: index('idx_integrations_revoked').on(table.revokedAt),
   })
 );
 
@@ -618,8 +622,12 @@ export type NewCrl = typeof crls.$inferInsert;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
 
-export type Cluster = typeof clusters.$inferSelect;
-export type NewCluster = typeof clusters.$inferInsert;
+export type Integration = typeof integrations.$inferSelect;
+/** @deprecated Use Integration. */
+export type Cluster = Integration;
+export type NewIntegration = typeof integrations.$inferInsert;
+/** @deprecated Use NewIntegration. */
+export type NewCluster = NewIntegration;
 
 // --- SSH Certificate Manager types ---
 export type Zone = typeof zones.$inferSelect;

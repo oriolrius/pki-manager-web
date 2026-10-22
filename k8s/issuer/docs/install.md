@@ -5,13 +5,16 @@
 - Kubernetes 1.30+ (tested on 1.31, target 1.35)
 - cert-manager 1.16+ installed in the cluster
 - Network reachability from cluster to PKI Manager API
-- A registered cluster in PKI Manager UI (yields a one-time token)
+- A Kubernetes integration in PKI Manager UI (yields a one-time service token)
 
-## 1. Register cluster in PKI Manager
+## 1. Create a Kubernetes integration in PKI Manager
 
-1. Open PKI Manager UI → **Clusters** page
-2. Click **Register Cluster**, select the CA, give it a name
-3. Copy the displayed token. **It is shown once.**
+1. Open PKI Manager UI → **Operations → Integrations**.
+2. Click **Add Integration**, explicitly select **Kubernetes**, choose the issuing CA, and give it a name.
+3. Copy the displayed **Service Token**. **It is shown once.** Use a separate integration for each controller/CA.
+
+The legacy `cluster.register` API still creates Kubernetes integrations; generic
+API clients must pass `kind: "kubernetes"` to `integration.register`.
 
 ## 2. Install controller via Helm
 
