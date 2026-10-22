@@ -752,6 +752,68 @@ services:
           memory: 512M
 ```
 
+### Optional SCEP gateway (separate deployment)
+
+The [SCEP gateway](scep/README.md) is a separate device-facing service. Deploy
+the [integration foundation](https://github.com/oriolrius/pki-manager-web/pull/18)
+first; the gateway needs its integration token and external enrollment-state
+endpoints. It adds no second backend. Use `scep/compose.yml` for an existing
+installation or the `docker/docker-compose.scep.yml` overlay for the full stack.
+This PR remains a draft while the review's backend-only RA operations and other
+gateway security changes are outstanding; its current gateway still reaches KMS.
+
+### KMS 5.12 → 5.24: backup before recreating the container
+
+**Do not pull/recreate the KMS before locating and backing up its database.**
+The historical `/root/cosmian-kms` mount may not contain the actual SQLite files.
+The 5.12 container may have stored them only in its writable layer. Recover them
+from that still-existing container; a new empty volume does not recover CA keys.
+
+1. Stop gateways/controllers and backend writers. Record the deployed KMS image
+   digest, container name, complete configuration, and mounts. Read the startup
+   log's actual `main_db_params` SQLite path. Depending on image/configuration,
+   paths can be `/cosmian-kms/sqlite-data`, `/var/lib/cosmian-kms/sqlite-data`, or
+   another configured path. Do not assume the historical mount was effective.
+2. Stop the KMS **without removing its container**. Make a protected, offline copy
+   of the entire database directory, including WAL/SHM and all database files:
+
+   ```sh
+   # Substitute the real container name and data path found above.
+   set -eu
+   kms_old_container=pki-kms
+   kms_old_data_path=/actual/path/from/kms-startup-log
+   kms_backup_dir=/secure/backups/kms-before-524
+   test ! -e "$kms_backup_dir"
+   mkdir -m 700 "$kms_backup_dir"
+   docker stop "$kms_old_container"
+   docker cp "$kms_old_container:$kms_old_data_path/." "$kms_backup_dir/"
+   ```
+
+   Keep the old container and original data untouched until the upgrade passes.
+   Verify the backup contains the existing DB, not an empty directory. Retain
+   the matching PKI backend database backup as well.
+3. Copy the backup into a **new staging data directory/volume**, preserving file
+   ownership and permissions. Test 5.24 against that copy first. Do not point it
+   at the only copy of your 5.12 DB. The full-stack Compose now maps `../kms/data`
+   to `/cosmian-kms/sqlite-data`, mounts `../kms/kms.toml` at
+   `/etc/cosmian/kms.toml`, and sets `COSMIAN_KMS_CONF` to that file, matching the
+   configuration-file approach of `kms/docker-compose.yml`. For another data
+   volume, adjust only the source side of the mount.
+4. `kms.toml` uses the 5.24 `[db] database_type/sqlite_path` fields with absolute
+   paths, `[http]`, and `[workspace]`. The old `[database] type/path` fields are
+   ignored by the tested image. In config-file mode the TOML takes precedence
+   over server/database environment settings; edit the TOML for another port.
+5. Confirm the new startup log names the mounted directory, verify existing CA
+   certificate retrieval and issuance, and check RA Activate/Sign/Decrypt before
+   resuming writers. Test that data survives container recreation against the
+   staging volume. Live Intune/device acceptance remains separate.
+6. If checks fail, stop the new KMS and return to the recorded old image and
+   **untouched old data**, not the staging copy. Coordinate backend rollback
+   with its pre-upgrade DB backup. Never delete the old CA keys as a repair step.
+
+Migration 0010 has its own backup/rollback runbook in the integration foundation
+PR; the integration and KMS upgrades are separate operations.
+
 ## Backup and Restore
 
 ### Backup

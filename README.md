@@ -16,6 +16,7 @@ PKI Manager provides complete control over your Public Key Infrastructure (PKI) 
 - **Multi-Type Certificates**: Server (TLS/SSL), Client Auth, S/MIME Email, Code Signing
 - **Secure Key Management**: Integration with Cosmian KMS — private keys never touch disk
 - **Kubernetes-Native**: cert-manager external issuer that auto-signs & auto-approves cluster CSRs (one cluster token = one CA)
+- **SCEP Device Enrollment**: Optional [SCEP gateway](scep/README.md) with Intune/webhook validation, managed renewal, and KMS-held RA keys. Requires the [integration foundation PR](https://github.com/oriolrius/pki-manager-web/pull/18).
 - **CRL Revocation**: CA-signed Certificate Revocation Lists served over HTTP, with CRL Distribution Points (CDP) embedded in issued certificates
 - **SSH Certificate Authority**: Dual User+Host CA with principals, KRL revocation, and per-host user access blocks pushed to a host agent
 - **Dual API**: Typed tRPC for the SPA *plus* a REST/OpenAPI surface with live Swagger docs (`/api/v1`, `/api/docs`)

@@ -1,0 +1,14 @@
+# Apply after docker-compose.scep.yml. Supply IDs and a client-secret file locally.
+services:
+  scep:
+    environment:
+      SCEP_AUTH_MODE: intune
+      SCEP_INTUNE_TENANT_ID: ${SCEP_INTUNE_TENANT_ID:?Set the Intune tenant ID}
+      SCEP_INTUNE_CLIENT_ID: ${SCEP_INTUNE_CLIENT_ID:?Set the Intune app client ID}
+      SCEP_INTUNE_CLIENT_SECRET_FILE: /run/secrets/scep_intune_client_secret
+      SCEP_INTUNE_REVOCATION_POLL_SECONDS: ${SCEP_INTUNE_REVOCATION_POLL_SECONDS:-60}
+    secrets:
+      - scep_intune_client_secret
+secrets:
+  scep_intune_client_secret:
+    file: ${SCEP_INTUNE_CLIENT_SECRET_FILE:-./scep-secrets/intune-client-secret}
