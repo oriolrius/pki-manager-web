@@ -330,7 +330,8 @@ Add these to your `.env` file:
 |----------|---------|-------------|
 | `OIDC_ISSUER` | `https://keycloak.example.com/realms/pki` | OIDC provider base URL (must match token `iss` claim) |
 | `OIDC_AUDIENCE` | `pki-web,pki-service` | Expected audience claim(s), comma-separated |
-| `OIDC_ROLES_CLAIM` | `realm_access.roles` | JWT path to roles (provider-specific) |
+| `OIDC_ROLES_SOURCE` | `token` | Role source: `token` (default) or `userinfo` |
+| `OIDC_ROLES_CLAIM` | `realm_access.roles` | Path to roles in the selected claim source; `groups` for group-based roles |
 | `OIDC_DISCOVERY_BASE_URL` | _(optional)_ | Override URL for fetching OIDC discovery (for Docker networking) |
 
 **Provider-specific issuer URLs:**
@@ -814,7 +815,89 @@ docker-compose logs > logs-$(date +%Y%m%d).txt
 For issues or questions:
 - GitHub Issues: [https://github.com/YOUR_ORG/pki-manager/issues](https://github.com/YOUR_ORG/pki-manager/issues)
 - Documentation: [README.md](README.md)
-- Project Instructions: [CLAUDE.md](CLAUDE.md)
+- Project Instructions: [AGENTS.md](AGENTS.md)
+
+### OIDC: admin groups through UserInfo
+
+Complete OIDC templates for providers exposing roles through UserInfo are included:
+
+- `backend/.env.oidc.example`: backend development settings.
+- `frontend/.env.oidc.example`: frontend development settings, including `groups` scope.
+- `docker/.env.oidc.example`: Docker Compose backend settings.
+- `docker/config.oidc.example.json`: frontend runtime configuration for Docker.
+
+For a new local development setup, run from the repository root:
+
+```bash
+cp -n backend/.env.oidc.example backend/.env
+cp -n frontend/.env.oidc.example frontend/.env
+```
+
+For a new Docker setup, run from the repository root:
+
+```bash
+cp -n docker/.env.oidc.example docker/.env
+cp -n docker/config.oidc.example.json docker/config.json
+```
+
+These commands preserve existing files. If configuration already exists, merge the
+OIDC settings into it instead. Replace `id.example.com`,
+`REPLACE_WITH_OIDC_CLIENT_ID` and `REPLACE_WITH_ACCESS_TOKEN_AUDIENCE` before
+starting. Set API and frontend URLs to your deployment's browser-accessible URLs;
+the templates use local development ports. Actual `.env` files are local
+configuration and are not committed.
+
+For Docker, `.env` configures the backend; the SPA separately reads
+`docker/config.json`, which Compose already mounts. Setting only `VITE_OIDC_*` in
+`docker/.env` does not configure frontend OIDC. After editing the files:
+
+```bash
+cd docker
+docker compose up -d --force-recreate backend frontend
+```
+
+For local development, start/restart the stack using `pnpm dev` as documented in
+`DEVELOPMENT.md` (stop an existing session with `pnpm dev:stop` first).
+
+Some OIDC providers, including Pocket ID v2.18.0, supply user groups through ID
+tokens and UserInfo rather than access-token role claims. These templates use
+`groups` as an example scope and role claim; adjust both to your provider. For
+providers embedding roles in access tokens, keep `OIDC_ROLES_SOURCE=token`. Enable the
+optional UserInfo role source on the backend:
+
+```dotenv
+OIDC_ISSUER=https://id.example.com
+OIDC_AUDIENCE=<expected-access-token-audience>
+OIDC_ROLES_SOURCE=userinfo
+OIDC_ROLES_CLAIM=groups
+```
+
+Use the actual `aud` in the access token for `OIDC_AUDIENCE`; do not assume it is
+the client ID. Configure a public OIDC client with PKCE in your provider and assign
+the user to the group named exactly `admin`. Request `openid profile email groups`
+in `VITE_OIDC_SCOPE` (development) or `oidc.scope` in the frontend runtime
+`config.json` (Docker). Set the authority and client ID to your OIDC provider values.
+Register the frontend origin plus `/callback` and `/silent-renew.html` as callback
+URLs, and the origin plus `/` as the logout redirect if supported.
+
+Recreate the backend container after changing its environment, restart the
+frontend development server after changing Vite variables, and sign in again to
+grant the groups scope. Do not put a client secret in the SPA.
+
+The backend still verifies the access token's signature, issuer and audience
+locally before sending it to the discovered UserInfo endpoint. That endpoint must
+share the discovered issuer's origin and use HTTPS (HTTP is allowed only for
+loopback development). The backend needs outbound access to discovery, JWKS and
+UserInfo. Redirects from UserInfo are refused and each lookup times out after five
+seconds. A lookup failure or subject mismatch rejects authentication; missing
+groups grant no admin rights. Token roles are not used as a fallback.
+
+UserInfo is queried on every authenticated request, without caching roles. Group
+changes therefore apply on the next request when the provider reflects them in
+UserInfo; this adds a provider request and makes authentication depend on its
+availability. The default `OIDC_ROLES_SOURCE=token` preserves existing JWT-based
+providers and M2M clients; enable UserInfo only for deployments whose tokens can
+access the provider's UserInfo endpoint. The GUI currently has no admin-role badge.
 
 ### Optional SCEP enrollment
 
@@ -842,43 +925,3 @@ The old `/clusters` page redirects to `/integrations`.
 New external certificates use `integrationId` for ownership, retries, status and
 revocation. Their source is `k8s`, `scep`, or `integration` according to the issuing
 identity. Kubernetes-only certificate fields remain as compatibility metadata.
-
-### Pocket ID (including v2.18.0): admin groups through UserInfo
-
-Pocket ID supplies user groups through ID tokens and UserInfo rather than the
-access-token role claim used by the default backend configuration. Enable the
-optional UserInfo role source on the backend:
-
-```dotenv
-OIDC_ISSUER=https://id.example.com
-OIDC_AUDIENCE=<expected-access-token-audience>
-OIDC_ROLES_SOURCE=userinfo
-OIDC_ROLES_CLAIM=groups
-```
-
-Use the actual `aud` in the access token for `OIDC_AUDIENCE`; do not assume it is
-the client ID. Configure a public OIDC client with PKCE in Pocket ID and assign
-the user to the group named exactly `admin`. Request `openid profile email groups`
-in `VITE_OIDC_SCOPE` (development) or `oidc.scope` in the frontend runtime
-`config.json` (Docker). Set the authority and client ID to your Pocket ID values.
-Register the frontend origin plus `/callback` and `/silent-renew.html` as callback
-URLs, and the origin plus `/` as the logout redirect if supported.
-
-Recreate the backend container after changing its environment, restart the
-frontend development server after changing Vite variables, and sign in again to
-grant the groups scope. Do not put a client secret in the SPA.
-
-The backend still verifies the access token's signature, issuer and audience
-locally before sending it to the discovered UserInfo endpoint. That endpoint must
-share the discovered issuer's origin and use HTTPS (HTTP is allowed only for
-loopback development). The backend needs outbound access to discovery, JWKS and
-UserInfo. Redirects from UserInfo are refused and each lookup times out after five
-seconds. A lookup failure or subject mismatch rejects authentication; missing
-groups grant no admin rights. Token roles are not used as a fallback.
-
-UserInfo is queried on every authenticated request, without caching roles. Group
-changes therefore apply on the next request when Pocket ID reflects them in
-UserInfo; this adds a provider request and makes authentication depend on its
-availability. The default `OIDC_ROLES_SOURCE=token` preserves existing JWT-based
-providers and M2M clients; enable UserInfo only for deployments whose tokens can
-access the provider's UserInfo endpoint. The GUI currently has no admin-role badge.
