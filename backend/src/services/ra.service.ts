@@ -77,7 +77,11 @@ export class RAService {
         binding = { ...binding, keyId, publicKeyId };
       }
       if (!binding.keyId || !binding.publicKeyId) throw new RAError(409, 'Incomplete RA key pair; operator recovery required');
-      for (const id of [binding.keyId, binding.publicKeyId]) await kms.performRAOperation('Activate', [text('UniqueIdentifier', id)]);
+      for (const id of [binding.keyId, binding.publicKeyId]) {
+        const state = value(await kms.performRAOperation('GetAttributes', [text('UniqueIdentifier', id)]), 'State');
+        if (state === 'PreActive') await kms.performRAOperation('Activate', [text('UniqueIdentifier', id)]);
+        else if (state !== 'Active') throw new RAError(409, 'RA key is no longer usable');
+      }
       const result = await this.issue(identity, binding, lease);
       // On failure retain the lease until expiry. Retries then reuse recorded keys;
       // an unrecorded allocation can be reconciled by its integration audit trail.

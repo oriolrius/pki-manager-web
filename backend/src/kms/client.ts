@@ -18,7 +18,7 @@ export interface KMSClientConfig {
 export class KMSClient {
   // Internal backend entry point only; the HTTP API exposes fixed RA operations
   // whose identifiers are resolved from an authenticated integration binding.
-  async performRAOperation(operation: 'CreateKeyPair' | 'Activate' | 'Get' | 'Sign' | 'Decrypt', fields: KMIPElement[]): Promise<KMIPResponse> {
+  async performRAOperation(operation: 'CreateKeyPair' | 'Activate' | 'GetAttributes' | 'Get' | 'Sign' | 'Decrypt', fields: KMIPElement[]): Promise<KMIPResponse> {
     return this.sendKMIPRequest({ tag: operation, value: fields });
   }
   private readonly url: string;

@@ -18,6 +18,7 @@ ca.setExtensions([{ name: 'basicConstraints', cA: true }, { name: 'keyUsage', ke
 ca.sign(kp.privateKey, forge.md.sha256.create());
 const caPem = forge.pki.certificateToPem(ca);
 const keys = new Map<string, string>();
+const states = new Map<string, string>();
 const certs = new Map<string, string>();
 const caId = randomUUID();
 const caKMSId = `ca-${caId}`;
@@ -50,12 +51,15 @@ describe('backend-owned RA boundary', () => {
       if (op === 'CreateKeyPair') {
         const generated = generateKeyPairSync('rsa', { modulusLength: 3072 });
         const id = `private-${randomUUID()}`; const publicId = `public-${randomUUID()}`;
+        states.set(id, 'PreActive'); states.set(publicId, 'PreActive');
         keys.set(id, generated.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
         keys.set(publicId, generated.publicKey.export({ type: 'spki', format: 'pem' }).toString());
         return field('Response', [field('PrivateKeyUniqueIdentifier', id), field('PublicKeyUniqueIdentifier', publicId)]);
       }
       const id = fields.find(f => f.tag === 'UniqueIdentifier')?.value;
       if (!keys.has(id!)) throw new Error('Unknown test KMS key');
+      if (op === 'GetAttributes') return field('Response', [field('State', states.get(id!) ?? 'Active')]);
+      if (op === 'Activate') states.set(id!, 'Active');
       if (op === 'Get') return field('Response', [field('KeyMaterial', forge.util.bytesToHex(forge.asn1.toDer(forge.pki.publicKeyToAsn1(forge.pki.publicKeyFromPem(keys.get(id!)!))).getBytes()))]);
       if (op === 'Sign') return field('Response', [field('SignatureData', Buffer.alloc(384, 7).toString('hex'))]);
       if (op === 'Decrypt') return field('Response', [field('Data', Buffer.alloc(32, 3).toString('hex'))]);
@@ -192,6 +196,14 @@ describe('backend-owned RA boundary', () => {
     expect(pending.keyId).toBeNull();
     await db.update(integrationRAs).set({ leaseUntil: new Date(Date.now() - 1000) }).where(eq(integrationRAs.integrationId, second.id));
     expect((await request(second.token, 'provision')).statusCode).toBe(200);
+  });
+
+  it('does not reactivate keys already active in KMS during recovery', async () => {
+    const [binding] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, second.id));
+    await db.update(integrationRAs).set({ certificateId: null, certificatePem: null, lease: null, leaseUntil: null }).where(eq(integrationRAs.integrationId, second.id));
+    states.set(binding.keyId!, 'Active'); states.set(binding.publicKeyId!, 'Active');
+    expect((await request(second.token, 'provision')).statusCode).toBe(200);
+    expect(operation.mock.calls.some(([op]) => op === 'Activate' || op === 'CreateKeyPair')).toBe(false);
   });
 
 });
