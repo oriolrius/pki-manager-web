@@ -1,9 +1,11 @@
 ---
 id: TASK-238
 title: Dev and e2e KMS persist keys to the mounted volume
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-22 19:43'
+updated_date: '2026-10-22 19:43'
 labels:
   - kms
   - dev
@@ -23,3 +25,12 @@ kms/kms.toml used pre-5.24 keys ([server], [database] type/path) that Cosmian KM
 - [ ] #2 The KMS startup log reports the mounted /cosmian-kms/sqlite-data as main_db_params
 - [ ] #3 kms/README.md explains how to rescue a database left inside an old container
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Rescue the dev KMS SQLite from the container layer (docker export) and back it up
+2. Switch kms/kms.toml to the 5.24 schema (same file as PR #19)
+3. Recreate the dev KMS and compare the ckms locate inventory
+4. Document the rescue procedure in kms/README.md
+<!-- SECTION:PLAN:END -->
