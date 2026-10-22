@@ -1,3 +1,13 @@
+## v3.14.0 (2026-10-22)
+
+### Feat
+
+- support OIDC admin roles through UserInfo (#10)
+
+### Fix
+
+- authenticate CA certificate and truststore downloads (#12)
+
 ## v3.13.0 (2026-10-21)
 
 ### Feat
