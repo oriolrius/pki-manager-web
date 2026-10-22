@@ -3,6 +3,7 @@ import { eq, and, sql, desc } from 'drizzle-orm';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates, auditLog, crls, integrationRAs } from '../../db/schema.js';
+import { RejectionAuditBudget } from '../rejection-audit-budget.js';
 import { raRoutes } from './ra.routes.js';
 import { getKMSService } from '../../kms/service.js';
 import { getCRLService } from '../../services/crl.service.js';
@@ -87,6 +88,8 @@ interface ParsedCsr {
   sanEmail: string[];
 }
 
+class CSRProfileError extends Error {}
+
 function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
   const csr = forge.pki.certificationRequestFromPem(csrPem);
   if (!csr.publicKey || !('n' in csr.publicKey) || csr.publicKey.n.bitLength() < 2048 || csr.publicKey.n.bitLength() > 8192) {
@@ -121,18 +124,18 @@ function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
   const allowed = new Set(['2.5.29.17', '2.5.29.15', '2.5.29.37', '2.5.29.19']);
   const seen = new Set<string>();
   for (const ext of exts) {
-    if (!allowed.has(ext.id) || seen.has(ext.id)) throw new Error('Unsupported or duplicate CSR extension');
+    if (!allowed.has(ext.id) || seen.has(ext.id)) throw new CSRProfileError('Unsupported or duplicate CSR extension');
     seen.add(ext.id);
-    if (ext.id === '2.5.29.15' && (ext.keyCertSign || ext.cRLSign)) throw new Error('CA key usage is forbidden');
+    if (ext.id === '2.5.29.15' && (ext.keyCertSign || ext.cRLSign)) throw new CSRProfileError('CA key usage is forbidden');
     if (ext.id === '2.5.29.37') {
       const sequence = forge.asn1.fromDer(ext.value);
       if (!Array.isArray(sequence.value) || sequence.value.length === 0) throw new Error('Invalid extended key usage');
       const usages = sequence.value.map((node) => forge.asn1.derToOid(node.value as string));
       clientAuth = usages.length === 1 && usages[0] === '1.3.6.1.5.5.7.3.2';
-      if (kind === 'scep' && !clientAuth) throw new Error('SCEP requires clientAuth-only EKU');
+      if (kind === 'scep' && !clientAuth) throw new CSRProfileError('SCEP requires clientAuth-only EKU');
     }
     if (ext.name === 'basicConstraints') {
-      if (ext.cA || ext.pathLenConstraint !== undefined) throw new Error('External enrollment cannot request a CA certificate');
+      if (ext.cA || ext.pathLenConstraint !== undefined) throw new CSRProfileError('External enrollment cannot request a CA certificate');
       hasBasicConstraints = true;
     }
     if (ext.name === 'subjectAltName' && Array.isArray(ext.altNames)) {
@@ -144,7 +147,7 @@ function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
       }
     }
   }
-  if (kind === 'scep' && !clientAuth) throw new Error('SCEP requires clientAuth-only EKU');
+  if (kind === 'scep' && !clientAuth) throw new CSRProfileError('SCEP requires clientAuth-only EKU');
   return { hasBasicConstraints, subjectDn, cn, sanDns, sanIp, sanEmail };
 }
 
@@ -166,14 +169,25 @@ function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
  * (SAN/keyUsage/EKU). See TASK-109.22.
  */
 export async function externalRoutes(fastify: FastifyInstance) {
-  fastify.addHook('preHandler', integrationAuthPreHandler);
+  fastify.addHook('onRequest', integrationAuthPreHandler);
+  const anonymousAuditBudget = new RejectionAuditBudget();
+  fastify.addHook('onSend', async (req, reply, payload) => {
+    if (reply.statusCode >= 400 && typeof payload === 'string') {
+      try {
+        const code: unknown = JSON.parse(payload)?.error?.code;
+        if (typeof code === 'string' && /^[A-Z_0-9]{1,64}$/.test(code)) req.externalErrorCode = code;
+      } catch { /* no response body is retained */ }
+    }
+    return payload;
+  });
   fastify.addHook('onResponse', async (req, reply) => {
-    if (reply.statusCode < 400) return;
+    if (reply.statusCode < 400 || req.externalAudited) return;
+    if (!req.integration && !anonymousAuditBudget.allow(req.ip)) return;
     try {
       await db.insert(auditLog).values({
         id: randomUUID(), operation: 'external.reject', entityType: 'integration',
         entityId: req.integration?.id ?? null, status: 'failure', ipAddress: req.ip,
-        details: JSON.stringify({ route: req.routeOptions.url, statusCode: reply.statusCode }),
+        details: JSON.stringify({ route: req.routeOptions.url, statusCode: reply.statusCode, code: req.externalErrorCode ?? 'INTERNAL_ERROR' }),
       });
     } catch {
       logger.error({ requestId: req.id, statusCode: reply.statusCode }, 'Failed to persist external rejection audit');
@@ -303,7 +317,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
     } catch (err) {
       return reply.code(400).send({
         error: {
-          code: 'INVALID_CSR',
+          code: err instanceof CSRProfileError ? 'CSR_PROFILE_REJECTED' : 'INVALID_CSR',
           message: err instanceof Error ? err.message : 'Invalid CSR',
         },
       });

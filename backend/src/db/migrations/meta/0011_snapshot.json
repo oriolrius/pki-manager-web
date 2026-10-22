@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "69fb2ec9-d832-4e7f-9ac2-4d4bf5f105c3",
+  "id": "ba0d005c-7519-47d5-a844-70b10574c17c",
   "prevId": "14c468b7-ef04-40f0-9efc-68a0d77375bb",
   "tables": {
     "audit_log": {
@@ -672,6 +672,20 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'[]'"
+        },
+        "lease": {
+          "name": "lease",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},

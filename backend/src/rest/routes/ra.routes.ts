@@ -35,6 +35,7 @@ export async function raRoutes(app: FastifyInstance) {
         await db.insert(auditLog).values({ id, operation: `scep.ra.${op}`, entityType: 'integration', entityId: identity.id,
           status: 'failure', ipAddress: req.ip, details: JSON.stringify({ phase: 'started' }),
         });
+        req.externalAudited = true;
         try {
           let result;
           if (op === 'state') result = await service.state(identity);
@@ -49,7 +50,7 @@ export async function raRoutes(app: FastifyInstance) {
           return result;
         } catch (error) {
           const code = error instanceof RAError ? error.statusCode : 502;
-          await db.update(auditLog).set({ details: JSON.stringify({ phase: 'failed', statusCode: code }) }).where(eq(auditLog.id, id));
+          await db.update(auditLog).set({ details: JSON.stringify({ phase: 'failed', statusCode: code, code: 'RA_OPERATION_FAILED' }) }).where(eq(auditLog.id, id));
           return reply.code(code).send({ error: { code: 'RA_OPERATION_FAILED', message: error instanceof RAError ? error.message : 'RA KMS operation failed' } });
         }
       },

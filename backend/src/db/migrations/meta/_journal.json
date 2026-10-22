@@ -82,15 +82,8 @@
     {
       "idx": 11,
       "version": "6",
-      "when": 1792691217941,
-      "tag": "0011_special_gauntlet",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1792691241792,
-      "tag": "0012_vengeful_leader",
+      "when": 1792703991251,
+      "tag": "0011_chubby_mephistopheles",
       "breakpoints": true
     }
   ]

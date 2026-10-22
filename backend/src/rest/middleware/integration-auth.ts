@@ -4,6 +4,8 @@ import { getIntegrationService } from '../../services/integration.service.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
+    externalAudited?: boolean;
+    externalErrorCode?: string;
     integration?: { id: string; name: string; caId: string; kind: 'kubernetes' | 'scep' | 'generic' };
   }
 }

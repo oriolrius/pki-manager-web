@@ -6,6 +6,8 @@ CREATE TABLE `integration_ras` (
 	`certificate_id` text,
 	`certificate_pem` text,
 	`previous` text DEFAULT '[]' NOT NULL,
+	`lease` text,
+	`lease_until` integer,
 	FOREIGN KEY (`integration_id`) REFERENCES `integrations`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`ca_id`) REFERENCES `certificate_authorities`(`id`) ON UPDATE no action ON DELETE restrict
 );

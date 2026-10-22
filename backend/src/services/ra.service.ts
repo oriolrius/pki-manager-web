@@ -51,27 +51,38 @@ export class RAService {
     await this.authority(identity);
     const lease = randomUUID();
     const inserted = await db.insert(integrationRAs).values({ integrationId: identity.id, caId: identity.caId, lease, leaseUntil: new Date(Date.now() + 15 * 60_000) }).onConflictDoNothing().returning();
-    if (!inserted.length) {
+    let binding: Binding;
+    if (inserted.length) binding = inserted[0];
+    else {
       const existing = await this.binding(identity);
       if (existing.certificatePem) return publicState(existing);
-      // An interrupted allocation may have created an unrecorded KMS key.
-      // Never allocate another key automatically; operators can reconcile it.
-      throw new RAError(409, 'RA provisioning is incomplete; operator recovery is required');
+      const claimed = await db.update(integrationRAs).set({ lease, leaseUntil: new Date(Date.now() + 15 * 60_000) }).where(and(
+        eq(integrationRAs.integrationId, identity.id), isNull(integrationRAs.certificatePem),
+        or(isNull(integrationRAs.lease), lt(integrationRAs.leaseUntil, new Date())),
+      )).returning();
+      if (!claimed.length) throw new RAError(409, 'RA provisioning lease is still active; retry after expiry');
+      binding = claimed[0];
     }
-    try {
+    {
       const kms = getKMSService();
-      const response = await kms.performRAOperation('CreateKeyPair', [
-        { tag: 'CommonAttributes', value: [enumeration('CryptographicAlgorithm', 'RSA'), { tag: 'CryptographicLength', type: 'Integer', value: 3072 }] },
-        { tag: 'PrivateKeyAttributes', value: [{ tag: 'CryptographicUsageMask', type: 'Integer', value: 9 }, { tag: 'Sensitive', type: 'Boolean', value: true }] },
-        { tag: 'PublicKeyAttributes', value: [{ tag: 'CryptographicUsageMask', type: 'Integer', value: 6 }] },
-      ]);
-      const keyId = value(response, 'PrivateKeyUniqueIdentifier');
-      const publicKeyId = value(response, 'PublicKeyUniqueIdentifier');
-      await db.update(integrationRAs).set({ keyId, publicKeyId }).where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease)));
-      for (const id of [keyId, publicKeyId]) await kms.performRAOperation('Activate', [text('UniqueIdentifier', id)]);
-      return await this.issue(identity, { ...inserted[0], keyId, publicKeyId }, lease);
-    } finally {
+      if (!binding.keyId && !binding.publicKeyId) {
+        const response = await kms.performRAOperation('CreateKeyPair', [
+          { tag: 'CommonAttributes', value: [enumeration('CryptographicAlgorithm', 'RSA'), { tag: 'CryptographicLength', type: 'Integer', value: 3072 }] },
+          { tag: 'PrivateKeyAttributes', value: [{ tag: 'CryptographicUsageMask', type: 'Integer', value: 9 }, { tag: 'Sensitive', type: 'Boolean', value: true }] },
+          { tag: 'PublicKeyAttributes', value: [{ tag: 'CryptographicUsageMask', type: 'Integer', value: 6 }] },
+        ]);
+        const keyId = value(response, 'PrivateKeyUniqueIdentifier');
+        const publicKeyId = value(response, 'PublicKeyUniqueIdentifier');
+        await db.update(integrationRAs).set({ keyId, publicKeyId }).where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease)));
+        binding = { ...binding, keyId, publicKeyId };
+      }
+      if (!binding.keyId || !binding.publicKeyId) throw new RAError(409, 'Incomplete RA key pair; operator recovery required');
+      for (const id of [binding.keyId, binding.publicKeyId]) await kms.performRAOperation('Activate', [text('UniqueIdentifier', id)]);
+      const result = await this.issue(identity, binding, lease);
+      // On failure retain the lease until expiry. Retries then reuse recorded keys;
+      // an unrecorded allocation can be reconciled by its integration audit trail.
       await db.update(integrationRAs).set({ lease: null, leaseUntil: null }).where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease)));
+      return result;
     }
   }
 
@@ -108,7 +119,7 @@ export class RAService {
     const cert = await kms.signCertificate({ publicKeyId: binding.publicKeyId!, issuerCertificateId: ca.kmsCertificateId,
       subjectName: 'CN=SCEP Registration Authority', issuerName: ca.subjectDn, daysValid, keyAlgorithm: 'RSA-3072', entityId: id,
       tags: ['scep-ra', `integration:${identity.id}`, `ca:${ca.id}`],
-      x509Extensions: '[v3_ca]\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n',
+      x509Extensions: '[v3_ca]\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n',
     });
     const pem = await kms.getCertificate(cert.certificateId, id);
     const parsed = new X509Certificate(pem);
@@ -117,7 +128,7 @@ export class RAService {
       || !parsed.publicKey.export({ format: 'der', type: 'spki' }).equals(expected.export({ format: 'der', type: 'spki' }))) throw new RAError(502, 'KMS returned an invalid RA certificate');
     const attributes = forge.pki.certificateFromPem(pem);
     const usage = attributes.getExtension('keyUsage') as { digitalSignature?: boolean; keyEncipherment?: boolean; keyCertSign?: boolean; cRLSign?: boolean } | null;
-    if (!usage?.digitalSignature || !usage.keyEncipherment || usage.keyCertSign || usage.cRLSign || parsed.keyUsage?.length !== 1 || parsed.keyUsage[0] !== '1.3.6.1.5.5.7.3.2') throw new RAError(502, 'Invalid RA key usage');
+    if (!usage?.digitalSignature || !usage.keyEncipherment || usage.keyCertSign || usage.cRLSign || parsed.keyUsage !== undefined) throw new RAError(502, 'Invalid RA key usage');
     const metadata = parseCertificate(pem, 'PEM');
     if (metadata.validity.notBefore > new Date() || metadata.validity.notAfter <= new Date() || metadata.validity.notAfter > ca.notAfter) throw new RAError(409, 'RA validity is outside issuing CA validity');
     if (binding.certificatePem && new X509Certificate(binding.certificatePem).serialNumber === parsed.serialNumber) throw new RAError(409, 'KMS reused the RA serial; upgrade to a KMS version with fresh certificate serials (tested: 5.28.0)');

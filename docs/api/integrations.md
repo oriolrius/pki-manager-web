@@ -120,9 +120,11 @@ RA operations check integration/CA ownership and active status on every request.
 Revoked RA certificates cannot sign, decrypt, or renew. Integration revocation
 cannot revoke RA certificates. Audit intent must persist before any RA operation;
 audit storage failure prevents KMS access. Lease-backed provisioning and renewal
-coordinate replicas. Interrupted provisioning is blocked for operator recovery,
-rather than allocating more keys. Renewals retain the key and public overlap
-certificates. Backend migrations 0011/0012 add this binding and lease state;
+coordinate replicas. Failed first provisioning retains a 15-minute lease. After
+expiry, provision reuses recorded key IDs and resumes activation/issuance. If no
+IDs were recorded, it retries allocation; an ambiguous lost KMS response can leave
+an orphan object, so reconcile the integration audit trail and KMS objects. Renewals retain the key and public overlap
+certificates. Backend migration 0011 add this binding and lease state;
 back up the database before upgrading and restore the full pre-upgrade backup
 with the corresponding old images to roll back. Do not drop binding rows to
 retry provisioning without reconciling KMS objects first.
@@ -131,3 +133,12 @@ Same-key RA renewal requires fresh certificate serials: use tested Cosmian KMS
 5.28.0. KMS 5.24 derives serials from the key; the backend rejects this collision
 and retains the previous binding. See the gateway deployment runbook before a
 KMS upgrade.
+
+RA certificates carry digitalSignature/keyEncipherment with no EKU; the clientAuth
+requirement applies only to enrolled device CSRs. Anonymous rejection auditing is
+capped at one row per IP per minute and 60 rows globally per minute per backend
+process. Source keys expire each minute, preventing unbounded in-memory growth.
+Error codes distinguish malformed CSRs from profile rejections. Already-audited
+RA failures are excluded from the generic rejection hook. Authentication runs
+before body validation, so anonymous selector overrides receive 401. Configure
+trusted proxy handling carefully: the limiter uses Fastify's resolved request IP.

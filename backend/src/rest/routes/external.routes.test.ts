@@ -385,4 +385,17 @@ describe('External /sign wiring (KMS certify)', () => {
     finally { await db.update(certificateAuthorities).set({ status: 'active' }).where(eq(certificateAuthorities.id, caId)); }
   });
 
+  it('limits anonymous audit rows and records distinct profile/parse error codes', async () => {
+    verifyToken.mockResolvedValue(null);
+    for (let i = 0; i < 10; i++) expect((await app.inject({ url: '/api/v1/external/health' })).statusCode).toBe(401);
+    const anonymous = await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'));
+    expect(anonymous.filter(row => JSON.parse(row.details ?? '{}').statusCode === 401).length).toBeLessThanOrEqual(1);
+    verifyToken.mockResolvedValue({ id: clusterId, name: 'SCEP', caId, kind: 'scep' });
+    await postSign({ csrPem: 'broken CSR', requestUid: randomUUID() });
+    await postSign({ csrPem: makeCsr('unsafe', [{ name: 'basicConstraints', cA: true }]), requestUid: randomUUID() });
+    const rows = await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'));
+    const codes = rows.map(row => JSON.parse(row.details ?? '{}').code);
+    expect(codes).toContain('INVALID_CSR'); expect(codes).toContain('CSR_PROFILE_REJECTED');
+  });
+
 });

@@ -26,7 +26,7 @@ function certificate(publicId: string, notBefore = new Date(Date.now() - 60e3), 
   const cert = forge.pki.createCertificate(); cert.publicKey = forge.pki.publicKeyFromPem(keys.get(publicId)!);
   cert.serialNumber = randomUUID().replace(/-/g, ''); cert.validity.notBefore = notBefore; cert.validity.notAfter = notAfter;
   cert.setSubject([{ name: 'commonName', value: 'SCEP Registration Authority' }]); cert.setIssuer(ca.subject.attributes);
-  cert.setExtensions([{ name: 'basicConstraints', cA: false }, { name: 'keyUsage', digitalSignature: true, keyEncipherment: true }, { name: 'extKeyUsage', clientAuth: true }]);
+  cert.setExtensions([{ name: 'basicConstraints', cA: false }, { name: 'keyUsage', digitalSignature: true, keyEncipherment: true }]);
   cert.sign(kp.privateKey, forge.md.sha256.create()); return forge.pki.certificateToPem(cert);
 }
 
@@ -156,6 +156,42 @@ describe('backend-owned RA boundary', () => {
     expect(response.statusCode, response.body).toBe(409); expect(response.json().error.message).toContain('serial');
     const [unchanged] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, first.id));
     expect(unchanged.certificateId).toBe(binding.certificateId); expect(unchanged.lease).toBeNull();
+  });
+
+  it('authenticates before validating caller key selectors', async () => {
+    const response = await request('invalid', 'sign', { digest: 'AA==', keyId: 'foreign' });
+    expect(response.statusCode).toBe(401); expect(operation).not.toHaveBeenCalled();
+  });
+  it('logs an RA failure once, including its error code', async () => {
+    const before = await db.select().from(auditLog).where(eq(auditLog.entityId, generic.id));
+    expect((await request(generic.token, 'sign', { digest: Buffer.alloc(32).toString('base64') })).statusCode).toBe(403);
+    const after = await db.select().from(auditLog).where(eq(auditLog.entityId, generic.id));
+    expect(after.length).toBe(before.length + 1);
+    expect(after.find(row => !before.some(old => old.id === row.id))?.details).toContain('RA_OPERATION_FAILED');
+  });
+  it('resumes a recorded key after a transient activation failure and lease expiry', async () => {
+    const [old] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, second.id));
+    await db.update(integrationRAs).set({ certificateId: null, certificatePem: null, previous: '[]' }).where(eq(integrationRAs.integrationId, second.id));
+    operation.mockRejectedValueOnce(new Error('temporary KMS failure'));
+    expect((await request(second.token, 'provision')).statusCode).toBe(502);
+    operation.mockClear();
+    expect((await request(second.token, 'provision')).statusCode).toBe(409);
+    expect(operation).not.toHaveBeenCalled();
+    await db.update(integrationRAs).set({ leaseUntil: new Date(Date.now() - 1000) }).where(eq(integrationRAs.integrationId, second.id));
+    expect((await request(second.token, 'provision')).statusCode).toBe(200);
+    expect(operation.mock.calls.some(([op]) => op === 'CreateKeyPair')).toBe(false);
+    const [recovered] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, second.id));
+    expect(recovered.keyId).toBe(old.keyId); expect(recovered.lease).toBeNull();
+    expect(signCertificate.mock.calls[0][0].x509Extensions).not.toContain('extendedKeyUsage');
+  });
+  it('recovers a failed initial allocation after its lease expires', async () => {
+    await db.delete(integrationRAs).where(eq(integrationRAs.integrationId, second.id));
+    operation.mockRejectedValueOnce(new Error('KMS unavailable'));
+    expect((await request(second.token, 'provision')).statusCode).toBe(502);
+    const [pending] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, second.id));
+    expect(pending.keyId).toBeNull();
+    await db.update(integrationRAs).set({ leaseUntil: new Date(Date.now() - 1000) }).where(eq(integrationRAs.integrationId, second.id));
+    expect((await request(second.token, 'provision')).statusCode).toBe(200);
   });
 
 });
