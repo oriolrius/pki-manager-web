@@ -106,7 +106,7 @@ export class RAService {
     if (daysValid < 1) throw new RAError(409, 'Issuing CA must have at least one day remaining');
     const id = randomUUID();
     const cert = await kms.signCertificate({ publicKeyId: binding.publicKeyId!, issuerCertificateId: ca.kmsCertificateId,
-      subjectName: 'CN=SCEP Registration Authority', daysValid, keyAlgorithm: 'RSA-3072', entityId: id,
+      subjectName: 'CN=SCEP Registration Authority', issuerName: ca.subjectDn, daysValid, keyAlgorithm: 'RSA-3072', entityId: id,
       tags: ['scep-ra', `integration:${identity.id}`, `ca:${ca.id}`],
       x509Extensions: '[v3_ca]\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n',
     });

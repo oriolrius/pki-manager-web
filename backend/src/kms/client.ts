@@ -761,8 +761,9 @@ export class KMSClient {
           }
         }
 
-        // Add required empty issuer fields
+        // Complete required issuer fields even for sparse CA subjects.
         const requiredIssuerFields = [
+          "CertificateIssuerCn", "CertificateIssuerO", "CertificateIssuerC",
           "CertificateIssuerOu",  // Organizational Unit
           "CertificateIssuerSt",  // State
           "CertificateIssuerL",   // Locality
