@@ -1,8 +1,8 @@
 services:
   # Cosmian KMS
   kms:
-    # SCEP RA provisioning requires Activate/Sign/Decrypt (verified with 5.24.0).
-    image: ghcr.io/cosmian/kms:5.24.0
+    # RA renewal needs unique per-certificate serials (fixed in tested KMS 5.28.0).
+    image: ghcr.io/cosmian/kms:5.28.0
     container_name: pki-kms
     restart: unless-stopped
     networks:

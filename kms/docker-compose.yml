@@ -1,11 +1,9 @@
 services:
   kms:
-    # Pinned (NOT :latest): kms.toml uses the 5.24 config schema ([http], [db],
-    # [workspace], [logging] rust_log) and the KMS silently ignores unknown keys —
-    # the old `[database] type/path` left the SQLite DB in the container layer, so
-    # recreating the container lost every key. 5.24.0 is the version prod runs;
-    # keep it in sync with the e2e stack (ansible/tests/e2e/docker-compose.yml).
-    image: ghcr.io/cosmian/kms:5.24.0
+    # Pinned: RA renewal requires fresh serials (tested with 5.28.0).
+    # Explicit [http]/[db]/[workspace]/[logging] config persists keys;
+    # keep this pin aligned with ansible/tests/e2e/docker-compose.yml.
+    image: ghcr.io/cosmian/kms:5.28.0
     container_name: pki-manager-kms
     restart: unless-stopped
     ports:

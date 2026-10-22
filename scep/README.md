@@ -142,9 +142,10 @@ with ownership/read permission for UID 10001. Use a cryptographically random
 `serve` provisions automatically in Compose; manual `command: [provision]` is
 optional and idempotent against the backend binding.
 
-Cosmian KMS **5.24.0** is pinned and tested. Before upgrading an existing 5.12
-installation, follow [the KMS backup/migration runbook](../DEPLOYMENT.md#kms-512--524-backup-before-recreating-the-container).
-The explicit config mounts `/cosmian-kms/sqlite-data` and is selected with
+Cosmian KMS **5.28.0** is pinned and tested. Before upgrading an existing 5.12
+installation, follow [the KMS backup/migration runbook](../DEPLOYMENT.md#kms-upgrade-backup-before-recreating-the-container).
+KMS 5.24 reuses serials for the same key and cannot support safe RA renewal;
+5.28 generates fresh serials. The explicit config mounts `/cosmian-kms/sqlite-data` and is selected with
 `COSMIAN_KMS_CONF`; mounting an unrelated directory does not persist keys.
 
 ### Migration from the earlier direct-KMS gateway

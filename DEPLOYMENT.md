@@ -762,7 +762,7 @@ installation or the `docker/docker-compose.scep.yml` overlay for the full stack.
 This PR remains a draft while the review's backend-only RA operations and other
 gateway security changes are outstanding; its current gateway still reaches KMS.
 
-### KMS 5.12 → 5.24: backup before recreating the container
+### KMS upgrade: backup before recreating the container
 
 **Do not pull/recreate the KMS before locating and backing up its database.**
 The historical `/root/cosmian-kms` mount may not contain the actual SQLite files.
@@ -793,13 +793,13 @@ from that still-existing container; a new empty volume does not recover CA keys.
    Verify the backup contains the existing DB, not an empty directory. Retain
    the matching PKI backend database backup as well.
 3. Copy the backup into a **new staging data directory/volume**, preserving file
-   ownership and permissions. Test 5.24 against that copy first. Do not point it
+   ownership and permissions. Test 5.28 against that copy first. Do not point it
    at the only copy of your 5.12 DB. The full-stack Compose now maps `../kms/data`
    to `/cosmian-kms/sqlite-data`, mounts `../kms/kms.toml` at
    `/etc/cosmian/kms.toml`, and sets `COSMIAN_KMS_CONF` to that file, matching the
    configuration-file approach of `kms/docker-compose.yml`. For another data
    volume, adjust only the source side of the mount.
-4. `kms.toml` uses the 5.24 `[db] database_type/sqlite_path` fields with absolute
+4. `kms.toml` uses the 5.28 `[db] database_type/sqlite_path` fields with absolute
    paths, `[http]`, and `[workspace]`. The old `[database] type/path` fields are
    ignored by the tested image. In config-file mode the TOML takes precedence
    over server/database environment settings; edit the TOML for another port.
@@ -976,3 +976,8 @@ migrated database fails because that code expects `clusters`. Follow the
 [0010 backup and rollback runbook](docs/deployment/integrations-0010.md). Rollback
 restores the entire pre-upgrade database and discards later changes; it is not
 a reverse DDL migration. The gateway is deployed separately.
+
+SCEP RA renewal with a retained key requires KMS 5.28.0: 5.24 derives
+the certificate serial from the public key and therefore reuses it on renewal.
+The backend refuses serial collisions. 5.28 generates fresh random serials.
+Do not treat 5.24 as a supported automatic RA-renewal deployment.
