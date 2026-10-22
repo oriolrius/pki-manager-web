@@ -1,9 +1,11 @@
 ---
 id: TASK-238
 title: Generalize CA-bound integration identities and service tokens
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-10-22T10:36:00Z'
+updated_date: '2026-10-22T10:37:00Z'
 labels: []
 dependencies: []
 ordinal: 65014
@@ -22,3 +24,11 @@ Replace Kubernetes-specific token ownership with generic typed integrations acro
 - [ ] #3 External issuance, status, retry and revocation are scoped to integration and correctly classify SCEP certificates
 - [ ] #4 Frontend creates typed integrations and uses the generic API; compatibility and isolation tests pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Add canonical integrations persistence with typed identities and migrate token hashes and certificate ownership.
+2. Introduce generic integration service/router/auth and retain cluster compatibility adapters.
+3. Update issuance provenance and UI with integration types; test migration, isolation, revoked tokens, legacy API and live SCEP.
+<!-- SECTION:PLAN:END -->
