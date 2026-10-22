@@ -1,4 +1,4 @@
-# Standalone gateway: connects to an existing PKI Manager backend and KMS.
+# Standalone gateway: connects only to an existing PKI Manager backend.
 # No backend, database, KMS, or Keycloak container is created by this file.
 services:
   scep:
@@ -19,15 +19,12 @@ services:
       SCEP_RA_AUTO_RENEW: ${SCEP_RA_AUTO_RENEW:-true}
       SCEP_STATE_FILE: /data/ra.json
       SCEP_BACKEND_URL: ${SCEP_BACKEND_URL:-http://pki-backend:3000}
-      SCEP_KMS_URL: ${SCEP_KMS_URL:-http://pki-kms:9998}
       SCEP_BACKEND_TOKEN_FILE: /run/secrets/scep_backend_token
-      SCEP_KMS_API_KEY_FILE: /run/secrets/scep_kms_api_key
       SCEP_CHALLENGE_FILE: /run/secrets/scep_challenge
       SCEP_VALIDITY_DAYS: ${SCEP_VALIDITY_DAYS:-90}
-      NO_PROXY: ${SCEP_NO_PROXY:-pki-backend,pki-kms,backend,kms,127.0.0.1,localhost}
+      NO_PROXY: ${SCEP_NO_PROXY:-pki-backend,backend,127.0.0.1,localhost}
     secrets:
       - scep_backend_token
-      - scep_kms_api_key
       - scep_challenge
     volumes:
       - scep-state:/data
@@ -41,8 +38,6 @@ networks:
 secrets:
   scep_backend_token:
     file: ${SCEP_BACKEND_TOKEN_FILE:-../docker/scep-secrets/backend-token}
-  scep_kms_api_key:
-    file: ${SCEP_KMS_API_KEY_FILE:-../docker/scep-secrets/kms-api-key}
   scep_challenge:
     file: ${SCEP_CHALLENGE_FILE:-../docker/scep-secrets/challenge}
 volumes:

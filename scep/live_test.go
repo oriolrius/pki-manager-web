@@ -127,7 +127,7 @@ func TestLiveManagedProfileWithKMS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := &kmsKey{url: os.Getenv("SCEP_TEST_KMS_URL"), id: saved.KeyID, public: ra.PublicKey.(*rsa.PublicKey), client: client}
+	key := &backendKey{backend: b, public: ra.PublicKey.(*rsa.PublicKey)}
 	g := newGateway(b, ra, key, key, chain, "unused")
 	g.authorizer = &fakeManaged{}
 	pkcs7.ContentEncryptionAlgorithm = pkcs7.EncryptionAlgorithmAES256CBC

@@ -20,9 +20,10 @@ type issuer interface {
 	Issue(context.Context, *x509.CertificateRequest) (*x509.Certificate, error)
 }
 type backend struct {
-	url, token string
-	days       int
-	client     *http.Client
+	protectedRA func(string) bool
+	url, token  string
+	days        int
+	client      *http.Client
 }
 
 func (b *backend) call(ctx context.Context, method, path string, input, output any) error {
@@ -126,6 +127,9 @@ func (e *backendStatusError) Error() string {
 	return fmt.Sprintf("PKI backend failed (HTTP %d)", e.status)
 }
 func (b *backend) Revoke(ctx context.Context, serial string) error {
+	if b.protectedRA != nil && b.protectedRA(serial) {
+		return &backendStatusError{status: 403}
+	}
 	var result struct {
 		Status string `json:"status"`
 	}

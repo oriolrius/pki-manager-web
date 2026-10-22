@@ -36,17 +36,19 @@ const maxMessage = 1 << 20
 // A single issuing gateway serializes issuance so exact CSR retries hit the backend's
 // requestUid idempotency path instead of racing a second certificate into existence.
 type gateway struct {
-	authorizer enrollmentAuthorizer
-	issuer     issuer
-	ra         *x509.Certificate
-	previousRA []*x509.Certificate
-	raMu       sync.RWMutex
-	key        crypto.Signer
-	decryptor  crypto.Decrypter
-	chain      []*x509.Certificate
-	challenge  [32]byte
-	mu         sync.Mutex
-	slots      chan struct{}
+	authorizer    enrollmentAuthorizer
+	issuer        issuer
+	ra            *x509.Certificate
+	previousRA    []*x509.Certificate
+	raMu          sync.RWMutex
+	key           crypto.Signer
+	decryptor     crypto.Decrypter
+	chain         []*x509.Certificate
+	challenge     [32]byte
+	mu            sync.Mutex
+	slots         chan struct{}
+	inflight      map[[32]byte]chan struct{}
+	sharedSubject map[string]string
 }
 
 func newGateway(i issuer, ra *x509.Certificate, key crypto.Signer, decryptor crypto.Decrypter, chain []*x509.Certificate, challenge string) *gateway {
@@ -68,6 +70,31 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "method not allowed", 405)
 		return
+	}
+	var data []byte
+	var err error
+	if r.URL.Query().Get("operation") == "PKIOperation" {
+		if r.Method == http.MethodPost {
+			mediaType, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if mediaErr != nil || !strings.EqualFold(mediaType, "application/x-pki-message") {
+				http.Error(w, "expected application/x-pki-message", 415)
+				return
+			}
+			data, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessage))
+		} else {
+			// ParseQuery turns '+' into spaces. SCEP legacy clients sometimes leave '+' unescaped.
+			message := strings.ReplaceAll(r.URL.Query().Get("message"), " ", "+")
+			if len(message) > base64.StdEncoding.EncodedLen(maxMessage) {
+				http.Error(w, "request too large", 413)
+				return
+			}
+			data, err = base64.StdEncoding.DecodeString(message)
+		}
+		if err != nil || len(data) == 0 {
+			slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_body")
+			http.Error(w, "invalid SCEP message", 400)
+			return
+		}
 	}
 	select {
 	case g.slots <- struct{}{}:
@@ -100,29 +127,6 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-x509-ca-ra-cert")
 		_, _ = w.Write(data)
 	case "PKIOperation":
-		var data []byte
-		var err error
-		if r.Method == http.MethodPost {
-			mediaType, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
-			if mediaErr != nil || !strings.EqualFold(mediaType, "application/x-pki-message") {
-				http.Error(w, "expected application/x-pki-message", 415)
-				return
-			}
-			data, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessage))
-		} else {
-			// ParseQuery turns '+' into spaces. SCEP legacy clients sometimes leave '+' unescaped.
-			message := strings.ReplaceAll(r.URL.Query().Get("message"), " ", "+")
-			if len(message) > base64.StdEncoding.EncodedLen(maxMessage) {
-				http.Error(w, "request too large", 413)
-				return
-			}
-			data, err = base64.StdEncoding.DecodeString(message)
-		}
-		if err != nil || len(data) == 0 {
-			slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_body")
-			http.Error(w, "invalid SCEP message", 400)
-			return
-		}
 		reply, err := g.enroll(r.Context(), data)
 		if err != nil {
 			slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_message")
@@ -214,12 +218,21 @@ func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 		slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_envelope")
 		return g.certRep(msg, signer, nil, scep.BadRequest)
 	}
+	if g.authorizer == nil && !validSharedSubject(msg.CSR, g.sharedSubject) {
+		return g.certRep(msg, signer, nil, scep.BadRequest)
+	}
+	if renewal && !sameRenewalIdentity(msg.CSR, signer) {
+		return g.certRep(msg, signer, nil, scep.BadRequest)
+	}
 	if err = validateCSRPolicy(msg.CSR, signer, g.authorizer != nil, renewal); err != nil {
 		slog.Warn("scep.enroll", "status", "rejected", "reason", "csr_policy")
 		return g.certRep(msg, signer, nil, scep.BadRequest)
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
+	release, err := g.acquireCSR(ctx, msg.CSR.Raw)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	if msg.ChallengePassword == "" {
 		return g.certRep(msg, signer, nil, scep.BadRequest)
 	}

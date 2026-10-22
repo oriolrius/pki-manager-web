@@ -43,361 +43,161 @@ claimed as completed or Microsoft certification.
 
 ## Architecture and authorization
 
-Run one gateway instance per dedicated issuing CA. In PKI Manager create an active
-CA, then create a dedicated **service token** bound to that CA under
-**Operations → Integrations → Add Integration**. Select **SCEP / MDM** as the
-integration type and use a name such as `scep-mdm`.
-The canonical management API is `integration.*`, backed by the `integrations`
-table. `/integrations` replaces the old page; `/clusters` redirects there and the
-legacy `cluster.*` API remains compatible with Kubernetes clients. Each gateway
-has its own CA-bound integration and service token, separate from a Kubernetes
-integration. Existing token hashes and CA bindings are preserved by migration.
-This token allows `/api/v1/external/ca-bundle` and `/sign`; it is
-separate from OIDC access tokens. Keep it inside the gateway. Devices receive only
-the enrollment challenge and CA trust, never the backend or KMS token.
+Deploy [integration foundation #18](https://github.com/oriolrius/pki-manager-web/pull/18)
+first. Create an active CA and a dedicated **SCEP / MDM** integration under
+**Operations → Integrations**, then give its CA-bound service token to the gateway.
+Devices receive only the challenge and CA trust.
 
-`provision` creates a Sensitive RSA-3072 RA key in KMS with Sign/Decrypt usage,
-requests an RA certificate from the bound CA, and writes **only the public
-certificate and KMS key ID** to `ra.json`. No CA/RA private key is exported or
-persisted on the gateway. Signing and decryption are checked against the KMS at
-startup, and the backend must confirm the RA is active and service-owned. The existing backend signs device CSRs, retains certificate metadata and
-records issuance in `audit_log`. Certificates are linked by `integrationId` and have the `scep` source label for
-SCEP integrations; Kubernetes certificates retain their `k8s` source label.
+The gateway communicates exclusively with the existing backend. It has **no KMS
+client, KMS credentials, private keys, or KMS object identifiers**. The backend
+provisions a Sensitive RSA-3072 RA key and fixes its CA, subject, extensions and
+algorithms. `/api/v1/external/ra/*` resolves the key from the authenticated
+integration; callers cannot select another key. Every RA operation checks the
+integration/CA/RA state and persists audit intent before contacting KMS.
 
-**Shared mode only:** use a separate CA and a random, protected challenge: anyone possessing this shared
-challenge can request a client certificate for an arbitrary CN within this
-profile. It is not a single-use enrollment token or proof of a device's name.
-Changing the challenge and restarting the gateway stops its further use; already
-issued certificates require normal revocation. A new token is needed if the
-service identity is revoked. Do not change its CA binding in place.
+`ra.json` contains public certificates only. Backend database migrations retain
+the authoritative RA binding and provisioning/renewal leases. Back up the backend
+DB and KMS together. Interrupted provisioning requires operator reconciliation of
+the backend binding and KMS objects, rather than repeatedly allocating keys.
+Deleting gateway state does not create another RA.
 
-Valid signatures, CSR proof of possession and the configured enrollment authority
-are checked before issuance. Managed SANs are authorized against the exact CSR;
-the gateway does not substitute device identities itself. Exact CSR retries use the backend's deterministic `requestUid`; revoked
-or expired certificates are not returned by that retry path. The gateway checks
-the issuing CA before every enrollment, including retries. RA/CA expiry prevents
-further requests. Renewals also check the old signer against the backend for
-ownership, expiry and revocation. Run a single replica: backend requestUid creation is not a
-cross-process transaction lock.
+RA renewal runs on startup and hourly, during the last third of its lifetime.
+It uses the same backend-owned key and publishes new public metadata atomically;
+still-valid previous RA certificates support cached recipients. An expired,
+otherwise active RA can recover through backend renewal. A revoked RA/token/CA
+fails closed and requires administrative action. This does not schedule client
+renewal: configure SCEP renewal in each client/MDM profile. Handle key compromise
+and key rotation separately.
 
-## Docker setup
+Shared mode permits a dynamic CN only. O/OU/C/ST/L must exactly match the optional
+`SCEP_SHARED_SUBJECT` JSON map; absent configuration means CN only. SANs are
+rejected in shared mode. Anyone holding the shared challenge can choose a CN;
+use a dedicated CA and rotate the challenge if compromised. Managed modes validate
+the exact CSR through Intune or a trusted webhook. Renewals retain the previous
+subject and SANs, check active ownership, and revalidate enrollment authorization.
 
-**Dependency:** deploy [integration foundation #18](https://github.com/oriolrius/pki-manager-web/pull/18) first. This gateway PR is a draft pending the security changes requested in the [original review](https://github.com/oriolrius/pki-manager-web/pull/13#pullrequestreview-5617896897). The current code still accesses KMS directly; backend-only RA operations are not implemented yet.
+Requests are bounded before occupying an issuance slot. Remote calls do not hold
+the global issuance mutex. Identical CSRs serialize within one gateway; deploy
+one gateway replica because device-issuance requestUid uniqueness is not enforced
+across backend replicas. RA provisioning/renewal itself uses database leases.
+Transient revocation failures retain the Intune journal for retry; RA serials are
+protected from integration-token revocation.
 
-### Existing installation: add only the SCEP container
+## Docker / Arcane: one additional container
 
-**No second backend is needed.** Upgrade your existing backend to a version that
-includes this branch's enrollment-state endpoints, then add `pki-manager-scep`.
-The gateway handles the SCEP protocol; your existing backend keeps issuing and
-tracking certificates, and your existing KMS keeps the private keys.
-
-`scep/compose.yml` defines exactly one service. It joins the existing Docker network
-`pki-network`, using `http://pki-backend:3000` and `http://pki-kms:9998` by default.
-For another installation, export `SCEP_DOCKER_NETWORK`, `SCEP_BACKEND_URL`, and
-`SCEP_KMS_URL` with its network name and reachable service addresses. Set
-`SCEP_NO_PROXY` to include those internal hostnames if you use an outbound proxy.
-The network must already exist; this setup does not create a backend or KMS.
-For persistent settings, copy `scep/compose.env.example` to `scep/.env`, edit it,
-and add `--env-file scep/.env` to every Compose command below.
-
-1. Create an active issuing CA and an integration named `scep-mdm`, bound to that
-   CA, with type **SCEP / MDM**. Save the displayed **Service Token**.
-2. From the repository root, prepare the same secret files used by the overlay:
-
-   ```sh
-   umask 077
-   mkdir -p docker/scep-secrets
-   openssl rand -hex 32 > docker/scep-secrets/challenge
-   touch docker/scep-secrets/backend-token docker/scep-secrets/kms-api-key
-   ```
-
-   Enter the service token in `backend-token` with a secure editor. Put the KMS
-   API key in `kms-api-key`, or leave it empty for an unauthenticated internal
-   development KMS. Make the files readable by the gateway's UID 10001:
-
-   ```sh
-   sudo chown 10001:10001 docker/scep-secrets/*
-   sudo chmod 0400 docker/scep-secrets/*
-   ```
-
-3. Build and start only the gateway. Compose enables automatic first provisioning:
-
-   ```sh
-   docker compose -f scep/compose.yml build scep
-   docker compose -f scep/compose.yml up -d scep
-   ```
-
-   On first start, the gateway provisions its RA and starts serving. Later starts
-   reuse `ra.json`. Set `SCEP_AUTO_PROVISION=false` if you prefer to invoke
-   `docker compose -f scep/compose.yml run --rm scep provision` manually before
-   starting the service. The `scep-state`
-   volume contains public RA metadata and the KMS key ID; private keys stay in KMS.
-   To use a published image containing automatic provisioning, set `SCEP_IMAGE`,
-   then replace the build command with `docker compose -f scep/compose.yml pull scep`
-   and use `--no-build` for `up`.
-
-4. Verify discovery, then expose `/scep` through your TLS reverse proxy:
-
-   ```sh
-   curl -f 'http://127.0.0.1:8085/scep?operation=GetCACaps'
-   curl -f 'http://127.0.0.1:8085/scep?operation=GetCACert' -o /tmp/scep-ca-ra.p7b
-   openssl pkcs7 -inform DER -in /tmp/scep-ca-ra.p7b -print_certs -noout
-   ```
-
-This quick setup uses a shared enrollment challenge. For Intune or another MDM,
-apply `docker/docker-compose.intune.yml` or `docker/docker-compose.mdm.yml` after
-`scep/compose.yml`, using absolute secret-file paths. Those overlays also only
-configure the existing `scep` service. See the managed-mode instructions below.
-
-### Arcane / a single Compose file: automatic first provisioning
-
-With an existing backend/KMS and a CA-bound SCEP service token, the gateway can
-provision its RA on its first normal start. No shell script, additional service,
-or switch between `provision` and `serve` is required. In your existing `scep`
-service, keep the environment, network, and persistent `/data` volume above and add:
+Use one existing Compose project and its existing `.env`. Add this service,
+network membership, and volume to your Compose. Replace the image tag with a
+build containing this change and foundation #18 in the backend.
 
 ```yaml
-command: ["serve"]
-restart: unless-stopped
-environment:
-  # Merge this entry into your existing environment mapping.
-  SCEP_AUTO_PROVISION: "true"
-depends_on:
-  backend:
-    condition: service_healthy
+services:
+  scep:
+    image: ghcr.io/tilwegener/pki-manager-web/scep:${IMAGE_TAG:-dev}
+    restart: unless-stopped
+    command: [serve]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    networks: [pki-network]
+    environment:
+      SCEP_BACKEND_URL: http://backend:3000
+      SCEP_BACKEND_TOKEN: ${SCEP_BACKEND_TOKEN:?required}
+      SCEP_AUTH_MODE: shared
+      SCEP_CHALLENGE: ${SCEP_CHALLENGE:?required}
+      SCEP_AUTO_PROVISION: "true"
+      SCEP_RA_AUTO_RENEW: "true"
+      SCEP_STATE_FILE: /data/ra.json
+      SCEP_VALIDITY_DAYS: "90"
+    volumes: [scep-state:/data]
+    ports: ["127.0.0.1:8086:8085"]
+volumes:
+  scep-state:
 ```
 
-Enable this only with an image containing the automatic-provisioning change.
-The executable defaults `SCEP_AUTO_PROVISION` to `false`; both supplied Compose
-setups default it to `true`. When enabled and `ra.json` is absent,
-the gateway provisions once and continues with normal RA validation and serving.
-Subsequent starts reuse the saved state; invalid, expired, or revoked state is
-not silently replaced. Run only one replica and keep `/data` persistent.
+The internal backend port is `3000`, regardless of host port mapping. Put the
+SCEP endpoint behind HTTPS with rate/body/time limits. Change the loopback bind
+only if your reverse proxy requires it. Do not expose backend RA endpoints to
+devices. Secret files are also supported through `SCEP_BACKEND_TOKEN_FILE` and
+`SCEP_CHALLENGE_FILE` (set either value or file, never both).
 
-Before provisioning, the backend must be able to load the integration's issuing
-CA from KMS. This option does not repair missing KMS objects, create a CA, or
-create a service token. Persist the KMS database at its actual configured path
-(for example `/cosmian-kms/sqlite-data`), independently of the SCEP state volume.
+Keep KMS on a **separate internal network shared only with the backend**. Attach
+the backend to both that network and `pki-network`; attach the gateway only to
+`pki-network`. The full stack in `docker/docker-compose.yml` implements this.
+For an existing installation remove all `SCEP_KMS_*` settings and KMS secret
+mounts, and separate the networks accordingly. KMS credentials belong only in the
+backend configuration. No additional backend container or `.env` is needed.
 
-If provisioning fails after it starts, `ra.json.provisioning` remains in the
-state volume, preventing repeated creation of orphaned KMS keys on restarts.
-Inspect the logs and KMS objects, fix the cause, and only then remove that marker
-to permit a new attempt. The gateway logs the marker path. A failure to load the
-backend CA before provisioning does not create a marker.
-
-### Full stack overlay
-
-The gateway is an optional overlay; normal PKI Manager startup is unchanged.
-The SCEP GitHub workflow builds an image on pull requests and publishes
-`ghcr.io/<owner>/pki-manager-web/scep:latest` after merge to `main`, plus version
-images for release tags. The overlay builds locally by default, so a branch can
-be tested before any image is published. Published images currently target
-`linux/amd64`; client device operating systems are independent of that server
-architecture. Set `SCEP_IMAGE` to your published GHCR version to use a release
-image, then pull it and start with `--no-build` using the same overlay files.
-The default image name is `pki-manager-scep:local` for local branch builds.
-Upgrade the existing backend to this change, which includes enrollment-state checks;
-do not deploy a second backend for SCEP.
-Cosmian KMS **5.24.0** was used for integration testing and is pinned in the full
-stack Compose file. KMS **5.12.1** does not support `Activate` and fails RA provisioning
-with HTTP 404; use the verified 5.24.0 version. For an existing installation, keep
-your KMS configuration/version migration procedure; the SCEP overlay does not
-upgrade it. The full stack mounts `../kms/data` at `/cosmian-kms/sqlite-data`.
-Before changing an existing mount, back up and migrate the actual KMS database:
-the older `/root/cosmian-kms` mount did not cover that default database path.
-Use the explicit `[db] sqlite_path` in the mounted `kms.toml`; see
-[the KMS backup/upgrade procedure](../DEPLOYMENT.md#kms-512--524-backup-before-recreating-the-container).
-
-1. Create a dedicated CA and a **SCEP / MDM** integration with a CA-bound service
-   token under **Operations → Integrations**.
-2. Prepare secret files from the repository root:
-
-   ```sh
-   umask 077
-   mkdir -p docker/scep-secrets
-   openssl rand -hex 32 > docker/scep-secrets/challenge
-   touch docker/scep-secrets/backend-token docker/scep-secrets/kms-api-key
-   ```
-
-   Enter the service token in `backend-token` using your secure editor. Enter the
-   KMS API key in `kms-api-key`, or leave this file empty for an unauthenticated
-   internal development KMS. These files are ignored by Git. Provision the
-   challenge securely to devices as their CSR `challengePassword`.
-
-   Compose file-backed secrets retain host ownership. Make them readable by the
-   container's UID 10001, for example after editing:
-
-   ```sh
-   sudo chown 10001:10001 docker/scep-secrets/*
-   sudo chmod 0400 docker/scep-secrets/*
-   ```
-
-3. Start the existing backend/KMS stack using its documented configuration, then
-   build and start SCEP (the RA is automatically provisioned on first start):
-
-   ```sh
-   cd docker
-   docker compose -f docker-compose.yml -f docker-compose.scep.yml --profile scep build scep
-   docker compose -f docker-compose.yml -f docker-compose.scep.yml --profile scep up -d scep
-   ```
-
-   Existing RA state is reused. For manual provisioning instead, set
-   `SCEP_AUTO_PROVISION=false` and run the service with `provision` before `up`.
-   `scep-state` is a persistent
-   Docker volume; keep its public metadata together with your KMS backups. A
-   partial provisioning failure may leave an orphaned RA key/certificate in KMS:
-   investigate the KMS audit trail before retrying. The gateway never exports a
-   private key to recover from failures.
-
-4. Verify internally:
-
-   ```sh
-   curl -f 'http://127.0.0.1:8085/scep?operation=GetCACaps'
-   curl -f 'http://127.0.0.1:8085/scep?operation=GetCACert' -o /tmp/scep-ca-ra.p7b
-   openssl pkcs7 -inform DER -in /tmp/scep-ca-ra.p7b -print_certs -noout
-   ```
-
-5. Expose **only `/scep`** through your TLS reverse proxy. For example, a host-based
-   nginx proxy can forward it to the loopback-bound gateway:
-
-   ```nginx
-   location = /scep {
-       client_max_body_size 1m;
-       proxy_read_timeout 180s;
-       proxy_pass http://127.0.0.1:8085;
-   }
-   ```
-
-   For a proxy in a container, attach it to the same private Docker network and use
-   `http://scep:8085`. Set the device's SCEP URL to
-   `https://your-pki-host.example/scep`. Do not put interactive OIDC middleware in
-   front of this path. Keep backend/KMS inaccessible from devices and apply
-   connection/rate limits at the reverse proxy. The service limits message size
-   to 1 MiB and concurrent requests to eight; enrollment is serialized.
-
-Changing `SCEP_EXTERNAL_PORT` or `SCEP_VALIDITY_DAYS` in `docker/.env` customizes the
-port/leaf duration. Compose secret source paths may be changed through
-`SCEP_BACKEND_TOKEN_FILE`, `SCEP_CHALLENGE_FILE`, and `SCEP_KMS_API_KEY_FILE`.
-They are resolved relative to `docker/docker-compose.yml`.
-
-The RA has the configured issuance duration too (90 days by default).
-`SCEP_RA_AUTO_RENEW=true` is enabled by default, independently of first provisioning.
-At startup and hourly, the gateway checks whether the RA is in the last third of
-its lifetime (about 30 days remaining for a 90-day certificate), and renews it
-using the existing Sensitive KMS key. The renewed RA and still-valid previous RA
-certificates are saved atomically in `ra.json` before switching the running server.
-`GetCACert` immediately returns the new RA; messages encrypted to a cached previous
-RA are accepted until that certificate expires, provided it remains active.
-Failed renewals leave the current RA in service and are retried hourly with a
-stable backend request UID. Renewal failures are logged as `scep.ra.renew`.
-
-Renewal requires an active, unexpired, service-owned RA and the same active CA.
-An already expired/revoked RA, a missing KMS key, or a changed CA requires manual
-recovery; auto-renewal does not bypass those checks. Monitor renewal failures and
-keep the gateway running before expiry. Existing device certificates do not
-depend on the RA's continued validity. Automatic RA renewal does not rotate the
-KMS key; handle key compromise/rotation separately.
-
-Clients initiate their own renewal; the gateway cannot push certificates to them.
-Configure the SCEP client/MDM to renew before expiry (for example at 20% remaining)
-and rediscover CA/RA certificates. Shared mode requires the configured challenge;
-managed modes require fresh MDM validation. Both require an active, unexpired
-old signer owned by this integration. SAN restrictions remain unchanged. Device
-and platform interoperability must be validated in the deployed environment.
-
-## Local development and configuration
-
-Go 1.27.3 is used in CI and Docker. Copy `.env.example` to your local `.env`, edit
-paths, and explicitly export/load these values in your shell. The executable does
-not automatically source `.env` files.
+Existing-installation template: `scep/compose.yml` with
+`scep/compose.env.example`. Full-stack overlay:
 
 ```sh
-cd scep
-go mod download
-go build -o scep-server .
-./scep-server provision
-./scep-server serve
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.scep.yml --profile scep up -d --build
 ```
+
+Create `docker/scep-secrets/backend-token` and `challenge` before using templates,
+with ownership/read permission for UID 10001. Use a cryptographically random
+32–256-byte challenge, e.g. `openssl rand -hex 32`. No KMS secret file is needed.
+`serve` provisions automatically in Compose; manual `command: [provision]` is
+optional and idempotent against the backend binding.
+
+Cosmian KMS **5.24.0** is pinned and tested. Before upgrading an existing 5.12
+installation, follow [the KMS backup/migration runbook](../DEPLOYMENT.md#kms-512--524-backup-before-recreating-the-container).
+The explicit config mounts `/cosmian-kms/sqlite-data` and is selected with
+`COSMIAN_KMS_CONF`; mounting an unrelated directory does not persist keys.
+
+### Migration from the earlier direct-KMS gateway
+
+Back up the backend database, KMS data, and old public RA metadata. Deploy the
+new backend first, then the gateway. Existing gateway key IDs are **never adopted
+from a file or request**. The backend provisions a new, integration-bound RA;
+clients must rediscover GetCACert before enrollment. Retire old RA certificates
+through the administrative UI once their recipients no longer need them. Keep
+orphan/failed-provisioning cleanup an explicit operator task.
+
+## Configuration
 
 | Variable | Default / requirement |
 | --- | --- |
 | `SCEP_AUTH_MODE` | `shared`, `intune`, or `webhook`; default `shared` |
-| `SCEP_BACKEND_URL` | `http://127.0.0.1:52081`; existing PKI backend |
-| `SCEP_BACKEND_TOKEN` or `_FILE` | Required CA-bound service token |
-| `SCEP_KMS_URL` | `http://127.0.0.1:42998` |
-| `SCEP_KMS_API_KEY` or `_FILE` | Optional, according to KMS policy |
+| `SCEP_BACKEND_URL` | `http://127.0.0.1:52081` |
+| `SCEP_BACKEND_TOKEN` or `_FILE` | Required dedicated SCEP integration token |
 | `SCEP_CHALLENGE` or `_FILE` | Shared mode only; 32–256 bytes |
-| `SCEP_STATE_FILE` | `./data/ra.json`; public RA metadata |
-| `SCEP_AUTO_PROVISION` | `false`; opt in to one-time RA provisioning on `serve` when state is missing |
-| `SCEP_RA_AUTO_RENEW` | `true`; renew the active RA during its last third of validity, checked at startup and hourly |
-| `SCEP_LISTEN` | `:8085`; use loopback when running outside Docker |
-| `SCEP_VALIDITY_DAYS` | `90`, allowed 1–365 |
+| `SCEP_SHARED_SUBJECT` | Optional fixed DN map, e.g. `{"O":"Example","C":"DE"}` |
+| `SCEP_STATE_FILE` | `./data/ra.json`; public metadata |
+| `SCEP_AUTO_PROVISION` | `false` in binary; `true` in Compose |
+| `SCEP_RA_AUTO_RENEW` | `true`; startup and hourly |
+| `SCEP_LISTEN` | `:8085` |
+| `SCEP_VALIDITY_DAYS` | `90`; allowed 1–90, limited by CA lifetime |
 
-Do not set a secret and its `_FILE` variant together. Secret values, requests and
-challenge passwords are not logged. JSON events on stderr record enrollment
-success/rejection and provisioning; forward those to your log collector. Protect
-KMS/backend credentials as high-privilege service credentials. Internal HTTP is
-intended for a private trusted network; use HTTPS URLs for remote services. The
-HTTP clients refuse redirects and preserve TLS verification.
+For local use explicitly load `scep/.env.example` settings into the process;
+the binary does not load `.env` itself. Backend tokens are privileged service
+credentials. Use TLS or a protected private network for backend communication.
 
-A CSR must include `challengePassword` and `extendedKeyUsage=clientAuth`. Optional
-keyUsage is limited to `digitalSignature,keyEncipherment`; explicit CA:false is
-preserved without duplicating basicConstraints. Managed SANs are retained in the
-issued certificate. DNS/IP/email are indexed in existing backend metadata; URI/UPN
-remain in the certificate and are not new dedicated GUI fields. Configure the device's
-SCEP client to use RSA and this profile. A plain CSR or a REST `/sign` request is
-not a SCEP enrollment: the device must sign and encrypt the SCEP CMS envelope.
-CA trust must be established out of band, even though GetCACert is public.
-
-## Tests
+## Validation
 
 ```sh
 cd scep
-go mod verify
 go test -race ./...
 go vet ./...
+go build .
 ```
 
-Unit/protocol tests cover signed/encrypted enrollment, HTTP discovery, legacy GET,
-challenge rejection, signature/CSR key binding, managed SAN policy, renewal, request limits,
-signed failure replies and the KMS adapter. Tests use ephemeral **client/test**
-keys; production RA keys stay in KMS.
-
-Opt-in checks create real keys/certificates, so use an isolated test KMS/CA:
+Tests cover protocol/CMS/OpenSSL, identity policy, backend RA adapters, renewal,
+and mocked Intune contracts. For an isolated real backend/KMS:
 
 ```sh
-SCEP_TEST_KMS_URL=http://127.0.0.1:42998 go test -run TestLiveKMS -v
-SCEP_TEST_SERVER_URL=http://127.0.0.1:8085/scep \
-  SCEP_TEST_CHALLENGE_FILE=/secure/path/to/test-challenge \
-  go test -run TestLiveEnrollment -v
+SCEP_TEST_BACKEND_URL=http://127.0.0.1:52081 \
+SCEP_TEST_TOKEN_FILE=/secure/test-token go test -run TestLiveBackendRABoundary -v
 ```
 
-The KMS test verifies Sign/Decrypt and denial of private-key export. The live
-server test verifies CA/RA discovery, authenticated enrollment, a CA-signed
-certificate for the client's original key, and an idempotent retry.
+This checks real backend-mediated RA signatures/decryption and rejects caller
+key IDs. Live enrollment tests create real certificates; use an isolated CA.
+Live Intune/device acceptance remains a deployment-specific check.
 
 ## Other MDM providers
 
-`SCEP_AUTH_MODE=webhook` enables the managed profile without claiming compatibility
-with a specific MDM product. Set an HTTPS `SCEP_MDM_VALIDATION_URL` and a protected
-`SCEP_MDM_VALIDATION_TOKEN` (or `_FILE`, minimum 32 bytes). Requests use bearer
-service authentication and contain `transactionId`, `certificateRequest` (base64
-DER PKCS#10) and `csrSha256` (hex SHA-256). The validator must inspect the complete
-CSR, verify its dynamic challenge and MDM policy, and return:
-
-```json
-{"approved": true, "csrSha256": "THE_EXACT_REQUEST_CSR_HASH"}
-```
-
-Only HTTP 200 plus both exact approval fields authorizes issuance. Rejection,
-timeouts, invalid JSON or a different hash fail closed. A webhook that always
-returns approval is not a valid MDM integration. Fresh validation is required on
-every renewal too; certificate-only renewal without a challenge is unsupported.
-This adapter does not invent a third party's revocation API; use the backend's
-CA-bound `/api/v1/external/revoke` integration and CRL distribution as appropriate.
-
-For Docker, add `docker/docker-compose.mdm.yml` after the base SCEP overlay, set
-`SCEP_MDM_VALIDATION_URL`, and prepare `docker/scep-secrets/mdm-validation-token`
-with UID/GID 10001 and mode 0400. As with Intune mode, the base challenge file may
-be empty and is not an authorization fallback. Do not combine the Intune and
-webhook overlays: select one enrollment authority per gateway.
+See [native Intune setup](docs/intune.md). Generic webhook configuration is in
+`.env.mdm.example`; its validator must authorize the exact CSR, including subject,
+SANs, EKU and challenge.

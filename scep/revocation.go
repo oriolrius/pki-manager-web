@@ -128,6 +128,10 @@ func (a *intuneAuthorizer) pollRevocations(ctx context.Context, b revoker, issue
 				if errors.As(err, &status) && (status.status == 403 || status.status == 404) {
 					result.Code = "CertificateNotFoundError"
 					result.Message = "Certificate is not owned by this service"
+				} else {
+					// Keep the durable batch for retry; do not acknowledge a temporary
+					// backend outage as a terminal revocation result.
+					return errors.New("backend revocation temporarily unavailable; journal retained")
 				}
 			}
 		}

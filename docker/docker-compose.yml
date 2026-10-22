@@ -6,7 +6,7 @@ services:
     container_name: pki-kms
     restart: unless-stopped
     networks:
-      - pki-network
+      - kms-internal
     volumes:
       - ../kms/data:/cosmian-kms/sqlite-data
       - ../kms/kms.toml:/etc/cosmian/kms.toml:ro
@@ -31,6 +31,7 @@ services:
     restart: unless-stopped
     networks:
       - pki-network
+      - kms-internal
     volumes:
       - ../pki:/app/backend/data
     environment:
@@ -116,3 +117,6 @@ networks:
   pki-network:
     name: pki-network
     external: false
+
+  kms-internal:
+    internal: true
