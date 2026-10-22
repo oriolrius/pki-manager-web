@@ -1169,15 +1169,15 @@ docker run --rm -v my-certs:/target \\
 
       {/* Confirmation Dialog */}
       {showConfirmDialog && confirmAction && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="bulk-confirm-title" aria-describedby="bulk-confirm-description">
+          <div className="w-full max-w-md rounded-lg border bg-card p-6 text-card-foreground shadow-xl">
             <div className="flex items-start gap-3 mb-4">
               <AlertCircle className="h-6 w-6 text-orange-600 flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="font-semibold text-lg mb-2">
+                <h3 id="bulk-confirm-title" className="font-semibold text-lg mb-2">
                   Confirm Bulk {confirmAction.type.charAt(0).toUpperCase() + confirmAction.type.slice(1)}
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p id="bulk-confirm-description" className="text-sm text-muted-foreground">
                   Are you sure you want to {confirmAction.type} {selectedCertificates.size} certificate
                   {selectedCertificates.size !== 1 ? 's' : ''}? This action cannot be undone.
                 </p>
@@ -1186,13 +1186,13 @@ docker run --rm -v my-certs:/target \\
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setShowConfirmDialog(false)}
-                className="px-4 py-2 border rounded-md hover:bg-gray-50"
+                className="rounded-md border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmAction.callback}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className={`rounded-md px-4 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${confirmAction.type === 'renew' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}`}
               >
                 Confirm
               </button>
