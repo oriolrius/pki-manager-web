@@ -104,3 +104,25 @@ Repeated revocation reuses the current unexpired CA CRL if it already contains
 the serial. If publication previously failed, or that CRL expired, publication
 is retried. This avoids regenerating CRLs on successful sequential retries;
 concurrent publication still needs coordination across backend replicas.
+
+### Backend-owned SCEP RA
+
+Only an active `scep` integration can call `/api/v1/external/ra/state`,
+`ra/provision`, `ra/renew`, `ra/sign`, and `ra/decrypt`. Provision/renew take an
+empty JSON object. Sign accepts only a base64 SHA-256 `digest`; decrypt accepts
+only a base64 RSA-3072 `data` ciphertext and returns an AES content key. The
+backend fixes algorithms and resolves its RA key from the integration and bound
+CA. Caller-selected key identifiers are rejected. State contains public
+certificates only. Private keys are Sensitive and stay in KMS; gateways need no
+KMS connectivity or credentials.
+
+RA operations check integration/CA ownership and active status on every request.
+Revoked RA certificates cannot sign, decrypt, or renew. Integration revocation
+cannot revoke RA certificates. Audit intent must persist before any RA operation;
+audit storage failure prevents KMS access. Lease-backed provisioning and renewal
+coordinate replicas. Interrupted provisioning is blocked for operator recovery,
+rather than allocating more keys. Renewals retain the key and public overlap
+certificates. Backend migrations 0011/0012 add this binding and lease state;
+back up the database before upgrading and restore the full pre-upgrade backup
+with the corresponding old images to roll back. Do not drop binding rows to
+retry provisioning without reconciling KMS objects first.

@@ -15,6 +15,7 @@ vi.mock('../lib/oidc.js', async (original) => ({
 }));
 
 const migrations = readMigrationFiles({ migrationsFolder: fileURLToPath(new URL('../db/migrations', import.meta.url)) });
+const integrationMigrationIndex = migrations.findIndex(m => m.sql.some(s => s.includes('ALTER TABLE `clusters` RENAME TO `integrations`')));
 let sqlite: Database.Database;
 const token = 'pkimg_existing-token-preserved-by-migration';
 const hash = createHash('sha256').update(token).digest('hex');
@@ -35,7 +36,7 @@ afterEach(() => { sqlite.close(); });
 
 describe('integration migration', () => {
   it('preserves existing tokens, revocation and ownership, and recognizes unambiguous SCEP history', async () => {
-    apply(migrations.length - 1);
+    apply(integrationMigrationIndex);
     seedCA();
     const insert = sqlite.prepare(`INSERT INTO clusters
       (id,name,ca_id,token_hash,token_prefix,revoked_at) VALUES (?,?, 'ca',?,?,?)`);
@@ -48,7 +49,7 @@ describe('integration migration', () => {
     cert.run('kube-cert', '02', 'kube', 'old-kube-request');
     cert.run('scep-cert', '03', 'scep', 'scep:old-request');
     cert.run('uppercase-cert', '04', 'uppercase', 'SCEP:case-sensitive');
-    for (const statement of migrations.at(-1)!.sql) sqlite.exec(statement);
+    for (const migration of migrations.slice(integrationMigrationIndex)) for (const statement of migration.sql) sqlite.exec(statement);
     expect(sqlite.prepare('SELECT id,kind,token_hash,revoked_at FROM integrations ORDER BY id').all()).toEqual([
       { id: 'kube', kind: 'kubernetes', token_hash: hash, revoked_at: null },
       { id: 'scep', kind: 'scep', token_hash: hash, revoked_at: 1234 },

@@ -14,6 +14,9 @@ export interface KMSServiceOptions {
 }
 
 export class KMSService {
+  async performRAOperation(...args: Parameters<KMSClient['performRAOperation']>) {
+    return this.client.performRAOperation(...args);
+  }
   private client: KMSClient;
   private enableAuditLog: boolean;
 

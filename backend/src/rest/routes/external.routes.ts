@@ -2,7 +2,8 @@ import type { FastifyError, FastifyInstance } from 'fastify';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
-import { certificateAuthorities, certificates, auditLog, crls } from '../../db/schema.js';
+import { certificateAuthorities, certificates, auditLog, crls, integrationRAs } from '../../db/schema.js';
+import { raRoutes } from './ra.routes.js';
 import { getKMSService } from '../../kms/service.js';
 import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
@@ -178,6 +179,8 @@ export async function externalRoutes(fastify: FastifyInstance) {
       logger.error({ requestId: req.id, statusCode: reply.statusCode }, 'Failed to persist external rejection audit');
     }
   });
+
+  await fastify.register(raRoutes);
 
   // Body-schema validation failures must use the API's standard
   // {error:{code,message}} shape (Fastify's default validation error would
@@ -527,6 +530,11 @@ export async function externalRoutes(fastify: FastifyInstance) {
       return reply.code(403).send({
         error: { code: 'FORBIDDEN', message: 'Integration cannot revoke a certificate it did not issue' },
       });
+    }
+
+    const [ra] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, req.integration!.id)).limit(1);
+    if (ra && (ra.certificateId === cert[0].id || (JSON.parse(ra.previous) as Array<{id: string}>).some(p => p.id === cert[0].id))) {
+      return reply.code(403).send({ error: { code: 'RA_PROTECTED', message: 'Integration cannot revoke its RA certificates' } });
     }
 
     if (cert[0].status === 'revoked') {

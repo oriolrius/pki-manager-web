@@ -157,6 +157,19 @@ export const integrations = sqliteTable(
   })
 );
 
+// Backend-owned RA bindings. Gateway requests never select a KMS key identifier.
+export const integrationRAs = sqliteTable('integration_ras', {
+  integrationId: text('integration_id').primaryKey().references(() => integrations.id, { onDelete: 'restrict' }),
+  caId: text('ca_id').notNull().references(() => certificateAuthorities.id, { onDelete: 'restrict' }),
+  keyId: text('key_id'),
+  publicKeyId: text('public_key_id'),
+  certificateId: text('certificate_id'),
+  certificatePem: text('certificate_pem'),
+  previous: text('previous').notNull().default('[]'),
+  lease: text('lease'),
+  leaseUntil: integer('lease_until', { mode: 'timestamp' }),
+});
+
 // CRLs (Certificate Revocation Lists) table
 export const crls = sqliteTable(
   'crls',
