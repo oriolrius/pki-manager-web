@@ -1,3 +1,9 @@
+## v3.13.1 (2026-10-22)
+
+### Fix
+
+- **auth**: fix oidc userinfo endpoint (#7)
+
 ## v3.13.0 (2026-10-21)
 
 ### Feat
