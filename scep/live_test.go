@@ -27,6 +27,7 @@ func TestLiveEnrollment(t *testing.T) {
 	if endpoint == "" {
 		t.Skip("SCEP_TEST_SERVER_URL is not set")
 	}
+	pkcs7.ContentEncryptionAlgorithm = pkcs7.EncryptionAlgorithmAES256CBC
 	challengeFile := os.Getenv("SCEP_TEST_CHALLENGE_FILE")
 	challenge, err := os.ReadFile(challengeFile)
 	if err != nil {
