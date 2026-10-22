@@ -1,9 +1,11 @@
 ---
 id: TASK-237
 title: Clarify integration service tokens and simplify standalone SCEP deployment
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@codex'
 created_date: '2026-10-22T09:55:00Z'
+updated_date: '2026-10-22T09:55:00Z'
 labels: []
 dependencies: []
 ordinal: 64014
@@ -21,3 +23,11 @@ Expose CA-bound external issuer credentials as integration service tokens usable
 - [ ] #2 Standalone SCEP Compose defines only a gateway using configurable existing backend and KMS endpoints
 - [ ] #3 Setup documentation distinguishes backend upgrade from adding a second backend and includes provisioning and readiness checks
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Rename user-facing cluster registration and token labels to integrations/service tokens while preserving API compatibility.
+2. Add standalone SCEP Compose against existing backend/KMS and document one-container provisioning.
+3. Validate Compose service membership, focused frontend checks, SCEP image and live enrollment as feasible; report existing failures.
+<!-- SECTION:PLAN:END -->
