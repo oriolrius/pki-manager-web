@@ -9,6 +9,7 @@ import packageJson from '../../../package.json';
 import { AuthProvider, AuthGuard } from '@/lib/auth';
 import { UserMenu } from '@/components/UserMenu';
 import { UiProvider } from '@/components/ui';
+import { PageTitle } from '@/components/PageTitle';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -33,6 +34,7 @@ function RootComponent() {
 
   return (
     <UiProvider>
+    <PageTitle />
     <AuthProvider>
       <AuthGuard>
     <div className="min-h-screen bg-background">
