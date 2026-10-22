@@ -1,12 +1,13 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, desc } from 'drizzle-orm';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
-import { certificateAuthorities, certificates, auditLog } from '../../db/schema.js';
+import { certificateAuthorities, certificates, auditLog, crls } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
 import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { logger } from '../../lib/logger.js';
+import { isCertificateRevoked } from '../../crypto/crl.js';
 import { parseCertificate } from '../../crypto/x509.js';
 import { integrationAuthPreHandler } from '../middleware/integration-auth.js';
 import { randomUUID } from 'crypto';
@@ -28,13 +29,13 @@ const signBodySchema = {
   required: ['csrPem', 'requestUid'],
   additionalProperties: true,
   properties: {
-    csrPem: { type: 'string', description: 'PEM-encoded PKCS#10 CSR to sign' },
+    csrPem: { type: 'string', minLength: 1, maxLength: 65536, description: 'PEM-encoded PKCS#10 CSR to sign' },
     requestUid: {
-      type: 'string',
+      type: 'string', minLength: 1, maxLength: 256,
       description: 'Idempotency key scoped to this integration and CA. A retry returns the active cached certificate; revoked or expired cached certificates return 409.',
     },
     durationDays: {
-      type: 'number',
+      type: 'integer', minimum: 1, maximum: 825,
       description: 'Requested validity in days (clamped server-side to 1..825; default 90)',
     },
     certificateType: { type: 'string', enum: ['server', 'client', 'dual'], description: 'Metadata hint only. Key usage and extended key usage are taken from the signed CSR.' },
@@ -50,7 +51,7 @@ const revokeBodySchema = {
   required: ['serialNumber'],
   additionalProperties: true,
   properties: {
-    serialNumber: { type: 'string', description: 'Serial number of the certificate to revoke' },
+    serialNumber: { type: 'string', pattern: '^[a-fA-F0-9]{1,128}$', description: 'Serial number of the certificate to revoke' },
     reason: { type: 'string', description: 'RFC 5280 revocation reason (default: unspecified)' },
   },
 } as const;
@@ -85,8 +86,11 @@ interface ParsedCsr {
   sanEmail: string[];
 }
 
-function parseCsrPem(csrPem: string): ParsedCsr {
+function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
   const csr = forge.pki.certificationRequestFromPem(csrPem);
+  if (!csr.publicKey || csr.publicKey.n.bitLength() < 2048 || csr.publicKey.n.bitLength() > 8192) {
+    throw new Error('RSA 2048..8192 is required');
+  }
   if (!csr.verify()) {
     throw new Error('CSR signature verification failed');
   }
@@ -108,11 +112,24 @@ function parseCsrPem(csrPem: string): ParsedCsr {
 
   // node-forge: extensionRequest attribute holds requested extensions
   const extReq = csr.getAttribute({ name: 'extensionRequest' }) as
-    | { extensions?: Array<{ name?: string; cA?: boolean; pathLenConstraint?: number; altNames?: Array<{ type: number; value?: string; ip?: string }> }> }
+    | { extensions?: Array<{ id: string; value: string; name?: string; keyCertSign?: boolean; cRLSign?: boolean; cA?: boolean; pathLenConstraint?: number; altNames?: Array<{ type: number; value?: string; ip?: string }> }> }
     | undefined;
   const exts = extReq?.extensions ?? [];
   let hasBasicConstraints = false;
+  let clientAuth = false;
+  const allowed = new Set(['2.5.29.17', '2.5.29.15', '2.5.29.37', '2.5.29.19']);
+  const seen = new Set<string>();
   for (const ext of exts) {
+    if (!allowed.has(ext.id) || seen.has(ext.id)) throw new Error('Unsupported or duplicate CSR extension');
+    seen.add(ext.id);
+    if (ext.id === '2.5.29.15' && (ext.keyCertSign || ext.cRLSign)) throw new Error('CA key usage is forbidden');
+    if (ext.id === '2.5.29.37') {
+      const sequence = forge.asn1.fromDer(ext.value);
+      if (!Array.isArray(sequence.value) || sequence.value.length === 0) throw new Error('Invalid extended key usage');
+      const usages = sequence.value.map((node) => forge.asn1.derToOid(node.value as string));
+      clientAuth = usages.length === 1 && usages[0] === '1.3.6.1.5.5.7.3.2';
+      if (kind === 'scep' && !clientAuth) throw new Error('SCEP requires clientAuth-only EKU');
+    }
     if (ext.name === 'basicConstraints') {
       if (ext.cA || ext.pathLenConstraint !== undefined) throw new Error('External enrollment cannot request a CA certificate');
       hasBasicConstraints = true;
@@ -126,6 +143,7 @@ function parseCsrPem(csrPem: string): ParsedCsr {
       }
     }
   }
+  if (kind === 'scep' && !clientAuth) throw new Error('SCEP requires clientAuth-only EKU');
   return { hasBasicConstraints, subjectDn, cn, sanDns, sanIp, sanEmail };
 }
 
@@ -148,6 +166,18 @@ function parseCsrPem(csrPem: string): ParsedCsr {
  */
 export async function externalRoutes(fastify: FastifyInstance) {
   fastify.addHook('preHandler', integrationAuthPreHandler);
+  fastify.addHook('onResponse', async (req, reply) => {
+    if (reply.statusCode < 400) return;
+    try {
+      await db.insert(auditLog).values({
+        id: randomUUID(), operation: 'external.reject', entityType: 'integration',
+        entityId: req.integration?.id ?? null, status: 'failure', ipAddress: req.ip,
+        details: JSON.stringify({ route: req.routeOptions.url, statusCode: reply.statusCode }),
+      });
+    } catch {
+      logger.error({ requestId: req.id, statusCode: reply.statusCode }, 'Failed to persist external rejection audit');
+    }
+  });
 
   // Body-schema validation failures must use the API's standard
   // {error:{code,message}} shape (Fastify's default validation error would
@@ -263,42 +293,10 @@ export async function externalRoutes(fastify: FastifyInstance) {
       });
     }
 
-    // Idempotency: return existing cert for same requestUid scoped to integration
-    const existing = await db
-      .select()
-      .from(certificates)
-      .where(and(eq(certificates.requestUid, body.requestUid), eq(certificates.integrationId, req.integration!.id), eq(certificates.caId, req.integration!.caId)))
-      .limit(1);
-
-    if (existing.length > 0 && existing[0].integrationId === req.integration!.id) {
-      if (existing[0].status !== 'active' || existing[0].notAfter <= new Date()) {
-        return reply.code(409).send({ error: { code: 'CERTIFICATE_NOT_ACTIVE', message: 'The existing certificate is revoked or expired; submit a new CSR' } });
-      }
-      const kms = getKMSService();
-      const certPem = (existing[0] as any).certificatePem
-        ? (existing[0] as any).certificatePem
-        : await kms.getCertificate(existing[0].kmsCertificateId, existing[0].id);
-      const ca = await db
-        .select()
-        .from(certificateAuthorities)
-        .where(eq(certificateAuthorities.id, existing[0].caId))
-        .limit(1);
-      const chainPem = ca[0] ? await kms.getCertificate(ca[0].kmsCertificateId, ca[0].id) : '';
-      return {
-        idempotent: true,
-        id: existing[0].id,
-        serialNumber: existing[0].serialNumber,
-        certificatePem: certPem,
-        chainPem,
-        notBefore: existing[0].notBefore.toISOString(),
-        notAfter: existing[0].notAfter.toISOString(),
-      };
-    }
-
     // Parse + verify CSR
     let parsed: ParsedCsr;
     try {
-      parsed = parseCsrPem(body.csrPem);
+      parsed = parseCsrPem(body.csrPem, req.integration!.kind);
     } catch (err) {
       return reply.code(400).send({
         error: {
@@ -333,6 +331,42 @@ export async function externalRoutes(fastify: FastifyInstance) {
       return reply.code(409).send({
         error: { code: 'CA_EXPIRED', message: 'CA expired' },
       });
+    }
+
+    if (req.integration!.kind === 'scep' && (body.durationDays ?? 90) > 90) {
+      return reply.code(400).send({ error: { code: 'INVALID_VALIDITY', message: 'SCEP validity is limited to 90 days' } });
+    }
+
+    // Idempotency: return existing cert for same requestUid scoped to integration
+    const existing = await db
+      .select()
+      .from(certificates)
+      .where(and(eq(certificates.requestUid, body.requestUid), eq(certificates.integrationId, req.integration!.id), eq(certificates.caId, req.integration!.caId)))
+      .limit(1);
+
+    if (existing.length > 0 && existing[0].integrationId === req.integration!.id) {
+      if (existing[0].status !== 'active' || existing[0].notAfter <= new Date()) {
+        return reply.code(409).send({ error: { code: 'CERTIFICATE_NOT_ACTIVE', message: 'The existing certificate is revoked or expired; submit a new CSR' } });
+      }
+      const kms = getKMSService();
+      const certPem = (existing[0] as any).certificatePem
+        ? (existing[0] as any).certificatePem
+        : await kms.getCertificate(existing[0].kmsCertificateId, existing[0].id);
+      const ca = await db
+        .select()
+        .from(certificateAuthorities)
+        .where(eq(certificateAuthorities.id, existing[0].caId))
+        .limit(1);
+      const chainPem = ca[0] ? await kms.getCertificate(ca[0].kmsCertificateId, ca[0].id) : '';
+      return {
+        idempotent: true,
+        id: existing[0].id,
+        serialNumber: existing[0].serialNumber,
+        certificatePem: certPem,
+        chainPem,
+        notBefore: existing[0].notBefore.toISOString(),
+        notAfter: existing[0].notAfter.toISOString(),
+      };
     }
 
     // Subject + SANs are taken from the CSR. The issued cert's subject == the CSR subject
@@ -497,7 +531,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
 
     if (cert[0].status === 'revoked') {
       // Retry CRL publication too if the previous revoke persisted but publication failed.
-      await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, cert[0].caId);
+      await publishRevocation(cert[0].id, cert[0].caId, req.ip);
       return {
         idempotent: true,
         id: cert[0].id,
@@ -533,7 +567,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
     } as any);
 
     // Keep the CA CRL current so the revoked serial appears promptly (best-effort).
-    await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, cert[0].caId);
+    await publishRevocation(cert[0].id, cert[0].caId, req.ip);
 
     return {
       id: cert[0].id,
@@ -542,4 +576,13 @@ export async function externalRoutes(fastify: FastifyInstance) {
       revocationDate: now.toISOString(),
     };
   });
+}
+
+async function publishRevocation(certificateId: string, caId: string, ipAddress: string) {
+  const [cert] = await db.select({ serial: certificates.serialNumber }).from(certificates).where(eq(certificates.id, certificateId)).limit(1);
+  const [latest] = await db.select().from(crls).where(eq(crls.caId, caId)).orderBy(desc(crls.crlNumber)).limit(1);
+  // Reuse an unexpired CRL that already publishes this serial. Failed publication
+  // leaves no such CRL, so the next request retries without relying on audit retention.
+  if (cert && latest && latest.nextUpdate > new Date() && isCertificateRevoked(latest.crlPem, cert.serial)) return;
+  await getCRLService().regenerateForCa({ db, ipAddress }, caId);
 }

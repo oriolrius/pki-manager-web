@@ -82,3 +82,25 @@ revoking another identity's certificate, 404 for missing resources, and 409 for
 CA/certificate state conflicts. KMS/CRL failures can return 500. Successful
 certificate-status lookup of a missing or differently owned serial returns
 `active: false`, rather than revealing another integration's certificate.
+
+## Backend issuance policy and failure auditing
+
+The external issuer accepts only SAN, keyUsage, extendedKeyUsage and
+basicConstraints CSR extensions. Duplicate or unknown extensions (including
+CDP, AIA and nameConstraints), CA:true, path length, keyCertSign and cRLSign are
+rejected before KMS issuance. The backend adds its configured CRL distribution
+point itself. RSA keys must be 2048–8192 bits; CSRs and request IDs are bounded.
+
+SCEP integrations require exactly the clientAuth EKU and at most 90 days validity.
+This applies to direct API callers as well as gateway requests; a certificateType
+metadata hint cannot override the CSR profile. CA validity is checked before
+returning an idempotent issuance result. Requests rejected with HTTP 4xx/5xx
+produce `external.reject` audit rows with route/status and known integration
+identity, without tokens or raw CSR/challenge bodies. Audit-storage failures
+are separately logged; response delivery and the on-response audit insert are
+not one database transaction.
+
+Repeated revocation reuses the current unexpired CA CRL if it already contains
+the serial. If publication previously failed, or that CRL expired, publication
+is retried. This avoids regenerating CRLs on successful sequential retries;
+concurrent publication still needs coordination across backend replicas.
