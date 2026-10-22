@@ -2,6 +2,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { getApiUrl } from '@/lib/config';
 import { downloadFile } from '@/lib/download';
+import { generateExportPassword } from '@/lib/export-password';
+import { ExportPasswordField } from '@/components/ExportPasswordField';
 import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy, Download } from 'lucide-react';
 import { useState } from 'react';
 import { useToast, useConfirm } from '@/components/ui';
@@ -53,8 +55,9 @@ function CADetail() {
   const [revokeDetails, setRevokeDetails] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer' | 'p12-truststore' | 'p12-keystore' | 'jks-truststore' | 'jks-keystore'>('pem');
-  const [downloadPassword, setDownloadPassword] = useState('');
+  const [downloadPassword, setDownloadPassword] = useState(generateExportPassword);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [lastExport, setLastExport] = useState<{ format: string; password: string } | null>(null);
 
   const revokeMutation = trpc.ca.revoke.useMutation();
   const deleteMutation = trpc.ca.delete.useMutation();
@@ -67,13 +70,13 @@ function CADetail() {
     return ['p12-truststore', 'p12-keystore', 'jks-truststore', 'jks-keystore'].includes(format);
   };
 
-  // Helper to check if format requires password (keystore formats)
+  // Require a usable password for every protected export.
   const formatRequiresPassword = (format: string) => {
-    return ['p12-keystore', 'jks-keystore'].includes(format);
+    return formatNeedsPassword(format);
   };
 
   // Build download URL with password parameter if needed
-  const getDownloadUrl = (format: string, includePassword = false) => {
+  const getDownloadUrl = (format: string, includePassword = true) => {
     const baseUrl = `${apiBaseUrl}/api/v1/cas/${id}/download?format=${format}`;
     if (includePassword && formatNeedsPassword(format) && downloadPassword) {
       return `${baseUrl}&password=${encodeURIComponent(downloadPassword)}`;
@@ -81,7 +84,7 @@ function CADetail() {
     return baseUrl;
   };
 
-  // Certificate download URLs for all formats (without password for display)
+  // All protected URLs carry the displayed password, including direct-download buttons.
   const downloadUrls = {
     // Certificate formats
     pem: getDownloadUrl('pem'),
@@ -147,14 +150,15 @@ function CADetail() {
   };
 
   const handleDownload = async (format = selectedFormat) => {
-    if (formatRequiresPassword(format) && !downloadPassword) {
-      toast.error('A password is required for this format.');
+    if (formatRequiresPassword(format) && downloadPassword.length < 8) {
+      toast.error('Use an export password with at least 8 characters.');
       return;
     }
     setIsDownloading(true);
     const extension = format.startsWith('p12-') ? 'p12' : format.startsWith('jks-') ? 'jks' : format;
     try {
       await downloadFile(getDownloadUrl(format, true), `ca-${id}.${extension}`);
+      if (formatNeedsPassword(format)) setLastExport({ format, password: downloadPassword });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Download failed.');
     } finally {
@@ -526,19 +530,11 @@ function CADetail() {
             </optgroup>
           </select>
 
-          {formatNeedsPassword(selectedFormat) && (
-            <input
-              type="password"
-              placeholder={formatRequiresPassword(selectedFormat) ? "Password (required)" : "Password (optional)"}
-              value={downloadPassword}
-              onChange={(e) => setDownloadPassword(e.target.value)}
-              className="px-3 py-1.5 text-sm border rounded-md bg-background w-36"
-            />
-          )}
+          <ExportPasswordField value={downloadPassword} onChange={isDownloading ? undefined : setDownloadPassword} />
 
           <button
             onClick={() => void handleDownload()}
-            disabled={isDownloading || (formatRequiresPassword(selectedFormat) && !downloadPassword)}
+            disabled={isDownloading || (formatRequiresPassword(selectedFormat) && downloadPassword.length < 8)}
             className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
@@ -548,7 +544,7 @@ function CADetail() {
           <button
             title="API URL: an Authorization header is required when OIDC is enabled."
             onClick={handleCopyPermalink}
-            disabled={formatRequiresPassword(selectedFormat) && !downloadPassword}
+            disabled={formatRequiresPassword(selectedFormat) && downloadPassword.length < 8}
             className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
           >
             {linkCopied ? (
@@ -585,6 +581,11 @@ function CADetail() {
           </button>
         </div>
       </div>
+
+      {lastExport && <div className="p-4 border rounded-md bg-muted/50 space-y-2">
+        <p className="text-sm font-medium">Password used for the last {lastExport.format} download</p>
+        <ExportPasswordField id="last-ca-export-password" label="Downloaded file password" value={lastExport.password} />
+      </div>}
 
       {/* Primary Information Card */}
       <div className="rounded-lg border bg-card">
@@ -701,7 +702,7 @@ function CADetail() {
                         </span>
                         <button
                           type="button"
-                          disabled={isDownloading}
+                          disabled={isDownloading || (formatNeedsPassword(format) && downloadPassword.length < 8)}
                           className="font-mono text-xs text-primary hover:underline break-all flex-1 text-left disabled:opacity-50"
                           onClick={() => void handleDownload(format)}
                         >
@@ -723,7 +724,7 @@ function CADetail() {
                         </span>
                         <button
                           type="button"
-                          disabled={isDownloading}
+                          disabled={isDownloading || (formatNeedsPassword(format) && downloadPassword.length < 8)}
                           className="font-mono text-xs text-primary hover:underline break-all flex-1 text-left disabled:opacity-50"
                           onClick={() => void handleDownload(format)}
                         >
@@ -743,9 +744,12 @@ function CADetail() {
                         <span className="text-xs font-semibold text-muted-foreground w-24">
                           {format === 'p12-keystore' ? 'P12 Key:' : 'JKS Key:'}
                         </span>
-                        <span className="font-mono text-xs text-muted-foreground break-all flex-1">
-                          {downloadUrls[format]}&password=***
-                        </span>
+                        <button type="button"
+                          disabled={isDownloading || downloadPassword.length < 8}
+                          onClick={() => void handleDownload(format)}
+                          className="font-mono text-xs text-primary hover:underline break-all flex-1 text-left disabled:opacity-50">
+                          {downloadUrls[format]}
+                        </button>
                       </div>
                     ))}
                   </div>
