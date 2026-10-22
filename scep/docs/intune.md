@@ -75,8 +75,7 @@ Then run from `docker/`:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.scep.yml -f docker-compose.intune.yml --profile scep build scep
-# Only for a new RA; omit if already provisioned:
-docker compose -f docker-compose.yml -f docker-compose.scep.yml -f docker-compose.intune.yml --profile scep run --rm scep provision
+# The Compose overlay provisions a missing RA automatically on first start.
 docker compose -f docker-compose.yml -f docker-compose.scep.yml -f docker-compose.intune.yml --profile scep up -d scep
 ```
 

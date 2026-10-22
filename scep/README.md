@@ -118,19 +118,21 @@ and add `--env-file scep/.env` to every Compose command below.
    sudo chmod 0400 docker/scep-secrets/*
    ```
 
-3. Build, provision the RA once, and start only the gateway:
+3. Build and start only the gateway. Compose enables automatic first provisioning:
 
    ```sh
    docker compose -f scep/compose.yml build scep
-   docker compose -f scep/compose.yml run --rm scep provision
    docker compose -f scep/compose.yml up -d scep
    ```
 
-   Provisioning is a one-off invocation of the same image, not an additional
-   permanent service. Do not rerun it once `ra.json` exists. The `scep-state`
+   On first start, the gateway provisions its RA and starts serving. Later starts
+   reuse `ra.json`. Set `SCEP_AUTO_PROVISION=false` if you prefer to invoke
+   `docker compose -f scep/compose.yml run --rm scep provision` manually before
+   starting the service. The `scep-state`
    volume contains public RA metadata and the KMS key ID; private keys stay in KMS.
-   To use a published image, set `SCEP_IMAGE`, then replace the build command with
-   `docker compose -f scep/compose.yml pull scep` and use `--no-build` for `up` (the `run` command uses the pulled image).
+   To use a published image containing automatic provisioning, set `SCEP_IMAGE`,
+   then replace the build command with `docker compose -f scep/compose.yml pull scep`
+   and use `--no-build` for `up`.
 
 4. Verify discovery, then expose `/scep` through your TLS reverse proxy:
 
@@ -164,7 +166,8 @@ depends_on:
 ```
 
 Enable this only with an image containing the automatic-provisioning change.
-`SCEP_AUTO_PROVISION` defaults to `false`. When enabled and `ra.json` is absent,
+The executable defaults `SCEP_AUTO_PROVISION` to `false`; both supplied Compose
+setups default it to `true`. When enabled and `ra.json` is absent,
 the gateway provisions once and continues with normal RA validation and serving.
 Subsequent starts reuse the saved state; invalid, expired, or revoked state is
 not silently replaced. Run only one replica and keep `/data` persistent.
@@ -221,16 +224,17 @@ configuration/version migration procedure; the overlay does not upgrade it.
    ```
 
 3. Start the existing backend/KMS stack using its documented configuration, then
-   build and provision the SCEP RA once:
+   build and start SCEP (the RA is automatically provisioned on first start):
 
    ```sh
    cd docker
    docker compose -f docker-compose.yml -f docker-compose.scep.yml --profile scep build scep
-   docker compose -f docker-compose.yml -f docker-compose.scep.yml --profile scep run --rm scep provision
    docker compose -f docker-compose.yml -f docker-compose.scep.yml --profile scep up -d scep
    ```
 
-   Provision refuses to overwrite existing RA state. `scep-state` is a persistent
+   Existing RA state is reused. For manual provisioning instead, set
+   `SCEP_AUTO_PROVISION=false` and run the service with `provision` before `up`.
+   `scep-state` is a persistent
    Docker volume; keep its public metadata together with your KMS backups. A
    partial provisioning failure may leave an orphaned RA key/certificate in KMS:
    investigate the KMS audit trail before retrying. The gateway never exports a
