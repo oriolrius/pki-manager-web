@@ -1,3 +1,9 @@
+## v3.14.1 (2026-10-22)
+
+### Fix
+
+- **frontend**: generate visible secure passwords for certificate exports (#14)
+
 ## v3.14.0 (2026-10-22)
 
 ### Feat
