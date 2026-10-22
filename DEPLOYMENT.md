@@ -815,7 +815,7 @@ docker-compose logs > logs-$(date +%Y%m%d).txt
 For issues or questions:
 - GitHub Issues: [https://github.com/YOUR_ORG/pki-manager/issues](https://github.com/YOUR_ORG/pki-manager/issues)
 - Documentation: [README.md](README.md)
-- Project Instructions: [CLAUDE.md](CLAUDE.md)
+- Project Instructions: [AGENTS.md](AGENTS.md)
 
 ### OIDC: admin groups through UserInfo
 

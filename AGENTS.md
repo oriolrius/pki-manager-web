@@ -1,59 +1,146 @@
+# PKI Manager - Agent Instructions
 
-# PKI Manager - Codex Instructions
+`AGENTS.md` files are the single source of agent guidance (Claude Code and Codex both read
+them). Do not add `CLAUDE.md` files: Claude Code ignores every `AGENTS.md` when one exists.
 
-This repository supports both Codex and Claude Code. Keep `CLAUDE.md` files in place;
-`AGENTS.md` is the Codex-facing equivalent. When guidance changes, update the matching
-files so the two assistants follow the same project workflow.
+Web PKI manager: CA hierarchies, X.509 issue/renew/revoke, CRLs, and a cert-manager
+external issuer for Kubernetes. Private keys live in a **Cosmian KMS**; metadata in SQLite.
 
-## Repository
+## Backlog.md CLI — Task Management
 
-PKI Manager is a pnpm workspace with a React SPA, a Fastify API, and a standalone Go
-cert-manager external issuer. X.509 private keys are held by Cosmian KMS; application
-metadata is stored in SQLite.
+**Golden rule: NEVER edit task files directly — always use the `backlog` CLI.**
+(The full Backlog.md guidelines are at the end of this file, between the `BACKLOG.MD GUIDELINES` markers — that block is auto-generated, leave it to the CLI.)
 
-| Area | Location | Guidance |
-| --- | --- | --- |
-| API, crypto, KMS, database | `backend/` | `backend/AGENTS.md` |
-| React SPA | `frontend/` | `frontend/AGENTS.md` |
-| cert-manager external issuer | `k8s/issuer/` | `k8s/issuer/AGENTS.md` |
-| KMS, Keycloak, deployment | `kms/`, `keycloak/`, `docker/` | their READMEs and root docs |
+```bash
+backlog task <id> --plain                              # view (--plain = AI output)
+backlog task list --plain                              # list
+backlog search "kw" --plain                            # search
+backlog task create "Title" -d "Desc" --ac "Criterion"
+backlog task edit <id> -s "In Progress" -a @myself     # start
+backlog task edit <id> --plan $'1. Step\n2. Step'      # plan (ANSI-C quoting for newlines)
+backlog task edit <id> --check-ac 1                    # tick an AC
+backlog task edit <id> --notes "PR description" -s Done # finish
+```
 
-Read the closest applicable `AGENTS.md` before editing a subsystem. `CLAUDE.md` files are
-reference material for details that have not yet been duplicated here.
+Workflow: start → `--plan` → implement + `--check-ac <i>` → `--notes` → `-s Done`.
+ACs must be **outcome-oriented and testable** ("User can log in"), not implementation steps.
 
-## Commands
+| Action | Flag |
+|---|---|
+| Add / check / remove AC | `--ac "..."` / `--check-ac <i>` / `--remove-ac <i>` |
+| Title / desc / status / assignee | `-t` / `-d` / `-s` / `-a` |
+| Labels | `-l a,b` |
 
-- Root: `pnpm build`, `pnpm test`, `pnpm typecheck`, and `pnpm lint` run across workspaces.
-- Backend: run `pnpm typecheck`, tests, and lint from `backend/`. `pnpm build` is relaxed;
-  a successful build does not replace strict typechecking.
-- Frontend: run commands from `frontend/` with **npm**, not pnpm. `npm run typecheck` is
-  stricter than the Docker build.
-- Issuer: run `make build`, `make test`, `make vet`, or `make fmt` from `k8s/issuer/`.
-- Start the stack only with `pnpm dev` (`scripts/dev-session.sh`), never bare `mprocs`: it
-  is idempotent and reattaches to the `dev-pki-manager` tmux session instead of starting a
-  duplicate stack on shifted ports. It works without a TTY (the session is created
-  detached); read it with `tmux capture-pane -p -t dev-pki-manager`, inspect with
-  `pnpm dev:status`, tear down with `pnpm dev:stop` (processes) or `pnpm dev:down` (also KMS + Keycloak). Consult `DEVELOPMENT.md` first.
+## Repository Layout
 
-## Engineering Rules
+pnpm monorepo (workspaces `frontend`, `backend`) + a standalone Go module + infra dirs.
 
-- Put backend business logic in `backend/src/services/`; tRPC and REST routes must delegate
-  to the shared service layer.
-- For a database change, update `backend/src/db/schema.ts`, then run `pnpm db:generate` and
-  `pnpm db:migrate` from `backend/`.
-- Every state-changing backend operation must write an `audit_log` entry for success and failure.
-- Create frontend routes in `frontend/src/routes/`. Never edit `frontend/src/routeTree.gen.ts`;
-  the TanStack Router plugin generates it.
-- OIDC is optional. When `OIDC_ISSUER` and `OIDC_AUDIENCE` are unset, backend OIDC and admin
-  checks are disabled. Cluster-token authentication for `/api/v1/external` is separate.
-- Do not add private-key persistence outside Cosmian KMS.
+```
+backend/      Fastify: tRPC + REST/OpenAPI API, crypto, KMS, SQLite   → backend/AGENTS.md
+frontend/     React 19 SPA: TanStack Router/Query + tRPC + OIDC       → frontend/AGENTS.md
+k8s/issuer/   Go cert-manager external issuer (own go.mod, Helm)      → k8s/issuer/AGENTS.md
+docker/       Full-stack Compose + Dockerfile          → DEPLOYMENT.md
+keycloak/     Keycloak dev IdP + realm import          → KEYCLOAK.md
+kms/          Cosmian KMS dev stack                    → kms/README.md
+ansible/      SSH host-cert deploy role                → ansible/README.md
+docs/ssh/     SSH onboarding guides (concept/quickstart/setup/zones) → docs/ssh/concept.md
+tests/        Playwright E2E (auth, RBAC, screenshots)
+backlog/      Backlog.md tasks / docs / decisions
+```
 
-## Task Workflow
+Per-directory guides: [backend](backend/AGENTS.md) · [frontend](frontend/AGENTS.md) ·
+[k8s/issuer](k8s/issuer/AGENTS.md). Read the relevant one for verified commands,
+architecture, and gotchas before working in that subsystem.
 
-Use the `backlog` CLI for all task reads and mutations. Start an implementation by assigning
-the task and setting it to `In Progress`, add an implementation plan, check each completed
-acceptance criterion, add PR-ready notes, and only then set it to `Done`. Never manually edit
-files under `backlog/tasks/` or `backlog/drafts/`.
+## Architecture
+
+```
+React SPA ──tRPC──┐                 Keycloak (OIDC) ── bearer JWT
+                  ▼
+Backend (Fastify): /trpc · /api/v1 (REST+Swagger) · /api/v1/external (cluster tokens)
+   └ services/ → crypto (node-forge) · Cosmian KMS (KMIP/HTTP, private keys) · SQLite (Drizzle)
+k8s/issuer (Go) ── POST /api/v1/external/sign ──► Backend   (one cluster token = one CA)
+```
+
+The `services/` layer is exposed over **two APIs**: typed tRPC (`/trpc`, used by the
+frontend) and REST/OpenAPI (`/api/v1`, Swagger at `/api/docs`), plus a cluster-token
+external-issuer API. **OIDC is optional** — with no `OIDC_ISSUER`/`OIDC_AUDIENCE` set, the
+backend runs fully unauthenticated.
+
+**SSH Zones** (decision-017): a generic `zones` table makes the SSH manager multi-tenant —
+`ssh_cas/hosts/identities/principals/fleet_tokens` carry a `zone_id` and a host trusts only
+its own zone's user CAs. Zone resolution is **fail-closed** (`resolveZone`): implicit while
+one zone exists, an error once several do. Single-zone installs are unchanged. See
+[docs/ssh/zones.md](docs/ssh/zones.md).
+
+## Tech Stack
+
+| Area | Stack |
+|---|---|
+| Backend | Fastify 5 · tRPC v11 · Drizzle + better-sqlite3 · Zod · node-forge · jose · Vitest |
+| Frontend | React 19 · TanStack Router/Query · tRPC client · Tailwind 4 · Vite 7 · Vitest+RTL |
+| Issuer | Go 1.23 · controller-runtime 0.20 · cert-manager 1.16 · Helm |
+| Tooling | pnpm workspaces (Node ≥20, pnpm ≥9) · Commitizen conventional commits |
+
+## Root Commands
+
+| Command | Action |
+|---|---|
+| `pnpm dev` | attach-or-create the `dev-pki-manager` tmux session running **mprocs** (`backend` + `frontend` + `backlog`) |
+| `pnpm dev:status` / `dev:stop` | inspect / tear down that session and its ports (KMS + Keycloak keep running) |
+| `pnpm dev:down` | `dev:stop` + stop the KMS/Keycloak containers and the backlog relay — nothing left consuming resources |
+| `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
+| `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
+
+Per-workspace commands (DB migrations, ports, build modes) live in the subsystem guides;
+the Go issuer uses `make` from `k8s/issuer/`.
+
+## Local Dev Quick Start
+
+```bash
+cd kms && docker compose up -d          # Cosmian KMS  (:42998)
+cd keycloak && docker compose up -d     # Keycloak     (:42997) — `pnpm dev` also starts both
+pnpm install
+cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
+cd backend && pnpm db:migrate
+pnpm dev                                # login at http://localhost:52080 as admin/admin (OIDC on by default); backend :52081 + frontend :52080 + backlog :6430
+```
+
+**Launching the stack as an agent — read
+[DEVELOPMENT.md § Launching the Dev Stack](DEVELOPMENT.md#launching-the-dev-stack) first.**
+`pnpm dev` (= `scripts/dev-session.sh`) is idempotent: it keeps mprocs in the
+`dev-pki-manager` **tmux** session and reattaches instead of starting a second stack —
+which matters because Orca restarts its panes on every update while the stack keeps
+running detached. **Never launch bare `mprocs`.** Since the session is created detached,
+you can run `pnpm dev` headlessly (no `Stdin is not a tty`) and then read the stack with
+`tmux capture-pane -p -t dev-pki-manager`. The remaining gotcha: WSL2 only forwards
+**IPv4** binds to the Windows browser, so anything on the IPv6 wildcard (`*:PORT`, e.g.
+`backlog browser` on 6430) needs a socat relay. That doc also has the real port table,
+verify commands, and the cleanup recipe.
+
+The dev stack runs on **`http://localhost`** (`42xxx`/`52xxx` ports, IPv4 binds, so the same
+URLs work in Orca's and in the Windows browser). Use `localhost`, never a LAN/WSL hostname:
+OIDC login needs a secure context (HTTPS or localhost) — see [frontend/AGENTS.md](frontend/AGENTS.md).
+Details: [DEVELOPMENT.md](DEVELOPMENT.md) (dev), [DEPLOYMENT.md](DEPLOYMENT.md) (Docker),
+[KEYCLOAK.md](KEYCLOAK.md) / [OIDC.md](OIDC.md) (auth).
+
+## Conventions
+
+- **New endpoint**: Zod schema → `services/*` method → expose via a tRPC procedure and/or
+  REST route (both delegate to the service).
+- **New frontend route**: add `frontend/src/routes/<name>.tsx`; the router plugin
+  regenerates `routeTree.gen.ts`.
+- **DB change**: edit `backend/src/db/schema.ts` → `pnpm db:generate && pnpm db:migrate`.
+- Write an `audit_log` row for every state-changing operation (success and failure).
+- Never persist private keys outside the Cosmian KMS — the DB stores only KMS ids.
+- Run each workspace's `typecheck`, not just `build`: the frontend `build:docker` is relaxed
+  (`strict: false`), so a green Docker build is not a clean typecheck.
+
+## Certificate Fields
+
+- **Types:** `server`, `client`, `email`, `code_signing` (schema also allows `dual`)
+- **Required subject:** CN, O, C (2-letter). **Optional:** OU, ST, L.
+- **SANs:** DNS, IP, email.
 
 <!-- BACKLOG.MD GUIDELINES START -->
 # Instructions for the usage of Backlog.md CLI Tool
