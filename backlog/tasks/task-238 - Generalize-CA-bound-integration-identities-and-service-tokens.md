@@ -1,7 +1,7 @@
 ---
 id: TASK-238
 title: Generalize CA-bound integration identities and service tokens
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-22T10:36:00Z'
