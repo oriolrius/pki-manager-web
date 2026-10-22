@@ -498,21 +498,48 @@ function CADetail() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Navigation and CA actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={() => navigate({ to: '/cas' })}
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+          className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Certificate Authorities
         </button>
 
-        <div className="flex gap-2 items-center flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
+          {ca.status === 'active' && (
+            <button
+              onClick={handleRevoke}
+              disabled={revokeMutation.isPending}
+              className="flex items-center gap-2 min-h-10 px-3 py-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 font-medium shadow-sm disabled:opacity-50"
+            >
+              <XCircle className="h-4 w-4" />
+              Revoke
+            </button>
+          )}
+
+          <button
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+            className="flex items-center gap-2 min-h-10 px-3 py-2 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 font-medium shadow-sm disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <section aria-label="Export certificate authority" className="rounded-lg border bg-card p-4 text-card-foreground">
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="w-full space-y-1 sm:w-64">
+            <label htmlFor="ca-export-format" className="block text-sm font-medium">Download format</label>
           <select
+            id="ca-export-format"
             value={selectedFormat}
             onChange={(e) => setSelectedFormat(e.target.value as any)}
-            className="px-3 py-1.5 text-sm border rounded-md bg-background"
+            className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <optgroup label="Certificate (public only)">
               <option value="pem">PEM - Text format</option>
@@ -529,13 +556,17 @@ function CADetail() {
               <option value="jks-keystore">JKS - Java Keystore</option>
             </optgroup>
           </select>
+          </div>
 
-          <ExportPasswordField value={downloadPassword} onChange={isDownloading ? undefined : setDownloadPassword} />
+          <div className="w-full min-w-0 sm:flex-1">
+            <ExportPasswordField id="ca-export-password" value={downloadPassword} onChange={isDownloading ? undefined : setDownloadPassword} />
+          </div>
 
+          <div className="flex flex-wrap items-center gap-2 sm:pt-6">
           <button
             onClick={() => void handleDownload()}
             disabled={isDownloading || (formatRequiresPassword(selectedFormat) && downloadPassword.length < 8)}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+            className="flex items-center gap-2 min-h-10 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
             {isDownloading ? 'Downloading…' : 'Download'}
@@ -545,7 +576,7 @@ function CADetail() {
             title="API URL: an Authorization header is required when OIDC is enabled."
             onClick={handleCopyPermalink}
             disabled={formatRequiresPassword(selectedFormat) && downloadPassword.length < 8}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
+            className="flex items-center gap-2 min-h-10 px-3 py-2 text-sm border bg-background text-foreground rounded-md hover:bg-muted font-medium shadow-sm disabled:opacity-50"
           >
             {linkCopied ? (
               <>
@@ -560,27 +591,9 @@ function CADetail() {
             )}
           </button>
 
-          {ca.status === 'active' && (
-            <button
-              onClick={handleRevoke}
-              disabled={revokeMutation.isPending}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 font-medium shadow-sm disabled:opacity-50"
-            >
-              <XCircle className="h-4 w-4" />
-              Revoke
-            </button>
-          )}
-
-          <button
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 font-medium shadow-sm disabled:opacity-50"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete
-          </button>
+          </div>
         </div>
-      </div>
+      </section>
 
       {lastExport && <div className="p-4 border rounded-md bg-muted/50 space-y-2">
         <p className="text-sm font-medium">Password used for the last {lastExport.format} download</p>
