@@ -1,3 +1,11 @@
+## v3.14.2 (2026-10-22)
+
+### Fix
+
+- **frontend**: improve CA actions and support dark bulk dialogs (#17)
+- **frontend**: correct issuing CA links in certificate list (#16)
+- **frontend**: show dynamic page titles in browser tabs (#15)
+
 ## v3.14.1 (2026-10-22)
 
 ### Fix
