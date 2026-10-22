@@ -14,8 +14,15 @@ import (
 type backendKey struct {
 	backend *backend
 	public  *rsa.PublicKey
+	ctx     context.Context
 }
 
+func (k *backendKey) context() context.Context {
+	if k.ctx != nil {
+		return k.ctx
+	}
+	return context.Background()
+}
 func (k *backendKey) Public() crypto.PublicKey { return k.public }
 func (k *backendKey) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	if opts != crypto.SHA256 || len(digest) != 32 {
@@ -24,7 +31,7 @@ func (k *backendKey) Sign(_ io.Reader, digest []byte, opts crypto.SignerOpts) ([
 	var result struct {
 		Data []byte `json:"data"`
 	}
-	if err := k.backend.call(context.Background(), http.MethodPost, "ra/sign", map[string][]byte{"digest": digest}, &result); err != nil {
+	if err := k.backend.call(k.context(), http.MethodPost, "ra/sign", map[string][]byte{"digest": digest}, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Data) != k.public.Size() {
@@ -44,7 +51,7 @@ func (k *backendKey) Decrypt(_ io.Reader, data []byte, opts crypto.DecrypterOpts
 	var result struct {
 		Data []byte `json:"data"`
 	}
-	if err := k.backend.call(context.Background(), http.MethodPost, "ra/decrypt", map[string][]byte{"data": data}, &result); err != nil {
+	if err := k.backend.call(k.context(), http.MethodPost, "ra/decrypt", map[string][]byte{"data": data}, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Data) != 16 && len(result.Data) != 24 && len(result.Data) != 32 {

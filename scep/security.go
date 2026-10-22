@@ -88,18 +88,18 @@ func sameRenewalIdentity(csr *x509.CertificateRequest, old *x509.Certificate) bo
 func (g *gateway) acquireCSR(ctx context.Context, der []byte) (func(), error) {
 	id := sha256.Sum256(der)
 	for {
-		g.mu.Lock()
-		if g.inflight == nil {
-			g.inflight = make(map[[32]byte]chan struct{})
+		g.issuance.mu.Lock()
+		if g.issuance.inflight == nil {
+			g.issuance.inflight = make(map[[32]byte]chan struct{})
 		}
-		pending := g.inflight[id]
+		pending := g.issuance.inflight[id]
 		if pending == nil {
 			pending = make(chan struct{})
-			g.inflight[id] = pending
-			g.mu.Unlock()
-			return func() { g.mu.Lock(); delete(g.inflight, id); close(pending); g.mu.Unlock() }, nil
+			g.issuance.inflight[id] = pending
+			g.issuance.mu.Unlock()
+			return func() { g.issuance.mu.Lock(); delete(g.issuance.inflight, id); close(pending); g.issuance.mu.Unlock() }, nil
 		}
-		g.mu.Unlock()
+		g.issuance.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

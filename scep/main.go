@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -79,7 +80,11 @@ func run() error {
 		return errors.New("SCEP_VALIDITY_DAYS must be 1..90")
 	}
 	client := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are refused") }}
-	b := &backend{url: setting("SCEP_BACKEND_URL", "http://127.0.0.1:52081"), token: token, days: days, client: client}
+	backendURL := setting("SCEP_BACKEND_URL", "http://127.0.0.1:52081")
+	if err := validateBackendURL(backendURL); err != nil {
+		return err
+	}
+	b := &backend{url: backendURL, token: token, days: days, client: client}
 	chain, err := b.Bundle(context.Background())
 	if err != nil {
 		return err
@@ -88,19 +93,19 @@ func run() error {
 		return errors.New("issuing CA is invalid or expired")
 	}
 	path := setting("SCEP_STATE_FILE", "./data/ra.json")
-	saved, err := b.RAState(context.Background())
-	if err != nil {
-		var status *backendStatusError
-		if !errors.As(err, &status) || status.status != http.StatusNotFound || (!autoProvision && mode != "provision") {
-			return err
-		}
+	var saved state
+	// Provision is idempotent and resumes an expired incomplete lease. Do not
+	// gate it on RAState=404: interrupted state deliberately returns 409.
+	if autoProvision || mode == "provision" {
 		saved, err = b.RAProvision(context.Background())
-		if err != nil {
-			return err
-		}
+	} else {
+		saved, err = b.RAState(context.Background())
+	}
+	if err != nil {
+		return err
 	}
 	if autoRenew && mode != "provision" {
-		saved, err = b.RARenew(context.Background())
+		saved, err = startupRARenew(context.Background(), saved, chain[0], b.RARenew)
 		if err != nil {
 			return err
 		}
@@ -245,4 +250,18 @@ func keyCheck(k *backendKey) error {
 		return errors.New("backend RA decryption self-test failed")
 	}
 	return nil
+}
+
+// A temporary renewal outage must not crash a gateway with a valid current RA.
+func startupRARenew(ctx context.Context, saved state, ca *x509.Certificate, renew func(context.Context) (state, error)) (state, error) {
+	next, err := renew(ctx)
+	if err == nil {
+		return next, nil
+	}
+	certs, parseErr := parsePEMCerts(saved.CertificatePEM)
+	if parseErr != nil || validateRA(certs[0], ca, certs[0].PublicKey) != nil {
+		return state{}, err
+	}
+	slog.Warn("scep.ra.renew", "status", "deferred", "error", err.Error())
+	return saved, nil
 }

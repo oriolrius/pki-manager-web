@@ -19,7 +19,7 @@ services:
       SCEP_RA_AUTO_RENEW: ${SCEP_RA_AUTO_RENEW:-true}
       SCEP_STATE_FILE: /data/ra.json
       NO_PROXY: backend,127.0.0.1,localhost
-      SCEP_BACKEND_URL: http://backend:3000
+      SCEP_BACKEND_URL: ${SCEP_BACKEND_URL:?Set an HTTPS backend URL}
       SCEP_BACKEND_TOKEN_FILE: /run/secrets/scep_backend_token
       SCEP_CHALLENGE_FILE: /run/secrets/scep_challenge
       SCEP_VALIDITY_DAYS: ${SCEP_VALIDITY_DAYS:-90}

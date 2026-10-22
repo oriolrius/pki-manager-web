@@ -57,8 +57,10 @@ integration/CA/RA state and persists audit intent before contacting KMS.
 
 `ra.json` contains public certificates only. Backend database migrations retain
 the authoritative RA binding and provisioning/renewal leases. Back up the backend
-DB and KMS together. Interrupted provisioning requires operator reconciliation of
-the backend binding and KMS objects, rather than repeatedly allocating keys.
+DB and KMS together. Interrupted provisioning retains a 15-minute backend lease. After expiry,
+provisioning reuses recorded keys; if no key was recorded, allocation can retry.
+An ambiguous lost KMS response can leave an orphan: reconcile KMS objects against
+the integration audit trail.
 Deleting gateway state does not create another RA.
 
 RA renewal runs on startup and hourly, during the last third of its lifetime.
@@ -75,6 +77,11 @@ rejected in shared mode. Anyone holding the shared challenge can choose a CN;
 use a dedicated CA and rotate the challenge if compromised. Managed modes validate
 the exact CSR through Intune or a trusted webhook. Renewals retain the previous
 subject and SANs, check active ownership, and revalidate enrollment authorization.
+
+Requests use an immutable RA/chain snapshot under a short lock. Discovery
+(GetCACaps/GetCACert) uses public state without backend calls. Request cancellation
+propagates to RA sign/decrypt. Temporary startup renewal failures retain a valid
+current RA and retry hourly; an expired/invalid RA still fails closed.
 
 Requests are bounded before occupying an issuance slot. Remote calls do not hold
 the global issuance mutex. Identical CSRs serialize within one gateway; deploy
@@ -102,7 +109,7 @@ services:
     tmpfs: [/tmp]
     networks: [pki-network]
     environment:
-      SCEP_BACKEND_URL: http://backend:3000
+      SCEP_BACKEND_URL: ${SCEP_BACKEND_URL:?HTTPS backend URL required}
       SCEP_BACKEND_TOKEN: ${SCEP_BACKEND_TOKEN:?required}
       SCEP_AUTH_MODE: shared
       SCEP_CHALLENGE: ${SCEP_CHALLENGE:?required}
@@ -116,7 +123,10 @@ volumes:
   scep-state:
 ```
 
-The internal backend port is `3000`, regardless of host port mapping. Put the
+The backend container listens on port `3000`, but non-loopback HTTP backend URLs
+are rejected. Set `SCEP_BACKEND_URL` to the HTTPS API address provided by your
+existing PKI reverse proxy (including its valid certificate trust). Alternatively,
+a gateway running on the backend host can use a loopback HTTP endpoint. Put the
 SCEP endpoint behind HTTPS with rate/body/time limits. Change the loopback bind
 only if your reverse proxy requires it. Do not expose backend RA endpoints to
 devices. Secret files are also supported through `SCEP_BACKEND_TOKEN_FILE` and
@@ -202,3 +212,40 @@ Live Intune/device acceptance remains a deployment-specific check.
 See [native Intune setup](docs/intune.md). Generic webhook configuration is in
 `.env.mdm.example`; its validator must authorize the exact CSR, including subject,
 SANs, EKU and challenge.
+
+### Required gateway rate limiting
+
+A rate-limiting reverse proxy or ingress **is a deployment requirement**. Anonymous
+PKIOperation requests can consume RA decrypt/sign operations before a challenge
+can be checked. Limit PKIOperation by source and globally, cap concurrent upstream
+requests and body size (1 MiB), and enforce read/header timeouts. For example, in
+nginx `http` context define:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=scep_per_ip:10m rate=5r/m;
+limit_req_zone $server_name zone=scep_global:1m rate=30r/m;
+limit_conn_zone $server_name zone=scep_connections:1m;
+```
+
+Apply this in the TLS server's exact `/scep` location:
+
+```nginx
+location = /scep {
+    limit_req zone=scep_per_ip burst=5 nodelay;
+    limit_req zone=scep_global burst=10 nodelay;
+    limit_req_status 429;
+    limit_conn scep_connections 8;
+    client_max_body_size 1m;
+    client_body_timeout 10s;
+    proxy_read_timeout 180s;
+    proxy_pass http://127.0.0.1:8086;
+}
+```
+
+Tune these example limits for the enrollment fleet. Ensure the proxy sees trusted
+source addresses, and prevent direct access to the published gateway port. These
+limits apply to discovery too in this simple example; discovery itself no longer
+uses backend or KMS resources. The backend separately bounds anonymous rejection
+audit rows; that does not replace ingress rate limiting. Non-loopback backend
+URLs must use HTTPS, including on Docker networks, so proxy configuration cannot
+expose service tokens in plaintext.

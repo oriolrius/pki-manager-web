@@ -18,7 +18,7 @@ services:
       SCEP_AUTO_PROVISION: ${SCEP_AUTO_PROVISION:-true}
       SCEP_RA_AUTO_RENEW: ${SCEP_RA_AUTO_RENEW:-true}
       SCEP_STATE_FILE: /data/ra.json
-      SCEP_BACKEND_URL: ${SCEP_BACKEND_URL:-http://pki-backend:3000}
+      SCEP_BACKEND_URL: ${SCEP_BACKEND_URL:?Set an HTTPS backend URL}
       SCEP_BACKEND_TOKEN_FILE: /run/secrets/scep_backend_token
       SCEP_CHALLENGE_FILE: /run/secrets/scep_challenge
       SCEP_VALIDITY_DAYS: ${SCEP_VALIDITY_DAYS:-90}

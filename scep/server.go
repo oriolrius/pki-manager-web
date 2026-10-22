@@ -33,8 +33,12 @@ var oidTransaction = asn1.ObjectIdentifier{2, 16, 840, 1, 113733, 1, 9, 7}
 
 const maxMessage = 1 << 20
 
-// A single issuing gateway serializes issuance so exact CSR retries hit the backend's
-// requestUid idempotency path instead of racing a second certificate into existence.
+// RA snapshots are immutable for a request; issuance coordination is shared.
+type issuanceState struct {
+	mu       sync.Mutex
+	inflight map[[32]byte]chan struct{}
+}
+
 type gateway struct {
 	authorizer    enrollmentAuthorizer
 	issuer        issuer
@@ -45,18 +49,33 @@ type gateway struct {
 	decryptor     crypto.Decrypter
 	chain         []*x509.Certificate
 	challenge     [32]byte
-	mu            sync.Mutex
+	renewMu       sync.Mutex
 	slots         chan struct{}
-	inflight      map[[32]byte]chan struct{}
+	issuance      *issuanceState
 	sharedSubject map[string]string
 }
 
 func newGateway(i issuer, ra *x509.Certificate, key crypto.Signer, decryptor crypto.Decrypter, chain []*x509.Certificate, challenge string) *gateway {
-	return &gateway{issuer: i, ra: ra, key: key, decryptor: decryptor, chain: chain, challenge: sha256.Sum256([]byte(challenge)), slots: make(chan struct{}, 8)}
+	return &gateway{issuer: i, ra: ra, key: key, decryptor: decryptor, chain: chain, challenge: sha256.Sum256([]byte(challenge)), slots: make(chan struct{}, 8), issuance: &issuanceState{inflight: make(map[[32]byte]chan struct{})}}
+}
+func (g *gateway) snapshot(ctx context.Context) *gateway {
+	g.raMu.RLock()
+	snapshot := &gateway{authorizer: g.authorizer, issuer: g.issuer, ra: g.ra,
+		previousRA: append([]*x509.Certificate(nil), g.previousRA...), key: g.key,
+		decryptor: g.decryptor, chain: append([]*x509.Certificate(nil), g.chain...),
+		challenge: g.challenge, slots: g.slots, issuance: g.issuance, sharedSubject: g.sharedSubject}
+	g.raMu.RUnlock()
+	if key, ok := g.key.(*backendKey); ok {
+		scoped := &backendKey{backend: key.backend, public: key.public, ctx: ctx}
+		snapshot.key = scoped
+		snapshot.decryptor = scoped
+	}
+	return snapshot
 }
 func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	g.raMu.RLock()
-	defer g.raMu.RUnlock()
+	g.snapshot(r.Context()).serveHTTP(w, r)
+}
+func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if time.Now().Before(g.ra.NotBefore) || !time.Now().Before(g.ra.NotAfter) || time.Now().Before(g.chain[0].NotBefore) || !time.Now().Before(g.chain[0].NotAfter) {
 		http.Error(w, "CA or RA certificate expired", 503)
@@ -103,7 +122,7 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "busy", 503)
 		return
 	}
-	if status, ok := g.issuer.(certificateStatus); ok {
+	if status, ok := g.issuer.(certificateStatus); ok && r.URL.Query().Get("operation") == "PKIOperation" {
 		if err := status.Active(r.Context(), g.ra); err != nil {
 			http.Error(w, "RA is not active", 503)
 			return

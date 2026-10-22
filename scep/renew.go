@@ -13,6 +13,8 @@ import (
 // Backend owns renewal, key binding and replica coordination. Network calls run
 // outside the RA lock; handlers continue using the previous public certificate.
 func (g *gateway) renewRA(ctx context.Context, path string, renew func(context.Context) (state, error)) error {
+	g.renewMu.Lock()
+	defer g.renewMu.Unlock()
 	saved, err := renew(ctx)
 	if err != nil {
 		return err
@@ -38,15 +40,16 @@ func (g *gateway) renewRA(ctx context.Context, path string, renew func(context.C
 			previous = append(previous, certs[0])
 		}
 	}
-	g.raMu.Lock()
-	defer g.raMu.Unlock()
-	if next.NotAfter.Before(g.ra.NotAfter) {
+	current := g.snapshot(ctx)
+	if next.NotAfter.Before(current.ra.NotAfter) {
 		return errors.New("backend RA state would roll back validity")
 	}
 	if err := replaceRAState(path, saved); err != nil {
 		return err
 	}
+	g.raMu.Lock()
 	g.ra, g.previousRA = next, previous
+	g.raMu.Unlock()
 	return nil
 }
 
