@@ -196,8 +196,13 @@ image, then pull it and start with `--no-build` using the same overlay files.
 The default image name is `pki-manager-scep:local` for local branch builds.
 Upgrade the existing backend to this change, which includes enrollment-state checks;
 do not deploy a second backend for SCEP.
-Cosmian KMS **5.24.0** was used for integration testing. Keep your existing KMS
-configuration/version migration procedure; the overlay does not upgrade it.
+Cosmian KMS **5.24.0** was used for integration testing and is pinned in the full
+stack Compose file. KMS **5.12.1** does not support `Activate` and fails RA provisioning
+with HTTP 404; use the verified 5.24.0 version. For an existing installation, keep
+your KMS configuration/version migration procedure; the SCEP overlay does not
+upgrade it. The full stack mounts `../kms/data` at `/cosmian-kms/sqlite-data`.
+Before changing an existing mount, back up and migrate the actual KMS database:
+the older `/root/cosmian-kms` mount did not cover that default database path.
 
 1. Create a dedicated CA and a **SCEP / MDM** integration with a CA-bound service
    token under **Operations → Integrations**.

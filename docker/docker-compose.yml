@@ -1,13 +1,14 @@
 services:
   # Cosmian KMS
   kms:
-    image: ghcr.io/cosmian/kms:5.12.0
+    # SCEP RA provisioning requires Activate/Sign/Decrypt (verified with 5.24.0).
+    image: ghcr.io/cosmian/kms:5.24.0
     container_name: pki-kms
     restart: unless-stopped
     networks:
       - pki-network
     volumes:
-      - ../kms:/root/cosmian-kms
+      - ../kms/data:/cosmian-kms/sqlite-data
     environment:
       - KMS_PORT=${KMS_PORT:-9998}
       - RUST_LOG=${KMS_LOG_LEVEL:-info}
