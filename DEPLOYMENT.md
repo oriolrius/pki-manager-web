@@ -820,7 +820,25 @@ For issues or questions:
 
 For RSA device/client enrollment, see [the SCEP gateway setup](scep/README.md).
 It provides a separate `/scep` endpoint with challenge authentication and KMS-held
-RA keys. Start it through `docker/docker-compose.scep.yml`; OIDC remains enabled
+RA keys. For an existing installation, `scep/compose.yml` adds only the gateway;
+upgrade the existing backend for the SCEP endpoints, rather than adding a second
+backend. The full-stack overlay is `docker/docker-compose.scep.yml`. OIDC remains enabled
 for the management API. For managed SAN identities, dynamic Intune challenges,
 renewal and revocation setup, see [the Intune guide](scep/docs/intune.md).
 Live tenant/device acceptance testing is required before production rollout.
+
+### Upgrade from cluster tokens to integration service tokens
+
+Run the normal backend database migration before starting the updated backend.
+Migration 0010 renames `clusters` to `integrations`, keeps token hashes, CA bindings,
+revocation and usage timestamps, and backfills certificate `integration_id`.
+Existing Kubernetes integrations retain their identity and tokens. An identity with
+only `scep:` certificate requests is migrated as SCEP; mixed or empty histories
+remain Kubernetes. Use a separate **SCEP / MDM** integration for new SCEP gateways.
+The generic `integration.*` tRPC API supports `kubernetes`, `scep`, and `generic`
+types. Legacy `cluster.*` calls remain available, including certificate counts.
+The old `/clusters` page redirects to `/integrations`.
+
+New external certificates use `integrationId` for ownership, retries, status and
+revocation. Their source is `k8s`, `scep`, or `integration` according to the issuing
+identity. Kubernetes-only certificate fields remain as compatibility metadata.

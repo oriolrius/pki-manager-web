@@ -23,8 +23,8 @@ const { signCertificate, getCertificate, verifyToken, regenerateForCa } = vi.hoi
 vi.mock('../../kms/service.js', () => ({
   getKMSService: () => ({ signCertificate, getCertificate }),
 }));
-vi.mock('../../services/cluster.service.js', () => ({
-  getClusterService: () => ({ verifyToken }),
+vi.mock('../../services/integration.service.js', () => ({
+  getIntegrationService: () => ({ verifyToken }),
 }));
 vi.mock('../../services/crl.service.js', () => ({
   getCRLService: () => ({ regenerateForCa }),
@@ -107,7 +107,7 @@ describe('External /sign wiring (KMS certify)', () => {
 
   beforeEach(async () => {
     await db.delete(certificates).where(eq(certificates.caId, caId));
-    verifyToken.mockReset().mockResolvedValue({ id: clusterId, name: 'c1', caId });
+    verifyToken.mockReset().mockResolvedValue({ id: clusterId, name: 'c1', caId, kind: 'kubernetes' });
     getCertificate.mockReset().mockImplementation(async (id: string) =>
       id === CA_KMS_CERT_ID ? caCertPem : makeLeafPem(lastCsr));
     signCertificate.mockReset().mockResolvedValue({ certificateId: KMS_LEAF_ID, certificateData: '' });
@@ -198,9 +198,9 @@ describe('External /sign wiring (KMS certify)', () => {
     const serial = cert.serialNumber.replace(/^0+/, '').toUpperCase();
     const check = () => app.inject({ method: 'GET', url: `/api/v1/external/certificate-status/${serial}`, headers: { authorization: 'Bearer test-token' } });
     expect((await check()).json().active).toBe(true);
-    await db.update(certificates).set({ k8sClusterId: null }).where(eq(certificates.id, cert.id));
+    await db.update(certificates).set({ integrationId: null }).where(eq(certificates.id, cert.id));
     expect((await check()).json().active).toBe(false);
-    await db.update(certificates).set({ k8sClusterId: clusterId, status: 'revoked' }).where(eq(certificates.id, cert.id));
+    await db.update(certificates).set({ integrationId: clusterId, status: 'revoked' }).where(eq(certificates.id, cert.id));
     expect((await check()).json().active).toBe(false);
   });
 
@@ -284,6 +284,7 @@ describe('External /sign wiring (KMS certify)', () => {
       kmsKeyId: null,
       status: 'active',
       sourceType: 'k8s',
+      integrationId: clusterId,
       k8sClusterId: clusterId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -300,5 +301,39 @@ describe('External /sign wiring (KMS certify)', () => {
     expect(res.json().status).toBe('revoked');
     expect(regenerateForCa).toHaveBeenCalledTimes(1);
     expect(regenerateForCa.mock.calls[0][1]).toBe(caId);
+  });
+
+  it('records SCEP provenance and generic ownership without a Kubernetes cluster', async () => {
+    verifyToken.mockResolvedValue({ id: clusterId, name: 'MDM', caId, kind: 'scep' });
+    const res = await postSign({ csrPem: makeCsr('device'), requestUid: 'scep:' + randomUUID(), certificateType: 'client', k8sNamespace: 'ignored', k8sResource: 'ignored' });
+    expect(res.statusCode).toBe(200);
+    const [cert] = await db.select().from(certificates).where(eq(certificates.id, res.json().id));
+    expect(cert).toMatchObject({ sourceType: 'scep', integrationId: clusterId, k8sClusterId: null, k8sNamespace: null, k8sResource: null });
+    expect(signCertificate.mock.calls[0][0].tags).toContain(`integration:${clusterId}`);
+    const health = await app.inject({ url: '/api/v1/external/health', headers: { authorization: 'Bearer test-token' } });
+    expect(health.json().integration).toMatchObject({ id: clusterId, kind: 'scep' });
+    expect(health.json().cluster.id).toBe(clusterId); // legacy probe compatibility
+  });
+
+  it('scopes retries, renewal checks and revocation to the integration even for the same CA', async () => {
+    const requestUid = randomUUID();
+    const first = await postSign({ csrPem: makeCsr(), requestUid });
+    expect(first.statusCode).toBe(200);
+    const otherId = randomUUID();
+    verifyToken.mockResolvedValue({ id: otherId, name: 'Other service', caId, kind: 'generic' });
+    const status = await app.inject({ url: `/api/v1/external/certificate-status/${first.json().serialNumber}`, headers: { authorization: 'Bearer test-token' } });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().active).toBe(false);
+    const revoke = await app.inject({ method: 'POST', url: '/api/v1/external/revoke', headers: { authorization: 'Bearer test-token' }, payload: { serialNumber: first.json().serialNumber } });
+    expect(revoke.statusCode).toBe(403);
+    const second = await postSign({ csrPem: makeCsr('other'), requestUid });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().id).not.toBe(first.json().id);
+    expect(signCertificate).toHaveBeenCalledTimes(2);
+    const [cert] = await db.select().from(certificates).where(eq(certificates.id, second.json().id));
+    expect(cert).toMatchObject({ sourceType: 'integration', integrationId: otherId, k8sClusterId: null });
+    const retry = await postSign({ csrPem: lastCsr, requestUid });
+    expect(retry.json().id).toBe(second.json().id);
+    expect(signCertificate).toHaveBeenCalledTimes(2);
   });
 });

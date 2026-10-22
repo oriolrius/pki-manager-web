@@ -19,7 +19,7 @@ function RootComponent() {
   const matchRoute = useMatchRoute();
   const locationSearch = useRouterState({ select: (state) => state.location.search as { zone?: unknown } });
   const isPkiActive = Boolean(matchRoute({ to: '/cas', fuzzy: true }) || matchRoute({ to: '/certificates', fuzzy: true }));
-  const isOperationsActive = Boolean(matchRoute({ to: '/clusters', fuzzy: true }) || matchRoute({ to: '/api-docs', fuzzy: true }));
+  const isOperationsActive = Boolean(matchRoute({ to: '/integrations', fuzzy: true }) || matchRoute({ to: '/api-docs', fuzzy: true }));
   const sshSearch = () => {
     const currentZone = typeof locationSearch.zone === 'string' ? locationSearch.zone : undefined;
     if (currentZone) return { zone: currentZone };
@@ -73,7 +73,7 @@ function RootComponent() {
                   SSH
                 </Link>
                 <TopNavMenu label="Operations" icon={faServer} active={isOperationsActive}>
-                  <NavMenuLink to="/clusters" icon={faServer} label="Clusters" />
+                  <NavMenuLink to="/integrations" icon={faServer} label="Integrations" />
                   <NavMenuLink to="/api-docs" icon={faBook} label="API documentation" />
                 </TopNavMenu>
               </div>
@@ -100,7 +100,7 @@ function RootComponent() {
                 <MobileNavLink to="/certificates" icon={faCertificate} label="Certificates" onNavigate={() => setMobileNavOpen(false)} />
                 <MobileNavLink to="/certificates/bulk" icon={faLayerGroup} label="Bulk operations" onNavigate={() => setMobileNavOpen(false)} />
                 <MobileNavLink to="/ssh" search={sshSearch} icon={faTerminal} label="SSH certificate manager" onNavigate={() => setMobileNavOpen(false)} />
-                <MobileNavLink to="/clusters" icon={faServer} label="Clusters" onNavigate={() => setMobileNavOpen(false)} />
+                <MobileNavLink to="/integrations" icon={faServer} label="Integrations" onNavigate={() => setMobileNavOpen(false)} />
                 <MobileNavLink to="/api-docs" icon={faBook} label="API documentation" onNavigate={() => setMobileNavOpen(false)} />
               </div>
             </div>
@@ -146,7 +146,7 @@ function TopNavMenu({ label, icon, active, children }: { label: string; icon: ty
   );
 }
 
-function NavMenuLink({ to, icon, label }: { to: '/cas' | '/certificates' | '/certificates/bulk' | '/clusters' | '/api-docs'; icon: typeof faShield; label: string }) {
+function NavMenuLink({ to, icon, label }: { to: '/cas' | '/certificates' | '/certificates/bulk' | '/integrations' | '/api-docs'; icon: typeof faShield; label: string }) {
   return (
     <Link
       to={to}
@@ -160,7 +160,7 @@ function NavMenuLink({ to, icon, label }: { to: '/cas' | '/certificates' | '/cer
   );
 }
 
-function MobileNavLink({ to, search, icon, label, onNavigate }: { to: '/' | '/cas' | '/certificates' | '/certificates/bulk' | '/ssh' | '/clusters' | '/api-docs'; search?: () => { zone?: string }; icon: typeof faShield; label: string; onNavigate: () => void }) {
+function MobileNavLink({ to, search, icon, label, onNavigate }: { to: '/' | '/cas' | '/certificates' | '/certificates/bulk' | '/ssh' | '/integrations' | '/api-docs'; search?: () => { zone?: string }; icon: typeof faShield; label: string; onNavigate: () => void }) {
   return (
     <Link
       to={to}

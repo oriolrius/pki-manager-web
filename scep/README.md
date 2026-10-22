@@ -39,8 +39,15 @@ claimed as completed or Microsoft certification.
 ## Architecture and authorization
 
 Run one gateway instance per dedicated issuing CA. In PKI Manager create an active
-CA, then create a dedicated **cluster/service token** bound to that CA (the existing
-Clusters UI/API). This token allows `/api/v1/external/ca-bundle` and `/sign`; it is
+CA, then create a dedicated **service token** bound to that CA under
+**Operations → Integrations → Add Integration**. Select **SCEP / MDM** as the
+integration type and use a name such as `scep-mdm`.
+The canonical management API is `integration.*`, backed by the `integrations`
+table. `/integrations` replaces the old page; `/clusters` redirects there and the
+legacy `cluster.*` API remains compatible with Kubernetes clients. Each gateway
+has its own CA-bound integration and service token, separate from a Kubernetes
+integration. Existing token hashes and CA bindings are preserved by migration.
+This token allows `/api/v1/external/ca-bundle` and `/sign`; it is
 separate from OIDC access tokens. Keep it inside the gateway. Devices receive only
 the enrollment challenge and CA trust, never the backend or KMS token.
 
@@ -49,8 +56,8 @@ requests an RA certificate from the bound CA, and writes **only the public
 certificate and KMS key ID** to `ra.json`. No CA/RA private key is exported or
 persisted on the gateway. Signing and decryption are checked against the KMS at
 startup, and the backend must confirm the RA is active and service-owned. The existing backend signs device CSRs, retains certificate metadata and
-records issuance in `audit_log`. Because this reuses the external-issuer API,
-certificates currently appear with its `k8s` source label and service identity.
+records issuance in `audit_log`. Certificates are linked by `integrationId` and have the `scep` source label for
+SCEP integrations; Kubernetes certificates retain their `k8s` source label.
 
 **Shared mode only:** use a separate CA and a random, protected challenge: anyone possessing this shared
 challenge can request a client certificate for an arbitrary CN within this
@@ -70,6 +77,71 @@ cross-process transaction lock.
 
 ## Docker setup
 
+### Existing installation: add only the SCEP container
+
+**No second backend is needed.** Upgrade your existing backend to a version that
+includes this branch's enrollment-state endpoints, then add `pki-manager-scep`.
+The gateway handles the SCEP protocol; your existing backend keeps issuing and
+tracking certificates, and your existing KMS keeps the private keys.
+
+`scep/compose.yml` defines exactly one service. It joins the existing Docker network
+`pki-network`, using `http://pki-backend:3000` and `http://pki-kms:9998` by default.
+For another installation, export `SCEP_DOCKER_NETWORK`, `SCEP_BACKEND_URL`, and
+`SCEP_KMS_URL` with its network name and reachable service addresses. Set
+`SCEP_NO_PROXY` to include those internal hostnames if you use an outbound proxy.
+The network must already exist; this setup does not create a backend or KMS.
+For persistent settings, copy `scep/compose.env.example` to `scep/.env`, edit it,
+and add `--env-file scep/.env` to every Compose command below.
+
+1. Create an active issuing CA and an integration named `scep-mdm`, bound to that
+   CA, with type **SCEP / MDM**. Save the displayed **Service Token**.
+2. From the repository root, prepare the same secret files used by the overlay:
+
+   ```sh
+   umask 077
+   mkdir -p docker/scep-secrets
+   openssl rand -hex 32 > docker/scep-secrets/challenge
+   touch docker/scep-secrets/backend-token docker/scep-secrets/kms-api-key
+   ```
+
+   Enter the service token in `backend-token` with a secure editor. Put the KMS
+   API key in `kms-api-key`, or leave it empty for an unauthenticated internal
+   development KMS. Make the files readable by the gateway's UID 10001:
+
+   ```sh
+   sudo chown 10001:10001 docker/scep-secrets/*
+   sudo chmod 0400 docker/scep-secrets/*
+   ```
+
+3. Build, provision the RA once, and start only the gateway:
+
+   ```sh
+   docker compose -f scep/compose.yml build scep
+   docker compose -f scep/compose.yml run --rm scep provision
+   docker compose -f scep/compose.yml up -d scep
+   ```
+
+   Provisioning is a one-off invocation of the same image, not an additional
+   permanent service. Do not rerun it once `ra.json` exists. The `scep-state`
+   volume contains public RA metadata and the KMS key ID; private keys stay in KMS.
+   To use a published image, set `SCEP_IMAGE`, then replace the build command with
+   `docker compose -f scep/compose.yml pull scep` and use `--no-build` for `up` (the `run` command uses the pulled image).
+
+4. Verify discovery, then expose `/scep` through your TLS reverse proxy:
+
+   ```sh
+   curl -f 'http://127.0.0.1:8085/scep?operation=GetCACaps'
+   curl -f 'http://127.0.0.1:8085/scep?operation=GetCACert' -o /tmp/scep-ca-ra.p7b
+   openssl pkcs7 -inform DER -in /tmp/scep-ca-ra.p7b -print_certs -noout
+   ```
+
+This quick setup uses a shared enrollment challenge. For Intune or another MDM,
+apply `docker/docker-compose.intune.yml` or `docker/docker-compose.mdm.yml` after
+`scep/compose.yml`, using absolute secret-file paths. Those overlays also only
+configure the existing `scep` service. See the managed-mode instructions below.
+
+### Full stack overlay
+
 The gateway is an optional overlay; normal PKI Manager startup is unchanged.
 The SCEP GitHub workflow builds an image on pull requests and publishes
 `ghcr.io/<owner>/pki-manager-web/scep:latest` after merge to `main`, plus version
@@ -79,11 +151,13 @@ be tested before any image is published. Published images currently target
 architecture. Set `SCEP_IMAGE` to your published GHCR version to use a release
 image, then pull it and start with `--no-build` using the same overlay files.
 The default image name is `pki-manager-scep:local` for local branch builds.
-Use a backend built from the same change, which includes enrollment-state checks.
+Upgrade the existing backend to this change, which includes enrollment-state checks;
+do not deploy a second backend for SCEP.
 Cosmian KMS **5.24.0** was used for integration testing. Keep your existing KMS
 configuration/version migration procedure; the overlay does not upgrade it.
 
-1. Create a dedicated CA and CA-bound cluster/service token in PKI Manager.
+1. Create a dedicated CA and a **SCEP / MDM** integration with a CA-bound service
+   token under **Operations → Integrations**.
 2. Prepare secret files from the repository root:
 
    ```sh
