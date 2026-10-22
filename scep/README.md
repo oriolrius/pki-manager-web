@@ -145,6 +145,41 @@ apply `docker/docker-compose.intune.yml` or `docker/docker-compose.mdm.yml` afte
 `scep/compose.yml`, using absolute secret-file paths. Those overlays also only
 configure the existing `scep` service. See the managed-mode instructions below.
 
+### Arcane / a single Compose file: automatic first provisioning
+
+With an existing backend/KMS and a CA-bound SCEP service token, the gateway can
+provision its RA on its first normal start. No shell script, additional service,
+or switch between `provision` and `serve` is required. In your existing `scep`
+service, keep the environment, network, and persistent `/data` volume above and add:
+
+```yaml
+command: ["serve"]
+restart: unless-stopped
+environment:
+  # Merge this entry into your existing environment mapping.
+  SCEP_AUTO_PROVISION: "true"
+depends_on:
+  backend:
+    condition: service_healthy
+```
+
+Enable this only with an image containing the automatic-provisioning change.
+`SCEP_AUTO_PROVISION` defaults to `false`. When enabled and `ra.json` is absent,
+the gateway provisions once and continues with normal RA validation and serving.
+Subsequent starts reuse the saved state; invalid, expired, or revoked state is
+not silently replaced. Run only one replica and keep `/data` persistent.
+
+Before provisioning, the backend must be able to load the integration's issuing
+CA from KMS. This option does not repair missing KMS objects, create a CA, or
+create a service token. Persist the KMS database at its actual configured path
+(for example `/cosmian-kms/sqlite-data`), independently of the SCEP state volume.
+
+If provisioning fails after it starts, `ra.json.provisioning` remains in the
+state volume, preventing repeated creation of orphaned KMS keys on restarts.
+Inspect the logs and KMS objects, fix the cause, and only then remove that marker
+to permit a new attempt. The gateway logs the marker path. A failure to load the
+backend CA before provisioning does not create a marker.
+
 ### Full stack overlay
 
 The gateway is an optional overlay; normal PKI Manager startup is unchanged.
@@ -262,6 +297,7 @@ go build -o scep-server .
 | `SCEP_KMS_API_KEY` or `_FILE` | Optional, according to KMS policy |
 | `SCEP_CHALLENGE` or `_FILE` | Shared mode only; 32–256 bytes |
 | `SCEP_STATE_FILE` | `./data/ra.json`; public RA metadata |
+| `SCEP_AUTO_PROVISION` | `false`; opt in to one-time RA provisioning on `serve` when state is missing |
 | `SCEP_LISTEN` | `:8085`; use loopback when running outside Docker |
 | `SCEP_VALIDITY_DAYS` | `90`, allowed 1–365 |
 

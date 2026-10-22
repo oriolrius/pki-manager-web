@@ -64,6 +64,10 @@ func run() error {
 	if mode != "serve" && mode != "provision" {
 		return errors.New("usage: scep-server [serve|provision]")
 	}
+	autoProvision, err := strconv.ParseBool(setting("SCEP_AUTO_PROVISION", "false"))
+	if err != nil {
+		return errors.New("SCEP_AUTO_PROVISION must be a boolean")
+	}
 	token, err := secret("SCEP_BACKEND_TOKEN")
 	if err != nil {
 		return err
@@ -97,9 +101,11 @@ func run() error {
 		}
 		return err
 	}
-	encoded, err := os.ReadFile(path)
+	encoded, err := loadRAState(path, autoProvision, func() error {
+		return provision(b, key, chain[0], path)
+	})
 	if err != nil {
-		return errors.New("RA state missing; run provision first")
+		return err
 	}
 	var saved state
 	if err = json.Unmarshal(encoded, &saved); err != nil {
@@ -171,6 +177,45 @@ func run() error {
 	slog.Info("scep listening", "address", server.Addr)
 	return server.ListenAndServe()
 }
+
+// Keep the marker after failure: KMS objects may already have been created.
+// Container restarts must not keep creating orphaned keys/certificates.
+func loadRAState(path string, autoProvision bool, create func() error) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return data, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read RA state: %w", err)
+	}
+	if !autoProvision {
+		return nil, errors.New("RA state missing; run provision first or set SCEP_AUTO_PROVISION=true")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
+	marker := path + ".provisioning"
+	f, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("automatic RA provisioning blocked; inspect previous attempt and KMS objects before removing %s: %w", marker, err)
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	slog.Info("scep.provision", "status", "starting", "automatic", true)
+	if err := create(); err != nil {
+		return nil, fmt.Errorf("automatic RA provisioning failed; inspect KMS objects before removing %s to retry: %w", marker, err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read provisioned RA state: %w", err)
+	}
+	if err := os.Remove(marker); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 func keyCheck(k *kmsKey) error {
 	data := make([]byte, 32)
 	if _, err := rand.Read(data); err != nil {
