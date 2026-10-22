@@ -11,7 +11,7 @@ import { jwtVerify, type JWTPayload } from 'jose';
 import {
   getOIDCConfig,
   getJWKS,
-  extractRoles,
+  resolveRoles,
   isOIDCEnabled,
 } from './oidc.js';
 import { logger } from './logger.js';
@@ -173,7 +173,12 @@ export async function validateToken(token: string): Promise<AuthUser> {
         : undefined;
 
     // Extract roles using configurable claim path
-    const roles = extractRoles(payload as Record<string, unknown>);
+    let roles: string[];
+    try {
+      roles = await resolveRoles(token, payload as Record<string, unknown>);
+    } catch {
+      throw new JWTValidationError('Unable to resolve user roles', 'INVALID_TOKEN');
+    }
 
     logger.debug(
       { sub, email, roles: roles.length },
