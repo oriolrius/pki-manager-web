@@ -1,7 +1,7 @@
 ---
 id: TASK-237
 title: Clarify integration service tokens and simplify standalone SCEP deployment
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-10-22T09:55:00Z'
