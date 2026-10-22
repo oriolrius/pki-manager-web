@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { getApiUrl } from '@/lib/config';
-import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy } from 'lucide-react';
+import { downloadFile } from '@/lib/download';
+import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy, Download } from 'lucide-react';
 import { useState } from 'react';
 import { useToast, useConfirm } from '@/components/ui';
 
@@ -53,6 +54,7 @@ function CADetail() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer' | 'p12-truststore' | 'p12-keystore' | 'jks-truststore' | 'jks-keystore'>('pem');
   const [downloadPassword, setDownloadPassword] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const revokeMutation = trpc.ca.revoke.useMutation();
   const deleteMutation = trpc.ca.delete.useMutation();
@@ -141,6 +143,22 @@ function CADetail() {
           },
         }
       );
+    }
+  };
+
+  const handleDownload = async (format = selectedFormat) => {
+    if (formatRequiresPassword(format) && !downloadPassword) {
+      toast.error('A password is required for this format.');
+      return;
+    }
+    setIsDownloading(true);
+    const extension = format.startsWith('p12-') ? 'p12' : format.startsWith('jks-') ? 'jks' : format;
+    try {
+      await downloadFile(getDownloadUrl(format, true), `ca-${id}.${extension}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Download failed.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -519,6 +537,16 @@ function CADetail() {
           )}
 
           <button
+            onClick={() => void handleDownload()}
+            disabled={isDownloading || (formatRequiresPassword(selectedFormat) && !downloadPassword)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {isDownloading ? 'Downloading…' : 'Download'}
+          </button>
+
+          <button
+            title="API URL: an Authorization header is required when OIDC is enabled."
             onClick={handleCopyPermalink}
             disabled={formatRequiresPassword(selectedFormat) && !downloadPassword}
             className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
@@ -671,14 +699,14 @@ function CADetail() {
                         <span className="text-xs font-semibold text-muted-foreground uppercase w-8">
                           {format}:
                         </span>
-                        <a
-                          href={downloadUrls[format]}
-                          className="font-mono text-xs text-primary hover:underline break-all flex-1"
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          disabled={isDownloading}
+                          className="font-mono text-xs text-primary hover:underline break-all flex-1 text-left disabled:opacity-50"
+                          onClick={() => void handleDownload(format)}
                         >
                           {downloadUrls[format]}
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -693,14 +721,14 @@ function CADetail() {
                         <span className="text-xs font-semibold text-muted-foreground w-24">
                           {format === 'p12-truststore' ? 'P12 Trust:' : 'JKS Trust:'}
                         </span>
-                        <a
-                          href={downloadUrls[format]}
-                          className="font-mono text-xs text-primary hover:underline break-all flex-1"
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          disabled={isDownloading}
+                          className="font-mono text-xs text-primary hover:underline break-all flex-1 text-left disabled:opacity-50"
+                          onClick={() => void handleDownload(format)}
                         >
                           {downloadUrls[format]}
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
