@@ -88,7 +88,7 @@ interface ParsedCsr {
 
 function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
   const csr = forge.pki.certificationRequestFromPem(csrPem);
-  if (!csr.publicKey || csr.publicKey.n.bitLength() < 2048 || csr.publicKey.n.bitLength() > 8192) {
+  if (!csr.publicKey || !('n' in csr.publicKey) || csr.publicKey.n.bitLength() < 2048 || csr.publicKey.n.bitLength() > 8192) {
     throw new Error('RSA 2048..8192 is required');
   }
   if (!csr.verify()) {
