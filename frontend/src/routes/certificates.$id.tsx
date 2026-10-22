@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
+import { generateExportPassword } from '@/lib/export-password';
+import { ExportPasswordField } from '@/components/ExportPasswordField';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faDownload, faRotate, faCircleXmark, faTrash, faCalendar, faShield, faKey, faDatabase, faAward } from '@fortawesome/free-solid-svg-icons';
 import { useToast, useConfirm } from '@/components/ui';
@@ -38,7 +40,7 @@ const DOWNLOAD_FORMATS = [
   { value: 'pkcs12', label: 'PKCS#12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'pfx', label: 'PFX - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'p12', label: 'P12 - Certificate + CA + Private Key', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
-  { value: 'jks-keystore', label: 'JKS Keystore - Certificate + Private Key (for server identity)', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
+  { value: 'jks-keystore', label: 'JKS Keystore - Certificate + Private Key (for server identity)', requiresPassword: true, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'jks-truststore', label: 'JKS Truststore - CA Certificate only (for trust validation)', requiresPassword: true, hasPrivateKey: false },
   { value: 'docker-volume', label: 'Docker Volume - TAR for Docker volume import', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
   { value: 'all', label: 'All Formats - All formats in one ZIP', requiresPassword: false, hasPrivateKey: true, supportsOptionalEncryption: true },
@@ -66,7 +68,8 @@ function CertificateDetail() {
   const [revokeDetails, setRevokeDetails] = useState('');
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<string>('pem');
-  const [downloadPassword, setDownloadPassword] = useState('');
+  const [downloadPassword, setDownloadPassword] = useState(generateExportPassword);
+  const [lastExport, setLastExport] = useState<{ filename: string; password: string } | null>(null);
   const [encryptPrivateKey, setEncryptPrivateKey] = useState(true);
   const [showPrivateKeyWarning, setShowPrivateKeyWarning] = useState(false);
   const [showJksInfoPopup, setShowJksInfoPopup] = useState(false);
@@ -84,17 +87,18 @@ function CertificateDetail() {
   const selectedFormat = DOWNLOAD_FORMATS.find(f => f.value === downloadFormat);
 
   const handleDownload = () => {
+    setDownloadPassword(generateExportPassword());
     setShowDownloadDialog(true);
   };
 
   const confirmDownload = async () => {
     // Validate password for formats that require it (without private key, like JKS Truststore)
-    if (selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && !downloadPassword) {
+    if (selectedFormat?.requiresPassword && !downloadPassword) {
       toast.info('Password is required for this format');
       return;
     }
 
-    if (selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && downloadPassword.length < 8) {
+    if (selectedFormat?.requiresPassword && downloadPassword.length < 8) {
       toast.info('Password must be at least 8 characters long');
       return;
     }
@@ -121,7 +125,7 @@ function CertificateDetail() {
         id,
         format: downloadFormat as any,
         password: (selectedFormat?.requiresPassword || (selectedFormat?.hasPrivateKey && encryptPrivateKey)) ? downloadPassword : undefined,
-        encryptPrivateKey: selectedFormat?.hasPrivateKey ? encryptPrivateKey : undefined,
+        encryptPrivateKey: selectedFormat?.hasPrivateKey ? (selectedFormat.requiresPassword || encryptPrivateKey) : undefined,
       });
 
       // Decode base64 data for binary formats (including ZIP for 'all' and 'pem-key', TAR for 'docker-volume')
@@ -153,6 +157,10 @@ function CertificateDetail() {
       const wasJksTruststoreFormat = downloadFormat === 'jks-truststore';
       const wasDockerVolumeFormat = downloadFormat === 'docker-volume';
       const downloadedFilename = result.filename;
+
+      if (selectedFormat?.requiresPassword || (selectedFormat?.hasPrivateKey && encryptPrivateKey)) {
+        setLastExport({ filename: result.filename, password: downloadPassword });
+      }
 
       // Reset dialog state
       setShowDownloadDialog(false);
@@ -474,6 +482,11 @@ function CertificateDetail() {
 
   return (
     <div key={id} className="space-y-4">
+      {lastExport && <div className="p-4 border rounded-md bg-muted/50 space-y-2">
+        <p className="text-sm font-medium">Password for {lastExport.filename}</p>
+        <ExportPasswordField id="last-export-password" label="Downloaded file password" value={lastExport.password} />
+      </div>}
+
       {/* Download Dialog */}
       {showDownloadDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -529,7 +542,7 @@ function CertificateDetail() {
 
                   {selectedFormat?.hasPrivateKey && (
                     <div className="space-y-3">
-                      <div className="flex items-center gap-2">
+                      {!selectedFormat.requiresPassword && <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
                           id="encryptKey"
@@ -540,29 +553,18 @@ function CertificateDetail() {
                         <label htmlFor="encryptKey" className="text-sm font-medium cursor-pointer">
                           Encrypt private key with password
                         </label>
-                      </div>
+                      </div>}
 
-                      {encryptPrivateKey && (
+                      {(encryptPrivateKey || selectedFormat.requiresPassword) && (
                         <div>
-                          <label htmlFor="password" className="block text-sm font-medium mb-2">
-                            Password <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="password"
-                            id="password"
-                            value={downloadPassword}
-                            onChange={(e) => setDownloadPassword(e.target.value)}
-                            className="w-full px-3 py-2 border rounded-md bg-background"
-                            placeholder="Minimum 8 characters"
-                            minLength={8}
-                          />
+                          <ExportPasswordField value={downloadPassword} onChange={setDownloadPassword} />
                           <p className="text-xs text-muted-foreground mt-1">
                             This password will protect the private key
                           </p>
                         </div>
                       )}
 
-                      {!encryptPrivateKey && (
+                      {!encryptPrivateKey && !selectedFormat.requiresPassword && (
                         <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
                           <p className="text-xs text-red-800 dark:text-red-300">
                             <strong>⚠️ Warning:</strong> The private key will be exported <strong>unencrypted</strong>. Anyone with access to this file can use the certificate.
@@ -575,18 +577,7 @@ function CertificateDetail() {
                   {/* Password field for formats that require password but don't have private key (e.g., JKS Truststore) */}
                   {selectedFormat?.requiresPassword && !selectedFormat?.hasPrivateKey && (
                     <div>
-                      <label htmlFor="password" className="block text-sm font-medium mb-2">
-                        Password <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="password"
-                        id="password"
-                        value={downloadPassword}
-                        onChange={(e) => setDownloadPassword(e.target.value)}
-                        className="w-full px-3 py-2 border rounded-md bg-background"
-                        placeholder="Minimum 8 characters"
-                        minLength={8}
-                      />
+                      <ExportPasswordField value={downloadPassword} onChange={setDownloadPassword} />
                       <p className="text-xs text-muted-foreground mt-1">
                         This password will protect the keystore file
                       </p>
