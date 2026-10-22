@@ -1396,7 +1396,7 @@ docker run --rm -v my-certs:/target \\
                             className="text-xs font-medium text-primary hover:underline max-w-xs truncate"
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate({ to: `/cas/${cert.issuingCA?.id}` });
+                              navigate({ to: '/cas/$id', params: { id: cert.caId } });
                             }}
                           >
                             {caCN}
