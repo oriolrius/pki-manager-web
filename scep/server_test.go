@@ -264,7 +264,7 @@ func TestSignatureAndKeyBinding(t *testing.T) {
 func TestDiscoveryAndHTTP(t *testing.T) {
 	g, _, _, _ := fixture(t)
 	w := invoke(g, "GET", "/scep?operation=GetCACaps", nil)
-	if w.Code != 200 || strings.Contains(w.Body.String(), "Renewal") || !strings.Contains(w.Body.String(), "SHA-256") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Renewal") || !strings.Contains(w.Body.String(), "SHA-256") {
 		t.Fatal("incorrect capabilities")
 	}
 	w = invoke(g, "GET", "/scep?operation=GetCACert", nil)

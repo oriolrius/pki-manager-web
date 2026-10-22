@@ -138,13 +138,15 @@ requirements. Cloud-only devices are not automatically AD computer accounts.
 
 ## Renewal and revocation
 
-Managed modes advertise `Renewal`. A `RenewalReq`/`UpdateReq` must contain a new,
+The gateway advertises `Renewal`. In managed modes a `RenewalReq`/`UpdateReq` must contain a new,
 valid MDM challenge. The previous signer certificate must be CA-signed, unexpired,
 active and owned by the gateway's backend identity. New CSR keys are supported;
 the response is encrypted to the old signer so only that device can retrieve it.
-Shared-password mode does not advertise or accept renewal. An expired/revoked old
-signer requires fresh initial enrollment through MDM. Do not rotate the service
-identity by creating a different cluster and expect it to own old certificates.
+Shared-password mode requires its configured shared challenge instead of MDM
+validation, with the same ownership/active checks. An expired/revoked old signer
+requires fresh initial enrollment. Do not rotate the service identity by creating
+a different integration and expect it to own old certificates. The device/MDM
+must schedule renewal before expiry; the gateway does not push certificates.
 
 Intune success notification must be accepted before a success CertRep is returned.
 If notification fails after backend issuance, the certificate is retained but not

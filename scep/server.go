@@ -39,6 +39,8 @@ type gateway struct {
 	authorizer enrollmentAuthorizer
 	issuer     issuer
 	ra         *x509.Certificate
+	previousRA []*x509.Certificate
+	raMu       sync.RWMutex
 	key        crypto.Signer
 	decryptor  crypto.Decrypter
 	chain      []*x509.Certificate
@@ -51,6 +53,8 @@ func newGateway(i issuer, ra *x509.Certificate, key crypto.Signer, decryptor cry
 	return &gateway{issuer: i, ra: ra, key: key, decryptor: decryptor, chain: chain, challenge: sha256.Sum256([]byte(challenge)), slots: make(chan struct{}, 8)}
 }
 func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	g.raMu.RLock()
+	defer g.raMu.RUnlock()
 	w.Header().Set("Cache-Control", "no-store")
 	if time.Now().Before(g.ra.NotBefore) || !time.Now().Before(g.ra.NotAfter) || time.Now().Before(g.chain[0].NotBefore) || !time.Now().Before(g.chain[0].NotAfter) {
 		http.Error(w, "CA or RA certificate expired", 503)
@@ -85,10 +89,7 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Query().Get("operation") {
 	case "GetCACaps":
 		w.Header().Set("Content-Type", "text/plain")
-		caps := "POSTPKIOperation\r\nSHA-256\r\nAES\r\n"
-		if g.authorizer != nil {
-			caps += "Renewal\r\n"
-		}
+		caps := "POSTPKIOperation\r\nSHA-256\r\nAES\r\nRenewal\r\n"
 		_, _ = io.WriteString(w, caps)
 	case "GetCACert":
 		data, err := scep.DegenerateCertificates(append([]*x509.Certificate{g.ra}, g.chain...))
@@ -191,11 +192,25 @@ func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 		return nil, errors.New("invalid transaction")
 	}
 	renewal := msg.MessageType == scep.RenewalReq || msg.MessageType == scep.UpdateReq
-	if msg.MessageType != scep.PKCSReq && !(renewal && g.authorizer != nil) {
+	if msg.MessageType != scep.PKCSReq && !renewal {
 		slog.Warn("scep.enroll", "status", "rejected", "reason", "unsupported_message_type")
 		return g.certRep(msg, signer, nil, scep.BadRequest)
 	}
-	if err = msg.DecryptPKIEnvelope(g.ra, g.decryptor); err != nil {
+	err = msg.DecryptPKIEnvelope(g.ra, g.decryptor)
+	for _, previous := range g.previousRA {
+		if err == nil {
+			break
+		}
+		if validateRA(previous, g.chain[0], g.key.Public()) != nil {
+			continue
+		}
+		checker, ok := g.issuer.(certificateStatus)
+		if !ok || checker.Active(ctx, previous) != nil {
+			continue
+		}
+		err = msg.DecryptPKIEnvelope(previous, g.decryptor)
+	}
+	if err != nil {
 		slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_envelope")
 		return g.certRep(msg, signer, nil, scep.BadRequest)
 	}

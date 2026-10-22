@@ -16,6 +16,7 @@ services:
     environment:
       SCEP_AUTH_MODE: ${SCEP_AUTH_MODE:-shared}
       SCEP_AUTO_PROVISION: ${SCEP_AUTO_PROVISION:-true}
+      SCEP_RA_AUTO_RENEW: ${SCEP_RA_AUTO_RENEW:-true}
       SCEP_STATE_FILE: /data/ra.json
       NO_PROXY: backend,kms,127.0.0.1,localhost
       SCEP_BACKEND_URL: http://backend:3000

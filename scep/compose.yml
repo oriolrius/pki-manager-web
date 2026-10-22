@@ -16,6 +16,7 @@ services:
     environment:
       SCEP_AUTH_MODE: shared
       SCEP_AUTO_PROVISION: ${SCEP_AUTO_PROVISION:-true}
+      SCEP_RA_AUTO_RENEW: ${SCEP_RA_AUTO_RENEW:-true}
       SCEP_STATE_FILE: /data/ra.json
       SCEP_BACKEND_URL: ${SCEP_BACKEND_URL:-http://pki-backend:3000}
       SCEP_KMS_URL: ${SCEP_KMS_URL:-http://pki-kms:9998}

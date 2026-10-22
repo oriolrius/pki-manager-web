@@ -19,8 +19,8 @@ paths:
       operationId: getScepOperation
       summary: Discover capabilities/CA certificates, or submit legacy enrollment
       description: |
-        GetCACaps returns POSTPKIOperation, SHA-256 and AES; managed modes also
-        advertise Renewal. GetCACert returns a DER CMS CA/RA certificate bundle.
+        GetCACaps returns POSTPKIOperation, SHA-256, AES and Renewal.
+        GetCACert returns a DER CMS CA/RA certificate bundle with the current RA.
         Legacy PKIOperation submits a URL-encoded base64 SCEP message and is
         subject to HTTP header limits; POST is preferred.
       parameters:
@@ -60,11 +60,11 @@ paths:
           description: CA/RA unavailable, expired or revoked, or concurrent-request limit reached.
     post:
       operationId: postScepEnrollment
-      summary: Submit a SCEP enrollment or managed renewal message
+      summary: Submit a SCEP enrollment or renewal message
       description: |
         The CMS message carries the signed/encrypted PKCS#10 CSR and challenge.
-        Shared mode accepts initial PKCSReq only and rejects SANs. Managed modes
-        authorize the exact CSR, and renewal additionally requires an active,
+        Shared mode requires its shared challenge and rejects SANs. Managed modes
+        authorize the exact CSR, and renewal in all modes additionally requires an active,
         service-owned signer. A signed SCEP failure response can use HTTP 200.
       parameters:
         - name: operation

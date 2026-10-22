@@ -21,7 +21,7 @@ scheme for external issuance. The gateway `/scep` protocol runs on its own serve
 | `POST /scep?operation=PKIOperation` | `application/x-pki-message` |
 | Legacy GET `PKIOperation&message=<URL-encoded base64>` | Supported within HTTP header limits |
 | Initial `PKCSReq` | Immediate signed/encrypted `CertRep` success or failure |
-| `RenewalReq` / `UpdateReq` | Managed modes: fresh MDM validation plus active, service-owned old signer |
+| `RenewalReq` / `UpdateReq` | Active, service-owned old signer plus shared challenge or fresh MDM validation |
 | Response cryptography | SHA-256/RSA PKCS#1 signatures; AES-256-CBC envelopes |
 | Device keys | RSA, 2048–8192 bits; signer and CSR must use the same key |
 | CSR identity | Nonempty CN, maximum 128 bytes; managed modes support DNS, IP, email, URI and Microsoft UPN SANs |
@@ -276,12 +276,30 @@ port/leaf duration. Compose secret source paths may be changed through
 `SCEP_BACKEND_TOKEN_FILE`, `SCEP_CHALLENGE_FILE`, and `SCEP_KMS_API_KEY_FILE`.
 They are resolved relative to `docker/docker-compose.yml`.
 
-The RA has the configured issuance duration too (90 days by default). Monitor its
-expiry. To replace it, stop the gateway, archive its old public `ra.json`, then
-run `provision` and start again; revoke/retire the old RA certificate and KMS key
-through your normal process. Existing device certificates do not depend on the
-RA's continued validity. Clients must rediscover CA/RA certificates after RA
-replacement. Do not delete the KMS key before retaining required metadata.
+The RA has the configured issuance duration too (90 days by default).
+`SCEP_RA_AUTO_RENEW=true` is enabled by default, independently of first provisioning.
+At startup and hourly, the gateway checks whether the RA is in the last third of
+its lifetime (about 30 days remaining for a 90-day certificate), and renews it
+using the existing Sensitive KMS key. The renewed RA and still-valid previous RA
+certificates are saved atomically in `ra.json` before switching the running server.
+`GetCACert` immediately returns the new RA; messages encrypted to a cached previous
+RA are accepted until that certificate expires, provided it remains active.
+Failed renewals leave the current RA in service and are retried hourly with a
+stable backend request UID. Renewal failures are logged as `scep.ra.renew`.
+
+Renewal requires an active, unexpired, service-owned RA and the same active CA.
+An already expired/revoked RA, a missing KMS key, or a changed CA requires manual
+recovery; auto-renewal does not bypass those checks. Monitor renewal failures and
+keep the gateway running before expiry. Existing device certificates do not
+depend on the RA's continued validity. Automatic RA renewal does not rotate the
+KMS key; handle key compromise/rotation separately.
+
+Clients initiate their own renewal; the gateway cannot push certificates to them.
+Configure the SCEP client/MDM to renew before expiry (for example at 20% remaining)
+and rediscover CA/RA certificates. Shared mode requires the configured challenge;
+managed modes require fresh MDM validation. Both require an active, unexpired
+old signer owned by this integration. SAN restrictions remain unchanged. Device
+and platform interoperability must be validated in the deployed environment.
 
 ## Local development and configuration
 
@@ -307,6 +325,7 @@ go build -o scep-server .
 | `SCEP_CHALLENGE` or `_FILE` | Shared mode only; 32–256 bytes |
 | `SCEP_STATE_FILE` | `./data/ra.json`; public RA metadata |
 | `SCEP_AUTO_PROVISION` | `false`; opt in to one-time RA provisioning on `serve` when state is missing |
+| `SCEP_RA_AUTO_RENEW` | `true`; renew the active RA during its last third of validity, checked at startup and hourly |
 | `SCEP_LISTEN` | `:8085`; use loopback when running outside Docker |
 | `SCEP_VALIDITY_DAYS` | `90`, allowed 1–365 |
 

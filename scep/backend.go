@@ -83,7 +83,11 @@ func (b *backend) Bundle(ctx context.Context) ([]*x509.Certificate, error) {
 }
 func (b *backend) Issue(ctx context.Context, csr *x509.CertificateRequest) (*x509.Certificate, error) {
 	hash := sha256.Sum256(csr.Raw)
-	input := map[string]any{"csrPem": string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr.Raw})), "requestUid": "scep:" + hex.EncodeToString(hash[:]), "durationDays": b.days, "certificateType": "client"}
+	return b.issueWithUID(ctx, csr, "scep:"+hex.EncodeToString(hash[:]))
+}
+
+func (b *backend) issueWithUID(ctx context.Context, csr *x509.CertificateRequest, uid string) (*x509.Certificate, error) {
+	input := map[string]any{"csrPem": string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr.Raw})), "requestUid": uid, "durationDays": b.days, "certificateType": "client"}
 	var response struct {
 		CertificatePEM string `json:"certificatePem"`
 	}

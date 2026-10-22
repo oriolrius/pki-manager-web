@@ -26,8 +26,9 @@ import (
 )
 
 type state struct {
-	KeyID          string `json:"keyId"`
-	CertificatePEM string `json:"certificatePem"`
+	KeyID                   string   `json:"keyId"`
+	CertificatePEM          string   `json:"certificatePem"`
+	PreviousCertificatesPEM []string `json:"previousCertificatesPem,omitempty"`
 }
 
 func secret(name string) (string, error) {
@@ -67,6 +68,10 @@ func run() error {
 	autoProvision, err := strconv.ParseBool(setting("SCEP_AUTO_PROVISION", "false"))
 	if err != nil {
 		return errors.New("SCEP_AUTO_PROVISION must be a boolean")
+	}
+	autoRenew, err := strconv.ParseBool(setting("SCEP_RA_AUTO_RENEW", "true"))
+	if err != nil {
+		return errors.New("SCEP_RA_AUTO_RENEW must be a boolean")
 	}
 	token, err := secret("SCEP_BACKEND_TOKEN")
 	if err != nil {
@@ -173,6 +178,35 @@ func run() error {
 	pkcs7.ContentEncryptionAlgorithm = pkcs7.EncryptionAlgorithmAES256CBC
 	g := newGateway(b, ra, key, key, chain, challenge)
 	g.authorizer = authorizer
+	for _, encoded := range saved.PreviousCertificatesPEM {
+		previous, err := parsePEMCerts(encoded)
+		if err != nil {
+			return errors.New("invalid previous RA state")
+		}
+		if time.Now().Before(previous[0].NotAfter) {
+			if err := validateRA(previous[0], chain[0], key.Public()); err != nil {
+				return err
+			}
+			g.previousRA = append(g.previousRA, previous[0])
+		}
+	}
+	if autoRenew {
+		renew := func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if err := g.renewRA(ctx, path, key.id, b.issueWithUID, time.Now()); err != nil {
+				slog.Error("scep.ra.renew", "status", "failure", "error", err.Error())
+			}
+		}
+		renew()
+		go func() {
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				renew()
+			}
+		}()
+	}
 	server := &http.Server{Addr: setting("SCEP_LISTEN", ":8085"), Handler: g, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 180 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16384}
 	slog.Info("scep listening", "address", server.Addr)
 	return server.ListenAndServe()
