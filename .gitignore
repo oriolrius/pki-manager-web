@@ -29,3 +29,6 @@ pki/
 
 # Engram local tooling state
 .engram/
+
+# Local SCEP credentials (never commit enrollment challenges or API tokens)
+docker/scep-secrets/

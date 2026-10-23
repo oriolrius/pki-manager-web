@@ -1,0 +1,8 @@
+/data/
+/scep-server
+/.env
+
+.env.*
+!.env.example
+!.env.intune.example
+!.env.mdm.example
