@@ -1,4 +1,4 @@
-# Cosmian KMS 5.24.0: explicit paths for persistent Docker deployments.
+# Cosmian KMS 5.28.0: explicit paths for persistent Docker deployments.
 # When COSMIAN_KMS_CONF is set, configure server/database settings here;
 # KMS environment/CLI overrides are ignored by config-file mode.
 

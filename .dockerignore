@@ -1,0 +1,6 @@
+# Local SCEP enrollment credentials and provisioning state are never build inputs.
+docker/scep-secrets/
+scep/data/
+scep/.env
+scep/.env.*
+scep/scep-server

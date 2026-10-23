@@ -1,0 +1,11 @@
+# The SCEP image needs only this module's source and checksum-locked dependencies.
+**
+!scep/
+!scep/*.go
+!scep/go.mod
+!scep/go.sum
+!scep/Dockerfile
+!scep/Dockerfile.dockerignore
+
+!LICENSE
+!scep/THIRD_PARTY_NOTICES
