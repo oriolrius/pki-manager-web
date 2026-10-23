@@ -280,11 +280,12 @@ test.describe('PKI Manager Screenshots', () => {
 
   // --- New feature areas -----------------------------------------------------
 
-  test('14 - Kubernetes Clusters (cert-manager issuer)', async ({ page }) => {
-    // Clusters management page: mint/manage cluster tokens for the external issuer
+  test('14 - Integrations (legacy cluster link)', async ({ page }) => {
+    // Old bookmarks redirect to generic integrations and service-token management.
     await page.goto('/clusters');
     await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: /k8s clusters/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/integrations$/);
+    await expect(page.getByRole('heading', { name: 'Integrations', exact: true })).toBeVisible();
     await settle(page);
 
     await page.screenshot({

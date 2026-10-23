@@ -898,3 +898,19 @@ UserInfo; this adds a provider request and makes authentication depend on its
 availability. The default `OIDC_ROLES_SOURCE=token` preserves existing JWT-based
 providers and M2M clients; enable UserInfo only for deployments whose tokens can
 access the provider's UserInfo endpoint. The GUI currently has no admin-role badge.
+
+### Upgrade from cluster tokens to integration service tokens (migration 0010)
+
+Migration 0010 replaces `clusters` with `integrations`, preserving token hashes,
+CA bindings, usage and revocation state. Certificate ownership is backfilled in
+`integration_id`; legacy `k8s_cluster_id` values are retained. Only exclusively
+lowercase `scep:` request histories are reclassified as SCEP. Mixed/empty or
+uppercase histories remain Kubernetes. Legacy `cluster.*` calls and `/clusters`
+links remain compatible; new management uses `integration.*` and `/integrations`.
+
+The backend entrypoint migrates automatically on start. **Back up the SQLite
+database before pulling/starting the upgrade.** Redeploying v3.14.x against the
+migrated database fails because that code expects `clusters`. Follow the
+[0010 backup and rollback runbook](docs/deployment/integrations-0010.md). Rollback
+restores the entire pre-upgrade database and discards later changes; it is not
+a reverse DDL migration. The gateway is deployed separately.

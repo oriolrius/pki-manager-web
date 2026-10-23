@@ -16,6 +16,11 @@ export interface KMSClientConfig {
 }
 
 export class KMSClient {
+  // Internal backend entry point only; the HTTP API exposes fixed RA operations
+  // whose identifiers are resolved from an authenticated integration binding.
+  async performRAOperation(operation: 'CreateKeyPair' | 'Activate' | 'GetAttributes' | 'Get' | 'Sign' | 'Decrypt', fields: KMIPElement[]): Promise<KMIPResponse> {
+    return this.sendKMIPRequest({ tag: operation, value: fields });
+  }
   private readonly url: string;
   private readonly apiKey?: string;
   private readonly timeout: number;
@@ -45,7 +50,9 @@ export class KMSClient {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
-    logger.debug({ request }, "Sending KMIP request");
+    // CSRs may contain SCEP/Intune challenges; KMIP responses can contain keys.
+    // Log operation metadata only, even when debug logging is enabled.
+    logger.debug({ operation: request.tag }, "Sending KMIP request");
 
     let lastError: Error | null = null;
 
@@ -78,7 +85,7 @@ export class KMSClient {
         }
 
         const responseData = (await response.json()) as KMIPResponse;
-        logger.debug({ response: responseData }, "Received KMIP response");
+        logger.debug({ operation: responseData.tag }, "Received KMIP response");
 
         return responseData;
       } catch (error) {
@@ -638,6 +645,9 @@ export class KMSClient {
       // Add required empty fields for all X.509 subject components that Cosmian KMS expects
       // Based on X.509 DN attributes and Cosmian KMS requirements
       const requiredSubjectFields = [
+        "CertificateSubjectCn",
+        "CertificateSubjectO",
+        "CertificateSubjectC",
         "CertificateSubjectOu",  // Organizational Unit
         "CertificateSubjectSt",  // State
         "CertificateSubjectL",   // Locality
@@ -667,6 +677,9 @@ export class KMSClient {
       // For self-signed certificates, also add empty issuer fields
       if (isSelfSigned) {
         const requiredIssuerFields = [
+          "CertificateIssuerCn",
+          "CertificateIssuerO",
+          "CertificateIssuerC",
           "CertificateIssuerOu",  // Organizational Unit
           "CertificateIssuerSt",  // State
           "CertificateIssuerL",   // Locality
@@ -748,8 +761,9 @@ export class KMSClient {
           }
         }
 
-        // Add required empty issuer fields
+        // Complete required issuer fields even for sparse CA subjects.
         const requiredIssuerFields = [
+          "CertificateIssuerCn", "CertificateIssuerO", "CertificateIssuerC",
           "CertificateIssuerOu",  // Organizational Unit
           "CertificateIssuerSt",  // State
           "CertificateIssuerL",   // Locality
