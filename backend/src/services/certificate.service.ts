@@ -22,7 +22,7 @@ export interface ListCertificatesParams {
   certificateType?: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
   domain?: string;
   expiryStatus?: 'active' | 'expired' | 'expiring_soon';
-  sourceType?: 'manual' | 'k8s';
+  sourceType?: 'manual' | 'k8s' | 'scep' | 'integration';
   issuedAfter?: Date;
   issuedBefore?: Date;
   expiresAfter?: Date;

@@ -7,6 +7,7 @@ import { domainRouter } from './procedures/domain.js';
 import { searchRouter } from './procedures/search.js';
 import { dashboardRouter } from './procedures/dashboard.js';
 import { sshRouter } from './procedures/ssh.js';
+import { integrationRouter } from './procedures/integration.js';
 import { clusterRouter } from './procedures/cluster.js';
 
 export const appRouter = router({
@@ -26,6 +27,8 @@ export const appRouter = router({
   search: searchRouter,
   dashboard: dashboardRouter,
   ssh: sshRouter,
+  integration: integrationRouter,
+  // Backward-compatible Kubernetes API.
   cluster: clusterRouter,
 });
 

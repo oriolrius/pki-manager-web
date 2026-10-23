@@ -112,7 +112,7 @@ export const listCertificatesSchema = z
     certificateType: certificateTypeSchema.optional(),
     domain: z.string().optional(), // Filter by domain (searches in CN and SANs)
     expiryStatus: z.enum(['active', 'expired', 'expiring_soon']).optional(), // Dynamic expiry status
-    sourceType: z.enum(['manual', 'k8s']).optional(),
+    sourceType: z.enum(['manual', 'k8s', 'scep', 'integration']).optional(),
 
     // Date range filters
     issuedAfter: z.coerce.date().optional(),
@@ -396,17 +396,16 @@ export const certificateDetailSchema = z.object({
   updatedAt: z.date(),
 });
 
-// Cluster (k8s external issuer) schemas
-export const registerClusterSchema = z.object({
+// CA-bound service identity schemas.
+export const registerIntegrationSchema = z.object({
   name: z.string().min(1).max(128),
   description: z.string().max(512).optional(),
   caId: idSchema,
+  kind: z.enum(['kubernetes', 'scep', 'generic']).default('generic'),
 });
-
-export const revokeClusterSchema = z.object({
-  id: idSchema,
-});
-
-export const getClusterSchema = z.object({
-  id: idSchema,
-});
+export const revokeIntegrationSchema = z.object({ id: idSchema });
+export const getIntegrationSchema = z.object({ id: idSchema });
+// Legacy Kubernetes API inputs intentionally do not accept a kind override.
+export const registerClusterSchema = registerIntegrationSchema.omit({ kind: true });
+export const revokeClusterSchema = revokeIntegrationSchema;
+export const getClusterSchema = getIntegrationSchema;

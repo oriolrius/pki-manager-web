@@ -1,0 +1,144 @@
+# Integration API reference
+
+This foundation exposes two backend interfaces:
+
+| Interface | Base | Authentication |
+| --- | --- | --- |
+| Integration management | `/trpc/integration.*` on the backend | OIDC user JWT, when configured; registration and revocation require admin |
+| X.509 external issuer | `/api/v1/external` on the backend | CA-bound integration service token (`pkimg_...`), always required |
+
+The backend Swagger UI is `/api/docs`; its generated JSON and YAML are
+`/api/v1/openapi.json` and `/api/v1/openapi.yaml`. Select **integrationToken**
+in Swagger for external-issuer requests; **bearerAuth** is the management OIDC JWT.
+The optional SCEP gateway and its device protocol are supplied by a separate PR.
+
+## Create and manage a service identity
+
+In the UI, use **Operations → Integrations → Add Integration**. Choose an active
+issuing CA and `kubernetes`, `scep`, or `generic`. For SCEP, create a dedicated
+`scep` integration. Save its service token when it is displayed: it is not
+returned by later list/detail calls. Configure it only on the gateway, never on
+enrolling devices. A SCEP challenge, an integration token and an OIDC JWT are
+different credentials and are not interchangeable.
+
+Management is tRPC, not an additional REST `/integrations` resource:
+
+| Procedure | Method | Input | Result |
+| --- | --- | --- | --- |
+| `integration.list` | GET | none | Array of integration identities and `certificatesCount` |
+| `integration.getById` | GET | `{ "id": "INTEGRATION_ID" }` | Integration identity, usage and certificate count |
+| `integration.register` | POST | `name`, `caId`, optional `description`, `kind` (default `generic`) | Identity, type and plaintext `token`, shown once |
+| `integration.revoke` | POST | `{ "id": "INTEGRATION_ID" }` | `id`, `revokedAt`; the token stops authenticating |
+
+For example, against the backend origin (without `/api/v1`):
+
+```sh
+curl -X POST "$BACKEND/trpc/integration.register" \
+  -H "Authorization: Bearer $OIDC_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data '{"name":"scep-mdm","caId":"CA_ID","kind":"scep"}'
+
+curl "$BACKEND/trpc/integration.list" \
+  -H "Authorization: Bearer $OIDC_TOKEN"
+```
+
+tRPC wraps successful results in `result.data` and failures in `error`.
+Legacy `cluster.*` procedures remain compatible; new registrations through that
+adapter are Kubernetes identities and retain `k8sCertificatesCount` in responses.
+The old `/clusters` page redirects to `/integrations`.
+
+## External issuer endpoints
+
+Every request uses `Authorization: Bearer <service-token>`. This remains required
+when management OIDC is disabled. A token is scoped to its integration and bound CA.
+
+| Method | Path relative to `/api/v1` | Behavior |
+| --- | --- | --- |
+| GET | `/external/health` | `status`, `integration` (`id`, `name`, `caId`, `kind`), timestamp; legacy `cluster` compatibility identity |
+| GET | `/external/ca-bundle` | `caId`, `subjectDn`, `certificatePem`, `chainPem`; rejects inactive/expired CA |
+| GET | `/external/certificate-status/{serial}` | `{ "active": true/false }`; checks certificate validity/revocation and CA/integration ownership |
+| POST | `/external/sign` | Sign a CSR with the bound CA; idempotent within integration and CA |
+| POST | `/external/revoke` | Revoke an owned certificate and publish the CA CRL; retries are idempotent |
+
+`sign` requires `csrPem` and `requestUid`. Optional `durationDays` defaults to 90
+and is clamped to 1–825. `certificateType` is a display hint (`server`, `client`,
+`dual`), not a substitute for the CSR's key usage/EKU. Subject and SANs come from
+the signed CSR; compatibility body fields `sanDns`/`sanIp` are ignored.
+
+The signing response contains `idempotent`, `id`, `serialNumber`, `certificatePem`,
+`chainPem`, `notBefore`, and `notAfter`. Reusing an ID whose certificate is revoked
+or expired returns 409; submit a new CSR/request ID. SCEP uses a deterministic
+`scep:` ID derived from the CSR hash. Certificates belong to `integrationId`, with
+sources `k8s`, `scep`, or `integration` according to the identity type.
+
+Revocation accepts `serialNumber` and optional `reason` (default
+`cessationOfOperation`). It returns the certificate ID, serial, `status: revoked`
+and revocation date; an already-revoked result also has `idempotent: true`.
+A different integration cannot revoke or establish renewal ownership of the
+certificate, even if it uses the same issuing CA.
+
+Expect 400 for invalid requests, 401 for invalid/revoked service tokens, 403 for
+revoking another identity's certificate, 404 for missing resources, and 409 for
+CA/certificate state conflicts. KMS/CRL failures can return 500. Successful
+certificate-status lookup of a missing or differently owned serial returns
+`active: false`, rather than revealing another integration's certificate.
+
+## Backend issuance policy and failure auditing
+
+The external issuer accepts only SAN, keyUsage, extendedKeyUsage and
+basicConstraints CSR extensions. Duplicate or unknown extensions (including
+CDP, AIA and nameConstraints), CA:true, path length, keyCertSign and cRLSign are
+rejected before KMS issuance. The backend adds its configured CRL distribution
+point itself. RSA keys must be 2048–8192 bits; CSRs and request IDs are bounded.
+
+SCEP integrations require exactly the clientAuth EKU and at most 90 days validity.
+This applies to direct API callers as well as gateway requests; a certificateType
+metadata hint cannot override the CSR profile. CA validity is checked before
+returning an idempotent issuance result. Requests rejected with HTTP 4xx/5xx
+produce `external.reject` audit rows with route/status and known integration
+identity, without tokens or raw CSR/challenge bodies. Audit-storage failures
+are separately logged; response delivery and the on-response audit insert are
+not one database transaction.
+
+Repeated revocation reuses the current unexpired CA CRL if it already contains
+the serial. If publication previously failed, or that CRL expired, publication
+is retried. This avoids regenerating CRLs on successful sequential retries;
+concurrent publication still needs coordination across backend replicas.
+
+### Backend-owned SCEP RA
+
+Only an active `scep` integration can call `/api/v1/external/ra/state`,
+`ra/provision`, `ra/renew`, `ra/sign`, and `ra/decrypt`. Provision/renew take an
+empty JSON object. Sign accepts only a base64 SHA-256 `digest`; decrypt accepts
+only a base64 RSA-3072 `data` ciphertext and returns an AES content key. The
+backend fixes algorithms and resolves its RA key from the integration and bound
+CA. Caller-selected key identifiers are rejected. State contains public
+certificates only. Private keys are Sensitive and stay in KMS; gateways need no
+KMS connectivity or credentials.
+
+RA operations check integration/CA ownership and active status on every request.
+Revoked RA certificates cannot sign, decrypt, or renew. Integration revocation
+cannot revoke RA certificates. Audit intent must persist before any RA operation;
+audit storage failure prevents KMS access. Lease-backed provisioning and renewal
+coordinate replicas. Failed first provisioning retains a 15-minute lease. After
+expiry, provision reuses recorded key IDs and resumes activation/issuance. If no
+IDs were recorded, it retries allocation; an ambiguous lost KMS response can leave
+an orphan object, so reconcile the integration audit trail and KMS objects. Renewals retain the key and public overlap
+certificates. Backend migration 0011 add this binding and lease state;
+back up the database before upgrading and restore the full pre-upgrade backup
+with the corresponding old images to roll back. Do not drop binding rows to
+retry provisioning without reconciling KMS objects first.
+
+Same-key RA renewal requires fresh certificate serials: use tested Cosmian KMS
+5.28.0. KMS 5.24 derives serials from the key; the backend rejects this collision
+and retains the previous binding. See the gateway deployment runbook before a
+KMS upgrade.
+
+RA certificates carry digitalSignature/keyEncipherment with no EKU; the clientAuth
+requirement applies only to enrolled device CSRs. Anonymous rejection auditing is
+capped at one row per IP per minute and 60 rows globally per minute per backend
+process. Source keys expire each minute, preventing unbounded in-memory growth.
+Error codes distinguish malformed CSRs from profile rejections. Already-audited
+RA failures are excluded from the generic rejection hook. Authentication runs
+before body validation, so anonymous selector overrides receive 401. Configure
+trusted proxy handling carefully: the limiter uses Fastify's resolved request IP.

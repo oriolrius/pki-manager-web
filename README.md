@@ -120,8 +120,8 @@ Register Kubernetes clusters and mint scoped tokens for the cert-manager externa
 <table>
   <tr>
     <td width="50%">
-      <img src="assets/14-clusters.png" alt="Kubernetes Clusters" />
-      <p align="center"><em>K8s Clusters — cert-manager issuer tokens</em></p>
+      <img src="assets/14-clusters.png" alt="Integrations" />
+      <p align="center"><em>Integrations — CA-bound service tokens</em></p>
     </td>
     <td width="50%">
       <img src="assets/21-api-docs.png" alt="REST / OpenAPI Docs" />
@@ -220,7 +220,7 @@ revocation, and per-host user access blocks.
 - ✅ **Auto-approves** CertificateRequests via a dedicated approver RBAC role
 - ✅ Scoped cluster tokens — **one cluster token = one CA**
 - ✅ Revoke-on-delete, Prometheus metrics, in-cluster deploy via ingress-nginx
-- ✅ Clusters management page to mint and manage cluster tokens
+- ✅ Integrations management page to mint CA-bound service tokens
 
 ### Monitoring & Alerts
 - ✅ Real-time dashboard with PKI statistics

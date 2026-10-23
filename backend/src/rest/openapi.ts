@@ -56,6 +56,22 @@ Include the token in the Authorization header:
 Authorization: Bearer <access_token>
 \`\`\`
 
+### Integration service tokens (Kubernetes, SCEP, other services)
+
+The X.509 endpoints under \`/api/v1/external\` always require a CA-bound
+\`pkimg_...\` service token, including when OIDC is disabled. Use the separate
+**integrationToken** authorization scheme in Swagger. OIDC JWTs do not replace
+service tokens on these endpoints.
+
+Create an integration in **Operations → Integrations**, choose its type
+(\`kubernetes\`, \`scep\`, or \`generic\`) and issuing CA, and copy the token
+shown once at creation. Never distribute this backend token to SCEP devices.
+
+Integration management uses the separate tRPC API at \`/trpc/integration.*\`
+(list, getById, register, revoke), outside this REST specification. Register and
+revoke require an admin role when OIDC is enabled. The legacy \`cluster.*\`
+API remains compatible; new clients should use \`integration.*\`.
+
 ### Public Endpoints (No Auth Required)
 
 - \`GET /health\` - Health check
@@ -82,6 +98,10 @@ No rate limiting is currently enforced. This may change in future versions.
       },
     ],
     tags: [
+      {
+        name: 'External Issuer',
+        description: 'CA-scoped X.509 issuance, certificate status and revocation for Kubernetes, SCEP and generic integrations. Uses integrationToken, not an OIDC JWT.',
+      },
       {
         name: 'Certificate Authorities',
         description: 'Manage Certificate Authorities (CAs) - create, list, revoke, and delete root CAs',
@@ -120,6 +140,12 @@ No rate limiting is currently enforced. This may change in future versions.
     ],
     components: {
       securitySchemes: {
+        integrationToken: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'pkimg_ service token',
+          description: 'CA-bound service token created under Operations → Integrations. Required for /external endpoints even when OIDC is disabled; independent of the OIDC JWT used for management.',
+        },
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',

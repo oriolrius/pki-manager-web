@@ -23,17 +23,18 @@ const { signCertificate, getCertificate, verifyToken, regenerateForCa } = vi.hoi
 vi.mock('../../kms/service.js', () => ({
   getKMSService: () => ({ signCertificate, getCertificate }),
 }));
-vi.mock('../../services/cluster.service.js', () => ({
-  getClusterService: () => ({ verifyToken }),
+vi.mock('../../services/integration.service.js', () => ({
+  getIntegrationService: () => ({ verifyToken }),
 }));
 vi.mock('../../services/crl.service.js', () => ({
   getCRLService: () => ({ regenerateForCa }),
 }));
 
+import { generateCRL } from '../../crypto/crl.js';
 import { externalRoutes } from './external.routes.js';
 import { db } from '../../db/client.js';
-import { certificateAuthorities, certificates } from '../../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { certificateAuthorities, certificates, auditLog, crls } from '../../db/schema.js';
+import { eq, and, desc } from 'drizzle-orm';
 
 // CA used as the issuer
 const caKp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
@@ -62,12 +63,12 @@ function makeLeafPem(csrPem: string): string {
 }
 
 // Helper: cert-manager-style CSR (CN + DNS SAN)
-function makeCsr(cn = 'svc.default.svc'): string {
+function makeCsr(cn = 'svc.default.svc', extensions?: Array<Record<string, unknown>>): string {
   const kp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
   const csr = forge.pki.createCertificationRequest();
   csr.publicKey = kp.publicKey;
   csr.setSubject([{ name: 'commonName', value: cn }]);
-  csr.setAttributes([{ name: 'extensionRequest', extensions: [{ name: 'subjectAltName', altNames: [{ type: 2, value: cn }] }] }]);
+  csr.setAttributes([{ name: 'extensionRequest', extensions: extensions ?? [{ name: 'subjectAltName', altNames: [{ type: 2, value: cn }] }, { name: 'extKeyUsage', clientAuth: true }] }]);
   csr.sign(kp.privateKey, forge.md.sha256.create());
   return forge.pki.certificationRequestToPem(csr);
 }
@@ -107,11 +108,22 @@ describe('External /sign wiring (KMS certify)', () => {
 
   beforeEach(async () => {
     await db.delete(certificates).where(eq(certificates.caId, caId));
-    verifyToken.mockReset().mockResolvedValue({ id: clusterId, name: 'c1', caId });
+    verifyToken.mockReset().mockResolvedValue({ id: clusterId, name: 'c1', caId, kind: 'kubernetes' });
     getCertificate.mockReset().mockImplementation(async (id: string) =>
       id === CA_KMS_CERT_ID ? caCertPem : makeLeafPem(lastCsr));
     signCertificate.mockReset().mockResolvedValue({ certificateId: KMS_LEAF_ID, certificateData: '' });
-    regenerateForCa.mockReset().mockResolvedValue(true);
+    regenerateForCa.mockReset().mockImplementation(async () => {
+      const revoked = await db.select().from(certificates).where(and(eq(certificates.caId, caId), eq(certificates.status, 'revoked')));
+      const [latest] = await db.select().from(crls).where(eq(crls.caId, caId)).orderBy(desc(crls.crlNumber)).limit(1);
+      const number = (latest?.crlNumber ?? 0) + 1;
+      const now = new Date(); const next = new Date(Date.now() + 86400e3);
+      const generated = generateCRL({ issuer: { CN: 'Test K8s CA', O: 'Test', C: 'US' }, crlNumber: number,
+        thisUpdate: now, nextUpdate: next, signingKey: forge.pki.privateKeyToPem(caKp.privateKey),
+        revokedCertificates: revoked.map(c => ({ serialNumber: c.serialNumber, revocationDate: c.revocationDate! })),
+      });
+      await db.insert(crls).values({ id: randomUUID(), caId, crlNumber: number, thisUpdate: now, nextUpdate: next, crlPem: generated.pem, revokedCount: revoked.length });
+      return true;
+    });
   });
 
   let lastCsr = '';
@@ -168,6 +180,66 @@ describe('External /sign wiring (KMS certify)', () => {
     expect(signCertificate).toHaveBeenCalledTimes(1);
   });
 
+  it('does not return a revoked certificate for an enrollment retry', async () => {
+    const csrPem = makeCsr();
+    const requestUid = randomUUID();
+    const first = await postSign({ csrPem, requestUid });
+    expect(first.statusCode).toBe(200);
+    await db.update(certificates).set({ status: 'revoked' }).where(eq(certificates.id, first.json().id));
+    const retry = await postSign({ csrPem, requestUid });
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json().error.code).toBe('CERTIFICATE_NOT_ACTIVE');
+    expect(signCertificate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not serve the enrollment CA bundle after CA revocation', async () => {
+    await db.update(certificateAuthorities).set({ status: 'revoked' }).where(eq(certificateAuthorities.id, caId));
+    try {
+      const res = await app.inject({ method: 'GET', url: '/api/v1/external/ca-bundle', headers: { authorization: 'Bearer test-token' } });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe('CA_NOT_ACTIVE');
+    } finally {
+      await db.update(certificateAuthorities).set({ status: 'active' }).where(eq(certificateAuthorities.id, caId));
+    }
+  });
+
+  it('checks renewal signer ownership and revocation with canonical serial numbers', async () => {
+    const result = await postSign({ csrPem: makeCsr(), requestUid: randomUUID() });
+    expect(result.statusCode).toBe(200);
+    const cert = result.json();
+    const serial = cert.serialNumber.replace(/^0+/, '').toUpperCase();
+    const check = () => app.inject({ method: 'GET', url: `/api/v1/external/certificate-status/${serial}`, headers: { authorization: 'Bearer test-token' } });
+    expect((await check()).json().active).toBe(true);
+    await db.update(certificates).set({ integrationId: null }).where(eq(certificates.id, cert.id));
+    expect((await check()).json().active).toBe(false);
+    await db.update(certificates).set({ integrationId: clusterId, status: 'revoked' }).where(eq(certificates.id, cert.id));
+    expect((await check()).json().active).toBe(false);
+  });
+
+  it('preserves CA:false requested by MDM clients without duplicating basicConstraints', async () => {
+    const kp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const csr = forge.pki.createCertificationRequest();
+    csr.publicKey = kp.publicKey;
+    csr.setSubject([{ name: 'commonName', value: 'mdm-device' }]);
+    csr.setAttributes([{ name: 'extensionRequest', extensions: [{ name: 'basicConstraints', cA: false }] }]);
+    csr.sign(kp.privateKey, forge.md.sha256.create());
+    const res = await postSign({ csrPem: forge.pki.certificationRequestToPem(csr), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(200);
+    expect(signCertificate.mock.calls[0][0].x509Extensions).not.toContain('basicConstraints');
+  });
+
+  it('rejects CA:true enrollment requests', async () => {
+    const kp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+    const csr = forge.pki.createCertificationRequest();
+    csr.publicKey = kp.publicKey;
+    csr.setSubject([{ name: 'commonName', value: 'invalid-ca' }]);
+    csr.setAttributes([{ name: 'extensionRequest', extensions: [{ name: 'basicConstraints', cA: true }] }]);
+    csr.sign(kp.privateKey, forge.md.sha256.create());
+    const res = await postSign({ csrPem: forge.pki.certificationRequestToPem(csr), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(signCertificate).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when csrPem/requestUid are missing', async () => {
     const res = await postSign({ requestUid: randomUUID() });
     expect(res.statusCode).toBe(400);
@@ -196,6 +268,21 @@ describe('External /sign wiring (KMS certify)', () => {
     }
   });
 
+  it('retries CRL publication when revocation persisted before a publication failure', async () => {
+    const first = await postSign({ csrPem: makeCsr(), requestUid: randomUUID() });
+    expect(first.statusCode).toBe(200);
+    const serialNumber = first.json().serialNumber.replace(/^0+/, '').toUpperCase();
+    const revoke = () => app.inject({ method: 'POST', url: '/api/v1/external/revoke', headers: { authorization: 'Bearer test-token' }, payload: { serialNumber } });
+    regenerateForCa.mockRejectedValueOnce(new Error('temporary publication failure'));
+    expect((await revoke()).statusCode).toBe(500);
+    const retry = await revoke();
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json().status).toBe('revoked');
+    expect(regenerateForCa).toHaveBeenCalledTimes(2);
+    expect((await revoke()).statusCode).toBe(200);
+    expect(regenerateForCa).toHaveBeenCalledTimes(2);
+  });
+
   it('regenerates the CA CRL after /revoke (TASK-113)', async () => {
     // Seed a cluster-owned cert to revoke.
     const serialNumber = '00' + randomUUID().replace(/-/g, '').slice(0, 30);
@@ -211,6 +298,7 @@ describe('External /sign wiring (KMS certify)', () => {
       kmsKeyId: null,
       status: 'active',
       sourceType: 'k8s',
+      integrationId: clusterId,
       k8sClusterId: clusterId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -228,4 +316,86 @@ describe('External /sign wiring (KMS certify)', () => {
     expect(regenerateForCa).toHaveBeenCalledTimes(1);
     expect(regenerateForCa.mock.calls[0][1]).toBe(caId);
   });
+
+  it('records SCEP provenance and generic ownership without a Kubernetes cluster', async () => {
+    verifyToken.mockResolvedValue({ id: clusterId, name: 'MDM', caId, kind: 'scep' });
+    const res = await postSign({ csrPem: makeCsr('device'), requestUid: 'scep:' + randomUUID(), certificateType: 'client', k8sNamespace: 'ignored', k8sResource: 'ignored' });
+    expect(res.statusCode).toBe(200);
+    const [cert] = await db.select().from(certificates).where(eq(certificates.id, res.json().id));
+    expect(cert).toMatchObject({ sourceType: 'scep', integrationId: clusterId, k8sClusterId: null, k8sNamespace: null, k8sResource: null });
+    expect(signCertificate.mock.calls[0][0].tags).toContain(`integration:${clusterId}`);
+    const health = await app.inject({ url: '/api/v1/external/health', headers: { authorization: 'Bearer test-token' } });
+    expect(health.json().integration).toMatchObject({ id: clusterId, kind: 'scep' });
+    expect(health.json().cluster.id).toBe(clusterId); // legacy probe compatibility
+  });
+
+  it('scopes retries, renewal checks and revocation to the integration even for the same CA', async () => {
+    const requestUid = randomUUID();
+    const first = await postSign({ csrPem: makeCsr(), requestUid });
+    expect(first.statusCode).toBe(200);
+    const otherId = randomUUID();
+    verifyToken.mockResolvedValue({ id: otherId, name: 'Other service', caId, kind: 'generic' });
+    const status = await app.inject({ url: `/api/v1/external/certificate-status/${first.json().serialNumber}`, headers: { authorization: 'Bearer test-token' } });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().active).toBe(false);
+    const revoke = await app.inject({ method: 'POST', url: '/api/v1/external/revoke', headers: { authorization: 'Bearer test-token' }, payload: { serialNumber: first.json().serialNumber } });
+    expect(revoke.statusCode).toBe(403);
+    const second = await postSign({ csrPem: makeCsr('other'), requestUid });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().id).not.toBe(first.json().id);
+    expect(signCertificate).toHaveBeenCalledTimes(2);
+    const [cert] = await db.select().from(certificates).where(eq(certificates.id, second.json().id));
+    expect(cert).toMatchObject({ sourceType: 'integration', integrationId: otherId, k8sClusterId: null });
+    const retry = await postSign({ csrPem: lastCsr, requestUid });
+    expect(retry.json().id).toBe(second.json().id);
+    expect(signCertificate).toHaveBeenCalledTimes(2);
+  });
+  it.each(['2.5.29.31', '1.3.6.1.5.5.7.1.1', '2.5.29.30', '1.2.3.4'])('rejects unauthorized CSR extension %s before KMS issuance', async (id) => {
+    const csrPem = makeCsr('unsafe', [{ id, value: forge.asn1.toDer(forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.SEQUENCE, true, [])).getBytes() }]);
+    const res = await postSign({ csrPem, requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(signCertificate).not.toHaveBeenCalled();
+  });
+  it.each(['keyCertSign', 'cRLSign'])('rejects %s key usage', async (usage) => {
+    const res = await postSign({ csrPem: makeCsr('unsafe', [{ name: 'keyUsage', [usage]: true }]), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(signCertificate).not.toHaveBeenCalled();
+  });
+  it('enforces SCEP clientAuth and max validity in the backend', async () => {
+    verifyToken.mockResolvedValue({ id: clusterId, name: 'SCEP', caId, kind: 'scep' });
+    expect((await postSign({ csrPem: makeCsr('device', []), requestUid: randomUUID() })).statusCode).toBe(400);
+    expect((await postSign({ csrPem: makeCsr('device', [{ name: 'extKeyUsage', serverAuth: true }]), requestUid: randomUUID() })).statusCode).toBe(400);
+    expect((await postSign({ csrPem: makeCsr(), requestUid: randomUUID(), durationDays: 91 })).statusCode).toBe(400);
+    expect(signCertificate).not.toHaveBeenCalled();
+    expect((await postSign({ csrPem: makeCsr(), requestUid: randomUUID(), durationDays: 90 })).statusCode).toBe(200);
+  });
+  it('audits invalid tokens without storing the token', async () => {
+    verifyToken.mockResolvedValue(null);
+    const token = 'pkimg_do-not-log-this-secret';
+    expect((await app.inject({ url: '/api/v1/external/health', headers: { authorization: `Bearer ${token}` } })).statusCode).toBe(401);
+    const rows = await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'));
+    expect(rows.some(row => JSON.parse(row.details ?? '{}').statusCode === 401)).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain(token);
+  });
+  it('rechecks CA state before serving an idempotent retry', async () => {
+    const csrPem = makeCsr(); const requestUid = randomUUID();
+    expect((await postSign({ csrPem, requestUid })).statusCode).toBe(200);
+    await db.update(certificateAuthorities).set({ status: 'revoked' }).where(eq(certificateAuthorities.id, caId));
+    try { expect((await postSign({ csrPem, requestUid })).statusCode).toBe(409); }
+    finally { await db.update(certificateAuthorities).set({ status: 'active' }).where(eq(certificateAuthorities.id, caId)); }
+  });
+
+  it('limits anonymous audit rows and records distinct profile/parse error codes', async () => {
+    verifyToken.mockResolvedValue(null);
+    for (let i = 0; i < 10; i++) expect((await app.inject({ url: '/api/v1/external/health' })).statusCode).toBe(401);
+    const anonymous = await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'));
+    expect(anonymous.filter(row => JSON.parse(row.details ?? '{}').statusCode === 401).length).toBeLessThanOrEqual(1);
+    verifyToken.mockResolvedValue({ id: clusterId, name: 'SCEP', caId, kind: 'scep' });
+    await postSign({ csrPem: 'broken CSR', requestUid: randomUUID() });
+    await postSign({ csrPem: makeCsr('unsafe', [{ name: 'basicConstraints', cA: true }]), requestUid: randomUUID() });
+    const rows = await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'));
+    const codes = rows.map(row => JSON.parse(row.details ?? '{}').code);
+    expect(codes).toContain('INVALID_CSR'); expect(codes).toContain('CSR_PROFILE_REJECTED');
+  });
+
 });

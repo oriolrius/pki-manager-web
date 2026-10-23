@@ -34,7 +34,7 @@ await server.register(cors, {
 // Register REST API with OpenAPI/Swagger documentation
 await registerRestApi(server);
 
-// Register external issuer API (cluster bearer-token auth, separate from OIDC)
+// Register external issuer API (integration service-token auth, separate from OIDC)
 await server.register(externalRoutes, { prefix: '/api/v1/external' });
 
 // Register tRPC at the ROOT /trpc prefix. The @trpc/server fastify adapter
