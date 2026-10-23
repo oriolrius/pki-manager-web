@@ -1,3 +1,14 @@
+## v3.15.0 (2026-10-23)
+
+### Feat
+
+- **scep**: add standalone SCEP gateway, Compose overlays and image workflow (#19)
+- **integrations**: generalize CA-bound service tokens with backend-owned SCEP RA (#18)
+
+### Fix
+
+- **kms**: use the Cosmian 5.24 config schema so dev keys persist (#20)
+
 ## v3.14.2 (2026-10-22)
 
 ### Fix
