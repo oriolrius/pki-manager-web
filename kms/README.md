@@ -29,7 +29,7 @@ This keeps all services in the 42000-43000 range as per project requirements.
 
 ### kms.toml
 
-Main KMS configuration file (Cosmian KMS 5.24 schema), loaded via `COSMIAN_KMS_CONF`:
+Main KMS configuration file (Cosmian KMS 5.28 schema, matching the pinned image), loaded via `COSMIAN_KMS_CONF`:
 - `[http]` — host and port
 - `[db]` — SQLite database at `/cosmian-kms/sqlite-data` (the mounted `./data`)
 - `[workspace]` — working directories

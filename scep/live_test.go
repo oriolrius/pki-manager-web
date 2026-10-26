@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/json"
 	"github.com/smallstep/pkcs7"
 	"io"
 	"net/http"
@@ -105,16 +104,15 @@ func TestLiveManagedProfileWithKMS(t *testing.T) {
 	if endpoint == "" {
 		t.Skip("SCEP_TEST_BACKEND_URL is not set")
 	}
-	token, err := os.ReadFile(os.Getenv("SCEP_TEST_BACKEND_TOKEN_FILE"))
+	token, err := os.ReadFile(os.Getenv("SCEP_TEST_TOKEN_FILE"))
 	if err != nil {
 		t.Fatal("backend test token unavailable")
 	}
-	savedBytes, err := os.ReadFile(os.Getenv("SCEP_TEST_RA_STATE_FILE"))
+	client := &http.Client{Timeout: 60 * time.Second}
+	b := &backend{url: endpoint, token: strings.TrimSpace(string(token)), days: 90, client: client}
+	// The backend owns the RA; read its public state like the gateway does.
+	saved, err := b.RAState(context.Background())
 	if err != nil {
-		t.Fatal("test RA state unavailable")
-	}
-	var saved state
-	if err = json.Unmarshal(savedBytes, &saved); err != nil {
 		t.Fatal(err)
 	}
 	certs, err := parsePEMCerts(saved.CertificatePEM)
@@ -122,8 +120,6 @@ func TestLiveManagedProfileWithKMS(t *testing.T) {
 		t.Fatal(err)
 	}
 	ra := certs[0]
-	client := &http.Client{Timeout: 60 * time.Second}
-	b := &backend{url: endpoint, token: strings.TrimSpace(string(token)), days: 90, client: client}
 	chain, err := b.Bundle(context.Background())
 	if err != nil {
 		t.Fatal(err)
