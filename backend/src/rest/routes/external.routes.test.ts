@@ -32,9 +32,10 @@ vi.mock('../../services/crl.service.js', () => ({
 
 import { generateCRL } from '../../crypto/crl.js';
 import { externalRoutes } from './external.routes.js';
+import { parseTrustProxy } from '../../lib/trust-proxy.js';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates, auditLog, crls } from '../../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 
 // CA used as the issuer
 const caKp = forge.pki.rsa.generateKeyPair({ bits: 2048 });
@@ -376,6 +377,28 @@ describe('External /sign wiring (KMS certify)', () => {
     const rows = await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'));
     expect(rows.some(row => JSON.parse(row.details ?? '{}').statusCode === 401)).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(token);
+  });
+  it('audits rejections with the client IP forwarded by a trusted proxy, not a forged one', async () => {
+    verifyToken.mockResolvedValue(null);
+    const proxied = Fastify({ trustProxy: parseTrustProxy('10.222.35.0/24') });
+    await proxied.register(externalRoutes, { prefix: '/api/v1/external' });
+    await proxied.ready();
+    try {
+      const reject = (remoteAddress: string, forwardedFor: string) => proxied.inject({
+        url: '/api/v1/external/health', remoteAddress,
+        headers: { authorization: 'Bearer pkimg_invalid', 'x-forwarded-for': forwardedFor },
+      });
+      expect((await reject('10.222.35.12', '203.0.113.71')).statusCode).toBe(401);
+      expect((await reject('198.51.100.72', '203.0.113.73')).statusCode).toBe(401);
+      const ips = (await db.select().from(auditLog).where(eq(auditLog.operation, 'external.reject'))).map(row => row.ipAddress);
+      expect(ips).toContain('203.0.113.71');
+      expect(ips).toContain('198.51.100.72');
+      expect(ips).not.toContain('203.0.113.73');
+    } finally {
+      await proxied.close();
+      // Keep the shared test DB as the other audit-count tests expect it.
+      await db.delete(auditLog).where(inArray(auditLog.ipAddress, ['203.0.113.71', '198.51.100.72', '203.0.113.73']));
+    }
   });
   it('rechecks CA state before serving an idempotent retry', async () => {
     const csrPem = makeCsr(); const requestUid = randomUUID();

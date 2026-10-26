@@ -94,6 +94,6 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
 
 ## Env
 
-`PORT` (3000) · `HOST` · `DATABASE_PATH` · `KMS_URL` · `KMS_API_KEY?` · `OIDC_ISSUER` ·
+`PORT` (3000) · `HOST` · `DATABASE_PATH` · `KMS_URL` · `KMS_API_KEY?` · `TRUST_PROXY?` · `OIDC_ISSUER` ·
 `OIDC_AUDIENCE` · `OIDC_ROLES_SOURCE` · `OIDC_ROLES_CLAIM` · `OIDC_DISCOVERY_BASE_URL`. See `.env.example`.
 (The old `EXTERNAL_ISSUER_CA_*` offline-signing vars were removed — `/sign` signs via the KMS.)

@@ -12,8 +12,12 @@ import { db } from './db/client.js';
 import { certificateAuthorities } from './db/schema.js';
 import { eq } from 'drizzle-orm';
 import { initializeOIDC } from './lib/oidc.js';
+import { parseTrustProxy } from './lib/trust-proxy.js';
 
 const server = Fastify({
+  // Behind a reverse proxy, req.ip (audit rows, rate limits) is the proxy's
+  // address unless TRUST_PROXY lists it. See DEPLOYMENT.md.
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   logger: {
     transport: {
       target: 'pino-pretty',
