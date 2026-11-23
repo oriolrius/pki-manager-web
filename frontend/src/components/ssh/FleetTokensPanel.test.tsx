@@ -26,6 +26,7 @@ const CAS = [
 const TOKENS = [
   { id: 't1', zoneId: 'z-prod', name: 'web-fleet', tokenPrefix: 'pkimg_AbCd1', userCaId: null, hostCaId: 'hca', opSet: ['sign-host', 'get-principals'], revoked: false, lastSeenAt: '2026-11-01T10:00:00.000Z', createdAt: '2026-10-01T10:00:00.000Z' },
   { id: 't2', zoneId: 'z-prod', name: 'old-ci', tokenPrefix: 'pkimg_XyZ98', userCaId: 'uca', hostCaId: null, opSet: ['sign-user'], revoked: true, lastSeenAt: null, createdAt: '2026-09-01T10:00:00.000Z' },
+  { id: 't4', zoneId: 'z-prod', name: 'ci-limited', tokenPrefix: 'pkimg_Lim00', userCaId: 'uca', hostCaId: null, opSet: ['sign-user'], allowedPrincipals: ['deploy'], maxValidForSeconds: 900, revoked: false, lastSeenAt: '2026-11-21T10:00:00.000Z', createdAt: '2026-11-20T10:00:00.000Z' },
   { id: 't3', zoneId: 'z-dev', name: 'dev-token', tokenPrefix: 'pkimg_Dev00', userCaId: null, hostCaId: 'dev-hca', opSet: ['sign-host'], revoked: false, lastSeenAt: null, createdAt: '2026-10-02T10:00:00.000Z' },
 ];
 
@@ -50,11 +51,24 @@ vi.mock('@/lib/trpc', () => ({
           useQuery: (input: { zoneId?: string }) => ({ data: input?.zoneId ? CAS.filter((c) => c.zoneId === input.zoneId) : CAS }),
         },
       },
+      principal: {
+        list: {
+          useQuery: (input: { zoneId?: string }) => ({
+            data: input?.zoneId === 'z-prod'
+              ? [
+                  { id: 'p1', zoneId: 'z-prod', name: 'deploy', description: null },
+                  { id: 'p2', zoneId: 'z-prod', name: 'ops', description: null },
+                ]
+              : [],
+          }),
+        },
+      },
     },
   },
 }));
 
 import { FleetTokensPanel } from './FleetTokensPanel';
+import { UNRESTRICTED_HINT, UNRESTRICTED_WARNING } from './fleet-token';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -76,13 +90,13 @@ describe('Fleet tokens — list', () => {
     expect(screen.queryByText('dev-token')).not.toBeInTheDocument();
     expect(screen.getByText('Host CA: prod-host-ca')).toBeInTheDocument();
     expect(screen.getByText('Never')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getAllByText('Active')).toHaveLength(2);
     expect(screen.getByText('Revoked')).toBeInTheDocument();
   });
 
   it('offers Revoke only for active tokens', () => {
     render(<FleetTokensPanel />);
-    expect(screen.getAllByRole('button', { name: 'Revoke' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Revoke' })).toHaveLength(2);
   });
 
   it('adds a Zone column and lists every zone under "All zones"', () => {
@@ -97,7 +111,7 @@ describe('Fleet tokens — list', () => {
 describe('Fleet tokens — revoke', () => {
   it('asks for confirmation, then revokes', async () => {
     render(<FleetTokensPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Revoke' })[0]);
     await waitFor(() => expect(h.revoke).toHaveBeenCalledWith({ id: 't1' }, expect.any(Object)));
     const opts = (h.confirm.mock.calls as unknown as [{ title: string; confirmLabel: string; tone: string }][])[0][0];
     expect(opts.title).toBe('Revoke token "web-fleet"?');
@@ -108,7 +122,7 @@ describe('Fleet tokens — revoke', () => {
   it('does not revoke when cancelled', async () => {
     h.confirm.mockResolvedValue({ confirmed: false });
     render(<FleetTokensPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Revoke' })[0]);
     await waitFor(() => expect(h.confirm).toHaveBeenCalled());
     expect(h.revoke).not.toHaveBeenCalled();
   });
@@ -207,5 +221,60 @@ describe('Fleet tokens — mint form', () => {
     fireEvent.change(screen.getByLabelText(/User CA/, { selector: 'select' }), { target: { value: 'uca' } });
     expect(screen.getByRole('alert')).toHaveTextContent(/different zones/);
     expect(formMint()).toBeDisabled();
+  });
+});
+
+describe('Fleet tokens — sign-user limits (TASK-247)', () => {
+  it('shows each token limits, and flags a sign-user token minted without limits as Unrestricted', () => {
+    render(<FleetTokensPanel />);
+    const row = (name: string) => screen.getByText(name).closest('tr')!;
+    expect(within(row('ci-limited')).getByText('Principals: deploy')).toBeInTheDocument();
+    expect(within(row('ci-limited')).getByText('Max lifetime: 15 min')).toBeInTheDocument();
+    const pill = within(row('old-ci')).getByText('Unrestricted');
+    expect(pill).toHaveAttribute('title', UNRESTRICTED_HINT);
+    expect(within(row('web-fleet')).queryByText('Unrestricted')).not.toBeInTheDocument();
+  });
+
+  it('shows the limit fields only when sign-user is ticked, suggesting 15 minutes', () => {
+    render(<FleetTokensPanel />);
+    openForm();
+    expect(screen.queryByText('Allowed principals')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: /sign-user/ }));
+    expect(screen.getByText('Allowed principals')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'deploy' })).not.toBeChecked();
+    const lifetime = screen.getByLabelText('Max certificate lifetime') as HTMLSelectElement;
+    expect(lifetime.value).toBe('900');
+    expect(lifetime.selectedOptions[0].textContent).toBe('15 minutes (suggested for CI)');
+  });
+
+  it('warns when no limit is set at all', () => {
+    render(<FleetTokensPanel />);
+    openForm();
+    fireEvent.click(screen.getByRole('checkbox', { name: /sign-user/ }));
+    expect(screen.queryByText(UNRESTRICTED_WARNING)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Max certificate lifetime'), { target: { value: '' } });
+    expect(screen.getByRole('alert')).toHaveTextContent(UNRESTRICTED_WARNING);
+  });
+
+  it('mints with the chosen principals and max lifetime', async () => {
+    h.mintAsync.mockResolvedValue({ token: 'pkimg_X', record: { id: 'n', name: 'ci' } });
+    render(<FleetTokensPanel />);
+    openForm();
+    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: 'ci' } });
+    fireEvent.click(screen.getByRole('button', { name: 'CI user certs' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'deploy' }));
+    fireEvent.change(screen.getByLabelText('Max certificate lifetime'), { target: { value: '3600' } });
+    fireEvent.click(formMint());
+    await waitFor(() =>
+      expect(h.mintAsync).toHaveBeenCalledWith({
+        name: 'ci',
+        opSet: ['sign-user'],
+        hostCaId: undefined,
+        userCaId: 'uca',
+        zone: 'z-prod',
+        allowedPrincipals: ['deploy'],
+        maxValidForSeconds: 3600,
+      })
+    );
   });
 });

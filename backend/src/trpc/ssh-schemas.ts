@@ -128,6 +128,9 @@ export const mintTokenSchema = z.object({
   hostCaId: z.string().optional(),
   opSet: z.array(sshTokenOpSchema).min(1),
   zone: zoneRefSchema.optional(),
+  // TASK-247: sign-user limits. Omit for no limit (backward compatible).
+  allowedPrincipals: z.array(principalNameSchema).min(1).max(256).optional(),
+  maxValidForSeconds: ttlSecondsSchema.optional(),
 });
 
 export const mapPrincipalSchema = z.object({

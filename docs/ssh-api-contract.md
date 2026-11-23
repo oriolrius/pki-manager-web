@@ -48,6 +48,26 @@ The host is auto-registered on first call. `source = automation`.
 ```
 → `200 { "identityId", "certOpenssh", "serial", "keyId", "validBefore" }`.
 
+**Token limits (optional, set at mint time).** A `sign-user` token can carry:
+
+| Limit | Mint field | Effect on `sign-user` |
+|---|---|---|
+| Allowed principals | `allowedPrincipals: string[]` — names that exist in the token zone's principal catalog | Every requested principal must be in the list (`P@<host>` is accepted when `P` is). Otherwise `403 TOKEN_LIMIT`. |
+| Max certificate lifetime | `maxValidForSeconds: number` | `validForSeconds` above it → `403 TOKEN_LIMIT`. Without `validForSeconds` the cert gets `min(604800, maxValidForSeconds)`. |
+
+A refused request writes an `ssh.external.sign` audit row with `status: failure`
+and creates nothing. Tokens minted without limits (including every token minted
+before this feature) keep the old behaviour: any principal, any lifetime, in the
+token's zone. The Fleet tokens page shows them as **Unrestricted**.
+Minting limits on a token without `sign-user`, or a principal not in the zone
+catalog, is refused (`400`).
+
+```http
+POST /api/v1/ssh/tokens          # OIDC (operator) — or trpc.ssh.token.mint
+{ "name": "ci-deploy", "userCaId": "…", "opSet": ["sign-user"],
+  "allowedPrincipals": ["deployer"], "maxValidForSeconds": 900 }
+```
+
 ### `POST /api/v1/external/ssh/register-host-pubkey`
 Register the host's ECIES key (enables encrypted KRL delivery). Returns `501`
 unless the backend runs with `SSH_ECIES_ENABLED=true`.
@@ -124,7 +144,7 @@ pullers keep their last-good KRL. Both 200 and 304 stamp the host's
 |---|---|
 | `200` | new/encrypted KRL | `304` | host already current |
 | `400` | malformed `host_id` | `404` | host not registered for distribution |
-| `401/403` | invalid / out-of-scope token (sign/register) | `429` | rate-limited |
+| `401/403` | invalid / out-of-scope token (sign/register); `403 TOKEN_LIMIT` = sign-user limit exceeded | `429` | rate-limited |
 | `501` | ECIES path disabled | `503` | no CA / per-host KRL not initialized |
 
 Retryability: sign/register are **idempotent with an `Idempotency-Key`** and safe

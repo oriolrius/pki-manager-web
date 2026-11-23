@@ -439,6 +439,8 @@ const tokenRouter = router({
           hostCaId: input.hostCaId,
           opSet: input.opSet,
           zone: input.zone,
+          allowedPrincipals: input.allowedPrincipals,
+          maxValidForSeconds: input.maxValidForSeconds,
         });
       } catch (e) {
         mapSshError(e);

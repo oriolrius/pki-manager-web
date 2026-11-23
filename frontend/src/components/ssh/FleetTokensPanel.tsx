@@ -1,10 +1,23 @@
 import { useState } from 'react';
-import { KeyRound, Copy, Check, Plus } from 'lucide-react';
+import { KeyRound, Copy, Check, Plus, AlertTriangle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useToast, useConfirm } from '@/components/ui';
 import { useZone } from '@/lib/zone-context';
 import { Callout } from '@/components/ssh/Callout';
-import { TOKEN_OPS, TOKEN_PRESETS, needsHostCa, needsUserCa, validateMint, type SshTokenOp } from '@/components/ssh/fleet-token';
+import {
+  TOKEN_OPS,
+  TOKEN_PRESETS,
+  needsHostCa,
+  needsUserCa,
+  validateMint,
+  type SshTokenOp,
+  DEFAULT_CI_MAX_LIFETIME,
+  LIFETIME_PRESETS,
+  UNRESTRICTED_WARNING,
+  UNRESTRICTED_HINT,
+  formatLifetime,
+  isUnrestrictedSignUser,
+} from '@/components/ssh/fleet-token';
 
 const inputCls = 'w-full px-3 py-2 border rounded-md bg-background';
 
@@ -30,6 +43,9 @@ export function FleetTokensPanel() {
   const [ops, setOps] = useState<SshTokenOp[]>([]);
   const [hostCaId, setHostCaId] = useState('');
   const [userCaId, setUserCaId] = useState('');
+  // sign-user limits (TASK-247). '' lifetime = no limit.
+  const [allowedPrincipals, setAllowedPrincipals] = useState<string[]>([]);
+  const [maxLifetime, setMaxLifetime] = useState(String(DEFAULT_CI_MAX_LIFETIME));
   const [secret, setSecret] = useState<{ token: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -60,6 +76,18 @@ export function FleetTokensPanel() {
       ? caById.get(effHostCa)?.zoneId !== caById.get(effUserCa)?.zoneId
       : false;
 
+  // The allowed principals come from the token zone's catalog: the zone of the
+  // chosen User CA, else the selected zone.
+  const tokenZoneId = (effUserCa && caById.get(effUserCa)?.zoneId) || zoneId;
+  const catalogQuery = trpc.ssh.principal.list.useQuery(
+    { zoneId: tokenZoneId },
+    { enabled: userNeeded && !!tokenZoneId }
+  );
+  const catalog = catalogQuery.data ?? [];
+  const noLimits = userNeeded && allowedPrincipals.length === 0 && !maxLifetime;
+  const togglePrincipal = (name: string) =>
+    setAllowedPrincipals((cur) => (cur.includes(name) ? cur.filter((p) => p !== name) : [...cur, name]));
+
   const toggleOp = (op: SshTokenOp) => setOps((cur) => (cur.includes(op) ? cur.filter((o) => o !== op) : [...cur, op]));
 
   const handleMint = async (e: React.FormEvent) => {
@@ -72,6 +100,8 @@ export function FleetTokensPanel() {
         hostCaId: effHostCa || undefined,
         userCaId: effUserCa || undefined,
         zone: zoneId,
+        allowedPrincipals: userNeeded && allowedPrincipals.length ? allowedPrincipals : undefined,
+        maxValidForSeconds: userNeeded && maxLifetime ? Number(maxLifetime) : undefined,
       });
       mintMutation.reset(); // drop the plaintext from the mutation cache right away
       setSecret({ token: res.token, name: res.record.name });
@@ -81,6 +111,8 @@ export function FleetTokensPanel() {
       setOps([]);
       setHostCaId('');
       setUserCaId('');
+      setAllowedPrincipals([]);
+      setMaxLifetime(String(DEFAULT_CI_MAX_LIFETIME));
       utils.ssh.token.list.invalidate();
     } catch (err) {
       toast.error(`Failed to mint token: ${err instanceof Error ? err.message : String(err)}`);
@@ -243,6 +275,60 @@ export function FleetTokensPanel() {
             </div>
           </div>
 
+          {userNeeded && (
+            <fieldset className="space-y-3 rounded-md border p-3" aria-label="sign-user limits">
+              <legend className="px-1 text-sm font-medium">sign-user limits</legend>
+              <div>
+                <div className="text-sm font-medium">Allowed principals</div>
+                <p className="text-xs text-muted-foreground mb-1.5">
+                  The token can sign only these principals. Leave all unticked to allow any principal (not
+                  recommended).
+                </p>
+                {catalog.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No principals in this zone yet. Create them on the Principals page.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {catalog.map((p) => (
+                      <label key={p.id} className="flex items-center gap-1.5 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={allowedPrincipals.includes(p.name)}
+                          onChange={() => togglePrincipal(p.name)}
+                        />
+                        <code className="font-mono text-xs">{p.name}</code>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label htmlFor="token-max-lifetime" className="block text-sm font-medium mb-1">
+                  Max certificate lifetime
+                </label>
+                <select
+                  id="token-max-lifetime"
+                  value={maxLifetime}
+                  onChange={(e) => setMaxLifetime(e.target.value)}
+                  className={inputCls}
+                >
+                  {LIFETIME_PRESETS.map((p) => (
+                    <option key={p.seconds} value={String(p.seconds)}>{p.label}</option>
+                  ))}
+                  <option value="">No limit (not recommended)</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Certificates this token signs live at most this long. Requests without a lifetime get this value.
+                </p>
+              </div>
+              {noLimits && (
+                <p role="alert" className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  {UNRESTRICTED_WARNING}
+                </p>
+              )}
+            </fieldset>
+          )}
+
           {zoneMismatch && (
             <p role="alert" className="text-sm text-destructive">
               The Host CA and the User CA belong to different zones. A token works in one zone only.
@@ -283,6 +369,7 @@ export function FleetTokensPanel() {
                 {isAll && <th className="px-4 py-3 text-left text-sm font-medium">Zone</th>}
                 <th className="px-4 py-3 text-left text-sm font-medium">CAs</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Operations</th>
+                <th className="px-4 py-3 text-left text-sm font-medium">Limits</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Created</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Last used</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
@@ -292,7 +379,7 @@ export function FleetTokensPanel() {
             <tbody className="divide-y">
               {tokens.length === 0 ? (
                 <tr>
-                  <td colSpan={isAll ? 8 : 7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={isAll ? 9 : 8} className="px-4 py-8 text-center text-muted-foreground">
                     No fleet tokens yet. Mint one for a host or a CI pipeline.
                   </td>
                 </tr>
@@ -322,6 +409,24 @@ export function FleetTokensPanel() {
                           <code key={op} className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{op}</code>
                         ))}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs space-y-0.5">
+                      {!t.opSet.includes('sign-user') ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : isUnrestrictedSignUser(t) ? (
+                        <span
+                          title={UNRESTRICTED_HINT}
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          Unrestricted
+                        </span>
+                      ) : (
+                        <>
+                          <div>Principals: {t.allowedPrincipals?.length ? t.allowedPrincipals.join(', ') : 'any'}</div>
+                          <div>Max lifetime: {t.maxValidForSeconds != null ? formatLifetime(t.maxValidForSeconds) : 'none'}</div>
+                        </>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm whitespace-nowrap">{new Date(t.createdAt).toLocaleString()}</td>
                     <td className="px-4 py-3 text-sm whitespace-nowrap">

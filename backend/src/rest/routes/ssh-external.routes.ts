@@ -13,10 +13,16 @@ import { sshHosts, sshIdentities, sshIdempotency, sshCertificates, sshCas } from
 import { isValidHostId, validateCidrList, isValidPrincipalName } from '../../services/ssh-config.js';
 import { getSshHostService, assertEcdsaHostKey } from '../../services/ssh-host.service.js';
 import { parseSshPublicKey } from '../../crypto/ssh/pubkey.js';
-import { getSshUserService } from '../../services/ssh-user.service.js';
+import { getSshUserService, DEFAULT_USER_TTL } from '../../services/ssh-user.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
-import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
+import {
+  getSshFleetTokenService,
+  applySignUserLimits,
+  SshTokenLimitError,
+  type SshTokenOp,
+  type VerifiedToken,
+} from '../../services/ssh-fleet-token.service.js';
 import { getSshPrincipalService, SshPrincipalHashMismatchError } from '../../services/ssh-principal.service.js';
 import { resolveZone, SshZoneNotFoundError } from '../../services/ssh-zone.service.js';
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
@@ -179,6 +185,17 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const body = parsed.data;
     const ctx = { db, ipAddress: req.ip };
 
+    // TASK-247: token limits (allowed principals, max lifetime). Checked BEFORE
+    // the identity upsert so a refused request leaves no trace but its audit row.
+    let validForSeconds: number;
+    try {
+      validForSeconds = applySignUserLimits(token, body, DEFAULT_USER_TTL);
+    } catch (e) {
+      if (!(e instanceof SshTokenLimitError)) throw e;
+      await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_token', entityId: token.id, status: 'failure', details: { tokenId: token.id, subject: body.subject, op: 'sign-user', principals: body.principals, validForSeconds: body.validForSeconds, error: e.message }, ipAddress: req.ip });
+      return err(reply, 403, 'TOKEN_LIMIT', e.message);
+    }
+
     try {
       // Upsert identity by subject WITHIN THE TOKEN'S ZONE (decision-017 A2).
       let ident = (await db
@@ -198,7 +215,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         extensions: body.extensions as any,
         forceCommand: body.forceCommand,
         sourceAddress: body.sourceAddress,
-        validForSeconds: body.validForSeconds,
+        validForSeconds,
         keyId: body.keyId,
         sourceType: 'automation',
       });

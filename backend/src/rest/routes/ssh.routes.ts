@@ -391,6 +391,8 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
       hostCaId: input.hostCaId,
       opSet: input.opSet,
       zone: input.zone,
+      allowedPrincipals: input.allowedPrincipals,
+      maxValidForSeconds: input.maxValidForSeconds,
     });
   });
 

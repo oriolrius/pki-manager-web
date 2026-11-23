@@ -608,6 +608,9 @@ export const sshFleetTokens = sqliteTable(
     userCaId: text('user_ca_id').references(() => sshCas.id, { onDelete: 'set null' }),
     hostCaId: text('host_ca_id').references(() => sshCas.id, { onDelete: 'set null' }),
     opSet: text('op_set').notNull(), // JSON string[]: sign-host | sign-user | register-host-pubkey
+    // sign-user limits (TASK-247). NULL = no limit (tokens minted before 0013).
+    allowedPrincipals: text('allowed_principals'), // JSON string[] of zone catalog principal names
+    maxValidForSeconds: integer('max_valid_for_seconds'),
     revoked: integer('revoked', { mode: 'boolean' }).notNull().default(false),
     lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
     lastSeenIp: text('last_seen_ip'),

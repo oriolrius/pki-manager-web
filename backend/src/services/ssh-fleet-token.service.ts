@@ -5,8 +5,8 @@
  * (pkimg_…) is returned exactly once at mint time.
  */
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from 'crypto';
-import { eq } from 'drizzle-orm';
-import { sshFleetTokens, sshCas } from '../db/schema.js';
+import { eq, and, inArray } from 'drizzle-orm';
+import { sshFleetTokens, sshCas, sshPrincipals } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
 import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
@@ -20,12 +20,32 @@ export class SshTokenError extends Error {
   }
 }
 
+/** A sign-user request exceeds the token limits (TASK-247) — a 403, not a 400. */
+export class SshTokenLimitError extends SshTokenError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SshTokenLimitError';
+  }
+}
+
+const MAX_TTL = 10 * 366 * 24 * 3600;
+
 export interface MintTokenParams {
   name: string;
   userCaId?: string;
   hostCaId?: string;
   opSet: SshTokenOp[];
   zone?: string;
+  /** sign-user only (TASK-247): principal names from the token zone catalog. */
+  allowedPrincipals?: string[];
+  /** sign-user only (TASK-247): longest certificate the token may request, in seconds. */
+  maxValidForSeconds?: number;
+}
+
+/** sign-user limits carried by a token (TASK-247). null = no limit. */
+export interface SshTokenLimits {
+  allowedPrincipals: string[] | null;
+  maxValidForSeconds: number | null;
 }
 
 export interface FleetTokenDto {
@@ -36,18 +56,55 @@ export interface FleetTokenDto {
   userCaId: string | null;
   hostCaId: string | null;
   opSet: SshTokenOp[];
+  /** sign-user limits; both null on a token minted without limits ("unrestricted"). */
+  allowedPrincipals: string[] | null;
+  maxValidForSeconds: number | null;
   revoked: boolean;
   lastSeenAt: string | null;
   createdAt: string;
 }
 
-export interface VerifiedToken {
+export interface VerifiedToken extends SshTokenLimits {
   id: string;
   zoneId: string;
   name: string;
   userCaId: string | null;
   hostCaId: string | null;
   opSet: SshTokenOp[];
+}
+
+const limitsOf = (row: any): SshTokenLimits => ({
+  allowedPrincipals: row.allowedPrincipals ? JSON.parse(row.allowedPrincipals) : null,
+  maxValidForSeconds: row.maxValidForSeconds ?? null,
+});
+
+/**
+ * Check a sign-user request against the token limits (TASK-247). Returns the
+ * validForSeconds to sign with, or throws SshTokenLimitError. A host-scoped
+ * `P@<host>` is accepted when `P` is allowed (it is strictly narrower).
+ */
+export function applySignUserLimits(
+  token: SshTokenLimits & { name: string },
+  req: { principals: string[]; validForSeconds?: number },
+  defaultValidForSeconds: number
+): number {
+  if (token.allowedPrincipals) {
+    const allowed = new Set(token.allowedPrincipals);
+    const denied = req.principals.filter((p) => !allowed.has(p) && !(p.includes('@') && allowed.has(p.slice(0, p.indexOf('@')))));
+    if (denied.length)
+      throw new SshTokenLimitError(
+        `token "${token.name}" may not sign principal(s) ${denied.join(', ')} — allowed: ${token.allowedPrincipals.join(', ')}`
+      );
+  }
+  const max = token.maxValidForSeconds;
+  if (req.validForSeconds !== undefined) {
+    if (max !== null && req.validForSeconds > max)
+      throw new SshTokenLimitError(
+        `token "${token.name}" may sign certificates of at most ${max} s; requested ${req.validForSeconds} s`
+      );
+    return req.validForSeconds;
+  }
+  return max !== null ? Math.min(defaultValidForSeconds, max) : defaultValidForSeconds;
 }
 
 const PREFIX = 'pkimg_';
@@ -62,6 +119,7 @@ function dto(row: any): FleetTokenDto {
     userCaId: row.userCaId ?? null,
     hostCaId: row.hostCaId ?? null,
     opSet: JSON.parse(row.opSet),
+    ...limitsOf(row),
     revoked: !!row.revoked,
     lastSeenAt: row.lastSeenAt ? new Date(row.lastSeenAt).toISOString() : null,
     createdAt: new Date(row.createdAt).toISOString(),
@@ -94,6 +152,28 @@ export class SshFleetTokenService {
         throw new SshTokenError(`CA ${ca.id} belongs to a different zone than '${zone.name}'`);
     }
 
+    // sign-user limits (TASK-247): only meaningful on a sign-user token, and the
+    // principals must be real catalog entries of the token's zone.
+    const hasLimits = params.allowedPrincipals !== undefined || params.maxValidForSeconds !== undefined;
+    if (hasLimits && !params.opSet.includes('sign-user'))
+      throw new SshTokenError('allowedPrincipals / maxValidForSeconds apply only to a token with sign-user');
+    let allowedPrincipals: string[] | null = null;
+    if (params.allowedPrincipals !== undefined) {
+      allowedPrincipals = [...new Set(params.allowedPrincipals)].sort();
+      if (!allowedPrincipals.length) throw new SshTokenError('allowedPrincipals must not be empty (omit it for no limit)');
+      const found = (await ctx.db
+        .select({ name: sshPrincipals.name })
+        .from(sshPrincipals)
+        .where(and(eq(sshPrincipals.zoneId, zone.id), inArray(sshPrincipals.name, allowedPrincipals)))) as any[];
+      const known = new Set(found.map((r) => r.name));
+      const unknown = allowedPrincipals.filter((p) => !known.has(p));
+      if (unknown.length)
+        throw new SshTokenError(`principal(s) ${unknown.join(', ')} are not in the catalog of zone '${zone.name}'`);
+    }
+    const maxValidForSeconds = params.maxValidForSeconds ?? null;
+    if (maxValidForSeconds !== null && (!Number.isInteger(maxValidForSeconds) || maxValidForSeconds <= 0 || maxValidForSeconds > MAX_TTL))
+      throw new SshTokenError('maxValidForSeconds must be a positive whole number of seconds (at most ~10 years)');
+
     const plain = PREFIX + randomBytes(24).toString('base64url');
     const id = randomUUID();
     await ctx.db.insert(sshFleetTokens).values({
@@ -105,6 +185,8 @@ export class SshFleetTokenService {
       userCaId: params.userCaId ?? null,
       hostCaId: params.hostCaId ?? null,
       opSet: JSON.stringify(params.opSet),
+      allowedPrincipals: allowedPrincipals ? JSON.stringify(allowedPrincipals) : null,
+      maxValidForSeconds,
       revoked: false,
     } as any);
     await createAuditLog({
@@ -113,7 +195,7 @@ export class SshFleetTokenService {
       entityType: 'ssh_token',
       entityId: id,
       status: 'success',
-      details: { name: params.name, opSet: params.opSet, zone: zone.name },
+      details: { name: params.name, opSet: params.opSet, zone: zone.name, allowedPrincipals, maxValidForSeconds },
       ipAddress: ctx.ipAddress ?? undefined,
     });
     const record = dto((await ctx.db.select().from(sshFleetTokens).where(eq(sshFleetTokens.id, id)).limit(1))[0]);
@@ -150,7 +232,15 @@ export class SshFleetTokenService {
     const b = Buffer.from(row.tokenHash);
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
     await ctx.db.update(sshFleetTokens).set({ lastSeenAt: new Date(), lastSeenIp: ip ?? null }).where(eq(sshFleetTokens.id, row.id));
-    return { id: row.id, zoneId: row.zoneId, name: row.name, userCaId: row.userCaId ?? null, hostCaId: row.hostCaId ?? null, opSet: JSON.parse(row.opSet) };
+    return {
+      id: row.id,
+      zoneId: row.zoneId,
+      name: row.name,
+      userCaId: row.userCaId ?? null,
+      hostCaId: row.hostCaId ?? null,
+      opSet: JSON.parse(row.opSet),
+      ...limitsOf(row),
+    };
   }
 }
 
