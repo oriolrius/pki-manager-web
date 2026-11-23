@@ -12,6 +12,7 @@ import { offboardIdentityFlow, OFFBOARD_HINT_COPY } from '@/components/ssh/offbo
 import { useToast, useConfirm, Combobox, SearchInput } from '@/components/ui';
 import { useZone } from '@/lib/zone-context';
 import { ZonePicker } from '@/components/ssh/ZonePicker';
+import { IdentityGrantsSection } from '@/components/ssh/IdentityGrantsSection';
 
 /** A row from ssh.user.listCertificates (service returns loosely-typed rows). */
 type CertRow = {
@@ -396,7 +397,7 @@ function IdentityCard({
   onOffboard,
   onIssue,
 }: {
-  identity: { id: string; subject: string; email: string | null; status: string; createdAt: string };
+  identity: { id: string; zoneId: string; subject: string; email: string | null; status: string; createdAt: string };
   onDisable: () => void;
   onOffboard: () => void;
   onIssue: () => void;
@@ -611,7 +612,9 @@ function IdentityCard({
 
       {open && (
         <div className="border-t px-4 py-3 space-y-3">
-          <div className="space-y-2">
+          <IdentityGrantsSection identity={identity} />
+
+          <div className="space-y-2 border-t pt-3">
             <div className="flex items-center gap-1.5">
               <h4 className="text-sm font-medium">Access blocks</h4>
               <InfoTip label="About access blocks" placement="right">

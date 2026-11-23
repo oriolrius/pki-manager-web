@@ -5,7 +5,7 @@
  * last automation push.
  */
 import { randomUUID, createHash } from 'crypto';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import {
   sshPrincipals,
   sshUserPrincipals,
@@ -39,9 +39,11 @@ export class SshCrossZoneError extends SshPrincipalError {
  * something else). Carries the current hash so the client can re-fetch.
  */
 export class SshPrincipalHashMismatchError extends SshPrincipalError {
-  constructor(public readonly currentSha256: string, presented: string) {
+  readonly currentSha256: string;
+  constructor(currentSha256: string, presented: string) {
     super(`sha256 ${presented} does not match the current principal files (${currentSha256}) — fetch them again and redeploy`);
     this.name = 'SshPrincipalHashMismatchError';
+    this.currentSha256 = currentSha256;
   }
 }
 
@@ -92,6 +94,14 @@ export async function markHostPrincipalsChanged(ctx: ServiceContext, hostId: str
 export interface PrincipalDto {
   id: string;
   zoneId: string;
+  name: string;
+  description: string | null;
+}
+
+/** One grant: the identity may encode this principal in its certificates. */
+export interface GrantDto {
+  identityId: string;
+  principalId: string;
   name: string;
   description: string | null;
 }
@@ -210,6 +220,114 @@ export class SshPrincipalService {
       entityId: params.identityId,
       status: 'success',
       details: { principalId: params.principalId, kind: 'entitlement' },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+  }
+
+  /** A host's principal -> local account rows (what render() turns into files). */
+  async listHostMappings(
+    ctx: ServiceContext,
+    hostId: string
+  ): Promise<Array<{ hostId: string; principalId: string; name: string; localAccount: string }>> {
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
+    if (!host) throw new SshPrincipalError(`host ${hostId} not found`);
+    const rows = await ctx.db
+      .select({ principalId: sshPrincipals.id, name: sshPrincipals.name, localAccount: sshHostPrincipalMaps.localAccount })
+      .from(sshHostPrincipalMaps)
+      .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
+      .where(eq(sshHostPrincipalMaps.hostId, hostId));
+    return (rows as any[])
+      .map((r) => ({ hostId, principalId: r.principalId, name: r.name, localAccount: r.localAccount }))
+      .sort((a, b) => a.localAccount.localeCompare(b.localAccount) || a.name.localeCompare(b.name));
+  }
+
+  /** The principals an identity is granted (its entitlement catalog), by name. */
+  async listGrants(ctx: ServiceContext, identityId: string): Promise<GrantDto[]> {
+    const identity = (await ctx.db.select().from(sshIdentities).where(eq(sshIdentities.id, identityId)).limit(1))[0];
+    if (!identity) throw new SshPrincipalError(`identity ${identityId} not found`);
+    const rows = await ctx.db
+      .select({ principalId: sshPrincipals.id, name: sshPrincipals.name, description: sshPrincipals.description })
+      .from(sshUserPrincipals)
+      .innerJoin(sshPrincipals, eq(sshUserPrincipals.principalId, sshPrincipals.id))
+      .where(eq(sshUserPrincipals.identityId, identityId));
+    return (rows as any[])
+      .map((r) => ({ identityId, principalId: r.principalId, name: r.name, description: r.description ?? null }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Remove a grant (TASK-245). Takes effect on the next issuance that runs the
+   * entitlement check; certificates already issued keep their principals until
+   * they expire or are revoked. An unknown grant is an error, never a no-op.
+   */
+  async revokeGrant(ctx: ServiceContext, params: { identityId: string; principalId: string }): Promise<void> {
+    const where = and(
+      eq(sshUserPrincipals.identityId, params.identityId),
+      eq(sshUserPrincipals.principalId, params.principalId)
+    );
+    const row = (await ctx.db.select().from(sshUserPrincipals).where(where).limit(1))[0];
+    if (!row) {
+      await createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.principal.revoke_grant',
+        entityType: 'ssh_identity',
+        entityId: params.identityId,
+        status: 'failure',
+        details: { principalId: params.principalId, error: 'grant not found' },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+      throw new SshPrincipalError(`grant of principal ${params.principalId} to identity ${params.identityId} not found`);
+    }
+    await ctx.db.delete(sshUserPrincipals).where(where);
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.principal.revoke_grant',
+      entityType: 'ssh_identity',
+      entityId: params.identityId,
+      status: 'success',
+      details: { principalId: params.principalId },
+      ipAddress: ctx.ipAddress ?? undefined,
+    });
+  }
+
+  /**
+   * Remove one principal -> local account mapping from a host (TASK-245). The
+   * host's rendered files change, so it becomes Stale: sshd keeps accepting
+   * the principal until the updated files are deployed. Unknown row = error.
+   */
+  async unmapFromHost(
+    ctx: ServiceContext,
+    params: { hostId: string; principalId: string; localAccount: string }
+  ): Promise<void> {
+    const where = and(
+      eq(sshHostPrincipalMaps.hostId, params.hostId),
+      eq(sshHostPrincipalMaps.principalId, params.principalId),
+      eq(sshHostPrincipalMaps.localAccount, params.localAccount)
+    );
+    const row = (await ctx.db.select().from(sshHostPrincipalMaps).where(where).limit(1))[0];
+    if (!row) {
+      await createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.principal.unmap',
+        entityType: 'ssh_host',
+        entityId: params.hostId,
+        status: 'failure',
+        details: { principalId: params.principalId, localAccount: params.localAccount, error: 'mapping not found' },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+      throw new SshPrincipalError(
+        `mapping of principal ${params.principalId} to '${params.localAccount}' on host ${params.hostId} not found`
+      );
+    }
+    await ctx.db.delete(sshHostPrincipalMaps).where(where);
+    await markHostPrincipalsChanged(ctx, params.hostId);
+    await createAuditLog({
+      db: ctx.db,
+      operation: 'ssh.principal.unmap',
+      entityType: 'ssh_host',
+      entityId: params.hostId,
+      status: 'success',
+      details: { principalId: params.principalId, localAccount: params.localAccount },
       ipAddress: ctx.ipAddress ?? undefined,
     });
   }

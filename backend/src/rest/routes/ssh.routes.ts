@@ -18,6 +18,8 @@ import {
   createPrincipalSchema,
   grantPrincipalSchema,
   mapPrincipalSchema,
+  unmapPrincipalSchema,
+  revokeGrantSchema,
   blockHostSchema,
   unblockHostSchema,
   mintTokenSchema,
@@ -326,6 +328,37 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     const input = parse(grantPrincipalSchema, req.body);
     await getSshPrincipalService().grantToIdentity(ctx(req), { identityId: input.identityId, principalId: input.principalId });
     return { ok: true };
+  });
+
+  // TASK-245 — undo twins of /principals/map and /principals/grant.
+  api.post('/principals/unmap', postSchema('Remove a principal -> local account mapping from a host (host becomes Stale until pushed)', unmapPrincipalSchema), async (req) => {
+    ensureSshAllowed();
+    const input = parse(unmapPrincipalSchema, req.body);
+    await getSshPrincipalService().unmapFromHost(ctx(req), {
+      hostId: input.hostId,
+      principalId: input.principalId,
+      localAccount: input.localAccount,
+    });
+    return { ok: true };
+  });
+
+  api.post('/principals/revoke-grant', postSchema("Remove a principal from an identity's grants (entitlement)", revokeGrantSchema), async (req) => {
+    ensureSshAllowed();
+    const input = parse(revokeGrantSchema, req.body);
+    await getSshPrincipalService().revokeGrant(ctx(req), { identityId: input.identityId, principalId: input.principalId });
+    return { ok: true };
+  });
+
+  api.get('/identities/:id/grants', listSchema('List the principals an identity is granted'), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshPrincipalService().listGrants(ctx(req), id);
+  });
+
+  api.get('/hosts/:id/principal-maps', listSchema("List a host's principal -> local account mappings"), async (req) => {
+    ensureSshAllowed();
+    const { id } = req.params as { id: string };
+    return getSshPrincipalService().listHostMappings(ctx(req), id);
   });
 
   // TASK-216 — principal twins. `/principals/mappings` and `/principals/stale-hosts`

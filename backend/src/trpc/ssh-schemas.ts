@@ -136,6 +136,10 @@ export const mapPrincipalSchema = z.object({
   localAccount: principalNameSchema,
 });
 
+// TASK-245: undo a map / a grant. Same shapes as their create twins.
+export const unmapPrincipalSchema = mapPrincipalSchema;
+export const revokeGrantSchema = grantPrincipalSchema;
+
 export const revokeSshCertSchema = z.object({
   certId: z.string().min(1),
   reason: z.string().max(256).optional(),

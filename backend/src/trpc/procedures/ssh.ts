@@ -20,6 +20,8 @@ import {
   createPrincipalSchema,
   grantPrincipalSchema,
   mapPrincipalSchema,
+  unmapPrincipalSchema,
+  revokeGrantSchema,
   revokeSshCertSchema,
   renderPrincipalsSchema,
   blockHostSchema,
@@ -343,8 +345,48 @@ const principalRouter = router({
     }
   }),
   grant: sshProtectedProcedure.input(grantPrincipalSchema).mutation(async ({ ctx, input }) => {
-    await getSshPrincipalService().grantToIdentity(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
-    return { ok: true };
+    try {
+      await getSshPrincipalService().grantToIdentity(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  // TASK-245: list / remove grants (the identity's entitlement catalog).
+  listGrants: sshProtectedProcedure.input(z.object({ identityId: z.string().min(1) })).query(async ({ ctx, input }) => {
+    try {
+      return await getSshPrincipalService().listGrants(svcCtx(ctx), input.identityId);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  revokeGrant: sshProtectedProcedure.input(revokeGrantSchema).mutation(async ({ ctx, input }) => {
+    try {
+      await getSshPrincipalService().revokeGrant(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  // TASK-245: a host's mapping rows, and removing one (host becomes Stale).
+  hostMappings: sshProtectedProcedure.input(renderPrincipalsSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshPrincipalService().listHostMappings(svcCtx(ctx), input.hostId);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  unmap: sshProtectedProcedure.input(unmapPrincipalSchema).mutation(async ({ ctx, input }) => {
+    try {
+      await getSshPrincipalService().unmapFromHost(svcCtx(ctx), {
+        hostId: input.hostId,
+        principalId: input.principalId,
+        localAccount: input.localAccount,
+      });
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
   }),
   map: sshProtectedProcedure.input(mapPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
