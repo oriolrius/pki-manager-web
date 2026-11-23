@@ -19,18 +19,18 @@ Conventions for every episode:
 - On-screen code is real and short. Paths and file contents match what PKI Manager
   renders today (checked against the code, not only the docs).
 
-| # | Episode | Target |
+| # | Episode | Length |
 |---|---|---|
-| 01 | Why SSH certificates | 2:00 |
-| 02 | Two CAs, trust crosses over | 1:45 |
-| 03 | Host certificates: no more "fingerprint?" prompt | 2:45 |
-| 04 | User certificates: log in with a signed key | 2:30 |
-| 05 | Principals: the one rule that matters | 2:45 |
-| 06 | Lifecycle: expiry, revocation, rotation | 2:45 |
-| 07 | Per-host access blocks | 2:15 |
-| 08 | Zones: separate trust domains | 2:00 |
-| 09 | Automation: fleet tokens and Ansible | 2:45 |
-| 10 | Recap and troubleshooting | 2:15 |
+| 01 | Why SSH certificates | 1:39 |
+| 02 | Two CAs, trust crosses over | 1:06 |
+| 03 | Host certificates: no more "fingerprint?" prompt | 1:44 |
+| 04 | User certificates: log in with a signed key | 1:29 |
+| 05 | Principals: the one rule that matters | 1:38 |
+| 06 | Lifecycle: expiry, revocation, rotation | 1:56 |
+| 07 | Per-host access blocks | 1:20 |
+| 08 | Zones: separate trust domains | 1:05 |
+| 09 | Automation: fleet tokens and Ansible | 1:39 |
+| 10 | Recap and troubleshooting | 1:28 |
 
 ---
 
@@ -151,8 +151,8 @@ Authority*, type *User*, then type *Host*. Two badges appear in the CA list, bot
 
 ### 03.1 — The key stays on the server
 **Narration:** Let us enrol web one. One rule for every key in this series: the private key
-never leaves its machine. The server already has host keys. You send only one public key to
-PKI Manager: the ECDSA one. PKI Manager accepts only that type, and episode six shows why.
+never leaves its machine. The server already has host keys. You send only the ECDSA public key to
+PKI Manager. PKI Manager accepts only that type, and episode six shows why.
 
 **Visual:** Server `web1`. Terminal: `cat /etc/ssh/ssh_host_ecdsa_key.pub`. The private key
 file stays inside the server with a lock icon; only the `.pub` card travels to PKI Manager.
