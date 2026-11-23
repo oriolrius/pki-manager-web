@@ -45,12 +45,10 @@ Your own staff use `@ops.example` identities.
 | 18 | Changing access, and proving who did what | 2:15 |
 | 19 | Test your design | 1:45 |
 
-> **Product gaps — decide before recording.** The script describes the product as it is today.
-> Five gaps change what we can teach (details at the end, [Product gaps](#product-gaps)):
-> no way to remove a mapping or a grant; Stale does not clear after an Ansible run and comes back
-> after each host-certificate renewal; a `sign-user` fleet token can sign any principal in its
-> zone; the host Access list shows only identities with grants (no UI for grants); the issue
-> form mixes mappings from different zones. Scenes that a fix would change are marked ⚠.
+> **Product gaps — fixed.** The five gaps found while writing this series are fixed on branch
+> `feat/ssh-principal-gaps` (TASK-245 … TASK-249); the scenes describe the fixed behaviour. Still
+> open: the Ansible role does not yet call the new "principals pushed" endpoint (TASK-250), and the web
+> issue form does not apply the entitlement check. See [Product gaps](#product-gaps).
 
 ---
 
@@ -199,15 +197,19 @@ everywhere, and audit for security everywhere.
 | Acme production | `deploy ← client-acme sysadmins` | sysadmins | security |
 | Internal sensitive | — | sysadmins | security |
 
-### 13.4 — ⚠ Deploying the mappings
-**Narration:** You map each principal on each host in PKI Manager, and the host turns Stale. Run the
-Ansible role, or copy the files by hand. Check the files on the server, then click Mark pushed. Mark
-pushed only records that you did it.
+### 13.4 — Deploying the mappings
+**Narration:** You map each principal on each host in PKI Manager, and the host turns Stale: its
+principals files changed and are not on the server yet. Run the Ansible role, or copy the files by
+hand, then click Mark pushed. Automation can also confirm the push itself, with a hash of the files.
+To take a principal away, remove the mapping with the cross, and push again.
 
 **Visual:** Redraw of the mapping card: *Principal* `client-acme` → *Local account* `deploy` on
-`acme-web`. Badge *Stale — needs push* → Ansible play runs → files checked → click *Mark pushed* →
-badge disappears. (Product gap: the role does not clear Stale, and a host-certificate renewal sets it
-again.) *Next: 14 People and profiles*.
+`acme-web`; list *Mappings* with rows `client-acme → deploy`, `sysadmins → root`, each with an ×.
+Badge *Stale — needs push* → Ansible play runs → *Mark pushed* → badge disappears. Side card:
+`POST /api/v1/external/ssh/hosts/acme-web/principals-pushed {"sha256": "…"}` → *200*. Then × on
+`sysadmins → root` → dialog *Remove mapping sysadmins → root?* "This host keeps accepting principal
+“sysadmins” for login as “root” until the updated auth_principals files are deployed to it." →
+badge back to *Stale — needs push*. *Next: 14 People and profiles*.
 
 ---
 
@@ -245,15 +247,14 @@ able to change them. That is separation of duties.
 **Visual:** Sara's certificate: `security`. Every `audit` lights up; every `root` shows a lock.
 Caption: *audit ≠ admin: separation of duties*.
 
-### 14.5 — ⚠ Check before you issue
-**Narration:** When you issue a certificate, the form lists where each principal is mapped. Read it
-before you click. It shows the recorded mappings, not what is installed on each server, so for
-anything sensitive, check the host too.
+### TASK-249: panel scoped to the identity's zone — Check before you issue
+**Narration:** When you issue a certificate, the form lists where each principal is mapped, in the
+identity's zone. Read it before you click. It shows the recorded mappings, not what is installed on
+each server, so for anything sensitive, check that the host is not Stale.
 
 **Visual:** Redraw of *Issue User Certificate*, panel *Where these principals grant login*:
 `developers` → dev-01 … dev-06 `deploy`, ci `appsvc` …; `client-acme` → acme-web, acme-db, acme-app
-`deploy`. Button *Issue Certificate*. (Product gap: with several zones the panel mixes them.)
-*Next: 15 Customers*.
+`deploy`. Button *Issue Certificate*. *Next: 15 Customers*.
 
 ---
 
@@ -388,16 +389,19 @@ form, Harden clears all the extensions with one click. Fewer extensions, less da
 `permit-port-forwarding`, `permit-pty`, `permit-user-rc`, all on by default) → click
 *Harden — clear all* → all off.
 
-### 17.5 — ⚠ Short certificates for each run
-**Narration:** A pipeline can get a fresh certificate for each run, valid for a few minutes. But the
-token that requests it can sign any principal in its zone. So keep the token in a trusted service, not
-in the job. That service checks which job is asking, and returns a short certificate with only that
-job's principal and limits.
+### 17.5 — Short certificates for each run
+**Narration:** A pipeline can get a fresh certificate for each run, valid for a few minutes. Mint its
+token with limits: only the job's principal, and a maximum lifetime of fifteen minutes. A token without
+limits can sign any principal in its zone, and PKI Manager marks it Unrestricted. Even with limits, keep
+the token in a trusted service, and give the job only the certificate.
 
-**Visual:** Trusted service box holds the fleet token (ops `sign-user`) → request with
-`principals: ["acme-deployer"]`, `validForSeconds: 900`, `extensions: []` → certificate goes to the
-CI job; the token never leaves the box. Card: *sign-user token = signing power for the zone*.
-(Product gap: tokens cannot be limited to principals.) *Next: 18 Changing access*.
+**Visual:** Redraw of *Fleet tokens → Mint token* with sign-user ticked: box *sign-user limits*,
+*Allowed principals* `acme-deployer` ticked, *Max certificate lifetime* `15 minutes (suggested for CI)`.
+Table column *Limits*: `Principals: acme-deployer · Max lifetime: 15 min`; an older token shows the
+amber pill *Unrestricted*. Then: trusted service box holds the token → certificate (15 min,
+`extensions: []`) goes to the CI job. A request for `root` → red
+`403 TOKEN_LIMIT: token "acme-ci" may not sign principal(s) root — allowed: acme-deployer`.
+*Next: 18 Changing access*.
 
 ---
 
@@ -423,7 +427,7 @@ closes a session that is already open.
 | lever | scope | when |
 |---|---|---|
 | new certificate | one person | after the old one expires or is revoked |
-| mapping change | one server | next login after the files are deployed |
+| mapping change (add or remove) | one server | next login after the files are deployed |
 | revoke | one certificate, everywhere | next KRL pull |
 | block | one person, one host | next KRL pull |
 Footer: *open sessions: close them yourself*.
@@ -435,14 +439,16 @@ certificate that already carries those principals works there at once. You touch
 **Visual:** New server `acme-api` drops into *Acme production*; mapping copied from the class; Ana's
 existing certificate enters `deploy`.
 
-### 18.4 — ⚠ Limit who may hold a principal
-**Narration:** You can also record which principals each identity may receive. A request with the
-entitlement check turned on is refused for any other principal. Today this works through the API and
-the Ansible module, the web form and fleet tokens do not apply it, and a grant cannot be removed yet.
+### 18.4 — Limit who may hold a principal
+**Narration:** On each identity you can record its allowed principals. A request with the entitlement
+check turned on is refused for any other principal. Grants also feed the Access list on each host page,
+next to the people who hold a live certificate. The check itself is an option of the API and the
+Ansible module; the web form does not apply it.
 
-**Visual:** Identity Ana with grants `developers`, `client-acme`. API request with `sysadmins` and
-`enforceEntitlement: true` → red *identity not entitled to principals: sysadmins*. Grey note: *web
-form and fleet tokens: no check*.
+**Visual:** Redraw of the identity card section *Allowed principals*: `developers`, `client-acme`, each
+with remove; select *Add principal…* + *Grant*. API request with `sysadmins` and
+`enforceEntitlement: true` → red *identity not entitled to principals: sysadmins*. Then the host
+*Access* card: `ana@ops.example · certificate + grant`, `pau@ops.example · certificate`.
 
 ### 18.5 — Who did what
 **Narration:** For audits, join two records. PKI Manager stores every certificate it issues: identity,
@@ -488,15 +494,15 @@ card: *docs/ssh/principals-guide.md* and the companion page.
 
 ## Product gaps
 
-Checked in the code; each one limits what the videos can recommend.
+Found in the code while writing this series. **All five are fixed on `feat/ssh-principal-gaps`** (one backlog task each); the table keeps the original evidence.
 
-| # | Gap | Evidence | Effect on the script |
+| # | Gap (before the fix) | Evidence | Fix |
 |---|---|---|---|
-| 1 | No way to remove a principal→account mapping or an entitlement grant (UI, tRPC, REST). `deletePrincipal` is refused while maps or grants exist; only host Offboard deletes maps. | `ssh-principal.service.ts` (no unmap/ungrant), `ssh.routes.ts:344`, `ssh-host.service.ts:417` | 13.4, 18.2 and 18.4 cannot show removing access through mappings or grants |
-| 2 | Stale does not clear after an Ansible run (the role never calls Mark pushed), and every host-certificate issue or renewal sets `updatedAt`, so the host turns Stale again with no mapping change. | role `tasks/principals.yml`; `ssh-host.service.ts:194-197`; `ssh-principal.service.ts:223-225` | 13.4 needs a manual Mark pushed; the badge loses meaning over time |
-| 3 | A `sign-user` fleet token can sign any subject, any principals, any key ID and any lifetime in its zone; it never applies entitlements; default extensions are all five and default lifetime one week. | `ssh-external.routes.ts:50-59,177-197`; `ssh-user.service.ts:171,188-190` | 17.5 must tell people to keep the token out of jobs |
-| 4 | The host Access list ("who can reach this host") joins mappings with **grants**, not with issued certificates; grants have no UI, so the list is empty in normal UI use. (The *Block user…* menu still lists all identities.) | `ssh-block.service.ts:286-299`; `HostAccessCard.tsx:50-51` | series 1 scene 07.3 and series 2 18.4 |
-| 5 | The issue-form panel *Where these principals grant login* groups mappings by principal name across all zones. | `ssh-principal.service.ts:96-107` | 14.5 |
+| 1 | No way to remove a principal→account mapping or an entitlement grant (UI, tRPC, REST). `deletePrincipal` is refused while maps or grants exist; only host Offboard deletes maps. | `ssh-principal.service.ts` (no unmap/ungrant), `ssh.routes.ts:344`, `ssh-host.service.ts:417` | TASK-245: unmap + revoke grant (UI ×, tRPC, REST, audit) |
+| 2 | Stale does not clear after an Ansible run (the role never calls Mark pushed), and every host-certificate issue or renewal sets `updatedAt`, so the host turns Stale again with no mapping change. | role `tasks/principals.yml`; `ssh-host.service.ts:194-197`; `ssh-principal.service.ts:223-225` | TASK-246: `principals_changed_at`; `POST /external/ssh/hosts/:fqdn/principals-pushed {sha256}`; role follow-up TASK-250 |
+| 3 | A `sign-user` fleet token can sign any subject, any principals, any key ID and any lifetime in its zone; it never applies entitlements; default extensions are all five and default lifetime one week. | `ssh-external.routes.ts:50-59,177-197`; `ssh-user.service.ts:171,188-190` | TASK-247: `allowedPrincipals`, `maxValidForSeconds` per token; *Unrestricted* pill |
+| 4 | The host Access list ("who can reach this host") joins mappings with **grants**, not with issued certificates; grants have no UI, so the list is empty in normal UI use. (The *Block user…* menu still lists all identities.) | `ssh-block.service.ts:286-299`; `HostAccessCard.tsx:50-51` | TASK-248: Access list also from live certificates (`source`) |
+| 5 | The issue-form panel *Where these principals grant login* groups mappings by principal name across all zones. | `ssh-principal.service.ts:96-107` | TASK-249: panel scoped to the identity's zone |
 
 ## Corrections to the guide
 
@@ -520,4 +526,4 @@ Facts from the code and OpenSSH that differ from [`principals-guide.md`](../../p
    identity-provider groups when it issues SSH certificates.
 7. Each `auth_principals` file has **two lines per principal** (`P` and `P@<fqdn>`); the second form is
    used by the optional block issuance gate, so keep `@` out of your own principal names.
-8. **Product gaps 1–5 above** (mappings and grants cannot be removed, etc.).
+8. The guide predates the fixes for product gaps 1–5 (unmap, Stale, token limits, Access list, zone-scoped panel).
