@@ -8,21 +8,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useToast, useConfirm } from '@/components/ui';
-
-export const GRANTS_EXPLAINER =
-  'Principals this identity may receive in its certificates. They are enforced when a certificate is issued with the entitlement check, and they feed the host Access list.';
-
-/** Confirm copy for removing one grant. Exported for tests and the video script. */
-export function revokeGrantConfirmCopy(principal: string, subject: string) {
-  return {
-    title: `Remove grant “${principal}” from ${subject}?`,
-    description:
-      `New certificates issued with the entitlement check can no longer carry “${principal}”. ` +
-      'Certificates already issued keep it until they expire or are revoked.',
-    confirmLabel: 'Remove grant',
-    tone: 'danger' as const,
-  };
-}
+import { GRANTS_EXPLAINER, revokeGrantConfirmCopy } from './principal-copy';
 
 export function IdentityGrantsSection({ identity }: { identity: { id: string; subject: string; zoneId: string } }) {
   const toast = useToast();

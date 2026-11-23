@@ -45,7 +45,8 @@ vi.mock('@/lib/trpc', () => ({
   },
 }));
 
-import { HostAccessCard, ACCESS_SOURCE } from './HostAccessCard';
+import { HostAccessCard } from './HostAccessCard';
+import { ACCESS_SOURCE } from './principal-copy';
 
 describe('HostAccessCard — row source', () => {
   it('shows certificate / grant / both next to each identity, with a hover explanation', () => {

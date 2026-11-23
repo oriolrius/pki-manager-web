@@ -73,8 +73,9 @@ vi.mock('@/lib/trpc', () => ({
   },
 }));
 
-import { HostPrincipalMappingCard, unmapConfirmCopy } from './HostPrincipalMappingCard';
-import { IdentityGrantsSection, GRANTS_EXPLAINER } from './IdentityGrantsSection';
+import { HostPrincipalMappingCard } from './HostPrincipalMappingCard';
+import { IdentityGrantsSection } from './IdentityGrantsSection';
+import { unmapConfirmCopy, GRANTS_EXPLAINER } from './principal-copy';
 
 beforeEach(() => {
   vi.clearAllMocks();

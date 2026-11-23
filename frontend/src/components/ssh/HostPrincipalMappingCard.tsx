@@ -8,18 +8,7 @@ import { AlertTriangle, X } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
 import { useToast, useConfirm } from '@/components/ui';
-
-/** Confirm copy for removing one mapping (TASK-245). Exported for tests and the video script. */
-export function unmapConfirmCopy(principal: string, account: string) {
-  return {
-    title: `Remove mapping ${principal} → ${account}?`,
-    description:
-      `This host keeps accepting principal “${principal}” for login as “${account}” until the updated ` +
-      'auth_principals files are deployed to it. Until then the host shows “Stale — needs push”.',
-    confirmLabel: 'Remove mapping',
-    tone: 'danger' as const,
-  };
-}
+import { unmapConfirmCopy } from './principal-copy';
 
 export interface HostPrincipalMappingCardProps {
   hostId: string;

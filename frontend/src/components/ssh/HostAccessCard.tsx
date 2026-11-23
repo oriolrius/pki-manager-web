@@ -10,22 +10,7 @@ import { trpc } from '@/lib/trpc';
 import { useToast, useConfirm } from '@/components/ui';
 import { HostKrlStatePill } from './HostKrlStatePill';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from './block-flows';
-
-/** TASK-248: the subtle per-row source tag (label + hover text). */
-export const ACCESS_SOURCE: Record<'certificate' | 'grant' | 'both', { label: string; hint: string }> = {
-  certificate: {
-    label: 'certificate',
-    hint: 'Holds a live certificate whose principals map to an account on this host.',
-  },
-  grant: {
-    label: 'grant',
-    hint: 'Granted a principal that maps to an account on this host. Needs a certificate with it to log in.',
-  },
-  both: {
-    label: 'certificate + grant',
-    hint: 'Holds a live certificate for this host and is granted its principal.',
-  },
-};
+import { ACCESS_SOURCE } from './principal-copy';
 
 export function HostAccessCard({ hostId }: { hostId: string }) {
   const utils = trpc.useUtils();
