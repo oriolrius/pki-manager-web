@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-23T16:11:00Z'
-updated_date: '2026-11-23T18:00:00Z'
+updated_date: '2026-11-23T19:45:00Z'
 labels:
   - docs
   - ssh
@@ -49,4 +49,8 @@ Sysadmins who know Linux but not SSH certificates need a visual, step-by-step ex
 - Female native-English voice (dbai24-narrator-vox48); 10 MP4s, ~15 min, 41 MB in docs/ssh/explainer/media (gitignored, publishing pending)
 - Doc fixes: ECDSA host keys, missing RevokedKeys behaviour
 - UI gaps (identity Offboard, Fleet tokens page) built on feat/ssh-ui-offboard-and-tokens (TASK-244)
+
+- Series 2 "Principals in depth" (episodes 11-19, ~11 min, 33 MB): script-principals.md (Fable + Astra reviewed), 9 diagrams, scenes, female voice, rendered to media/
+- principals-guide.md corrected (u:<name> invalid, OR semantics, Key ID + serial + CA traceability, four levers)
+- Product gaps fixed on feat/ssh-principal-gaps (TASK-245..249); TASK-250 (Ansible role calls principals-pushed) open
 <!-- SECTION:NOTES:END -->
