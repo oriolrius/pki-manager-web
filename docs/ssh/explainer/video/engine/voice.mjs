@@ -72,7 +72,10 @@ function trim({ rate, samples }) {
   let b = samples.length - win;
   while (b > a && !loud(b)) b -= win;
   const pad = Math.floor(rate * 0.06);
-  return { rate, samples: samples.slice(Math.max(0, a - pad), Math.min(samples.length, b + win + pad)) };
+  const out = samples.slice(Math.max(0, a - pad), Math.min(samples.length, b + win + pad));
+  const fade = Math.min(out.length, Math.floor(rate * 0.03)); // 30 ms fade-out: no click at a hard end
+  for (let i = 0; i < fade; i++) out[out.length - fade + i] = Math.round(out[out.length - fade + i] * (1 - (i + 1) / fade));
+  return { rate, samples: out };
 }
 
 async function tts(say, attempt = 0) {
@@ -140,21 +143,37 @@ const CHOICE_FILE = join(CACHE, 'choice.json');
 const CHOICE = existsSync(CHOICE_FILE) ? JSON.parse(readFileSync(CHOICE_FILE, 'utf8')) : {};
 const refOf = (text) => text.replace(/`/g, '');
 
-/** Synthesize one clip. With VOICE_CHECK, transcribe it and retry (max 4) while it does not match. */
+/** Level of the last 80 ms relative to the clip peak: > 0.1 means the TTS cut the last sound. */
+function tailRatio(file) {
+  const { rate, samples } = readWav(readFileSync(file));
+  let peak = 1, tail = 0;
+  for (const v of samples) peak = Math.max(peak, Math.abs(v));
+  for (let i = Math.max(0, samples.length - Math.floor(rate * 0.08)); i < samples.length; i++) tail = Math.max(tail, Math.abs(samples[i]));
+  return tail / peak;
+}
+// Opt-in (VOICE_TAIL_CHECK=1): also re-synthesise clips whose last sound is cut off.
+const TAIL_MAX = process.env.VOICE_TAIL_CHECK ? 0.1 : Infinity;
+
+/** Synthesize one clip. With VOICE_CHECK, transcribe it and retry (max 8) while it does not match
+ *  the text or its last sound is cut off; the best attempt is kept. */
 async function clip(item) {
   const id = createHash('sha1').update(`${VOICE}|${item.say}`).digest('hex').slice(0, 16);
-  if (CHOICE[id]) return { file: join(CACHE, CHOICE[id].file), check: CHOICE[id] };
+  const prev = CHOICE[id];
+  if (prev && (prev.tail ?? tailRatio(join(CACHE, prev.file))) <= TAIL_MAX) return { file: join(CACHE, prev.file), check: prev };
   let best = null;
-  const tries = process.env.VOICE_CHECK ? 4 : 1;
+  const tries = process.env.VOICE_CHECK ? 8 : 1;
   for (let a = 0; a < tries; a++) {
     const { file } = await tts(item.say, a);
+    const tail = tailRatio(file);
     if (!process.env.VOICE_CHECK) return { file, check: null };
+    if (tail > TAIL_MAX && (!best || best.tail <= TAIL_MAX)) { if (!best) best = { file, heard: null, wer: 1, tail }; continue; }
     const heard = await transcribe(file);
     const wer = heard == null ? 1 : wordErrorRate(refOf(item.text), heard);
-    if (!best || wer < best.wer) best = { file, heard, wer };
-    if (wer <= 0.15) break;
+    const score = wer + (tail > TAIL_MAX ? 1 : 0);
+    if (!best || score < best.wer + (best.tail > TAIL_MAX ? 1 : 0)) best = { file, heard, wer, tail };
+    if (wer <= 0.15 && tail <= TAIL_MAX) break;
   }
-  CHOICE[id] = { file: best.file.split('/').pop(), heard: best.heard, wer: +best.wer.toFixed(3) };
+  CHOICE[id] = { file: best.file.split('/').pop(), heard: best.heard, wer: +best.wer.toFixed(3), tail: +best.tail.toFixed(3) };
   // merge with what is on disk (another run may have written entries meanwhile)
   const disk = existsSync(CHOICE_FILE) ? JSON.parse(readFileSync(CHOICE_FILE, 'utf8')) : {};
   writeFileSync(CHOICE_FILE, JSON.stringify({ ...disk, ...CHOICE }, null, 1));
@@ -186,7 +205,7 @@ export async function buildEpisode(ep) {
       const dur = wav.samples.length / rate;
       chunks.push({ at: t, samples: wav.samples });
       scene.sentences.push({ start: +t.toFixed(3), end: +(t + dur).toFixed(3), text: s.text });
-      if (check && check.wer > 0.15) flagged.push({ scene: sc.id, text: s.text, heard: check.heard, wer: check.wer });
+      if (check && (check.wer > 0.15 || check.tail > TAIL_MAX)) flagged.push({ scene: sc.id, text: s.text, heard: check.heard, wer: check.wer, tail: check.tail });
       t += dur + (k < items.length - 1 ? T.gap : 0);
     }
     t += si < ep.scenes.length - 1 ? T.sceneGap : T.outro;

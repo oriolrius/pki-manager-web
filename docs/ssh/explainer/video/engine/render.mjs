@@ -3,8 +3,8 @@
 //   node engine/render.mjs 01 02            full render -> ../media/
 //   node engine/render.mjs 01 --stills 5,12.5   PNG stills -> build/ep01/stills/
 //   node engine/render.mjs 01 --from 20 --to 40 clip -> build/ep01/clip.mp4 (fast review)
-import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
@@ -104,7 +104,7 @@ async function render(browser, ep, { from = 0, to = null } = {}) {
     '-c:v', 'libx264', '-preset', 'medium', '-tune', 'animation', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '160k',
     ...(isClip ? [] : ['-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng']),
-    '-movflags', '+faststart', '-t', String(end - from), `${base}.mp4`,
+    '-movflags', '+faststart', '-t', String(end - from), '-f', 'mp4', `${base}.mp4.part`,
   ], { stdio: ['pipe', 'inherit', 'inherit'] });
   ff.stdin.on('error', (e) => console.error('ffmpeg input closed:', e.code));
   const page = await openPage(browser, ep);
@@ -120,6 +120,12 @@ async function render(browser, ep, { from = 0, to = null } = {}) {
   }
   ff.stdin.end();
   await new Promise((r, j) => ff.on('close', (c) => (c === 0 ? r() : j(new Error(`ffmpeg exit ${c}`)))));
+  // Verify the streams really cover the episode, then publish atomically.
+  const probe = (sel) => Number(execFileSync('ffprobe', ['-v', 'error', '-select_streams', sel, '-show_entries', 'stream=duration', '-of', 'csv=p=0', `${base}.mp4.part`]).toString().trim());
+  const want = end - from;
+  const [vd, ad] = [probe('v:0'), probe('a:0')];
+  if (Math.abs(vd - want) > 0.2 || Math.abs(ad - want) > 0.2) throw new Error(`ep${ep}: streams too short (video ${vd}s, audio ${ad}s, want ${want.toFixed(2)}s)`);
+  renameSync(`${base}.mp4.part`, `${base}.mp4`);
   await page.close();
   console.log(`\r  ep${ep} -> ${base}.mp4 (${n} frames, ${shots} unique, ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 }
