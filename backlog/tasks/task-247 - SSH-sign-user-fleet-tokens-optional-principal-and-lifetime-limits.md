@@ -1,11 +1,11 @@
 ---
 id: TASK-247
 title: 'SSH sign-user fleet tokens: optional principal and lifetime limits'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-23T18:57:00Z'
-updated_date: '2026-11-23T19:13:00Z'
+updated_date: '2026-11-23T19:21:00Z'
 labels:
   - ssh
   - backend
@@ -22,12 +22,12 @@ A sign-user fleet token can sign any subject with any principals and any lifetim
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An admin can mint a sign-user token with allowed principals (from the token zone catalog) and a maximum certificate lifetime, via tRPC and REST
-- [ ] #2 Minting with a principal that is not in the token zone catalog, or with limits on a token without sign-user, is refused
-- [ ] #3 sign-user with a principal outside the allowed list, or a validForSeconds above the maximum, is refused with 403 and a clear message, and audited
-- [ ] #4 sign-user without validForSeconds on a limited token gets min(default lifetime, maximum)
-- [ ] #5 Tokens minted without limits keep working as before, and the Fleet tokens page shows them as unrestricted with a warning
-- [ ] #6 The mint form shows Allowed principals and Max certificate lifetime when sign-user is ticked (suggesting 15 minutes), and the table shows each token limits
+- [x] #1 An admin can mint a sign-user token with allowed principals (from the token zone catalog) and a maximum certificate lifetime, via tRPC and REST
+- [x] #2 Minting with a principal that is not in the token zone catalog, or with limits on a token without sign-user, is refused
+- [x] #3 sign-user with a principal outside the allowed list, or a validForSeconds above the maximum, is refused with 403 and a clear message, and audited
+- [x] #4 sign-user without validForSeconds on a limited token gets min(default lifetime, maximum)
+- [x] #5 Tokens minted without limits keep working as before, and the Fleet tokens page shows them as unrestricted with a warning
+- [x] #6 The mint form shows Allowed principals and Max certificate lifetime when sign-user is ticked (suggesting 15 minutes), and the table shows each token limits
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -40,3 +40,16 @@ A sign-user fleet token can sign any subject with any principals and any lifetim
 5. UI: mint form fields when sign-user ticked (catalog checkboxes, lifetime preset 15 min), Limits column + Unrestricted warning.
 6. Tests backend (mint + sign-user enforcement with KMS when available) + RTL.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+sign-user fleet tokens can now carry limits.
+
+- Migration `0013_overjoyed_wilson_fisk.sql`: `ssh_fleet_tokens.allowed_principals` (JSON names) + `max_valid_for_seconds`. Existing rows NULL = unrestricted (unchanged behaviour).
+- Mint (`ssh.token.mint`, `POST /api/v1/ssh/tokens`): optional `allowedPrincipals: string[]`, `maxValidForSeconds: number`; refused without sign-user or with a principal outside the token zone catalog; limits in the `ssh.token.mint` audit details and in list DTOs.
+- `POST /api/v1/external/ssh/sign-user`: `applySignUserLimits` -> 403 `TOKEN_LIMIT` (principal outside list; `P@host` allowed when `P` is; or validForSeconds > max), failure audit `ssh.external.sign` on the token, no identity upsert. No validForSeconds -> min(604800, max).
+- UI (FleetTokensPanel): "sign-user limits" fieldset with "Allowed principals" checkboxes and "Max certificate lifetime" (default "15 minutes (suggested for CI)"), unrestricted warning, "Limits" column, amber "Unrestricted" pill.
+- docs/ssh-api-contract.md documents the limits.
+- Tests: ssh-token-limits.integration.test.ts (incl. KMS signing path), FleetTokensPanel.test.tsx, fleet-token.test.ts.
+<!-- SECTION:NOTES:END -->
