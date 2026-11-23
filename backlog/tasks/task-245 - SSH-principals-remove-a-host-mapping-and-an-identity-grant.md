@@ -1,9 +1,11 @@
 ---
 id: TASK-245
 title: 'SSH principals: remove a host mapping and an identity grant'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-23T18:57:00Z'
+updated_date: '2026-11-23T19:04:00Z'
 labels:
   - ssh
   - backend
@@ -27,3 +29,12 @@ Operators can map a principal to a host account and grant a principal to an iden
 - [ ] #5 The host mapping card has a remove action per mapping row with a confirm that explains the server keeps accepting the principal until the updated files are deployed
 - [ ] #6 The identity on the Users page has an Allowed principals section that lists, adds and removes grants and explains that grants are enforced with the entitlement check and feed the host Access list
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Service: unmapFromHost(hostId, principalId, localAccount) deletes the one map row, marks the host principals changed, audits; revokeGrant(identityId, principalId); listGrants(identityId). Unknown rows -> not-found error + failure audit.
+2. Zod schemas + tRPC principal.unmap / revokeGrant / listGrants; REST POST /principals/unmap, POST /principals/revoke-grant, GET /identities/:id/grants.
+3. UI: remove (x) per mapping row in HostPrincipalMappingCard with confirm; Allowed principals section in the identity card (list/add/remove).
+4. Tests: backend service + REST; frontend RTL for both UIs.
+<!-- SECTION:PLAN:END -->
