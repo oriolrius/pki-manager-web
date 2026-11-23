@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-23T16:11:00Z'
-updated_date: '2026-11-23T16:11:00Z'
+updated_date: '2026-11-23T17:24:00Z'
 labels:
   - docs
   - ssh
@@ -23,9 +23,9 @@ Sysadmins who know Linux but not SSH certificates need a visual, step-by-step ex
 <!-- AC:BEGIN -->
 - [ ] #1 A validated English script covers every episode: why certificates, two CAs, host certs, user certs, principals, lifecycle/revocation, per-host blocks, zones, automation, recap/troubleshooting
 - [ ] #2 Every PlantUML diagram uses one shared oriolrius.me theme and renders to SVG
-- [ ] #3 Each episode renders to an MP4 with narration in the oriol-en voice and matching subtitles from a self-contained build in the repo
-- [ ] #4 A companion HTML page explains every episode with its diagrams and links to the clips
-- [ ] #5 Content matches the current code (e.g. ECDSA P-256 host keys, 1-week user and 52-week host TTLs)
+- [ ] #3 A companion HTML page explains every episode with its diagrams and links to the clips
+- [ ] #4 Content matches the current code (e.g. ECDSA P-256 host keys, 1-week user and 52-week host TTLs)
+- [ ] #5 Each episode renders to an MP4 with narration in a female native-English voice (VoiceStudio dbai24-narrator-vox48) and matching subtitles from a self-contained build in the repo
 <!-- AC:END -->
 
 ## Implementation Plan
