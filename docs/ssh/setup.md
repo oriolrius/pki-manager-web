@@ -27,11 +27,13 @@ certificates signed by the User CA.
 ### Steps
 
 1. **Generate the host key on the node** (the private key never leaves it), and
-   send only the public key to the operator:
+   send only the public key to the operator. PKI Manager accepts **only
+   `ecdsa-sha2-nistp256`** host keys: the same key is the certificate subject and
+   the recipient of the encrypted KRL (ECIES works only with P-256):
 
    ```bash
-   sudo ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N "" -q   # usually already present
-   cat /etc/ssh/ssh_host_ed25519_key.pub          # send THIS to the operator
+   sudo ssh-keygen -t ecdsa -b 256 -f /etc/ssh/ssh_host_ecdsa_key -N "" -q   # usually already present
+   cat /etc/ssh/ssh_host_ecdsa_key.pub          # send THIS to the operator
    ```
 
 2. Get the **deploy bundle** from the operator (the host detail page → *Files to
@@ -39,7 +41,7 @@ certificates signed by the User CA.
 
    | File | Path | Mode |
    |---|---|---|
-   | Host certificate | `/etc/ssh/ssh_host_ed25519_key-cert.pub` | `0444` |
+   | Host certificate | `/etc/ssh/ssh_host_ecdsa_key-cert.pub` | `0444` |
    | User CA public key | `/etc/ssh/ssh-user-ca.pub` | `0444` |
    | sshd drop-in | `/etc/ssh/sshd_config.d/60-ssh-ca.conf` | `0644` |
    | AuthorizedPrincipals (per account) | `/etc/ssh/auth_principals/<account>` | `0644` |
@@ -47,19 +49,21 @@ certificates signed by the User CA.
    The drop-in contains:
 
    ```
-   HostKey /etc/ssh/ssh_host_ed25519_key
-   HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
+   HostKey /etc/ssh/ssh_host_ecdsa_key
+   HostCertificate /etc/ssh/ssh_host_ecdsa_key-cert.pub
    TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub
    AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u
    RevokedKeys /etc/ssh/revoked_keys
    ```
 
-   > If your host key is **not** ed25519, the bundle already adjusts the
-   > `HostKey`/`HostCertificate` paths to match (e.g. `ssh_host_ecdsa_key`).
+   > The explicit `HostKey` line means sshd offers only this ECDSA key. Give
+   > clients the Host CA `@cert-authority` line (below) before you reload, so
+   > they do not see a host-key prompt.
 
 3. **Set up the KRL file.** `RevokedKeys` gates *user* logins, so the server
    serves the **User CA's** KRL (revoked user certificates). The file must exist
-   or sshd refuses to start. The bundle's KRL snippet does this:
+   or sshd refuses **every** public-key login (sshd still starts, and `sshd -t`
+   passes). The bundle's KRL snippet does this:
 
    ```bash
    sudo install -m 0444 /dev/null /etc/ssh/revoked_keys

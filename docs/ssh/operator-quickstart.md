@@ -33,7 +33,8 @@ Open each CA at **Certificate Authorities → (the CA)**:
 **Hosts → Register Host**
 
 - Enter the FQDN and paste the server's **public** host key
-  (`/etc/ssh/ssh_host_ed25519_key.pub`). The app rejects private keys.
+  (`/etc/ssh/ssh_host_ecdsa_key.pub`). The app rejects private keys and any
+  host key that is not `ecdsa-sha2-nistp256`.
 - Leave *Issue a host certificate immediately* on.
 
 Then open the host detail page → **Files to place on this server**. That one panel

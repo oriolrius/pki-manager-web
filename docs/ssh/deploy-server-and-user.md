@@ -139,7 +139,7 @@ One run does, in order:
 
 | Phase | What happens |
 |---|---|
-| **1 — Key + cert + trust** | Generate the ed25519 host key on the node → `POST /sign-host`, install `…-cert.pub` (`0444`) → fetch & install the **User-CA** (`GET /ssh/trusted-user-ca-keys`) and **Host-CA** (`GET /ssh/host-ca-keys`) trust anchors. |
+| **1 — Key + cert + trust** | Use (or generate) the `ecdsa-sha2-nistp256` host key on the node → `POST /sign-host`, install `…-cert.pub` (`0444`) → fetch & install the **User-CA** (`GET /ssh/trusted-user-ca-keys`) and **Host-CA** (`GET /ssh/host-ca-keys`) trust anchors. |
 | **2 — Principals (RBAC)** | `GET …/hosts/<fqdn>/auth-principals` → write `/etc/ssh/auth_principals/<account>` + a fail-closed `RevokedKeys` placeholder. |
 | **3 — sshd drop-in** | `GET /ssh/hosts/<id>/sshd-config` → install `/etc/ssh/sshd_config.d/60-ssh-ca.conf`, run `sshd -t`, flush handlers to reload sshd. |
 | **4 — Renewal** | Install the renewal cron/job. |
@@ -180,7 +180,7 @@ NTP is enforced on this path (`ssh_host_cert_require_timesync`, default `true`).
 
 - **A default run enables NO live revocation.** `ssh_host_cert_ecies_enabled` is `false`, so `RevokedKeys` is just an empty fail-closed placeholder until you enable the ECIES channel (§2.2).
 - **Unattended renewal stores the token on the host** (`0600`, `/etc/pki-manager/ssh-renew.env`) so it can re-mint itself; a compromised host can then sign host certs for any FQDN under that Host CA. Set `ssh_host_cert_renew_enabled: false` to renew by re-running the playbook from the controller instead.
-- **ECIES is P-256-only:** an ed25519 host key gets `409 ECIES_KEY_UNSUPPORTED` on `register-host-pubkey`. The role auto-switches the host key to ecdsa when `ssh_host_cert_ecies_enabled=true` — do **not** force an ed25519 key on an ECIES host. The role accepts 200/404/409/501 from the URI call but then **asserts status == 200**, so a backend without `SSH_ECIES_ENABLED` (501) or a host not yet signed (404) fails the play with an explicit message.
+- **ECIES is P-256-only:** an ed25519 host key gets `409 ECIES_KEY_UNSUPPORTED` on `register-host-pubkey`. The role always uses an ecdsa host key (`ssh_host_cert_key_type: ecdsa`), and the backend rejects any other host key type — do **not** force an ed25519 key. The role accepts 200/404/409/501 from the URI call but then **asserts status == 200**, so a backend without `SSH_ECIES_ENABLED` (501) or a host not yet signed (404) fails the play with an explicit message.
 - **Init-less containers:** set `ssh_host_cert_reload_method: command` so sshd is reloaded via SIGHUP instead of the service module.
 - **Never hand-edit `60-ssh-ca.conf`.** It is fetched verbatim from `GET /ssh/hosts/<id>/sshd-config` and is algorithm-aware (an ecdsa/ECIES host gets ecdsa `HostKey`/`HostCertificate` paths automatically). Re-render server-side.
 
