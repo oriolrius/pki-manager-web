@@ -247,7 +247,7 @@ able to change them. That is separation of duties.
 **Visual:** Sara's certificate: `security`. Every `audit` lights up; every `root` shows a lock.
 Caption: *audit ≠ admin: separation of duties*.
 
-### TASK-249: panel scoped to the identity's zone — Check before you issue
+### 14.5 — Check before you issue
 **Narration:** When you issue a certificate, the form lists where each principal is mapped, in the
 identity's zone. Read it before you click. It shows the recorded mappings, not what is installed on
 each server, so for anything sensitive, check that the host is not Stale.
