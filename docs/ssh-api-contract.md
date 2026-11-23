@@ -165,7 +165,7 @@ the SSH-34 fail-closed posture (403 when OIDC is off without
 |---|---|---|
 | `POST /api/v1/ssh/blocks` `{hostId, identityId, reason?}` | `ssh.block.block` | Block the identity on that host only; synchronously regenerates the host's composed KRL. Response carries `warnings.sharedKeyCollisions` (fingerprint over-block) and the fresh `krl`. |
 | `POST /api/v1/ssh/blocks/unblock` `{hostId, identityId}` | `ssh.block.unblock` | Lift the block (row kept for audit). Symmetric: enforced on the host's next pull, shown as *Lifting* until the post-lift version lands. |
-| `GET /api/v1/ssh/hosts/:id/access` | `ssh.host.access` | Who can reach this host: entitlement join (identity / via-roles / local accounts) merged with active blocks + per-host distribution state. |
+| `GET /api/v1/ssh/hosts/:id/access` | `ssh.host.access` | Who can reach this host: identities with a live user certificate whose principals (`P` or `P@<fqdn>`) map to an account here, plus grantees of a mapped principal — each entry has `source`: `certificate` \| `grant` \| `both` (`null` for a block-only row), `viaRoles`, `localAccounts` — merged with active blocks + per-host distribution state. Same zone only. |
 | `GET /api/v1/ssh/hosts/:id/blocks` | `ssh.block.listForHost` | Block history (active + lifted) with superseded-by-offboard annotation. |
 | `GET /api/v1/ssh/identities/:id/blocks` | `ssh.block.listForIdentity` | The identity's active blocks as `{hostId, fqdn, state}` tuples (Users-page pills). |
 | `GET /api/v1/ssh/blocks/fleet` | `ssh.block.fleetDistribution` | Per-host `{blockCount, state, krlNumber, lastKrlFetchAt}` fleet propagation view (KRL page). |
