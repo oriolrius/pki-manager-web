@@ -1,9 +1,11 @@
 ---
 id: TASK-244
 title: 'SSH UI: identity offboard action and fleet token management'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-23T16:26:00Z'
+updated_date: '2026-11-23T16:26:00Z'
 labels:
   - ssh
   - frontend
@@ -26,3 +28,11 @@ The API already has ssh.user.offboard (revoke all active certs + disable identit
 - [ ] #5 The plaintext token is shown once with a copy button and a store-it-safely warning, and is dropped from UI state when dismissed
 - [ ] #6 Vitest + RTL tests cover both features; frontend typecheck, test and lint pass
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Offboard: add components/ssh/offboard-flow.ts (pure flow, DI) + OffboardDialogBody; wire into ssh.users.tsx next to Disable.
+2. Tokens: add components/ssh/fleet-token.ts (presets, validation) and routes/ssh.tokens.tsx; nav entry in ssh.tsx.
+3. Tests for both; typecheck/test/lint.
+<!-- SECTION:PLAN:END -->
