@@ -100,7 +100,7 @@ async function render(browser, ep, { from = 0, to = null } = {}) {
     '-ss', String(from), '-t', String(end - from), '-i', audio,
     ...(isClip ? [] : ['-i', `${base}.srt`, '-i', metaFile]),
     '-map', '0:v', '-map', '1:a', ...(isClip ? [] : ['-map', '2:s', '-map_metadata', '3', '-map_chapters', '3']),
-    '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000',
+    '-af', 'aformat=channel_layouts=mono,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000',
     '-c:v', 'libx264', '-preset', 'medium', '-tune', 'animation', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '160k',
     ...(isClip ? [] : ['-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng']),

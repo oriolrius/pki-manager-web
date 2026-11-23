@@ -69,7 +69,7 @@
 
   // ---------- primitives ----------
   function text(x, y, s, { size = 30, weight = 400, fill = C.navy, anchor = 'start', mono = false, opacity = 1, italic = false } = {}) {
-    return `<text x="${x}" y="${y}" font-family="${mono ? MONO : FONT}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}" opacity="${opacity}"${italic ? ' font-style="italic"' : ''} dominant-baseline="middle">${esc(s)}</text>`;
+    return `<text xml:space="preserve" x="${x}" y="${y}" font-family="${mono ? MONO : FONT}" font-size="${size}" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}" opacity="${opacity}"${italic ? ' font-style="italic"' : ''} dominant-baseline="middle">${esc(s)}</text>`;
   }
   /** Multi-line text, lines centred vertically around y. */
   function lines(x, y, arr, o = {}) {

@@ -4,6 +4,7 @@
 // Env:   VOICESTUDIO_URL (default http://localhost:3900), VOICE_ID (default 72042960 = oriol-en),
 //        VOICE_CHECK=1 to transcribe every new clip and flag mismatches.
 import { createHash } from 'node:crypto';
+import { spawn, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,17 +79,31 @@ async function tts(say, attempt = 0) {
   const key = createHash('sha1').update(`${VOICE}|${say}${attempt ? `|${attempt}` : ''}`).digest('hex').slice(0, 16);
   const file = join(CACHE, `${key}.wav`);
   if (existsSync(file)) return { file, fresh: false };
-  const res = await fetch(`${URL_BASE}/v1/audio/speech`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'tts-1', voice: VOICE, input: say, response_format: 'wav' }),
-  });
-  if (!res.ok) throw new Error(`TTS ${res.status}: ${await res.text()}`);
+  let res;
+  for (let i = 0; ; i++) {
+    res = await fetch(`${URL_BASE}/v1/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'tts-1', voice: VOICE, input: say, response_format: 'wav' }),
+    }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) }));
+    if (res.ok) break;
+    const msg = await res.text();
+    if (i >= 5) throw new Error(`TTS ${res.status}: ${msg}`);
+    if (i === 1 && process.env.VOICESTUDIO_RESTART_CMD) {
+      console.warn('  restarting the TTS server: ' + process.env.VOICESTUDIO_RESTART_CMD);
+      execSync(process.env.VOICESTUDIO_RESTART_CMD, { stdio: 'inherit' });
+      for (let k = 0; k < 40; k++) { if (await fetch(`${URL_BASE}/v1/models`).then((r) => r.ok, () => false)) break; await new Promise((r) => setTimeout(r, 3000)); }
+    }
+    console.warn(`  TTS ${res.status}, retry ${i + 1}/5: ${msg.slice(0, 100)}`);
+    await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
+  }
   writeFileSync(file, Buffer.from(await res.arrayBuffer()));
   return { file, fresh: true };
 }
 
-const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
+const norm = (s) => s.toLowerCase()
+  .replace(/\b([a-z])(?:[ .-]+(?=[a-z]\b)|\.)/g, '$1') // spelled letters: "C-A", "C A", "C.A." -> "ca"
+  .replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
 function wordErrorRate(ref, hyp) {
   const r = norm(ref), h = norm(hyp);
   const d = Array.from({ length: r.length + 1 }, (_, i) => [i, ...Array(h.length).fill(0)]);
@@ -99,14 +114,26 @@ function wordErrorRate(ref, hyp) {
   return d[r.length][h.length] / Math.max(1, r.length);
 }
 
+// Local CPU ASR (engine/asr.py via uv): keeps the GPU for TTS only.
+let ASR = null;
+function asr() {
+  if (ASR) return ASR;
+  const proc = spawn('uv', ['run', '--quiet', '--script', join(ROOT, 'engine', 'asr.py')], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const waiting = [];
+  let buf = '';
+  proc.stdout.on('data', (d) => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); const w = waiting.shift(); if (w) w(JSON.parse(l)); }
+  });
+  const ready = new Promise((r) => waiting.push(r));
+  ASR = { proc, ready, ask: (path) => new Promise((r) => { waiting.push(r); proc.stdin.write(path + '\n'); }) };
+  return ASR;
+}
 async function transcribe(file) {
-  const fd = new FormData();
-  fd.append('file', new Blob([readFileSync(file)], { type: 'audio/wav' }), 'clip.wav');
-  fd.append('model', 'whisper-1');
-  fd.append('language', 'en');
-  const res = await fetch(`${URL_BASE}/v1/audio/transcriptions`, { method: 'POST', body: fd });
-  if (!res.ok) return null;
-  return (await res.json()).text ?? null;
+  const a = asr();
+  await a.ready;
+  return (await a.ask(file)).text ?? null;
 }
 
 const CHOICE_FILE = join(CACHE, 'choice.json');
@@ -128,7 +155,9 @@ async function clip(item) {
     if (wer <= 0.15) break;
   }
   CHOICE[id] = { file: best.file.split('/').pop(), heard: best.heard, wer: +best.wer.toFixed(3) };
-  writeFileSync(CHOICE_FILE, JSON.stringify(CHOICE, null, 1));
+  // merge with what is on disk (another run may have written entries meanwhile)
+  const disk = existsSync(CHOICE_FILE) ? JSON.parse(readFileSync(CHOICE_FILE, 'utf8')) : {};
+  writeFileSync(CHOICE_FILE, JSON.stringify({ ...disk, ...CHOICE }, null, 1));
   return { file: best.file, check: CHOICE[id] };
 }
 
@@ -186,4 +215,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const { timeline, flagged } = await buildEpisode(ep);
     console.log(`  => ${timeline.duration.toFixed(1)} s${flagged.length ? `, ${flagged.length} clip(s) flagged (voice-check.json)` : ''}`);
   }
+  if (ASR) ASR.proc.stdin.end();
 }
