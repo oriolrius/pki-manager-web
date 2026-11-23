@@ -162,7 +162,7 @@ function SshLanding() {
   const { zoneId } = useZone();
   const casQuery = trpc.ssh.ca.list.useQuery({ zoneId });
   const hostsQuery = trpc.ssh.host.list.useQuery({ zoneId });
-  const mappingsQuery = trpc.ssh.principal.mappingsByPrincipal.useQuery();
+  const mappingsQuery = trpc.ssh.principal.mappingsByPrincipal.useQuery({ zone: zoneId });
   const certsQuery = trpc.ssh.user.listCertificates.useQuery({});
 
   if (casQuery.isLoading) {

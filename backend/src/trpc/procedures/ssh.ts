@@ -22,6 +22,7 @@ import {
   mapPrincipalSchema,
   unmapPrincipalSchema,
   revokeGrantSchema,
+  mappingsByPrincipalSchema,
   revokeSshCertSchema,
   renderPrincipalsSchema,
   blockHostSchema,
@@ -328,7 +329,14 @@ const principalRouter = router({
   list: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) =>
     getSshPrincipalService().listPrincipals(svcCtx(ctx), { zoneId: input?.zoneId })
   ),
-  mappingsByPrincipal: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().mappingsByPrincipal(svcCtx(ctx))),
+  // TASK-249: `zone` (id or slug) scopes the result to one zone.
+  mappingsByPrincipal: sshProtectedProcedure.input(mappingsByPrincipalSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshPrincipalService().mappingsByPrincipal(svcCtx(ctx), { zone: input?.zone });
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
   create: sshProtectedProcedure.input(createPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
       return await getSshPrincipalService().createPrincipal(svcCtx(ctx), { name: input.name, description: input.description, zone: input.zone });

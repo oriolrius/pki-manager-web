@@ -140,6 +140,9 @@ export const mapPrincipalSchema = z.object({
 export const unmapPrincipalSchema = mapPrincipalSchema;
 export const revokeGrantSchema = grantPrincipalSchema;
 
+// TASK-249: optional zone scope for principal.mappingsByPrincipal.
+export const mappingsByPrincipalSchema = z.object({ zone: zoneRefSchema.optional() }).optional();
+
 export const revokeSshCertSchema = z.object({
   certId: z.string().min(1),
   reason: z.string().max(256).optional(),

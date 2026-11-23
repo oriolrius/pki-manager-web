@@ -160,13 +160,22 @@ export class SshPrincipalService {
    * (host, local account) pairs it is mapped to. Read-only aggregation used to
    * warn, on the issue-cert form, when a chosen principal is mapped nowhere
    * (so the cert would authenticate but be denied login — the #1 SSH trap).
+   *
+   * TASK-249: pass `zone` (id or slug) to get ONE zone's mappings — names are
+   * only unique per zone, and a cert can log in only to hosts of its own zone.
+   * Without a zone the result spans every zone (legacy callers).
    */
-  async mappingsByPrincipal(ctx: ServiceContext): Promise<Record<string, Array<{ fqdn: string; localAccount: string }>>> {
-    const rows = await ctx.db
+  async mappingsByPrincipal(
+    ctx: ServiceContext,
+    opts?: { zone?: string }
+  ): Promise<Record<string, Array<{ fqdn: string; localAccount: string }>>> {
+    const zoneId = opts?.zone ? (await resolveZone(ctx, opts.zone)).id : undefined;
+    const q = ctx.db
       .select({ name: sshPrincipals.name, fqdn: sshHosts.fqdn, localAccount: sshHostPrincipalMaps.localAccount })
       .from(sshHostPrincipalMaps)
       .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
       .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id));
+    const rows = zoneId ? await q.where(and(eq(sshHosts.zoneId, zoneId), eq(sshPrincipals.zoneId, zoneId))) : await q;
     const out: Record<string, Array<{ fqdn: string; localAccount: string }>> = {};
     for (const r of rows as any[]) {
       (out[r.name] ??= []).push({ fqdn: r.fqdn, localAccount: r.localAccount });

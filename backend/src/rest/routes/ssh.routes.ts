@@ -364,9 +364,9 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   // TASK-216 — principal twins. `/principals/mappings` and `/principals/stale-hosts`
   // are declared before `DELETE /principals/:id` only for readability; the
   // methods differ, so ordering is not load-bearing here.
-  api.get('/principals/mappings', objectSchema('List principal -> (host, local account) mappings across the fleet'), async (req) => {
+  api.get('/principals/mappings', objectSchema('List principal -> (host, local account) mappings (?zone=<id|slug> for one zone; all zones without it)'), async (req) => {
     ensureSshAllowed();
-    return getSshPrincipalService().mappingsByPrincipal(ctx(req));
+    return getSshPrincipalService().mappingsByPrincipal(ctx(req), { zone: (req.query as any)?.zone });
   });
 
   api.get('/principals/stale-hosts', listSchema('Hosts whose principal maps changed after the last push'), async (req) => {
