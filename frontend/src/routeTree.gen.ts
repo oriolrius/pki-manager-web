@@ -20,6 +20,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SshZonesRouteImport } from './routes/ssh.zones'
 import { Route as SshUsersRouteImport } from './routes/ssh.users'
+import { Route as SshTokensRouteImport } from './routes/ssh.tokens'
 import { Route as SshPrincipalsRouteImport } from './routes/ssh.principals'
 import { Route as SshKrlRouteImport } from './routes/ssh.krl'
 import { Route as SshHostsRouteImport } from './routes/ssh.hosts'
@@ -87,6 +88,11 @@ const SshZonesRoute = SshZonesRouteImport.update({
 const SshUsersRoute = SshUsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshTokensRoute = SshTokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
   getParentRoute: () => SshRoute,
 } as any)
 const SshPrincipalsRoute = SshPrincipalsRouteImport.update({
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/ssh/hosts': typeof SshHostsRouteWithChildren
   '/ssh/krl': typeof SshKrlRoute
   '/ssh/principals': typeof SshPrincipalsRoute
+  '/ssh/tokens': typeof SshTokensRoute
   '/ssh/users': typeof SshUsersRouteWithChildren
   '/ssh/zones': typeof SshZonesRoute
   '/ssh/cas/$id': typeof SshCasIdRoute
@@ -204,6 +211,7 @@ export interface FileRoutesByTo {
   '/ssh/hosts': typeof SshHostsRouteWithChildren
   '/ssh/krl': typeof SshKrlRoute
   '/ssh/principals': typeof SshPrincipalsRoute
+  '/ssh/tokens': typeof SshTokensRoute
   '/ssh/users': typeof SshUsersRouteWithChildren
   '/ssh/zones': typeof SshZonesRoute
   '/ssh/cas/$id': typeof SshCasIdRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/ssh/hosts': typeof SshHostsRouteWithChildren
   '/ssh/krl': typeof SshKrlRoute
   '/ssh/principals': typeof SshPrincipalsRoute
+  '/ssh/tokens': typeof SshTokensRoute
   '/ssh/users': typeof SshUsersRouteWithChildren
   '/ssh/zones': typeof SshZonesRoute
   '/ssh/cas/$id': typeof SshCasIdRoute
@@ -260,6 +269,7 @@ export interface FileRouteTypes {
     | '/ssh/hosts'
     | '/ssh/krl'
     | '/ssh/principals'
+    | '/ssh/tokens'
     | '/ssh/users'
     | '/ssh/zones'
     | '/ssh/cas/$id'
@@ -286,6 +296,7 @@ export interface FileRouteTypes {
     | '/ssh/hosts'
     | '/ssh/krl'
     | '/ssh/principals'
+    | '/ssh/tokens'
     | '/ssh/users'
     | '/ssh/zones'
     | '/ssh/cas/$id'
@@ -313,6 +324,7 @@ export interface FileRouteTypes {
     | '/ssh/hosts'
     | '/ssh/krl'
     | '/ssh/principals'
+    | '/ssh/tokens'
     | '/ssh/users'
     | '/ssh/zones'
     | '/ssh/cas/$id'
@@ -411,6 +423,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/ssh/users'
       preLoaderRoute: typeof SshUsersRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/tokens': {
+      id: '/ssh/tokens'
+      path: '/tokens'
+      fullPath: '/ssh/tokens'
+      preLoaderRoute: typeof SshTokensRouteImport
       parentRoute: typeof SshRoute
     }
     '/ssh/principals': {
@@ -586,6 +605,7 @@ interface SshRouteChildren {
   SshHostsRoute: typeof SshHostsRouteWithChildren
   SshKrlRoute: typeof SshKrlRoute
   SshPrincipalsRoute: typeof SshPrincipalsRoute
+  SshTokensRoute: typeof SshTokensRoute
   SshUsersRoute: typeof SshUsersRouteWithChildren
   SshZonesRoute: typeof SshZonesRoute
 }
@@ -595,6 +615,7 @@ const SshRouteChildren: SshRouteChildren = {
   SshHostsRoute: SshHostsRouteWithChildren,
   SshKrlRoute: SshKrlRoute,
   SshPrincipalsRoute: SshPrincipalsRoute,
+  SshTokensRoute: SshTokensRoute,
   SshUsersRoute: SshUsersRouteWithChildren,
   SshZonesRoute: SshZonesRoute,
 }
