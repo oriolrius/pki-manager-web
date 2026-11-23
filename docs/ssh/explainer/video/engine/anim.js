@@ -306,7 +306,8 @@
   }
   /** Next-episode end card strip. */
   function nextCard(label, at) {
-    return show(rect(1420, 900, 400, 70, { fill: C.navy, stroke: C.navy, sw: 0, r: 35 }) + text(1620, 936, `Next: ${label}  →`, { size: 26, anchor: 'middle', fill: C.white, weight: 700 }), { at, from: 'right', dist: 30 });
+    const w = Math.max(400, textW(`Next: ${label}  →`, 26) + 70);
+    return show(rect(1820 - w, 900, w, 70, { fill: C.navy, stroke: C.navy, sw: 0, r: 35 }) + text(1820 - w / 2, 936, `Next: ${label}  →`, { size: 26, anchor: 'middle', fill: C.white, weight: 700 }), { at, from: 'right', dist: 30 });
   }
   /** Symbol in a circle (big ✓ / ✕ / ?). */
   function mark(cx, cy, sym, { r = 40, color = C.green } = {}) {
