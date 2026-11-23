@@ -101,6 +101,18 @@
     <a href="#ep09"><b>09</b>Automation and Ansible</a>
     <a href="#ep10"><b>10</b>Recap and troubleshooting</a>
   </nav>
+  <p style="margin:18px 0 0"><b style="color:var(--ink)">Series 2 — Principals in depth:</b></p>
+  <nav class="toc" aria-label="Series 2 episodes" style="margin-top:10px">
+    <a href="#ep11"><b>11</b>What sshd really checks</a>
+    <a href="#ep12"><b>12</b>Designing your catalog</a>
+    <a href="#ep13"><b>13</b>Mapping a real fleet</a>
+    <a href="#ep14"><b>14</b>People and profiles</a>
+    <a href="#ep15"><b>15</b>Customers</a>
+    <a href="#ep16"><b>16</b>Break-glass and temporary access</a>
+    <a href="#ep17"><b>17</b>Robots and pipelines</a>
+    <a href="#ep18"><b>18</b>Changing access, who did what</a>
+    <a href="#ep19"><b>19</b>Test your design</a>
+  </nav>
   <p style="color:var(--muted);font-size:15px">Running example everywhere: company <b>Acme</b>, servers
     <code>web1.acme.example</code> and <code>db1.acme.example</code>, user <b>Alice</b>, role
     <code>developers</code>, local account <code>deploy</code>, PKI Manager at <code>pki.acme.example</code>.
@@ -333,6 +345,121 @@ ssh deploy@web1.acme.example</code></pre>
       <a href="../host-blocks-runbook.md">Per-host blocks runbook</a> ·
       <a href="../zones.md">Zones</a> · <a href="../../ssh-api-contract.md">Automation API</a></p>
   </section>
+
+  <!-- ===================== SERIES 2 ===================== -->
+  <section class="ep" id="series2" style="border-top-color:var(--orange)">
+    <div class="num">SERIES 2</div>
+    <h2>Principals in depth</h2>
+    <p class="lead">Nine short episodes to design, operate and audit principals in a real fleet. Running
+      example: one fleet for three customers (Acme, Globex, Initech), staff Ana (junior dev, Acme),
+      Pau (senior dev, Acme + Globex), Marta (sysadmin), Sara (security), and two robots.</p>
+    <p>Full mapping tables: <a href="../principals-guide.md">Principals guide</a>.</p>
+  </section>
+
+  <section class="ep" id="ep11">
+    <div class="num">EPISODE 11</div>
+    <h2>Under the hood: what sshd really checks</h2>
+    <div class="video" data-ep="11"></div>
+    <figure><img src="diagrams/svg/20-sshd-principal-decision.svg" alt="sshd decision for a certificate login"></figure>
+    <ul class="tight">
+      <li>One principals file per local account (<code>/etc/ssh/auth_principals/%u</code>).</li>
+      <li>An account with <b>no</b> file accepts no certificate from your CA. Old <code>authorized_keys</code> entries and passwords are a separate door: close them.</li>
+      <li><b>One match is enough</b> (OR, never AND).</li>
+      <li>sshd logs <code>ID &lt;key id&gt; (serial N) CA &lt;fingerprint&gt;</code>. The key ID is a label (default: the identity); match <b>CA + serial</b> to be sure.</li>
+    </ul>
+  </section>
+
+  <section class="ep" id="ep12">
+    <div class="num">EPISODE 12</div>
+    <h2>Designing your principal catalog</h2>
+    <div class="video" data-ep="12"></div>
+    <figure><img src="diagrams/svg/21-principal-families.svg" alt="Roles, customers, special and robot principals"></figure>
+    <ul class="tight">
+      <li>Few, durable labels; slice per server in the mapping.</li>
+      <li>Need "role <b>and</b> customer"? Create one combined principal (e.g. <code>acme-deployer</code>).</li>
+      <li>Names: <code>^[A-Za-z0-9][A-Za-z0-9._@-]{0,62}$</code>, no colon; keep <code>@</code> for the per-host form.</li>
+      <li>No principal per person: the key ID already identifies the person.</li>
+    </ul>
+  </section>
+
+  <section class="ep" id="ep13">
+    <div class="num">EPISODE 13</div>
+    <h2>Mapping a real fleet</h2>
+    <div class="video" data-ep="13"></div>
+    <figure><img src="diagrams/svg/22-fleet-mapping.svg" alt="Mappings per server class"></figure>
+    <p>Map by <b>server class</b>. The host shows <b>Stale — needs push</b> when its principals files
+      changed; deploy them (Ansible role or by hand), then <b>Mark pushed</b>, or let automation confirm
+      with <code>POST /api/v1/external/ssh/hosts/&lt;fqdn&gt;/principals-pushed {"sha256": …}</code>.
+      Remove a mapping with the × on the mapping card, then push again. Make <code>audit</code>
+      read-only in the OS.</p>
+  </section>
+
+  <section class="ep" id="ep14">
+    <div class="num">EPISODE 14</div>
+    <h2>People and profiles</h2>
+    <div class="video" data-ep="14"></div>
+    <figure><img src="diagrams/svg/23-who-reaches-what.svg" alt="Who reaches which accounts"></figure>
+    <p>Least privilege per person; security is <b>not</b> admin (separation of duties). Before you
+      issue, read <i>Where these principals grant login</i> on the Issue User Certificate page (it shows
+      the identity's zone).</p>
+  </section>
+
+  <section class="ep" id="ep15">
+    <div class="num">EPISODE 15</div>
+    <h2>Customers: isolation, moves and exits</h2>
+    <div class="video" data-ep="15"></div>
+    <figure><img src="diagrams/svg/24-customer-lifecycle.svg" alt="New customer, moving people, customer exit"></figure>
+    <ul class="tight">
+      <li>Someone moves: issue the new certificate, <b>revoke the old one</b> by serial.</li>
+      <li>Customer leaves with its servers: remove your CA trust and principals files on the machines,
+        test, then Offboard (Offboard does not touch the machines).</li>
+      <li>Must a customer reject everything signed for others? Use a <b>zone</b>.</li>
+    </ul>
+  </section>
+
+  <section class="ep" id="ep16">
+    <div class="num">EPISODE 16</div>
+    <h2>Break-glass and temporary access</h2>
+    <div class="video" data-ep="16"></div>
+    <figure><img src="diagrams/svg/25-break-glass.svg" alt="Break-glass sequence"></figure>
+    <p>Break-glass is mapped to root and carried by nobody on normal days. Issuer ≠ holder, lifetime
+      <code>+1h</code>, alert on issuance, follow CA + serial in central logs, review. Keep one offline way
+      in. Contractors: only the customer principal, a short lifetime, then Offboard.</p>
+  </section>
+
+  <section class="ep" id="ep17">
+    <div class="num">EPISODE 17</div>
+    <h2>Robots and pipelines</h2>
+    <div class="video" data-ep="17"></div>
+    <figure><img src="diagrams/svg/26-robot-certificates.svg" alt="Short, restricted certificate per CI run"></figure>
+    <ul class="tight">
+      <li>One identity and one principal per robot; map it narrowly, never to root.</li>
+      <li><i>Force command</i>, <i>Source address</i>, and <i>Harden — clear all</i> extensions.</li>
+      <li>Fleet tokens with <b>sign-user limits</b>: <i>Allowed principals</i> + <i>Max certificate lifetime</i>
+        (15 minutes for CI). A token without limits shows <b>Unrestricted</b>. Keep the token in a trusted
+        service; give the job only the certificate.</li>
+    </ul>
+  </section>
+
+  <section class="ep" id="ep18">
+    <div class="num">EPISODE 18</div>
+    <h2>Changing access, and proving who did what</h2>
+    <div class="video" data-ep="18"></div>
+    <figure><img src="diagrams/svg/27-four-levers.svg" alt="Four levers to change access"></figure>
+    <figure><img src="diagrams/svg/28-audit-join.svg" alt="Join the certificate record and the sshd log on CA and serial"></figure>
+    <p>Directory changes do not change certificates; bulk renew copies old principals. Record
+      <b>Allowed principals</b> on each identity (they also feed the host Access list); the entitlement check
+      is an API/Ansible option.</p>
+  </section>
+
+  <section class="ep" id="ep19">
+    <div class="num">EPISODE 19</div>
+    <h2>Test your design</h2>
+    <div class="video" data-ep="19"></div>
+    <p>Test one person end to end (one accepted login, two refused), then match the log line to the
+      certificate. Look for: per-person principals, security with admin, robots with people's
+      certificates, signing tokens in jobs, long lifetimes, old <code>authorized_keys</code> or passwords.</p>
+  </section>
 </main>
 <footer>Videos, diagrams and page are built from <code>docs/ssh/explainer/</code> (script:
   <code>video/script.md</code>). Narration: synthetic female English voice, generated locally (VoiceStudio).</footer>
@@ -355,6 +482,11 @@ ssh deploy@web1.acme.example</code></pre>
     '05': 'ssh-ca-05-principals-the-one-rule-that-matters', '06': 'ssh-ca-06-lifecycle-expiry-revocation-rotation',
     '07': 'ssh-ca-07-per-host-access-blocks', '08': 'ssh-ca-08-zones-separate-trust-domains',
     '09': 'ssh-ca-09-automation-fleet-tokens-and-ansible', '10': 'ssh-ca-10-recap-and-troubleshooting',
+    '11': 'ssh-ca-11-under-the-hood-what-sshd-really-checks', '12': 'ssh-ca-12-designing-your-principal-catalog',
+    '13': 'ssh-ca-13-mapping-a-real-fleet', '14': 'ssh-ca-14-people-and-profiles',
+    '15': 'ssh-ca-15-customers-isolation-moves-and-exits', '16': 'ssh-ca-16-break-glass-and-temporary-access',
+    '17': 'ssh-ca-17-robots-and-pipelines', '18': 'ssh-ca-18-changing-access-and-proving-who-did-what',
+    '19': 'ssh-ca-19-test-your-design',
   };
   document.querySelectorAll('.video').forEach((box) => {
     const base = 'media/' + FILES[box.dataset.ep];
