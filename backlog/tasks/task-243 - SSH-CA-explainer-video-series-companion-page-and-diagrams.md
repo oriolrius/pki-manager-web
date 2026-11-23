@@ -1,9 +1,11 @@
 ---
 id: TASK-243
 title: 'SSH CA explainer: video series, companion page and diagrams'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-23T16:11:00Z'
+updated_date: '2026-11-23T16:11:00Z'
 labels:
   - docs
   - ssh
@@ -25,3 +27,16 @@ Sysadmins who know Linux but not SSH certificates need a visual, step-by-step ex
 - [ ] #4 A companion HTML page explains every episode with its diagrams and links to the clips
 - [ ] #5 Content matches the current code (e.g. ECDSA P-256 host keys, 1-week user and 52-week host TTLs)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Verify facts against code and docs/ssh
+2. Write English script per episode (narration + visuals)
+3. Independent Fable review for accuracy and clarity; fix
+4. User validates script
+5. PlantUML theme + diagrams (SVG)
+6. Self-contained vector video engine (SVG scenes -> Playwright frames -> ffmpeg), VoiceStudio oriol-en narration, SRT
+7. Companion index.html
+8. Render all episodes, review stills, commit
+<!-- SECTION:PLAN:END -->
