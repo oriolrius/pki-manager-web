@@ -29,6 +29,15 @@ ssh.host.access joins host mappings only with grants (ssh_user_principals). Gran
 - [x] #5 The host Access card shows the row source in a subtle way
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. hostAccess: load host maps (role -> accounts), then grants and live user certs of the host zone; match bare P and P@<fqdn>; skip status/serial/key/key-id revoked certs.
+2. Tag rows with source; keep block merge as is; return zoneId.
+3. HostAccessCard: source tag + zone-filtered Block user list.
+4. Tests backend + RTL; docs row.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
