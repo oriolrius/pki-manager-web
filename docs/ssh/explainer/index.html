@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SSH certificates with PKI Manager</title>
+<meta name="description" content="A short video series and reference for Linux sysadmins: how an SSH certificate authority works and how to run it with PKI Manager.">
+<style>
+  @font-face { font-family: Ubuntu; src: url(video/engine/fonts/Ubuntu-Regular.ttf); font-weight: 400; }
+  @font-face { font-family: Ubuntu; src: url(video/engine/fonts/Ubuntu-Medium.ttf); font-weight: 500; }
+  @font-face { font-family: Ubuntu; src: url(video/engine/fonts/Ubuntu-Bold.ttf); font-weight: 700; }
+  @font-face { font-family: 'Ubuntu Mono'; src: url(video/engine/fonts/UbuntuMono-Regular.ttf); }
+  :root {
+    --navy: #151652; --navy-deep: #0E0F3A; --orange: #FF6600; --orange-ink: #C95000;
+    --orange-soft: #FFF4EC; --green: #0C8760; --green-soft: #E7F6F0; --slate: #54595F;
+    --body: #575757; --muted: #7A7A7A; --mist: #F4F4F4; --line: #D5D6D7; --red: #C62828;
+    --red-soft: #FDECEC; --bg: #FFFFFF; --card: #FFFFFF; --ink: var(--navy); --code-bg: #10112E; --code-fg: #E8E9F3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E0F3A; --card: #15164A; --ink: #F4F4F4; --body: #C9CAE6; --muted: #A9ABD0;
+      --mist: #1C1D57; --line: #2E3070; --orange-soft: #2A1E2E; --green-soft: #12313A; --red-soft: #3A1A2A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E0F3A; --card: #15164A; --ink: #F4F4F4; --body: #C9CAE6; --muted: #A9ABD0;
+    --mist: #1C1D57; --line: #2E3070; --orange-soft: #2A1E2E; --green-soft: #12313A; --red-soft: #3A1A2A;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--body); font: 17px/1.6 Ubuntu, system-ui, sans-serif; }
+  a { color: var(--orange-ink); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) a { color: #FF8533; } }
+  :root[data-theme="dark"] a { color: #FF8533; }
+  code, pre { font-family: 'Ubuntu Mono', ui-monospace, monospace; }
+  code { background: var(--mist); color: var(--ink); padding: 1px 6px; border-radius: 5px; font-size: 0.95em; }
+  pre { background: var(--code-bg); color: var(--code-fg); padding: 16px 18px; border-radius: 12px; overflow-x: auto; font-size: 15px; line-height: 1.5; }
+  pre code { background: none; color: inherit; padding: 0; }
+  h1, h2, h3 { color: var(--ink); line-height: 1.2; }
+  h1 { font-size: clamp(32px, 5vw, 52px); margin: 0 0 12px; }
+  h2 { font-size: clamp(24px, 3.4vw, 34px); margin: 0 0 6px; }
+  h3 { font-size: 20px; margin: 28px 0 8px; }
+  header.top { background: var(--navy); color: #fff; padding: 56px 16px 48px; }
+  header.top .wrap { max-width: 1080px; margin: 0 auto; }
+  header.top h1 { color: #fff; }
+  header.top p { color: #C9CAE6; max-width: 760px; font-size: 19px; margin: 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: #fff; margin-bottom: 28px; }
+  .brand i { width: 22px; height: 22px; border-radius: 6px; background: var(--orange); display: inline-block; }
+  .bar { height: 6px; width: 140px; background: var(--orange); border-radius: 3px; margin: 18px 0 22px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 8px 16px 80px; }
+  nav.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 32px 0 8px; }
+  nav.toc a { display: block; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: 12px; text-decoration: none; color: var(--ink); background: var(--card); }
+  nav.toc a b { color: var(--orange); margin-right: 6px; }
+  nav.toc a:hover { border-color: var(--orange); }
+  section.ep { border-top: 2px solid var(--line); padding-top: 40px; margin-top: 48px; }
+  .num { color: var(--orange); font-weight: 700; letter-spacing: 0.06em; font-size: 15px; }
+  .lead { font-size: 19px; color: var(--ink); margin: 6px 0 18px; }
+  video { width: 100%; border-radius: 14px; background: #000; display: block; border: 1px solid var(--line); }
+  .video-missing { padding: 28px; border-radius: 14px; background: var(--mist); color: var(--muted); text-align: center; }
+  figure { margin: 22px 0; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; overflow-x: auto; }
+  figure img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  figcaption { font-size: 14px; color: #7A7A7A; text-align: center; margin-top: 8px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .card { background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+  .card.user { border-color: var(--orange); background: var(--orange-soft); }
+  .card.host { border-color: var(--green); background: var(--green-soft); }
+  .card.bad { border-color: var(--red); background: var(--red-soft); }
+  .card h4 { margin: 0 0 6px; color: var(--ink); font-size: 17px; }
+  .card p { margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 16px; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink); background: var(--mist); }
+  .rule { border-left: 5px solid var(--orange); background: var(--orange-soft); padding: 12px 16px; border-radius: 0 12px 12px 0; color: var(--ink); margin: 18px 0; }
+  ul.tight li { margin: 4px 0; }
+  .theme { position: fixed; top: 12px; right: 12px; z-index: 5; border: 1px solid #ffffff55; background: #ffffff22; color: #fff; border-radius: 999px; padding: 6px 12px; font: 14px Ubuntu, sans-serif; cursor: pointer; }
+  footer { max-width: 1080px; margin: 0 auto; padding: 24px 16px 48px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<button class="theme" id="theme" type="button" aria-label="Toggle dark mode">◐ Theme</button>
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><i></i> PKI Manager · SSH certificates</div>
+    <h1>SSH certificates with PKI Manager</h1>
+    <div class="bar"></div>
+    <p>Ten short videos and one page of reference for Linux sysadmins who use SSH every day but have
+      never used SSH certificates. Watch an episode, then use its section as the cheat sheet.</p>
+  </div>
+</header>
+
+<main>
+  <nav class="toc" aria-label="Episodes">
+    <a href="#ep01"><b>01</b>Why SSH certificates</a>
+    <a href="#ep02"><b>02</b>Two CAs, trust crosses over</a>
+    <a href="#ep03"><b>03</b>Host certificates</a>
+    <a href="#ep04"><b>04</b>User certificates</a>
+    <a href="#ep05"><b>05</b>Principals: the one rule</a>
+    <a href="#ep06"><b>06</b>Lifecycle and revocation</a>
+    <a href="#ep07"><b>07</b>Per-host access blocks</a>
+    <a href="#ep08"><b>08</b>Zones</a>
+    <a href="#ep09"><b>09</b>Automation and Ansible</a>
+    <a href="#ep10"><b>10</b>Recap and troubleshooting</a>
+  </nav>
+  <p style="color:var(--muted);font-size:15px">Running example everywhere: company <b>Acme</b>, servers
+    <code>web1.acme.example</code> and <code>db1.acme.example</code>, user <b>Alice</b>, role
+    <code>developers</code>, local account <code>deploy</code>, PKI Manager at <code>pki.acme.example</code>.
+    Colours: <b style="color:#FF6600">orange</b> = User CA and user certificates,
+    <b style="color:#0C8760">green</b> = Host CA and host certificates.</p>
+
+  <!-- 01 -->
+  <section class="ep" id="ep01">
+    <div class="num">EPISODE 01</div>
+    <h2>Why SSH certificates</h2>
+    <p class="lead">Plain keys do not scale, and "trust on first use" trusts nothing. A certificate
+      authority (CA) fixes both: trust one signer instead of every key.</p>
+    <div class="video" data-ep="01"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card bad"><h4>Problem 1: key sprawl</h4><p>Every server has its own
+        <code>authorized_keys</code>. People × servers lines. Miss one when someone leaves, and
+        they keep access.</p></div>
+      <div class="card bad"><h4>Problem 2: trust on first use</h4><p>The first connection asks
+        "fingerprint? yes/no" and you cannot check it. A rebuilt server shows a scary warning.</p></div>
+    </div>
+    <figure><img src="diagrams/svg/01-keys-vs-ca.svg" alt="Without a CA every server lists every key; with a CA every server trusts one signer"></figure>
+    <p>A certificate is your normal public key plus signed fields: key ID, <b>principals</b>
+      (roles), validity dates and a serial. Change one byte and the signature breaks. Read one with
+      <code>ssh-keygen -L -f ~/.ssh/id_ed25519-cert.pub</code>.</p>
+    <figure><img src="diagrams/svg/02-certificate-anatomy.svg" alt="Fields inside an SSH user certificate"></figure>
+    <p><b>PKI Manager</b> is the CA. The CA private keys live in a key management system and never
+      leave it. PKI Manager signs, tracks, and generates every file; it never logs in to your machines
+      — you place the files by hand or with Ansible.</p>
+  </section>
+
+  <!-- 02 -->
+  <section class="ep" id="ep02">
+    <div class="num">EPISODE 02</div>
+    <h2>Two CAs, trust crosses over</h2>
+    <p class="lead">Every login answers two questions, so there are two CAs.</p>
+    <div class="video" data-ep="02"></div>
+    <figure><img src="diagrams/svg/03-trust-directions.svg" alt="The User CA key goes to servers; the Host CA line goes to clients"></figure>
+    <div class="grid2">
+      <div class="card user"><h4>User CA → every server</h4><p>Signs people's keys. Servers trust it
+        through <code>TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub</code>.</p></div>
+      <div class="card host"><h4>Host CA → every client</h4><p>Signs servers' keys. Clients trust it
+        with one <code>@cert-authority *.acme.example …</code> line in <code>~/.ssh/known_hosts</code>.</p></div>
+    </div>
+    <p>Create both once: <b>SSH → Certificate Authorities → Create SSH Certificate Authority</b>, one of
+      type <i>User</i>, one of type <i>Host</i>.</p>
+  </section>
+
+  <!-- 03 -->
+  <section class="ep" id="ep03">
+    <div class="num">EPISODE 03</div>
+    <h2>Host certificates: no more "fingerprint?" prompt</h2>
+    <p class="lead">Register the server's ECDSA P-256 public key, place the deploy bundle, reload.</p>
+    <div class="video" data-ep="03"></div>
+    <figure><img src="diagrams/svg/04-host-enrolment.svg" alt="Sequence to enrol a server by hand"></figure>
+    <h3>On the server</h3>
+<pre><code>cat /etc/ssh/ssh_host_ecdsa_key.pub      # send ONLY this (PKI Manager accepts only ecdsa-sha2-nistp256)</code></pre>
+    <p>In PKI Manager: <b>Hosts → Register host</b> (FQDN + key, <i>Issue a host certificate
+      immediately</i> on). The host page shows <b>Files to place on this server</b>:</p>
+    <table>
+      <tr><th>File</th><th>Path</th></tr>
+      <tr><td>Host certificate (52 weeks)</td><td><code>/etc/ssh/ssh_host_ecdsa_key-cert.pub</code></td></tr>
+      <tr><td>User CA public key</td><td><code>/etc/ssh/ssh-user-ca.pub</code></td></tr>
+      <tr><td>Host CA public key (KRL signature anchor)</td><td><code>/etc/ssh/ssh-host-ca.pub</code></td></tr>
+      <tr><td>sshd config file</td><td><code>/etc/ssh/sshd_config.d/60-ssh-ca.conf</code></td></tr>
+      <tr><td>Principals per account</td><td><code>/etc/ssh/auth_principals/&lt;account&gt;</code></td></tr>
+      <tr><td>Revocation list (must exist)</td><td><code>/etc/ssh/revoked_keys</code></td></tr>
+    </table>
+    <figure><img src="diagrams/svg/05-sshd-dropin.svg" alt="The five sshd settings and what each does"></figure>
+<pre><code>sudo install -m 0444 /dev/null /etc/ssh/revoked_keys   # missing file = every key login refused
+sudo sshd -t &amp;&amp; sudo systemctl reload ssh               # RHEL: sshd</code></pre>
+    <h3>On every laptop (do it before the reload)</h3>
+<pre><code>curl "https://pki.acme.example/ssh/zones/default/cert-authority?pattern=*.acme.example" \
+  &gt;&gt; ~/.ssh/known_hosts
+ssh deploy@web1.acme.example     # use the exact name in the host certificate</code></pre>
+  </section>
+
+  <!-- 04 -->
+  <section class="ep" id="ep04">
+    <div class="num">EPISODE 04</div>
+    <h2>User certificates: log in with a signed key</h2>
+    <p class="lead">Create an identity, issue a one-week certificate for the user's public key, install it
+      next to the key.</p>
+    <div class="video" data-ep="04"></div>
+    <figure><img src="diagrams/svg/06-user-cert-login.svg" alt="Issue a user certificate and the four checks at login"></figure>
+<pre><code>ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519     # Ed25519 or ECDSA; RSA is not accepted
+cat ~/.ssh/id_ed25519.pub                       # send ONLY this</code></pre>
+    <p>In PKI Manager: <b>User certificates → New Identity</b>, then <b>Issue Certificate</b>
+      (principals, default validity 7 days). The form shows where each principal is mapped.</p>
+<pre><code># save as ~/.ssh/id_ed25519-cert.pub (same name + -cert.pub)
+Host *.acme.example
+  IdentityFile ~/.ssh/id_ed25519
+  CertificateFile ~/.ssh/id_ed25519-cert.pub
+  IdentitiesOnly yes
+
+ssh-keygen -L -f ~/.ssh/id_ed25519-cert.pub   # key ID, principals, validity
+ssh deploy@web1.acme.example</code></pre>
+    <p>The server checks four things: not revoked, signed by the User CA, within the dates, and a
+      principal that matches. Next week: issue a new certificate for the same key.</p>
+  </section>
+
+  <!-- 05 -->
+  <section class="ep" id="ep05">
+    <div class="num">EPISODE 05</div>
+    <h2>Principals: the one rule that matters</h2>
+    <p class="lead">A principal is a role label. It gives access only when it is in two places.</p>
+    <div class="video" data-ep="05"></div>
+    <div class="rule"><b>The rule:</b> a login works only when the same principal is in the user's
+      certificate <b>and</b> in <code>/etc/ssh/auth_principals/&lt;account&gt;</code> on the server.
+      Otherwise: signature OK, but <code>Permission denied (publickey)</code>; sshd logs
+      <code>Certificate does not contain an authorized principal</code>.</div>
+    <figure><img src="diagrams/svg/07-principals-two-places.svg" alt="The principal must be in the certificate and in auth_principals"></figure>
+    <p>In PKI Manager: <b>Principals</b> → create the principal in the catalog → map it per host to a
+      local account (<code>developers → deploy</code> on web1). The host shows <b>Stale — needs push</b>
+      until you deploy the file and click <b>Mark pushed</b> (it records only; it deploys nothing).
+      The local account must already exist.</p>
+    <figure><img src="diagrams/svg/08-principal-fleet-design.svg" alt="Roles and customer scopes mapped per server class"></figure>
+    <ul class="tight">
+      <li>Certificate = identity, follows the person. Mapping = policy, follows the server.</li>
+      <li>Few, stable roles (<code>developers</code>, <code>sysadmins</code>) plus scopes
+        (<code>client-acme</code>). Slice per environment in the mapping.</li>
+    </ul>
+  </section>
+
+  <!-- 06 -->
+  <section class="ep" id="ep06">
+    <div class="num">EPISODE 06</div>
+    <h2>Lifecycle: expiry, revocation, rotation</h2>
+    <p class="lead">Short lifetimes first; the KRL for emergencies.</p>
+    <div class="video" data-ep="06"></div>
+    <figure><img src="diagrams/svg/09-revocation-krl.svg" alt="Expiry and KRL distribution with krl-client"></figure>
+    <table>
+      <tr><th>Need</th><th>Action</th></tr>
+      <tr><td>Stop new certificates</td><td><b>Disable</b> the identity; old ones expire within 7 days</td></tr>
+      <tr><td>Someone leaves</td><td><b>Offboard</b> the identity: revokes all active certificates (KRL) + disables. Cannot be undone</td></tr>
+      <tr><td>Revoke one certificate now</td><td>Revoke it → KRL → hosts pull it (≈15 min with <code>krl-client</code>)</td></tr>
+      <tr><td>Decommission a server</td><td><b>Offboard</b> the host (final) and destroy its host key: laptops do not check the KRL</td></tr>
+      <tr><td>Rotate a CA</td><td>Rotate → old CA "rotating" (still trusted), new CA signs. Deploy new trust files first; retire the old CA when its certificates expire</td></tr>
+    </table>
+    <p>Remove old <code>authorized_keys</code> entries: sshd still accepts them. Run NTP/chrony on
+      every server and laptop.</p>
+    <figure><img src="diagrams/svg/10-ca-rotation.svg" alt="CA states: active, rotating, retired"></figure>
+  </section>
+
+  <!-- 07 -->
+  <section class="ep" id="ep07">
+    <div class="num">EPISODE 07</div>
+    <h2>Per-host access blocks</h2>
+    <p class="lead">Cut one person off one server, keep the rest. A block is not a revocation.</p>
+    <div class="video" data-ep="07"></div>
+    <figure><img src="diagrams/svg/11-per-host-block.svg" alt="Each host gets its own KRL that includes its blocks"></figure>
+    <p>Host page → <b>Block user…</b> → pick the identity, add a reason, confirm. Undo with
+      <b>Unblock</b>. The KRL page shows each host's state:</p>
+    <figure><img src="diagrams/svg/12-block-states.svg" alt="Rolling out, Enforced, Clearing, Not enforced"></figure>
+    <p>Limits: one pull interval of delay; a person who can still get certificates could use a new key
+      in that window — the optional <code>SSH_BLOCK_ISSUANCE_GATE</code> stops new certificates from
+      opening the blocked host.</p>
+  </section>
+
+  <!-- 08 -->
+  <section class="ep" id="ep08">
+    <div class="num">EPISODE 08</div>
+    <h2>Zones: separate trust domains</h2>
+    <p class="lead">Prod and staging, or customer A and B, in one PKI Manager — with a real boundary.</p>
+    <div class="video" data-ep="08"></div>
+    <figure><img src="diagrams/svg/13-zones.svg" alt="Two zones, each with its own CAs, hosts and identities"></figure>
+    <div class="rule"><b>The rule:</b> a host in a zone trusts only that zone's User CA. Revocations and
+      blocks stay in their zone.</div>
+    <ul class="tight">
+      <li>Names are unique per zone; one identity per person per zone.</li>
+      <li>A host cannot change zone: offboard and enrol it again. Archive a zone; do not delete it.</li>
+      <li>With two or more zones, every request must name its zone, or PKI Manager refuses
+        (<code>zone is ambiguous — 2 zones exist (prod, staging); specify one explicitly</code>).
+        Fleet tokens carry their zone. Use the zone switcher in the UI.</li>
+    </ul>
+  </section>
+
+  <!-- 09 -->
+  <section class="ep" id="ep09">
+    <div class="num">EPISODE 09</div>
+    <h2>Automation: fleet tokens and Ansible</h2>
+    <p class="lead">Let servers enrol themselves with a scoped token and the Ansible role.</p>
+    <div class="video" data-ep="09"></div>
+    <p><b>SSH → Fleet tokens → Mint token</b>, preset <i>Self-provisioning host with KRL
+      (recommended)</i> = <code>sign-host</code>, <code>get-principals</code>,
+      <code>register-host-pubkey</code>. Shown once (<code>pkimg_…</code>); PKI Manager keeps only a
+      hash. Store it in Ansible Vault.</p>
+    <figure><img src="diagrams/svg/14-ansible-enrolment.svg" alt="What one run of the ssh_host_cert role does"></figure>
+<pre><code>ansible-galaxy collection install oriolrius.pki_manager
+
+- hosts: sshservers
+  become: true
+  vars:
+    ssh_ca_base_url: https://pki.acme.example
+    ssh_ca_fleet_token: "{{ vault_fleet_token }}"
+    # live revocation + blocks (backend: SSH_ECIES_ENABLED=true)
+    ssh_host_cert_ecies_enabled: true
+    ssh_host_cert_krl_client_url: https://artifacts.acme.example/krl-client-linux-amd64
+    ssh_host_cert_krl_client_checksum: "sha256:…"
+  roles:
+    - oriolrius.pki_manager.ssh_host_cert</code></pre>
+    <ul class="tight">
+      <li>On a new host: run the role, create the mappings, run it again.</li>
+      <li>CI: <code>POST /api/v1/external/ssh/sign-user</code>, optionally locked with
+        <code>forceCommand</code> and <code>sourceAddress</code>.</li>
+      <li>Renewal stores the token on the host (<code>/etc/pki-manager/ssh-renew.env</code>, 0600);
+        set <code>ssh_host_cert_renew_enabled: false</code> to renew from the controller.</li>
+    </ul>
+  </section>
+
+  <!-- 10 -->
+  <section class="ep" id="ep10">
+    <div class="num">EPISODE 10</div>
+    <h2>Recap and troubleshooting</h2>
+    <div class="video" data-ep="10"></div>
+    <div class="grid2" style="margin-top:22px">
+      <figure style="margin:0"><img src="diagrams/svg/15-setup-order.svg" alt="The six setup steps"></figure>
+      <figure style="margin:0"><img src="diagrams/svg/16-troubleshooting.svg" alt="Login troubleshooting decision tree"></figure>
+    </div>
+    <table style="margin-top:22px">
+      <tr><th>Symptom</th><th>Cause / fix</th></tr>
+      <tr><td>Still asked about the fingerprint</td><td><code>@cert-authority</code> line missing or pattern does not match; connect with the exact FQDN in the host certificate</td></tr>
+      <tr><td><code>Permission denied</code> with a valid certificate</td><td>Principal not in <code>auth_principals/&lt;account&gt;</code>; host "Stale"</td></tr>
+      <tr><td>Every key login fails, all users</td><td><code>/etc/ssh/revoked_keys</code> missing or unreadable</td></tr>
+      <tr><td>Expired too early / not yet valid</td><td>Clock: NTP / chrony</td></tr>
+      <tr><td>Anything else</td><td><code>ssh -v</code> on the laptop, <code>journalctl -u ssh</code> (RHEL: <code>sshd</code>) on the server</td></tr>
+    </table>
+    <p>More detail: <a href="../concept.md">How it works</a> ·
+      <a href="../deploy-server-and-user.md">End-to-end deploy reference</a> ·
+      <a href="../principals-guide.md">Principals guide</a> ·
+      <a href="../host-blocks-runbook.md">Per-host blocks runbook</a> ·
+      <a href="../zones.md">Zones</a> · <a href="../../ssh-api-contract.md">Automation API</a></p>
+  </section>
+</main>
+<footer>Videos, diagrams and page are built from <code>docs/ssh/explainer/</code> (script:
+  <code>video/script.md</code>). Narration: Oriol Rius's voice, generated locally.</footer>
+
+<script>
+  // Theme toggle (per-viewer convenience only).
+  (function () {
+    const root = document.documentElement;
+    try { const t = localStorage.getItem('theme'); if (t) root.dataset.theme = t; } catch (e) {}
+    document.getElementById('theme').onclick = () => {
+      const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      root.dataset.theme = dark ? 'light' : 'dark';
+      try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {}
+    };
+  })();
+  // Video players: media/ssh-ca-NN-*.mp4 with English subtitles and chapters.
+  const FILES = {
+    '01': 'ssh-ca-01-why-ssh-certificates', '02': 'ssh-ca-02-two-cas-trust-crosses-over',
+    '03': 'ssh-ca-03-host-certificates-no-more-fingerprint-prompt', '04': 'ssh-ca-04-user-certificates-log-in-with-a-signed-key',
+    '05': 'ssh-ca-05-principals-the-one-rule-that-matters', '06': 'ssh-ca-06-lifecycle-expiry-revocation-rotation',
+    '07': 'ssh-ca-07-per-host-access-blocks', '08': 'ssh-ca-08-zones-separate-trust-domains',
+    '09': 'ssh-ca-09-automation-fleet-tokens-and-ansible', '10': 'ssh-ca-10-recap-and-troubleshooting',
+  };
+  document.querySelectorAll('.video').forEach((box) => {
+    const base = 'media/' + FILES[box.dataset.ep];
+    const v = document.createElement('video');
+    v.controls = true; v.preload = 'metadata'; v.playsInline = true;
+    v.innerHTML = `<source src="${base}.mp4" type="video/mp4">` +
+      `<track kind="subtitles" srclang="en" label="English" src="${base}.vtt" default>` +
+      `<track kind="chapters" srclang="en" src="${base}.chapters.vtt">`;
+    v.onerror = v.querySelector('source').onerror = () => { box.innerHTML = '<div class="video-missing">Video not built yet: run <code>npm run build</code> in <code>video/</code>.</div>'; };
+    box.appendChild(v);
+  });
+</script>
+</body>
+</html>

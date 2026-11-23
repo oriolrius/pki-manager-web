@@ -1,0 +1,24 @@
+@startuml 04-host-enrolment
+!include theme-oriolrius.puml
+title Enrol a server by hand
+autonumber "<b>0."
+actor "Operator" as op
+participant "Server\nweb1" as srv
+participant "PKI Manager" as pki
+participant "KMS" as kms #54595F
+participant "Laptop" as lap
+
+op -> srv : ""cat /etc/ssh/ssh_host_ecdsa_key.pub""
+note over srv : private key never leaves the server
+op -> pki : Hosts -> Register host\nFQDN + ECDSA P-256 public key
+pki -> pki : reject private keys\nand non-ECDSA keys
+pki -> kms : sign with Host CA key
+kms --> pki : signature
+pki --> op : host certificate (52 weeks)\n+ "Files to place on this server"
+op -> srv : place files:\nhost cert · ssh-user-ca.pub · ssh-host-ca.pub\nsshd_config.d/60-ssh-ca.conf · auth_principals/*\n""install -m 0444 /dev/null /etc/ssh/revoked_keys""
+op -> lap : add Host CA ""@cert-authority"" line\nto &#126;/.ssh/known_hosts (before reload)
+op -> srv : ""sshd -t && systemctl reload ssh""
+lap -> srv : ""ssh deploy@web1.acme.example""
+srv --> lap : host certificate
+lap -> lap : signed by trusted Host CA?\nname matches?\n<color:#0C8760>yes -> no fingerprint prompt</color>
+@enduml

@@ -1,0 +1,15 @@
+{
+  "name": "ssh-ca-explainer-video",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained vector video build for the PKI Manager SSH CA explainer series",
+  "scripts": {
+    "narration": "node engine/narration.mjs",
+    "voice": "node engine/voice.mjs",
+    "render": "node engine/render.mjs",
+    "build": "node engine/build.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

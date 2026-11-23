@@ -1,0 +1,40 @@
+@startuml 01-keys-vs-ca
+!include theme-oriolrius.puml
+title Plain keys vs. one trusted CA
+left to right direction
+
+package "Without a CA: every server lists every key" as A {
+  rectangle "Alice" as a1 <<machine>>
+  rectangle "Bob" as b1 <<machine>>
+  rectangle "Carol" as c1 <<machine>>
+  rectangle "web1\nauthorized_keys: 3 lines" as w1 <<file>>
+  rectangle "db1\nauthorized_keys: 3 lines" as d1 <<file>>
+  rectangle "app1\nauthorized_keys: 3 lines" as p1 <<file>>
+  a1 --> w1
+  a1 --> d1
+  a1 --> p1
+  b1 --> w1
+  b1 --> d1
+  b1 --> p1
+  c1 --> w1
+  c1 --> d1
+  c1 --> p1
+}
+
+package "With a CA: every server trusts one signer" as B {
+  rectangle "Alice" as a2 <<machine>>
+  rectangle "Bob" as b2 <<machine>>
+  rectangle "Carol" as c2 <<machine>>
+  rectangle "User CA\n(signs keys)" as ca <<user>>
+  rectangle "web1\ntrusts User CA" as w2 <<file>>
+  rectangle "db1\ntrusts User CA" as d2 <<file>>
+  rectangle "app1\ntrusts User CA" as p2 <<file>>
+  a2 --> ca
+  b2 --> ca
+  c2 --> ca
+  ca --> w2
+  ca --> d2
+  ca --> p2
+}
+caption People x servers lines become people + servers lines. Removing a person = stop signing.
+@enduml

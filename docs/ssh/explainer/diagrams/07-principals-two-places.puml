@@ -1,0 +1,21 @@
+@startuml 07-principals-two-places
+!include theme-oriolrius.puml
+title Principals: the two-places rule
+left to right direction
+
+rectangle "Alice's certificate\n(decided at issue time,\nfollows the person)" as cert <<user>> {
+  rectangle "developers" as p1
+  rectangle "u:alice" as p2
+}
+rectangle "Server web1: /etc/ssh/auth_principals/deploy\n(decided per host,\nfollows the server)" as file <<file>> {
+  rectangle "developers\ndevelopers@web1.acme.example" as f1
+}
+rectangle "Login as deploy:\n**ALLOWED**" as ok <<host>>
+p1 --> f1 : same label in both places
+f1 --> ok
+note bottom of ok
+  Login allowed only if the certificate and auth_principals/<account> share at least one principal.
+  In only one place: signature OK, but <color:#C62828>Permission denied (publickey)</color>
+  sshd log: "Certificate does not contain an authorized principal"
+end note
+@enduml

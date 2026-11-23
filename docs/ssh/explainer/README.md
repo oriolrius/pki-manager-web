@@ -1,0 +1,35 @@
+# SSH CA explainer
+
+A short video series, a companion page and diagrams that explain how the SSH certificate
+authority works and how to run it with PKI Manager. Audience: Linux sysadmins who have never
+used SSH certificates. English only.
+
+| Path | What |
+|---|---|
+| [`index.html`](index.html) | Companion page: every episode, its video, diagrams and commands |
+| [`video/script.md`](video/script.md) | The script: narration + visual direction per scene (single source) |
+| [`diagrams/`](diagrams/) | PlantUML sources (`*.puml`), shared theme [`theme-oriolrius.puml`](diagrams/theme-oriolrius.puml), rendered `svg/` |
+| [`video/`](video/) | Self-contained build: vector scenes (`episodes/`), engine (`engine/`), see [`AUTHORING.md`](video/AUTHORING.md) |
+| `media/` | Built videos (`ssh-ca-NN-*.mp4`) with `.srt`, `.vtt` and chapters |
+
+## Build
+
+Requirements: Node ≥ 20, ffmpeg, Java (PlantUML), and a local
+[VoiceStudio](https://github.com/debpalash/VoiceStudio) server with the `oriol-en` voice
+profile (default `http://localhost:3900`, override with `VOICESTUDIO_URL` / `VOICE_ID`).
+
+```bash
+# diagrams
+java -jar plantuml.jar -tsvg -o svg diagrams/[0-9]*.puml
+
+# videos
+cd video
+npm install && npx playwright install chromium
+npm run build                     # all episodes: voice (ASR-checked) + render -> ../media/
+npm run build -- 03               # one episode
+node engine/render.mjs 03 --stills 10,20   # review frames
+open engine/player.html?ep=03&preview=1    # interactive preview with audio
+```
+
+Edit the narration in `video/script.md`; the voice is cached per sentence, so only changed
+sentences are synthesised again. Spoken forms of acronyms live in `video/pronunciation.json`.

@@ -1,0 +1,24 @@
+@startuml 08-principal-fleet-design
+!include theme-oriolrius.puml
+title Designing principals for a fleet
+left to right direction
+
+package "Certificates (identity)" {
+  rectangle "Ana · junior dev on Acme\ndevelopers client-acme" as ana <<user>>
+  rectangle "Pau · dev on Globex\ndevelopers client-globex" as pau <<user>>
+  rectangle "Marta · sysadmin\nsysadmins" as marta <<user>>
+}
+package "dev servers" {
+  rectangle "deploy ← developers sysadmins\nroot ← sysadmins" as dev <<file>>
+}
+package "Acme production" {
+  rectangle "deploy ← client-acme sysadmins\nroot ← sysadmins" as acme <<file>>
+}
+ana --> dev : deploy
+pau --> dev : deploy
+marta --> dev : deploy, root
+ana --> acme : deploy
+marta --> acme : deploy, root
+pau -[$RED,dashed]-> acme : <color:#C62828>denied: no client-acme</color>
+caption Few, stable roles in the certificate; per-environment slicing in the mapping.
+@enduml

@@ -1,0 +1,29 @@
+@startuml 14-ansible-enrolment
+!include theme-oriolrius.puml
+title Enrol a fleet with Ansible
+autonumber "<b>0."
+participant "Controller\n(ansible-playbook)" as ctl
+participant "Server" as srv
+participant "PKI Manager\n/api/v1/external/ssh" as pki
+
+ctl -> pki : (once) mint fleet token\nops: sign-host, get-principals, register-host-pubkey
+note over ctl : token ""pkimg_..."" shown once -> Ansible Vault
+== role oriolrius.pki_manager.ssh_host_cert ==
+ctl -> srv : phase 1: use or create /etc/ssh/ssh_host_ecdsa_key
+srv -> pki : ""POST /sign-host"" (Bearer token, Idempotency-Key)
+pki --> srv : host certificate (host auto-registered)
+srv -> pki : GET User CA + Host CA public keys
+srv -> pki : phase 2: GET auth-principals for this host
+srv -> srv : write /etc/ssh/auth_principals/*\n+ empty revoked_keys placeholder
+srv -> pki : phase 3: GET sshd-config
+srv -> srv : install 60-ssh-ca.conf · ""sshd -t"" · reload
+srv -> srv : phase 4: renewal job (stores token, 0600)
+opt ssh_host_cert_ecies_enabled: true (backend SSH_ECIES_ENABLED=true)
+  srv -> pki : ""POST /register-host-pubkey""
+  srv -> srv : install krl-client + 15-min schedule
+end
+note over ctl, pki
+  First run on a new host writes the mappings that exist NOW.
+  Create the mappings, then run the role again.
+end note
+@enduml

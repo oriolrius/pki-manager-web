@@ -1,0 +1,27 @@
+@startuml 09-revocation-krl
+!include theme-oriolrius.puml
+title Ending access: expiry first, KRL for emergencies
+autonumber "<b>0."
+actor "Operator" as op
+participant "PKI Manager" as pki
+participant "krl-client\non web1" as kc
+participant "sshd\non web1" as srv
+
+== Tier 1: expiry (primary) ==
+op -> pki : Disable identity (no new certificates)
+note over pki : user certificates expire after 7 days;\nhost certificates after 52 weeks
+== Tier 2: KRL (emergency) ==
+op -> pki : revoke certificate (or API ""offboard"":\nrevoke all + disable)
+pki -> pki : rebuild this host's KRL,\nsign with Host CA key
+loop about every 15 minutes
+  kc -> pki : ""POST /api/v1/external/ssh/krl""\n(If-None-Match: current hash)
+  alt list changed
+    pki --> kc : 200 · ciphertext encrypted to the host's ECDSA key
+    kc -> kc : decrypt with ""/etc/ssh/ssh_host_ecdsa_key""\nverify signature with ""/etc/ssh/ssh-host-ca.pub""\nreject rollback
+    kc -> srv : install ""/etc/ssh/revoked_keys"" (0444)
+  else unchanged
+    pki --> kc : 304
+  end
+end
+srv -> srv : reads ""revoked_keys"" on every login\n(no reload needed)
+@enduml

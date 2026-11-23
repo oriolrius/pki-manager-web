@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SSH CA explainer player</title>
+<style>
+  @font-face { font-family: Ubuntu; src: url(fonts/Ubuntu-Regular.ttf); font-weight: 400; }
+  @font-face { font-family: Ubuntu; src: url(fonts/Ubuntu-Medium.ttf); font-weight: 500; }
+  @font-face { font-family: Ubuntu; src: url(fonts/Ubuntu-Bold.ttf); font-weight: 700; }
+  @font-face { font-family: 'Ubuntu Mono'; src: url(fonts/UbuntuMono-Regular.ttf); font-weight: 400; }
+  @font-face { font-family: 'Ubuntu Mono'; src: url(fonts/UbuntuMono-Bold.ttf); font-weight: 700; }
+  html, body { margin: 0; background: #0E0F3A; }
+  #stage { width: 1920px; height: 1080px; display: block; background: #fff; }
+  body.preview #stage { width: 100vw; height: auto; aspect-ratio: 16/9; max-height: 92vh; }
+  #bar { display: none; font: 14px Ubuntu, sans-serif; color: #fff; padding: 6px 12px; gap: 10px; align-items: center; }
+  body.preview #bar { display: flex; }
+  #bar input[type=range] { flex: 1; }
+</style>
+</head>
+<body>
+<svg id="stage" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="bar"><button id="play">Play</button><input id="pos" type="range" min="0" max="1000" value="0"><span id="clock"></span></div>
+<script src="anim.js"></script>
+<script>
+  // ?ep=01  -> loads ../build/ep01/timeline.js and ../episodes/ep01.js
+  const params = new URLSearchParams(location.search);
+  const EP = params.get('ep') || '01';
+  window.EPISODES = window.EPISODES || {};
+  function load(src) {
+    return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('cannot load ' + src)); document.head.appendChild(s); });
+  }
+  const ready = (async () => {
+    await load(`../build/ep${EP}/timeline.js`);
+    await load(`../episodes/ep${EP}.js`);
+    await document.fonts.ready;
+    await Promise.all(['400 20px Ubuntu', '500 20px Ubuntu', '700 20px Ubuntu', '400 20px "Ubuntu Mono"', '700 20px "Ubuntu Mono"'].map((f) => document.fonts.load(f)));
+    return true;
+  })();
+
+  const { C, text, rect, show, clamp, ease } = A;
+  const svg = document.getElementById('stage');
+
+  function header(tl) {
+    let o = rect(0, 0, 1920, 92, { fill: C.white, stroke: 'none', sw: 0, r: 0 });
+    o += `<rect x="0" y="90" width="1920" height="3" fill="${C.line}"/>`;
+    o += `<rect x="70" y="30" width="32" height="32" rx="8" fill="${C.orange}"/>`;
+    o += text(118, 47, 'PKI Manager', { size: 28, weight: 700, fill: C.navy });
+    o += text(118 + 172, 47, '· SSH certificates', { size: 28, fill: C.slate });
+    o += text(1850, 47, `${tl.episode} · ${tl.title}`, { size: 26, fill: C.slate, anchor: 'end' });
+    return o;
+  }
+  function progress(tl, t) {
+    const x0 = 70, W = 1780, y = 1040;
+    let o = '';
+    tl.scenes.forEach((s, i) => {
+      const a = x0 + (s.start / tl.duration) * W + (i ? 4 : 0), b = x0 + (s.end / tl.duration) * W;
+      o += `<rect x="${a}" y="${y}" width="${Math.max(0, b - a)}" height="8" rx="4" fill="${C.line}"/>`;
+      const f = clamp((t - s.start) / (s.end - s.start));
+      if (f > 0) o += `<rect x="${a}" y="${y}" width="${Math.max(0, (b - a) * f)}" height="8" rx="4" fill="${C.orange}"/>`;
+    });
+    return o;
+  }
+  function titleCard(tl, t) {
+    const T0 = 3.0;
+    if (t > T0) return '';
+    const op = t < T0 - 0.5 ? 1 : 1 - ease(clamp((t - (T0 - 0.5)) / 0.5));
+    const p = ease(clamp(t / 0.7));
+    let o = `<g opacity="${op}">` + rect(0, 0, 1920, 1080, { fill: C.navy, stroke: 'none', sw: 0, r: 0 });
+    o += `<rect x="160" y="${470 - 40 * (1 - p)}" width="${220 * p}" height="10" rx="5" fill="${C.orange}"/>`;
+    o += text(160, 400, 'SSH certificates with PKI Manager', { size: 40, fill: '#A9ABD0', weight: 500 });
+    o += text(160, 560, `${tl.episode}  ${tl.title}`, { size: 84, fill: C.white, weight: 700 });
+    o += text(160, 660, 'Short series for Linux sysadmins', { size: 32, fill: '#A9ABD0' });
+    return o + '</g>';
+  }
+
+  let LAST = '';
+  /** Render absolute time t (seconds). Returns true when the frame changed. */
+  window.seek = function (t) {
+    const tl = window.TIMELINE;
+    const ep = window.EPISODES[tl.episode];
+    let body = '';
+    // current scene
+    let idx = tl.scenes.findIndex((s) => t >= s.start && t < s.end);
+    if (idx < 0) idx = t < tl.scenes[0].start ? 0 : tl.scenes.length - 1;
+    const sc = tl.scenes[idx];
+    const local = t - sc.start;
+    const sAt = (k) => (sc.sentences[Math.min(k, sc.sentences.length - 1)]?.start ?? sc.start) - sc.start;
+    const eAt = (k) => (sc.sentences[Math.min(k, sc.sentences.length - 1)]?.end ?? sc.end) - sc.start;
+    const dur = sc.end - sc.start;
+    A.setNow(local);
+    const fn = ep && ep.scenes[sc.id];
+    let content = fn ? fn({ t: local, s: sAt, e: eAt, dur, n: sc.sentences.length }) : text(960, 540, `scene ${sc.id} (not drawn yet)`, { size: 40, anchor: 'middle', fill: C.red });
+    // fade between scenes
+    const fin = idx === 0 ? 1 : ease(clamp(local / 0.35));
+    const fout = idx === tl.scenes.length - 1 ? 1 : 1 - ease(clamp((local - (dur - 0.35)) / 0.35));
+    body += `<g opacity="${Math.min(fin, fout).toFixed(3)}">${content}</g>`;
+    const frame = rect(0, 0, 1920, 1080, { fill: C.white, stroke: 'none', sw: 0, r: 0 }) + body + header(tl) + progress(tl, t) + titleCard(tl, t);
+    const changed = frame !== LAST;
+    if (changed) { svg.innerHTML = frame; LAST = frame; }
+    return changed;
+  };
+  window.whenReady = () => ready;
+
+  // Interactive preview: player.html?ep=01&preview=1 (plays narration.wav in sync)
+  if (params.get('preview')) {
+    document.body.classList.add('preview');
+    ready.then(() => {
+      const audio = new Audio(`../build/ep${EP}/narration.wav`);
+      const pos = document.getElementById('pos'), clock = document.getElementById('clock');
+      document.getElementById('play').onclick = () => (audio.paused ? audio.play() : audio.pause());
+      pos.oninput = () => { audio.currentTime = (pos.value / 1000) * TIMELINE.duration; };
+      const tick = () => { const t = audio.currentTime; seek(t); pos.value = (t / TIMELINE.duration) * 1000; clock.textContent = t.toFixed(1) + ' s'; requestAnimationFrame(tick); };
+      tick();
+    });
+  }
+</script>
+</body>
+</html>
