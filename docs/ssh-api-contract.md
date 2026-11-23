@@ -57,6 +57,47 @@ unless the backend runs with `SSH_ECIES_ENABLED=true`.
 → `200 { "hostId", "kmsPublicKeyId", "hostPrivKeyId" }`
 (`hostPrivKeyId` configures the puller's `HOST_PRIV_KEY_ID`).
 
+### `GET /api/v1/external/ssh/hosts/:fqdn/auth-principals`
+Token op: `get-principals`. Returns the host's rendered `AuthorizedPrincipalsFile`
+map (the host is looked up by FQDN **in the token's zone**):
+```json
+{ "hostId": "…", "fqdn": "server.example.com",
+  "directive": "AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u",
+  "files": { "root": "ops\nops@server.example.com\n" },
+  "sha256": "<64 lowercase hex>",
+  "stale": true }
+```
+`files` maps each local account to the verbatim contents of
+`/etc/ssh/auth_principals/<account>`. `stale` is `true` when these files
+changed (a mapping was added or removed) after the last confirmed push. A host
+certificate issue/renew never makes a host stale.
+
+**Canonical `sha256`** (stable; automation computes it the same way): for each
+account in ascending byte order of its name, append
+`UTF-8(account) || 0x00 || UTF-8(file contents, verbatim) || 0x00`; take the
+SHA-256 of the concatenation, lowercase hex. No accounts → SHA-256 of the empty
+string (`e3b0c442…b855`). Python:
+```python
+h = hashlib.sha256()
+for account in sorted(files):
+    h.update(account.encode() + b"\0" + files[account].encode() + b"\0")
+h.hexdigest()
+```
+
+### `POST /api/v1/external/ssh/hosts/:fqdn/principals-pushed`
+Token op: `get-principals`. Call it **after** the files from the GET above are
+installed on the host. Echo the `sha256` of the files you installed:
+```http
+{ "sha256": "<64 hex>" }                         # a "sha256:" prefix is accepted
+```
+→ `200 { "hostId", "fqdn", "lastPrincipalPushAt", "sha256" }` — the host is no
+longer stale.
+→ `409 { "error": { "code": "SHA256_MISMATCH", … }, "currentSha256": "<64 hex>" }`
+when the hash is not the hash of the **current** render (the mappings changed
+after your GET): nothing changes; fetch again, install, acknowledge again.
+`400` bad body/FQDN · `401/403` token · `404` host not in the token's zone.
+Every attempt writes an `ssh.principal.mark_pushed` audit row (success or failure).
+
 ### `POST /api/v1/external/ssh/krl`  *(ECIES path; no token)*
 ```http
 Content-Type: application/json

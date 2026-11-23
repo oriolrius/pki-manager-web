@@ -317,7 +317,13 @@ export const sshHosts = sqliteTable(
     // Distribution telemetry (SSH-22 serving / SSH-24 puller callback / SSH-14 drift).
     lastKrlVersion: text('last_krl_version'),
     lastKrlFetchAt: integer('last_krl_fetch_at', { mode: 'timestamp' }),
-    lastPrincipalPushAt: integer('last_principal_push_at', { mode: 'timestamp' }),
+    // Principal-file drift (TASK-246). Both are MILLISECOND timestamps (migration
+    // 0012 converted the old seconds values) so a change and a push in the same
+    // second still order correctly. `principals_changed_at` moves ONLY when this
+    // host's rendered auth_principals files change (map / unmap) — never on cert
+    // issue/renew. Stale = principals_changed_at > last_principal_push_at.
+    lastPrincipalPushAt: integer('last_principal_push_at', { mode: 'timestamp_ms' }),
+    principalsChangedAt: integer('principals_changed_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
   },

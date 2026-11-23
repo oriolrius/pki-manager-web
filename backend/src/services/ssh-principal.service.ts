@@ -4,7 +4,7 @@
  * renders into AuthorizedPrincipalsFile. Flags hosts whose map drifted after the
  * last automation push.
  */
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { eq } from 'drizzle-orm';
 import {
   sshPrincipals,
@@ -33,6 +33,62 @@ export class SshCrossZoneError extends SshPrincipalError {
   }
 }
 
+/**
+ * The fleet automation acknowledged a push with a hash that is not the hash of
+ * the CURRENT render (the files changed after it fetched them, or it installed
+ * something else). Carries the current hash so the client can re-fetch.
+ */
+export class SshPrincipalHashMismatchError extends SshPrincipalError {
+  constructor(public readonly currentSha256: string, presented: string) {
+    super(`sha256 ${presented} does not match the current principal files (${currentSha256}) — fetch them again and redeploy`);
+    this.name = 'SshPrincipalHashMismatchError';
+  }
+}
+
+/**
+ * Canonical SHA-256 of a host's rendered principal files (TASK-246). The form
+ * is documented in docs/ssh-api-contract.md and MUST stay stable — fleet
+ * automation computes it independently:
+ *
+ *   for each account in ascending byte order of its name:
+ *     UTF-8(account) || 0x00 || UTF-8(file contents, verbatim) || 0x00
+ *
+ * SHA-256 over the concatenation, lowercase hex. No accounts = SHA-256 of the
+ * empty string. NUL cannot occur in an account name or a principal line, so two
+ * different file sets can never produce the same byte string.
+ */
+export function principalFilesSha256(files: Record<string, string>): string {
+  const h = createHash('sha256');
+  for (const account of Object.keys(files).sort()) {
+    h.update(Buffer.from(account, 'utf8'));
+    h.update(Buffer.from([0]));
+    h.update(Buffer.from(files[account], 'utf8'));
+    h.update(Buffer.from([0]));
+  }
+  return h.digest('hex');
+}
+
+/** Stale = the rendered files changed after the last confirmed push. */
+function isStale(host: { principalsChangedAt?: Date | null; lastPrincipalPushAt?: Date | null }): boolean {
+  const changed = host.principalsChangedAt ? new Date(host.principalsChangedAt).getTime() : 0;
+  const pushed = host.lastPrincipalPushAt ? new Date(host.lastPrincipalPushAt).getTime() : 0;
+  return changed > pushed;
+}
+
+/**
+ * Record that this host's rendered principal files changed (TASK-246). Call it
+ * ONLY from operations that change the render (map, unmap) — never from cert
+ * issue/renew. The stamp is forced strictly after the last push so a change
+ * that lands in the same millisecond as a push still reads as Stale.
+ */
+export async function markHostPrincipalsChanged(ctx: ServiceContext, hostId: string): Promise<void> {
+  const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+  if (!host) return;
+  const pushed = host.lastPrincipalPushAt ? new Date(host.lastPrincipalPushAt).getTime() : 0;
+  const at = new Date(Math.max(Date.now(), pushed + 1));
+  await ctx.db.update(sshHosts).set({ principalsChangedAt: at } as any).where(eq(sshHosts.id, hostId));
+}
+
 export interface PrincipalDto {
   id: string;
   zoneId: string;
@@ -46,6 +102,8 @@ export interface AuthPrincipalsRender {
   directive: string;
   /** account -> file contents for /etc/ssh/auth_principals/<account> */
   files: Record<string, string>;
+  /** Canonical SHA-256 of `files` (see principalFilesSha256); echo it to acknowledge a push. */
+  sha256: string;
   stale: boolean;
 }
 
@@ -179,8 +237,8 @@ export class SshPrincipalService {
       principalId: params.principalId,
       localAccount: params.localAccount,
     } as any);
-    // Catalog changed: mark host map newer than last push so drift surfaces.
-    await ctx.db.update(sshHosts).set({ updatedAt: new Date() }).where(eq(sshHosts.id, params.hostId));
+    // The rendered files changed: the host is Stale until the new files are pushed.
+    await markHostPrincipalsChanged(ctx, params.hostId);
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.principal.map',
@@ -220,16 +278,13 @@ export class SshPrincipalService {
       files[account] = lines.sort().join('\n') + '\n';
     }
 
-    const lastPush = host.lastPrincipalPushAt ? new Date(host.lastPrincipalPushAt).getTime() : 0;
-    const updated = host.updatedAt ? new Date(host.updatedAt).getTime() : 0;
-    const stale = updated > lastPush;
-
     return {
       hostId,
       fqdn: host.fqdn,
       directive: 'AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u',
       files,
-      stale,
+      sha256: principalFilesSha256(files),
+      stale: isStale(host as any),
     };
   }
 
@@ -256,8 +311,7 @@ export class SshPrincipalService {
       throw new SshPrincipalError(`host ${hostId} not found`);
     }
 
-    const pushedAt = new Date();
-    await ctx.db.update(sshHosts).set({ lastPrincipalPushAt: pushedAt }).where(eq(sshHosts.id, hostId));
+    const pushedAt = await this.stampPushed(ctx, host);
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.principal.mark_pushed',
@@ -270,15 +324,57 @@ export class SshPrincipalService {
     return { hostId, fqdn: host.fqdn, lastPrincipalPushAt: pushedAt.toISOString() };
   }
 
-  /** List hosts whose catalog maps changed after the last push. */
+  /**
+   * Fleet automation acknowledges a push (TASK-246): it echoes the sha256 of
+   * the files it installed. Marks pushed ONLY when that is the hash of the
+   * CURRENT render — so a push of outdated files never clears Stale. Audited on
+   * success and failure.
+   */
+  async acknowledgePush(
+    ctx: ServiceContext,
+    hostId: string,
+    sha256: string,
+    meta: { tokenId?: string } = {}
+  ): Promise<MarkPushedResult & { sha256: string }> {
+    const presented = sha256.trim().toLowerCase().replace(/^sha256:/, '');
+    const audit = (status: 'success' | 'failure', details: Record<string, unknown>) =>
+      createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.principal.mark_pushed',
+        entityType: 'ssh_host',
+        entityId: hostId,
+        status,
+        details: { via: 'fleet-token', tokenId: meta.tokenId, presented, ...details },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+    if (!host) {
+      await audit('failure', { error: 'host not found' });
+      throw new SshPrincipalError(`host ${hostId} not found`);
+    }
+    const current = (await this.render(ctx, hostId)).sha256;
+    if (presented !== current) {
+      await audit('failure', { fqdn: host.fqdn, error: 'sha256 mismatch', current });
+      throw new SshPrincipalHashMismatchError(current, presented);
+    }
+    const pushedAt = await this.stampPushed(ctx, host);
+    await audit('success', { fqdn: host.fqdn });
+    return { hostId, fqdn: host.fqdn, lastPrincipalPushAt: pushedAt.toISOString(), sha256: current };
+  }
+
+  /** Push time is never before the last change, so a confirmed push always clears Stale. */
+  private async stampPushed(ctx: ServiceContext, host: any): Promise<Date> {
+    const changed = host.principalsChangedAt ? new Date(host.principalsChangedAt).getTime() : 0;
+    const pushedAt = new Date(Math.max(Date.now(), changed));
+    await ctx.db.update(sshHosts).set({ lastPrincipalPushAt: pushedAt } as any).where(eq(sshHosts.id, host.id));
+    return pushedAt;
+  }
+
+  /** List hosts whose rendered principal files changed after the last push. */
   async staleHosts(ctx: ServiceContext): Promise<Array<{ id: string; fqdn: string }>> {
     const hosts = await ctx.db.select().from(sshHosts);
     return (hosts as any[])
-      .filter((h) => {
-        const lastPush = h.lastPrincipalPushAt ? new Date(h.lastPrincipalPushAt).getTime() : 0;
-        const updated = h.updatedAt ? new Date(h.updatedAt).getTime() : 0;
-        return updated > lastPush;
-      })
+      .filter((h) => h.status !== 'offboarded' && isStale(h))
       .map((h) => ({ id: h.id, fqdn: h.fqdn }));
   }
 
