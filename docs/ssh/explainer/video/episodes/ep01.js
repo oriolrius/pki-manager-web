@@ -94,7 +94,7 @@
           const op = 0.4 * (1 - ease(prog(s(0) + 0.5, 1.2)));
           P.forEach((p) => S.forEach((q) => { o += arrow({ x1: p.x + 50, y1: p.y, x2: q.x - 60, y2: q.y, color: C.orange, width: 2, head: false, opacity: op }); }));
         }
-        o += show(ca(caX, caY, { r: 105, kind: 'user', label: 'CA', sub: 'certificate authority', labelSize: 56 }), { at: s(1) + 0.6, from: 'pop', cx: caX, cy: caY });
+        o += show(ca(caX, caY, { r: 105, kind: 'user', label: 'CA', labelSize: 64 }) + text(caX, caY + 140, 'certificate authority', { size: 26, anchor: 'middle', fill: C.orangeInk, weight: 700 }), { at: s(1) + 0.6, from: 'pop', cx: caX, cy: caY });
         // people -> CA (keys travel to be signed)
         P.forEach((p, i) => { o += arrow({ x1: p.x + 55, y1: p.y, x2: caX - 115, y2: caY + (i - 2) * 30, at: s(2) + i * 0.12, d: 0.5, color: C.orange, width: 3 }); });
         // CA -> servers (one trust line each)
@@ -136,7 +136,7 @@
         o += show(card({ x: bx, y: by, w: 560, h: 520, kind: 'pki', title: '', body: [] }) + text(bx + 280, by + 60, 'PKI Manager', { size: 44, weight: 700, anchor: 'middle', fill: C.navy }) +
           `<rect x="${bx + 210}" y="${by + 90}" width="140" height="6" rx="3" fill="${C.orange}"/>`, { at: 0.1, from: 'left' });
         o += show(rect(bx + 70, by + 330, 420, 150, { fill: C.navy, stroke: C.navyDeep, sw: 2, r: 14 }) + A.lock(bx + 140, by + 395, { s: 1.2, color: C.orange }) +
-          text(bx + 200, by + 380, 'Key management system', { size: 26, fill: C.white, weight: 700 }) + text(bx + 200, by + 420, 'CA private keys (never leave)', { size: 24, fill: '#C9CAE6' }), { at: s(1), from: 'up' });
+          text(bx + 190, by + 380, 'Key management', { size: 28, fill: C.white, weight: 700 }) + text(bx + 190, by + 422, 'CA private keys stay here', { size: 23, fill: '#C9CAE6' }), { at: s(1), from: 'up' });
         o += show(ca(bx + 170, by + 200, { r: 62, kind: 'user', label: 'User CA', labelSize: 22 }) + ca(bx + 390, by + 200, { r: 62, kind: 'host', label: 'Host CA', labelSize: 22 }), { at: s(0) + 0.8, from: 'pop', cx: bx + 280, cy: by + 200 });
         const files = [['host certificate', 'host'], ['user certificate', 'user'], ['sshd config file', 'file'], ['CA public keys', 'file']];
         files.forEach(([f, k], i) => {

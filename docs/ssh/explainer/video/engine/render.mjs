@@ -104,8 +104,9 @@ async function render(browser, ep, { from = 0, to = null } = {}) {
     '-c:v', 'libx264', '-preset', 'medium', '-tune', 'animation', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-b:a', '160k',
     ...(isClip ? [] : ['-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng']),
-    '-movflags', '+faststart', '-shortest', `${base}.mp4`,
+    '-movflags', '+faststart', '-t', String(end - from), `${base}.mp4`,
   ], { stdio: ['pipe', 'inherit', 'inherit'] });
+  ff.stdin.on('error', (e) => console.error('ffmpeg input closed:', e.code));
   const page = await openPage(browser, ep);
   const n = Math.ceil((end - from) * fps);
   let last = null, shots = 0;

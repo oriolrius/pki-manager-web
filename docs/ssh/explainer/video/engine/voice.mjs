@@ -1,7 +1,7 @@
 // Narration audio: one TTS call per sentence (VoiceStudio, local), cached by content hash.
 // Builds build/epNN/timeline.json (exact sentence timings) and build/epNN/narration.wav.
 // Usage: node engine/voice.mjs [01 02 ...]   (default: all episodes)
-// Env:   VOICESTUDIO_URL (default http://localhost:3900), VOICE_ID (default 72042960 = oriol-en),
+// Env:   VOICESTUDIO_URL (default http://localhost:3900), VOICE_ID (default 289167da = dbai24-narrator-vox48, female, native English),
 //        VOICE_CHECK=1 to transcribe every new clip and flag mismatches.
 import { createHash } from 'node:crypto';
 import { spawn, execSync } from 'node:child_process';
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { parseScript, ROOT, groups } from './narration.mjs';
 
 const URL_BASE = process.env.VOICESTUDIO_URL ?? 'http://localhost:3900';
-const VOICE = process.env.VOICE_ID ?? '72042960';
+const VOICE = process.env.VOICE_ID ?? '289167da';
 const CACHE = join(ROOT, 'cache', 'voice');
 
 export const T = {

@@ -1,7 +1,7 @@
 # SSH CA with PKI Manager: video script
 
 Series of short clips. Audience: Linux sysadmins who use SSH every day but have
-never used SSH certificates. Voice: `oriol-en`. Pace: ~150 words per minute.
+never used SSH certificates. Voice: VoiceStudio profile `dbai24-narrator-vox48` (female, native English). Pace: ~150 words per minute.
 
 Conventions for every episode:
 
@@ -68,7 +68,7 @@ and everybody sees a scary warning. Most people just delete the old line.
 
 ### 01.4 — The idea: a trusted signer
 **Narration:** Certificates fix both problems with one idea. Instead of trusting every key,
-you trust one signer: a certificate authority, or CA. The CA signs keys. Anyone who trusts
+you trust one signer: a certificate authority, or CA. The CA puts its signature on keys. Anyone who trusts
 the CA trusts every key it signed. You install one line, once.
 
 **Visual:** All the lines from 01.2 collapse into one central CA badge. Each server now has
@@ -108,14 +108,14 @@ separate CAs.
 you?", from the laptop "Who are *you*?".
 
 ### 02.2 — The User CA
-**Narration:** The User CA signs people's keys. Servers trust it. On every server you install
+**Narration:** The User CA puts its signature on people's keys. Servers trust it. On every server you install
 the User CA public key, and one sshd setting points to it.
 
 **Visual:** Orange *User CA* badge. An orange arrow goes to the server. Server file appears:
 `/etc/ssh/ssh-user-ca.pub` and the line `TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub`.
 
 ### 02.3 — The Host CA
-**Narration:** The Host CA signs servers' keys. Clients trust it. On every laptop you add one
+**Narration:** The Host CA puts its signature on servers' keys. Clients trust it. On every laptop you add one
 line to the known hosts file. It says: trust any server under this domain that the Host CA
 signed.
 
@@ -611,7 +611,7 @@ false` to avoid it*. *Next: 10 Recap*.
 
 ### 10.1 — The order
 **Narration:** Here is the whole setup in six steps. One: create the User CA and the Host CA. Two:
-hand out trust: User CA to servers, Host CA to laptops. Three: enrol each host. Four: create
+hand out trust, with the User CA going to the servers and the Host CA to the laptops. Three: enrol each host. Four: create
 principals and map them to accounts. Five: issue user certificates with matching principals. Six:
 end access with short lifetimes, or with the revocation list when it is urgent.
 
