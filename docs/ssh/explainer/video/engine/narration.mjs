@@ -1,6 +1,6 @@
 // Parse script.md into episodes -> scenes -> sentences (single source of truth).
 // Usage: node engine/narration.mjs  -> build/narration.json
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,7 +38,13 @@ export function groups(sentences) {
   return out;
 }
 
-export function parseScript(md = readFileSync(join(ROOT, 'script.md'), 'utf8')) {
+/** All scripts: script.md (series 1) + script-*.md (later series), episode ids must be unique. */
+export function readScripts() {
+  return readdirSync(ROOT).filter((f) => /^script(-[\w-]+)?\.md$/.test(f)).sort()
+    .map((f) => readFileSync(join(ROOT, f), 'utf8')).join('\n\n---\n\n');
+}
+
+export function parseScript(md = readScripts()) {
   const episodes = [];
   let ep = null;
   let scene = null;
@@ -63,6 +69,7 @@ export function parseScript(md = readFileSync(join(ROOT, 'script.md'), 'utf8')) 
       ep.scenes.push(scene);
       continue;
     }
+    if (/^## /.test(line) && !e) { flush(); mode = null; ep = null; scene = null; continue; }
     const n = line.match(/^\*\*Narration:\*\*\s*(.*)$/);
     if (n) { flush(); mode = 'narration'; buf.push(n[1]); continue; }
     if (/^\*\*Visual:\*\*/.test(line) || /^---\s*$/.test(line)) { flush(); mode = null; continue; }

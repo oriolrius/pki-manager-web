@@ -1,0 +1,22 @@
+@startuml 25-break-glass
+!include theme-oriolrius.puml
+title Break-glass: planned emergency root
+autonumber "<b>0."
+actor "Marta\n(issuer)" as issuer
+actor "Pau\n(on call, no root)" as pau
+participant "PKI Manager" as pki
+participant "acme-db\n(sshd)" as db
+participant "Central log" as log
+pau -> issuer : incident: need root on acme-db
+issuer -> pki : Issue User Certificate\nprincipals: break-glass · TTL +1h
+pki -> pki : audit: ssh.cert.issue\n(keyId, principals, serial 77)
+pki --> issuer : alert: break-glass issued
+issuer --> pau : certificate (1 hour)
+pau -> db : ssh root@acme-db
+db -> db : root file: sysadmins, break-glass -> match
+db -> log : Accepted … ID pau@ops.example (serial 77) CA …
+pau -> db : fix, then close the session
+note over db : after 1 h: NEW logins fail.\nOpen sessions do not close by themselves.
+issuer -> log : review: follow serial 77, post-mortem
+note over issuer, log : Keep one OFFLINE way in for the day PKI Manager is down.
+@enduml

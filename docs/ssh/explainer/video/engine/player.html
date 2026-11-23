@@ -69,7 +69,7 @@
     o += `<rect x="160" y="${470 - 40 * (1 - p)}" width="${220 * p}" height="10" rx="5" fill="${C.orange}"/>`;
     o += text(160, 400, 'SSH certificates with PKI Manager', { size: 40, fill: '#A9ABD0', weight: 500 });
     o += text(160, 560, `${tl.episode}  ${tl.title}`, { size: 84, fill: C.white, weight: 700 });
-    o += text(160, 660, 'Short series for Linux sysadmins', { size: 32, fill: '#A9ABD0' });
+    o += text(160, 660, Number(tl.episode) >= 11 ? 'Series 2 · Principals in depth' : 'Short series for Linux sysadmins', { size: 32, fill: '#A9ABD0' });
     return o + '</g>';
   }
 

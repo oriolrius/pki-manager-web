@@ -1,0 +1,30 @@
+@startuml 24-customer-lifecycle
+!include theme-oriolrius.puml
+title Customers: onboard, move people, exit
+start
+partition "New customer (Umbrella)" {
+  :Create principal client-umbrella;
+  :Map it on Umbrella's servers -> deploy;
+  :Deploy the files, Mark pushed;
+  :Add it to the NEXT certificate
+  of the people on the account;
+}
+partition "Ana moves Acme -> Globex" {
+  :Issue new cert: developers client-globex;
+  :Revoke the old cert (by serial);
+  :Acme refuses it after the next KRL pull;
+}
+partition "Customer leaves with its servers" {
+  :On each server: remove User CA trust
+  and auth_principals files;
+  :Test: a fleet certificate is refused;
+  :Offboard the hosts in PKI Manager;
+  :Stop issuing client-initech;
+}
+stop
+note right
+  Must Acme reject everything signed
+  for other customers? -> separate ZONE
+  (own CAs, own KRL).
+end note
+@enduml
