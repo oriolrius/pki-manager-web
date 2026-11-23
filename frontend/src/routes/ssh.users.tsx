@@ -2,12 +2,13 @@ import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/r
 import { createPortal } from 'react-dom';
 import { trpc } from '@/lib/trpc';
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, UserX, Info, Copy, Check, ShieldOff, Download, X, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, UserX, UserMinus, Info, Copy, Check, ShieldOff, Download, X, Trash2 } from 'lucide-react';
 import { HostKrlStatePill } from '@/components/ssh/HostKrlStatePill';
 import { HoverHint } from '@/components/ssh/HoverHint';
 import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
 import { keyTypeFromCertOpenssh } from '@/lib/ssh';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from '@/components/ssh/block-flows';
+import { offboardIdentityFlow, OFFBOARD_HINT_COPY } from '@/components/ssh/offboard-flow';
 import { useToast, useConfirm, Combobox, SearchInput } from '@/components/ui';
 import { useZone } from '@/lib/zone-context';
 import { ZonePicker } from '@/components/ssh/ZonePicker';
@@ -50,6 +51,7 @@ function SshUsers() {
   const [filter, setFilter] = useState('');
   const createMutation = trpc.ssh.user.createIdentity.useMutation();
   const disableMutation = trpc.ssh.user.disableIdentity.useMutation();
+  const offboardMutation = trpc.ssh.user.offboard.useMutation();
 
   if (isNew) {
     return <Outlet />;
@@ -89,7 +91,8 @@ function SshUsers() {
   const handleDisable = async (identityId: string) => {
     const { confirmed } = await confirm({
       title: 'Disable identity?',
-      description: 'It will no longer be able to receive new certificates.',
+      description:
+        'It will no longer be able to receive new certificates. Its existing certificates stay valid until they expire or are revoked. To revoke them too, use Offboard.',
       confirmLabel: 'Disable',
       tone: 'danger',
     });
@@ -102,6 +105,28 @@ function SshUsers() {
       }
     );
   };
+
+  const handleOffboard = (identity: { id: string; subject: string }) =>
+    offboardIdentityFlow({
+      subject: identity.subject,
+      confirm,
+      countActiveCerts: async () => {
+        const certs = await utils.ssh.user.listCertificates.fetch({ identityId: identity.id });
+        return certs.filter((c: { status: string }) => c.status === 'active').length;
+      },
+      offboard: (reason) => offboardMutation.mutateAsync({ id: identity.id, reason }),
+      onSuccess: (n) => {
+        toast.success(
+          n === null
+            ? `${identity.subject} offboarded`
+            : `${identity.subject} offboarded: ${n} certificate${n === 1 ? '' : 's'} revoked, identity disabled`
+        );
+        utils.ssh.user.listIdentities.invalidate();
+        utils.ssh.user.listCertificates.invalidate();
+        utils.ssh.krl.invalidate();
+      },
+      onError: (msg) => toast.error(msg),
+    });
 
   return (
     <div className="space-y-4">
@@ -192,6 +217,7 @@ function SshUsers() {
                 <IdentityCard
                   identity={identity}
                   onDisable={() => handleDisable(identity.id)}
+                  onOffboard={() => handleOffboard(identity)}
                   onIssue={() => navigate({ to: '/ssh/users/new', search: { identityId: identity.id } })}
                 />
               </div>
@@ -367,10 +393,12 @@ function relativeExpiry(iso: string): { text: string; tone: string } {
 function IdentityCard({
   identity,
   onDisable,
+  onOffboard,
   onIssue,
 }: {
   identity: { id: string; subject: string; email: string | null; status: string; createdAt: string };
   onDisable: () => void;
+  onOffboard: () => void;
   onIssue: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -543,23 +571,40 @@ function IdentityCard({
             </button>
           </HoverHint>
           {identity.status === 'active' && (
-            <HoverHint
-              align="right"
-              hint={
-                <>
-                  <strong>Disable</strong> this identity: blocks any future certificate issuance for it. Already-issued
-                  certificates stay valid until they expire or are revoked — this does not touch the KRL.
-                </>
-              }
-            >
-              <button
-                onClick={onDisable}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted text-destructive"
+            <>
+              <HoverHint
+                align="right"
+                hint={
+                  <>
+                    <strong>Disable</strong> this identity: {OFFBOARD_HINT_COPY.disable}
+                  </>
+                }
               >
-                <UserX className="h-3.5 w-3.5" />
-                Disable
-              </button>
-            </HoverHint>
+                <button
+                  onClick={onDisable}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted text-destructive"
+                >
+                  <UserX className="h-3.5 w-3.5" />
+                  Disable
+                </button>
+              </HoverHint>
+              <HoverHint
+                align="right"
+                hint={
+                  <>
+                    <strong>Offboard</strong> this identity: {OFFBOARD_HINT_COPY.offboard}
+                  </>
+                }
+              >
+                <button
+                  onClick={onOffboard}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted text-destructive"
+                >
+                  <UserMinus className="h-3.5 w-3.5" />
+                  Offboard
+                </button>
+              </HoverHint>
+            </>
           )}
         </div>
       </div>
