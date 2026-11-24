@@ -13,11 +13,17 @@ import { sshHosts, sshIdentities, sshIdempotency, sshCertificates, sshCas } from
 import { isValidHostId, validateCidrList, isValidPrincipalName } from '../../services/ssh-config.js';
 import { getSshHostService, assertEcdsaHostKey } from '../../services/ssh-host.service.js';
 import { parseSshPublicKey } from '../../crypto/ssh/pubkey.js';
-import { getSshUserService } from '../../services/ssh-user.service.js';
+import { getSshUserService, DEFAULT_USER_TTL } from '../../services/ssh-user.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
-import { getSshFleetTokenService, type SshTokenOp, type VerifiedToken } from '../../services/ssh-fleet-token.service.js';
-import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
+import {
+  getSshFleetTokenService,
+  applySignUserLimits,
+  SshTokenLimitError,
+  type SshTokenOp,
+  type VerifiedToken,
+} from '../../services/ssh-fleet-token.service.js';
+import { getSshPrincipalService, SshPrincipalHashMismatchError } from '../../services/ssh-principal.service.js';
 import { resolveZone, SshZoneNotFoundError } from '../../services/ssh-zone.service.js';
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
@@ -57,6 +63,12 @@ const signUserBody = z.object({
   sourceAddress: z.string().max(512).optional().refine((v) => v === undefined || validateCidrList(v).ok, 'invalid CIDR'),
   validForSeconds: z.number().int().positive().optional(),
   keyId: z.string().max(255).optional(),
+});
+
+// TASK-246: canonical sha256 of the files the GET auth-principals served
+// (64 hex chars; an optional `sha256:` prefix is accepted).
+const principalsPushedBody = z.object({
+  sha256: z.string().regex(/^(sha256:)?[0-9a-fA-F]{64}$/, 'sha256 must be 64 hex characters'),
 });
 
 const err = (reply: FastifyReply, status: number, code: string, message: string) =>
@@ -173,6 +185,17 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const body = parsed.data;
     const ctx = { db, ipAddress: req.ip };
 
+    // TASK-247: token limits (allowed principals, max lifetime). Checked BEFORE
+    // the identity upsert so a refused request leaves no trace but its audit row.
+    let validForSeconds: number;
+    try {
+      validForSeconds = applySignUserLimits(token, body, DEFAULT_USER_TTL);
+    } catch (e) {
+      if (!(e instanceof SshTokenLimitError)) throw e;
+      await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_token', entityId: token.id, status: 'failure', details: { tokenId: token.id, subject: body.subject, op: 'sign-user', principals: body.principals, validForSeconds: body.validForSeconds, error: e.message }, ipAddress: req.ip });
+      return err(reply, 403, 'TOKEN_LIMIT', e.message);
+    }
+
     try {
       // Upsert identity by subject WITHIN THE TOKEN'S ZONE (decision-017 A2).
       let ident = (await db
@@ -192,7 +215,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         extensions: body.extensions as any,
         forceCommand: body.forceCommand,
         sourceAddress: body.sourceAddress,
-        validForSeconds: body.validForSeconds,
+        validForSeconds,
         keyId: body.keyId,
         sourceType: 'automation',
       });
@@ -272,6 +295,44 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       return render;
     } catch (e: any) {
       return err(reply, 400, 'SSH_ERROR', e?.message ?? 'principals render failed');
+    }
+  });
+
+  // ---- POST /hosts/:fqdn/principals-pushed (TASK-246) ----
+  // Automation acknowledges that it installed the files the GET above served,
+  // by echoing their canonical sha256. Marks pushed (clears Stale) ONLY when the
+  // hash matches the CURRENT render; otherwise 409 + the current hash, nothing
+  // changes. Same op as the GET: a token that may read the files may confirm them.
+  server.post(`${base}/hosts/:fqdn/principals-pushed`, {
+    schema: {
+      tags: sshExtTag,
+      summary: "Acknowledge that a host's principal files were installed (fleet token; sha256 must match the current render)",
+      body: zodBodySchema(principalsPushedBody),
+      response: { 200: okObjectResponse },
+    },
+  }, async (req, reply) => {
+    const token = await authn(req, reply, 'get-principals');
+    if (!token) return;
+    const fqdn = (req.params as any)?.fqdn as string;
+    if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'invalid fqdn');
+    const parsed = principalsPushedBody.safeParse(req.body);
+    if (!parsed.success) return err(reply, 400, 'VALIDATION_ERROR', parsed.error.issues.map((i) => i.message).join('; '));
+    const host = (await db
+      .select()
+      .from(sshHosts)
+      .where(andcol(eqcol(sshHosts.zoneId, token.zoneId), eqcol(sshHosts.fqdn, fqdn)))
+      .limit(1))[0];
+    if (!host) {
+      await createAuditLog({ db, operation: 'ssh.principal.mark_pushed', entityType: 'ssh_host', entityId: fqdn, status: 'failure', details: { via: 'fleet-token', tokenId: token.id, fqdn, error: 'host not registered in token zone' }, ipAddress: req.ip });
+      return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
+    }
+    try {
+      return await getSshPrincipalService().acknowledgePush({ db, ipAddress: req.ip }, host.id, parsed.data.sha256, { tokenId: token.id });
+    } catch (e: any) {
+      if (e instanceof SshPrincipalHashMismatchError) {
+        return (reply as FastifyReply).status(409).send({ error: { code: 'SHA256_MISMATCH', message: e.message }, currentSha256: e.currentSha256 });
+      }
+      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'principals acknowledge failed');
     }
   });
 

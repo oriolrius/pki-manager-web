@@ -15,7 +15,8 @@ import { sshClientConfig, validateCidrList, isValidPrincipalName } from './ssh-c
 import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
-const DEFAULT_USER_TTL = 7 * 24 * 3600; // +1w
+/** Default user-cert lifetime (+1w). Exported for the fleet-token limit (TASK-247). */
+export const DEFAULT_USER_TTL = 7 * 24 * 3600;
 
 export class SshUserError extends Error {
   constructor(message: string) {

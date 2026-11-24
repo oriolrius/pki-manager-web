@@ -1,6 +1,6 @@
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { ArrowLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import {
   SshCapabilityEditor,
@@ -8,6 +8,7 @@ import {
   type SshCapabilityValue,
 } from '@/components/SshCapabilityEditor';
 import { CertDeliveryPanel } from '@/components/ssh/CertDeliveryPanel';
+import { PrincipalReachability } from '@/components/ssh/PrincipalReachability';
 import { useToast } from '@/components/ui';
 import { useZone } from '@/lib/zone-context';
 import { type SshKeyType } from '@/lib/ssh';
@@ -166,7 +167,7 @@ function IssueUserCert() {
 
           <SshCapabilityEditor value={cap} onChange={setCap} principalCatalog={principalsQuery.data ?? []} />
 
-          <PrincipalReachability principals={cap.principals} />
+          <PrincipalReachability principals={cap.principals} zoneId={selectedZoneId} />
 
           <div className="flex gap-3 justify-end pt-4 border-t">
             <button
@@ -189,50 +190,3 @@ function IssueUserCert() {
     </div>
   );
 }
-
-/**
- * Shows where each chosen principal currently grants login, and warns when one
- * is mapped to no host account — the cert would authenticate but be denied login
- * everywhere (the most common SSH-cert mistake).
- */
-function PrincipalReachability({ principals }: { principals: string[] }) {
-  const q = trpc.ssh.principal.mappingsByPrincipal.useQuery();
-  if (principals.length === 0) return null;
-  const map = q.data ?? {};
-  const anyUnmapped = principals.some((p) => !(map[p]?.length));
-
-  return (
-    <div className="rounded-md border p-3 text-xs space-y-1.5">
-      <div className="font-medium">Where these principals grant login</div>
-      {principals.map((p) => {
-        const targets = map[p] ?? [];
-        return (
-          <div key={p} className="flex items-start gap-2">
-            {targets.length ? (
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
-            ) : (
-              <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-            )}
-            <code className="font-mono">{p}</code>
-            {targets.length ? (
-              <span className="text-muted-foreground">
-                → {targets.map((t) => `${t.fqdn} (${t.localAccount})`).join(', ')}
-              </span>
-            ) : (
-              <span className="text-amber-700 dark:text-amber-400">
-                → not mapped to any host account. A certificate with only this principal cannot log in anywhere — map it
-                first.
-              </span>
-            )}
-          </div>
-        );
-      })}
-      {anyUnmapped && (
-        <Link to="/ssh/principals" className="inline-flex items-center gap-1 text-primary hover:underline pt-1">
-          Map principals to host accounts →
-        </Link>
-      )}
-    </div>
-  );
-}
-

@@ -55,8 +55,9 @@ describe('TASK-215 — POST /api/v1/ssh/hosts/:id/auth-principals/pushed', () =>
   beforeEach(async () => {
     await wipe();
     hostId = randomUUID();
-    // updatedAt in the future relative to lastPrincipalPushAt (null) => Stale.
-    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active' } as any);
+    // Principal files changed and never pushed => Stale (TASK-246: the signal
+    // is principals_changed_at, no longer updatedAt).
+    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active', principalsChangedAt: new Date() } as any);
   });
 
   it('clears the Stale flag using REST alone (no tRPC call)', async () => {

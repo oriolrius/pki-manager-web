@@ -14,7 +14,7 @@
  */
 import { randomUUID } from 'crypto';
 import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';
-import { sshHosts, sshIdentities, sshCertificates, sshHostBlocks, sshHostKrls, sshPrincipals, sshUserPrincipals, sshHostPrincipalMaps } from '../db/schema.js';
+import { sshHosts, sshIdentities, sshCertificates, sshHostBlocks, sshHostKrls, sshPrincipals, sshUserPrincipals, sshHostPrincipalMaps, sshCas, sshRevocations } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { getSshHostKrlService, type SshHostKrlDto } from './ssh-host-krl.service.js';
@@ -35,6 +35,9 @@ export interface SharedKeyCollision {
   subject: string;
   fingerprint: string;
 }
+
+/** TASK-248: where a host Access row comes from. */
+export type HostAccessSource = 'certificate' | 'grant' | 'both';
 
 export interface SshHostBlockDto {
   id: string;
@@ -259,9 +262,15 @@ export class SshBlockService {
   }
 
   /**
-   * "Who can currently reach this host" (decision-016 Access card): the
-   * entitlement join whoCanBecome() discards — identity / via-roles / local
-   * accounts — merged with active block rows and the per-host state.
+   * "Who can currently reach this host" (decision-016 Access card). TASK-248:
+   * two sources, merged per identity —
+   *   - `grant`: the entitlement join (ssh_user_principals x host maps);
+   *   - `certificate`: a live user certificate (active, unexpired, not revoked
+   *     by status / serial / key / key-id) whose principals match a mapping on
+   *     this host, as bare `P` or host-scoped `P@<fqdn>`.
+   * Same zone only (identity, CA and principals all in the host's zone).
+   * `viaRoles` are the matched mapped principal names; `localAccounts` the
+   * accounts those roles map to. Blocks are merged on top, unchanged.
    */
   async hostAccess(
     ctx: ServiceContext,
@@ -269,6 +278,7 @@ export class SshBlockService {
   ): Promise<{
     hostId: string;
     fqdn: string;
+    zoneId: string;
     state: HostKrlStateInfo;
     entries: Array<{
       identityId: string;
@@ -276,6 +286,8 @@ export class SshBlockService {
       identityStatus: string;
       viaRoles: string[];
       localAccounts: string[];
+      /** Why this identity is listed: a live certificate, a grant, both, or null (block-only row). */
+      source: HostAccessSource | null;
       blocked: boolean;
       block: SshHostBlockDto | null;
     }>;
@@ -283,39 +295,139 @@ export class SshBlockService {
     const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
     if (!host) throw new SshBlockError(`host ${hostId} not found`);
 
-    const entitled = (await ctx.db
-      .select({
-        identityId: sshUserPrincipals.identityId,
-        subject: sshIdentities.subject,
-        identityStatus: sshIdentities.status,
-        role: sshPrincipals.name,
-        localAccount: sshHostPrincipalMaps.localAccount,
-      })
+    // The host's mappings: role (principal name) -> local accounts.
+    const maps = (await ctx.db
+      .select({ role: sshPrincipals.name, localAccount: sshHostPrincipalMaps.localAccount })
       .from(sshHostPrincipalMaps)
       .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
-      .innerJoin(sshUserPrincipals, eq(sshUserPrincipals.principalId, sshHostPrincipalMaps.principalId))
-      .innerJoin(sshIdentities, eq(sshUserPrincipals.identityId, sshIdentities.id))
-      .where(eq(sshHostPrincipalMaps.hostId, hostId))) as any[];
+      .where(and(eq(sshHostPrincipalMaps.hostId, hostId), eq(sshPrincipals.zoneId, host.zoneId)))) as any[];
+    const accountsByRole = new Map<string, Set<string>>();
+    for (const m of maps) {
+      if (!accountsByRole.has(m.role)) accountsByRole.set(m.role, new Set());
+      accountsByRole.get(m.role)!.add(m.localAccount);
+    }
 
-    const entries = new Map<
-      string,
-      { identityId: string; subject: string; identityStatus: string; viaRoles: Set<string>; localAccounts: Set<string>; blocked: boolean; block: SshHostBlockDto | null }
-    >();
-    for (const row of entitled) {
-      if (!entries.has(row.identityId)) {
-        entries.set(row.identityId, {
-          identityId: row.identityId,
-          subject: row.subject,
-          identityStatus: row.identityStatus,
+    type Entry = {
+      identityId: string;
+      subject: string;
+      identityStatus: string;
+      viaRoles: Set<string>;
+      localAccounts: Set<string>;
+      grant: boolean;
+      certificate: boolean;
+      blocked: boolean;
+      block: SshHostBlockDto | null;
+    };
+    const entries = new Map<string, Entry>();
+    const entryFor = (identityId: string, subject: string, identityStatus: string): Entry => {
+      if (!entries.has(identityId)) {
+        entries.set(identityId, {
+          identityId,
+          subject,
+          identityStatus,
           viaRoles: new Set(),
           localAccounts: new Set(),
+          grant: false,
+          certificate: false,
           blocked: false,
           block: null,
         });
       }
-      const e = entries.get(row.identityId)!;
-      e.viaRoles.add(row.role);
-      e.localAccounts.add(row.localAccount);
+      return entries.get(identityId)!;
+    };
+    const addRole = (e: Entry, role: string) => {
+      e.viaRoles.add(role);
+      for (const a of accountsByRole.get(role) ?? []) e.localAccounts.add(a);
+    };
+
+    if (accountsByRole.size) {
+      // Source 1 — grants.
+      const granted = (await ctx.db
+        .select({
+          identityId: sshUserPrincipals.identityId,
+          subject: sshIdentities.subject,
+          identityStatus: sshIdentities.status,
+          role: sshPrincipals.name,
+        })
+        .from(sshUserPrincipals)
+        .innerJoin(sshPrincipals, eq(sshUserPrincipals.principalId, sshPrincipals.id))
+        .innerJoin(sshIdentities, eq(sshUserPrincipals.identityId, sshIdentities.id))
+        .where(
+          and(
+            eq(sshIdentities.zoneId, host.zoneId),
+            eq(sshPrincipals.zoneId, host.zoneId),
+            inArray(sshPrincipals.name, [...accountsByRole.keys()])
+          )
+        )) as any[];
+      for (const row of granted) {
+        const e = entryFor(row.identityId, row.subject, row.identityStatus);
+        e.grant = true;
+        addRole(e, row.role);
+      }
+
+      // Source 2 — live user certificates whose principals hit a mapping here.
+      const now = new Date();
+      const certs = (await ctx.db
+        .select({
+          caId: sshCertificates.caId,
+          serial: sshCertificates.serial,
+          keyId: sshCertificates.keyId,
+          fingerprint: sshCertificates.subjectPubkeyFingerprint,
+          principals: sshCertificates.principals,
+          identityId: sshCertificates.identityId,
+          subject: sshIdentities.subject,
+          identityStatus: sshIdentities.status,
+        })
+        .from(sshCertificates)
+        .innerJoin(sshIdentities, eq(sshCertificates.identityId, sshIdentities.id))
+        .innerJoin(sshCas, eq(sshCertificates.caId, sshCas.id))
+        .where(
+          and(
+            eq(sshCertificates.certType, 'user'),
+            eq(sshCertificates.status, 'active'),
+            gt(sshCertificates.validBefore, now),
+            eq(sshIdentities.zoneId, host.zoneId),
+            eq(sshCas.zoneId, host.zoneId)
+          )
+        )) as any[];
+      if (certs.length) {
+        // Revocations that do not flip ssh_certificates.status (serial / key / key-id directives).
+        const revs = (await ctx.db
+          .select()
+          .from(sshRevocations)
+          .where(inArray(sshRevocations.caId, [...new Set(certs.map((c) => c.caId))]))) as any[];
+        const revoked = new Set<string>();
+        for (const r of revs) {
+          if (r.targetType === 'serial' && r.serial) revoked.add(`s:${r.caId}:${r.serial}`);
+          if (r.targetType === 'key_fingerprint' && r.keyFingerprint) revoked.add(`k:${r.caId}:${r.keyFingerprint}`);
+          if (r.targetType === 'key_id' && r.keyId) revoked.add(`i:${r.caId}:${r.keyId}`);
+        }
+        const hostSuffix = `@${host.fqdn}`;
+        for (const c of certs) {
+          if (
+            revoked.has(`s:${c.caId}:${c.serial}`) ||
+            revoked.has(`k:${c.caId}:${c.fingerprint}`) ||
+            revoked.has(`i:${c.caId}:${c.keyId}`)
+          )
+            continue;
+          let principals: string[] = [];
+          try {
+            principals = JSON.parse(c.principals);
+          } catch {
+            continue;
+          }
+          const roles = new Set<string>();
+          for (const p of principals) {
+            if (accountsByRole.has(p)) roles.add(p);
+            else if (p.endsWith(hostSuffix) && accountsByRole.has(p.slice(0, -hostSuffix.length)))
+              roles.add(p.slice(0, -hostSuffix.length));
+          }
+          if (!roles.size) continue;
+          const e = entryFor(c.identityId, c.subject, c.identityStatus);
+          e.certificate = true;
+          for (const r of roles) addRole(e, r);
+        }
+      }
     }
 
     // Blocked identities render even when not currently entitled (pre-emptive).
@@ -329,15 +441,9 @@ export class SshBlockService {
     }
     for (const b of active) {
       if (!entries.has(b.identityId)) {
-        entries.set(b.identityId, {
-          identityId: b.identityId,
-          subject: b.subject ?? b.identityId,
-          identityStatus: statusById.get(b.identityId) ?? 'active',
-          viaRoles: new Set(),
-          localAccounts: new Set(),
-          blocked: true,
-          block: b,
-        });
+        const e = entryFor(b.identityId, b.subject ?? b.identityId, statusById.get(b.identityId) ?? 'active');
+        e.blocked = true;
+        e.block = b;
       } else {
         const e = entries.get(b.identityId)!;
         e.blocked = true;
@@ -349,9 +455,15 @@ export class SshBlockService {
     return {
       hostId: host.id,
       fqdn: host.fqdn,
+      zoneId: host.zoneId,
       state,
       entries: [...entries.values()]
-        .map((e) => ({ ...e, viaRoles: [...e.viaRoles].sort(), localAccounts: [...e.localAccounts].sort() }))
+        .map(({ grant, certificate, ...e }) => ({
+          ...e,
+          viaRoles: [...e.viaRoles].sort(),
+          localAccounts: [...e.localAccounts].sort(),
+          source: (grant && certificate ? 'both' : certificate ? 'certificate' : grant ? 'grant' : null) as HostAccessSource | null,
+        }))
         .sort((a, b) => a.subject.localeCompare(b.subject)),
     };
   }

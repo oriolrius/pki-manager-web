@@ -20,6 +20,9 @@ import {
   createPrincipalSchema,
   grantPrincipalSchema,
   mapPrincipalSchema,
+  unmapPrincipalSchema,
+  revokeGrantSchema,
+  mappingsByPrincipalSchema,
   revokeSshCertSchema,
   renderPrincipalsSchema,
   blockHostSchema,
@@ -326,7 +329,14 @@ const principalRouter = router({
   list: sshProtectedProcedure.input(zoneFilterSchema).query(async ({ ctx, input }) =>
     getSshPrincipalService().listPrincipals(svcCtx(ctx), { zoneId: input?.zoneId })
   ),
-  mappingsByPrincipal: sshProtectedProcedure.query(async ({ ctx }) => getSshPrincipalService().mappingsByPrincipal(svcCtx(ctx))),
+  // TASK-249: `zone` (id or slug) scopes the result to one zone.
+  mappingsByPrincipal: sshProtectedProcedure.input(mappingsByPrincipalSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshPrincipalService().mappingsByPrincipal(svcCtx(ctx), { zone: input?.zone });
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
   create: sshProtectedProcedure.input(createPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
       return await getSshPrincipalService().createPrincipal(svcCtx(ctx), { name: input.name, description: input.description, zone: input.zone });
@@ -343,8 +353,48 @@ const principalRouter = router({
     }
   }),
   grant: sshProtectedProcedure.input(grantPrincipalSchema).mutation(async ({ ctx, input }) => {
-    await getSshPrincipalService().grantToIdentity(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
-    return { ok: true };
+    try {
+      await getSshPrincipalService().grantToIdentity(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  // TASK-245: list / remove grants (the identity's entitlement catalog).
+  listGrants: sshProtectedProcedure.input(z.object({ identityId: z.string().min(1) })).query(async ({ ctx, input }) => {
+    try {
+      return await getSshPrincipalService().listGrants(svcCtx(ctx), input.identityId);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  revokeGrant: sshProtectedProcedure.input(revokeGrantSchema).mutation(async ({ ctx, input }) => {
+    try {
+      await getSshPrincipalService().revokeGrant(svcCtx(ctx), { identityId: input.identityId, principalId: input.principalId });
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  // TASK-245: a host's mapping rows, and removing one (host becomes Stale).
+  hostMappings: sshProtectedProcedure.input(renderPrincipalsSchema).query(async ({ ctx, input }) => {
+    try {
+      return await getSshPrincipalService().listHostMappings(svcCtx(ctx), input.hostId);
+    } catch (e) {
+      mapSshError(e);
+    }
+  }),
+  unmap: sshProtectedProcedure.input(unmapPrincipalSchema).mutation(async ({ ctx, input }) => {
+    try {
+      await getSshPrincipalService().unmapFromHost(svcCtx(ctx), {
+        hostId: input.hostId,
+        principalId: input.principalId,
+        localAccount: input.localAccount,
+      });
+      return { ok: true };
+    } catch (e) {
+      mapSshError(e);
+    }
   }),
   map: sshProtectedProcedure.input(mapPrincipalSchema).mutation(async ({ ctx, input }) => {
     try {
@@ -389,6 +439,8 @@ const tokenRouter = router({
           hostCaId: input.hostCaId,
           opSet: input.opSet,
           zone: input.zone,
+          allowedPrincipals: input.allowedPrincipals,
+          maxValidForSeconds: input.maxValidForSeconds,
         });
       } catch (e) {
         mapSshError(e);

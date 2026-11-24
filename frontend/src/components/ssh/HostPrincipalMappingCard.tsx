@@ -4,10 +4,11 @@
  * Shared by the Principals page (host picker) and the host detail page.
  */
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { ConfigSnippet } from '@/components/ConfigSnippet';
-import { useToast } from '@/components/ui';
+import { useToast, useConfirm } from '@/components/ui';
+import { unmapConfirmCopy } from './principal-copy';
 
 export interface HostPrincipalMappingCardProps {
   hostId: string;
@@ -19,23 +20,29 @@ export interface HostPrincipalMappingCardProps {
 
 export function HostPrincipalMappingCard({ hostId, title, subtitle }: HostPrincipalMappingCardProps) {
   const toast = useToast();
+  const confirm = useConfirm();
   const utils = trpc.useUtils();
   const principalsQuery = trpc.ssh.principal.list.useQuery();
   const staleQuery = trpc.ssh.principal.staleHosts.useQuery();
   const renderQuery = trpc.ssh.principal.render.useQuery({ hostId });
+  const mappingsQuery = trpc.ssh.principal.hostMappings.useQuery({ hostId });
 
   const [principalId, setPrincipalId] = useState('');
   const [localAccount, setLocalAccount] = useState('');
 
   const mapMutation = trpc.ssh.principal.map.useMutation();
   const markPushedMutation = trpc.ssh.principal.markPushed.useMutation();
+  const unmapMutation = trpc.ssh.principal.unmap.useMutation();
 
   const principals = principalsQuery.data ?? [];
   const stale = (staleQuery.data ?? []).some((h) => h.id === hostId);
   const render = renderQuery.data;
+  const mappings = mappingsQuery.data ?? [];
 
   const invalidate = () => {
     utils.ssh.principal.render.invalidate({ hostId });
+    utils.ssh.principal.hostMappings.invalidate({ hostId });
+    utils.ssh.host.access.invalidate({ id: hostId });
     utils.ssh.principal.staleHosts.invalidate();
     utils.ssh.principal.mappingsByPrincipal.invalidate();
     utils.ssh.host.deployBundle.invalidate({ id: hostId });
@@ -52,6 +59,21 @@ export function HostPrincipalMappingCard({ hostId, title, subtitle }: HostPrinci
           invalidate();
           setLocalAccount('');
           setPrincipalId('');
+        },
+        onError: (err) => toast.error(`Failed: ${err.message}`),
+      }
+    );
+  };
+
+  const handleUnmap = async (m: { principalId: string; name: string; localAccount: string }) => {
+    const { confirmed } = await confirm(unmapConfirmCopy(m.name, m.localAccount));
+    if (!confirmed) return;
+    unmapMutation.mutate(
+      { hostId, principalId: m.principalId, localAccount: m.localAccount },
+      {
+        onSuccess: () => {
+          toast.success(`Removed ${m.name} → ${m.localAccount}. Push the updated files to the host.`);
+          invalidate();
         },
         onError: (err) => toast.error(`Failed: ${err.message}`),
       }
@@ -134,6 +156,31 @@ export function HostPrincipalMappingCard({ hostId, title, subtitle }: HostPrinci
           <p className="text-sm text-muted-foreground">
             No principals defined yet — create one in the principal catalog first.
           </p>
+        )}
+
+        {mappings.length > 0 && (
+          <div>
+            <div className="text-sm font-medium mb-1">Mappings</div>
+            <ul className="divide-y rounded-md border" aria-label="Principal mappings">
+              {mappings.map((m) => (
+                <li key={`${m.principalId}:${m.localAccount}`} className="flex items-center justify-between gap-3 px-3 py-1.5 text-sm">
+                  <span className="font-mono">
+                    {m.name} → {m.localAccount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleUnmap(m)}
+                    disabled={unmapMutation.isPending}
+                    aria-label={`Remove mapping ${m.name} → ${m.localAccount}`}
+                    title="Remove this mapping"
+                    className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-destructive disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {renderQuery.isLoading ? (

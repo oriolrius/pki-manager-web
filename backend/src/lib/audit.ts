@@ -50,6 +50,8 @@ export type AuditOperation =
   | 'ssh.principal.update'
   | 'ssh.principal.delete'
   | 'ssh.principal.map'
+  | 'ssh.principal.unmap'
+  | 'ssh.principal.revoke_grant'
   | 'ssh.principal.mark_pushed'
   | 'ssh.krl.generate'
   | 'ssh.krl.publish'

@@ -128,6 +128,9 @@ export const mintTokenSchema = z.object({
   hostCaId: z.string().optional(),
   opSet: z.array(sshTokenOpSchema).min(1),
   zone: zoneRefSchema.optional(),
+  // TASK-247: sign-user limits. Omit for no limit (backward compatible).
+  allowedPrincipals: z.array(principalNameSchema).min(1).max(256).optional(),
+  maxValidForSeconds: ttlSecondsSchema.optional(),
 });
 
 export const mapPrincipalSchema = z.object({
@@ -135,6 +138,13 @@ export const mapPrincipalSchema = z.object({
   principalId: z.string().min(1),
   localAccount: principalNameSchema,
 });
+
+// TASK-245: undo a map / a grant. Same shapes as their create twins.
+export const unmapPrincipalSchema = mapPrincipalSchema;
+export const revokeGrantSchema = grantPrincipalSchema;
+
+// TASK-249: optional zone scope for principal.mappingsByPrincipal.
+export const mappingsByPrincipalSchema = z.object({ zone: zoneRefSchema.optional() }).optional();
 
 export const revokeSshCertSchema = z.object({
   certId: z.string().min(1),

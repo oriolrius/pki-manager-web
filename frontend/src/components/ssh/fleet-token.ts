@@ -52,3 +52,40 @@ export function validateMint(input: {
   if (needsHostCa(input.ops) && !input.hostCaId) return 'sign-host and register-host-pubkey need a Host CA.';
   return null;
 }
+
+// ---- sign-user limits (TASK-247) ----
+
+/** Suggested max certificate lifetime for a CI token: 15 minutes. */
+export const DEFAULT_CI_MAX_LIFETIME = 900;
+
+export const LIFETIME_PRESETS: { seconds: number; label: string }[] = [
+  { seconds: 300, label: '5 minutes' },
+  { seconds: 900, label: '15 minutes (suggested for CI)' },
+  { seconds: 3600, label: '1 hour' },
+  { seconds: 8 * 3600, label: '8 hours' },
+  { seconds: 24 * 3600, label: '1 day' },
+  { seconds: 7 * 24 * 3600, label: '1 week' },
+];
+
+export const UNRESTRICTED_WARNING =
+  'No limits: this token can sign any principal, for any lifetime, in its zone. If it leaks, it opens every host of the zone.';
+
+export const UNRESTRICTED_HINT =
+  'This token can sign any principal with any lifetime in its zone. Mint a limited token and revoke this one.';
+
+/** "15 min", "8 h", "1 d", "90 s" — compact lifetime for the table. */
+export function formatLifetime(seconds: number): string {
+  if (seconds % 86400 === 0) return `${seconds / 86400} d`;
+  if (seconds % 3600 === 0) return `${seconds / 3600} h`;
+  if (seconds % 60 === 0) return `${seconds / 60} min`;
+  return `${seconds} s`;
+}
+
+/** A sign-user token minted without any limit (all tokens minted before TASK-247). */
+export function isUnrestrictedSignUser(t: {
+  opSet: string[];
+  allowedPrincipals?: string[] | null;
+  maxValidForSeconds?: number | null;
+}): boolean {
+  return t.opSet.includes('sign-user') && !t.allowedPrincipals?.length && t.maxValidForSeconds == null;
+}

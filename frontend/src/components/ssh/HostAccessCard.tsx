@@ -10,6 +10,7 @@ import { trpc } from '@/lib/trpc';
 import { useToast, useConfirm } from '@/components/ui';
 import { HostKrlStatePill } from './HostKrlStatePill';
 import { blockFlow, unblockFlow, type BlockFlowDeps } from './block-flows';
+import { ACCESS_SOURCE } from './principal-copy';
 
 export function HostAccessCard({ hostId }: { hostId: string }) {
   const utils = trpc.useUtils();
@@ -48,7 +49,8 @@ export function HostAccessCard({ hostId }: { hostId: string }) {
   if (accessQuery.isError || !access) return null;
 
   const entryIds = new Set(access.entries.map((e) => e.identityId));
-  const candidates = (identitiesQuery.data ?? []).filter((i) => !entryIds.has(i.id));
+  // Only identities of the host's own zone can ever reach it (decision-017).
+  const candidates = (identitiesQuery.data ?? []).filter((i) => !entryIds.has(i.id) && i.zoneId === access.zoneId);
 
   const doBlock = (identityId: string, subject: string) =>
     blockFlow(deps, { hostId, fqdn: access.fqdn, identityId, subject, hostState: access.state.state });
@@ -92,7 +94,8 @@ export function HostAccessCard({ hostId }: { hostId: string }) {
 
       {access.entries.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No identity can currently reach this host (no role is mapped to a local account here).
+          No identity can currently reach this host (no live certificate or grant matches a principal mapped to a
+          local account here).
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -111,6 +114,14 @@ export function HostAccessCard({ hostId }: { hostId: string }) {
                 <tr key={e.identityId} className={e.blocked ? 'bg-red-50 dark:bg-red-900/20' : undefined}>
                   <td className="py-2 pr-3 font-medium">
                     {e.subject}
+                    {e.source && (
+                      <span
+                        className="ml-1.5 text-[11px] font-normal text-muted-foreground"
+                        title={ACCESS_SOURCE[e.source].hint}
+                      >
+                        · {ACCESS_SOURCE[e.source].label}
+                      </span>
+                    )}
                     {e.identityStatus !== 'active' && <span className="ml-1 text-xs text-muted-foreground">(disabled)</span>}
                     {e.block?.supersededByOffboard && (
                       <span className="ml-1 text-xs text-muted-foreground">(superseded by offboard)</span>

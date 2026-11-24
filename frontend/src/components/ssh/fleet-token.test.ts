@@ -37,3 +37,21 @@ describe('validateMint (mirrors the backend rules)', () => {
     expect(needsUserCa(['sign-user'])).toBe(true);
   });
 });
+
+describe('sign-user limits helpers (TASK-247)', () => {
+  it('formats lifetimes compactly', async () => {
+    const { formatLifetime } = await import('./fleet-token');
+    expect(formatLifetime(900)).toBe('15 min');
+    expect(formatLifetime(3600)).toBe('1 h');
+    expect(formatLifetime(86400)).toBe('1 d');
+    expect(formatLifetime(90)).toBe('90 s');
+  });
+  it('flags only sign-user tokens with no limit at all as unrestricted', async () => {
+    const { isUnrestrictedSignUser } = await import('./fleet-token');
+    expect(isUnrestrictedSignUser({ opSet: ['sign-user'] })).toBe(true);
+    expect(isUnrestrictedSignUser({ opSet: ['sign-user'], allowedPrincipals: null, maxValidForSeconds: null })).toBe(true);
+    expect(isUnrestrictedSignUser({ opSet: ['sign-user'], maxValidForSeconds: 900 })).toBe(false);
+    expect(isUnrestrictedSignUser({ opSet: ['sign-user'], allowedPrincipals: ['deploy'] })).toBe(false);
+    expect(isUnrestrictedSignUser({ opSet: ['sign-host'] })).toBe(false);
+  });
+});

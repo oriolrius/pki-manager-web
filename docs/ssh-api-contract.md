@@ -48,6 +48,26 @@ The host is auto-registered on first call. `source = automation`.
 ```
 → `200 { "identityId", "certOpenssh", "serial", "keyId", "validBefore" }`.
 
+**Token limits (optional, set at mint time).** A `sign-user` token can carry:
+
+| Limit | Mint field | Effect on `sign-user` |
+|---|---|---|
+| Allowed principals | `allowedPrincipals: string[]` — names that exist in the token zone's principal catalog | Every requested principal must be in the list (`P@<host>` is accepted when `P` is). Otherwise `403 TOKEN_LIMIT`. |
+| Max certificate lifetime | `maxValidForSeconds: number` | `validForSeconds` above it → `403 TOKEN_LIMIT`. Without `validForSeconds` the cert gets `min(604800, maxValidForSeconds)`. |
+
+A refused request writes an `ssh.external.sign` audit row with `status: failure`
+and creates nothing. Tokens minted without limits (including every token minted
+before this feature) keep the old behaviour: any principal, any lifetime, in the
+token's zone. The Fleet tokens page shows them as **Unrestricted**.
+Minting limits on a token without `sign-user`, or a principal not in the zone
+catalog, is refused (`400`).
+
+```http
+POST /api/v1/ssh/tokens          # OIDC (operator) — or trpc.ssh.token.mint
+{ "name": "ci-deploy", "userCaId": "…", "opSet": ["sign-user"],
+  "allowedPrincipals": ["deployer"], "maxValidForSeconds": 900 }
+```
+
 ### `POST /api/v1/external/ssh/register-host-pubkey`
 Register the host's ECIES key (enables encrypted KRL delivery). Returns `501`
 unless the backend runs with `SSH_ECIES_ENABLED=true`.
@@ -56,6 +76,47 @@ unless the backend runs with `SSH_ECIES_ENABLED=true`.
 ```
 → `200 { "hostId", "kmsPublicKeyId", "hostPrivKeyId" }`
 (`hostPrivKeyId` configures the puller's `HOST_PRIV_KEY_ID`).
+
+### `GET /api/v1/external/ssh/hosts/:fqdn/auth-principals`
+Token op: `get-principals`. Returns the host's rendered `AuthorizedPrincipalsFile`
+map (the host is looked up by FQDN **in the token's zone**):
+```json
+{ "hostId": "…", "fqdn": "server.example.com",
+  "directive": "AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u",
+  "files": { "root": "ops\nops@server.example.com\n" },
+  "sha256": "<64 lowercase hex>",
+  "stale": true }
+```
+`files` maps each local account to the verbatim contents of
+`/etc/ssh/auth_principals/<account>`. `stale` is `true` when these files
+changed (a mapping was added or removed) after the last confirmed push. A host
+certificate issue/renew never makes a host stale.
+
+**Canonical `sha256`** (stable; automation computes it the same way): for each
+account in ascending byte order of its name, append
+`UTF-8(account) || 0x00 || UTF-8(file contents, verbatim) || 0x00`; take the
+SHA-256 of the concatenation, lowercase hex. No accounts → SHA-256 of the empty
+string (`e3b0c442…b855`). Python:
+```python
+h = hashlib.sha256()
+for account in sorted(files):
+    h.update(account.encode() + b"\0" + files[account].encode() + b"\0")
+h.hexdigest()
+```
+
+### `POST /api/v1/external/ssh/hosts/:fqdn/principals-pushed`
+Token op: `get-principals`. Call it **after** the files from the GET above are
+installed on the host. Echo the `sha256` of the files you installed:
+```http
+{ "sha256": "<64 hex>" }                         # a "sha256:" prefix is accepted
+```
+→ `200 { "hostId", "fqdn", "lastPrincipalPushAt", "sha256" }` — the host is no
+longer stale.
+→ `409 { "error": { "code": "SHA256_MISMATCH", … }, "currentSha256": "<64 hex>" }`
+when the hash is not the hash of the **current** render (the mappings changed
+after your GET): nothing changes; fetch again, install, acknowledge again.
+`400` bad body/FQDN · `401/403` token · `404` host not in the token's zone.
+Every attempt writes an `ssh.principal.mark_pushed` audit row (success or failure).
 
 ### `POST /api/v1/external/ssh/krl`  *(ECIES path; no token)*
 ```http
@@ -83,7 +144,7 @@ pullers keep their last-good KRL. Both 200 and 304 stamp the host's
 |---|---|
 | `200` | new/encrypted KRL | `304` | host already current |
 | `400` | malformed `host_id` | `404` | host not registered for distribution |
-| `401/403` | invalid / out-of-scope token (sign/register) | `429` | rate-limited |
+| `401/403` | invalid / out-of-scope token (sign/register); `403 TOKEN_LIMIT` = sign-user limit exceeded | `429` | rate-limited |
 | `501` | ECIES path disabled | `503` | no CA / per-host KRL not initialized |
 
 Retryability: sign/register are **idempotent with an `Idempotency-Key`** and safe
@@ -124,7 +185,7 @@ the SSH-34 fail-closed posture (403 when OIDC is off without
 |---|---|---|
 | `POST /api/v1/ssh/blocks` `{hostId, identityId, reason?}` | `ssh.block.block` | Block the identity on that host only; synchronously regenerates the host's composed KRL. Response carries `warnings.sharedKeyCollisions` (fingerprint over-block) and the fresh `krl`. |
 | `POST /api/v1/ssh/blocks/unblock` `{hostId, identityId}` | `ssh.block.unblock` | Lift the block (row kept for audit). Symmetric: enforced on the host's next pull, shown as *Lifting* until the post-lift version lands. |
-| `GET /api/v1/ssh/hosts/:id/access` | `ssh.host.access` | Who can reach this host: entitlement join (identity / via-roles / local accounts) merged with active blocks + per-host distribution state. |
+| `GET /api/v1/ssh/hosts/:id/access` | `ssh.host.access` | Who can reach this host: identities with a live user certificate whose principals (`P` or `P@<fqdn>`) map to an account here, plus grantees of a mapped principal — each entry has `source`: `certificate` \| `grant` \| `both` (`null` for a block-only row), `viaRoles`, `localAccounts` — merged with active blocks + per-host distribution state. Same zone only. |
 | `GET /api/v1/ssh/hosts/:id/blocks` | `ssh.block.listForHost` | Block history (active + lifted) with superseded-by-offboard annotation. |
 | `GET /api/v1/ssh/identities/:id/blocks` | `ssh.block.listForIdentity` | The identity's active blocks as `{hostId, fqdn, state}` tuples (Users-page pills). |
 | `GET /api/v1/ssh/blocks/fleet` | `ssh.block.fleetDistribution` | Per-host `{blockCount, state, krlNumber, lastKrlFetchAt}` fleet propagation view (KRL page). |
