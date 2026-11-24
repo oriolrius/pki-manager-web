@@ -20,7 +20,8 @@ PKI Manager is a self-hosted web application to run your own certificate authori
 
 ## Install
 
-- **Production**: run the published Docker images with Docker Compose. Follow
+- **Production**: run the published Docker images with Docker Compose. Start with
+  [Install and log in](/pki-manager-web/get-started/install/) and
   [Deployment](/pki-manager-web/operations/deployment/), then set up login with
   [OIDC](/pki-manager-web/operations/oidc/) or [Keycloak](/pki-manager-web/operations/keycloak/).
 - **Development**: see [`DEVELOPMENT.md`](https://github.com/oriolrius/pki-manager-web/blob/main/DEVELOPMENT.md)
@@ -30,8 +31,10 @@ PKI Manager is a self-hosted web application to run your own certificate authori
 
 | You want to | Read |
 |---|---|
-| Build an internal CA and trust it on your machines | [Private root CA](/pki-manager-web/guides/private-root-ca/) |
-| Issue certificates to Kubernetes workloads | [cert-manager issuer](/pki-manager-web/guides/k8s-issuer/) |
-| Connect automation or SCEP devices | [Integrations](/pki-manager-web/guides/integrations/) |
+| Install it and log in | [Install and log in](/pki-manager-web/get-started/install/) |
+| Build an internal CA and issue, renew and revoke certificates | [Private CA and certificates](/pki-manager-web/guides/private-ca/) |
+| Trust your root CA on browsers and devices | [Trust your root CA](/pki-manager-web/guides/private-root-ca/) |
+| Issue certificates to Kubernetes workloads | [Kubernetes with cert-manager](/pki-manager-web/guides/kubernetes/) |
+| Connect automation or SCEP devices | [Automation, tokens and SCEP](/pki-manager-web/guides/automation/) |
 | Replace `authorized_keys` and host fingerprints with SSH certificates | [SSH video series](/pki-manager-web/ssh/videos/) |
 | Call the API | [API reference](/pki-manager-web/api/) |

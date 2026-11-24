@@ -16,6 +16,7 @@ export VITE_API_URL=http://localhost:47300/trpc DEMO_DIR="$HERE"
 dc() { docker compose -p pki-demo -f "$REPO/docker/docker-compose.yml" -f "$HERE/compose.demo.yml" "$@"; }
 
 up() {
+  rm -rf "$HERE/.run" "$REPO/docs/guides/video/.tmp"
   dc down -v --remove-orphans >/dev/null 2>&1 || true
   dc pull -q kms backend frontend keycloak
   dc up -d --no-build --wait
@@ -29,6 +30,6 @@ case "${1:-}" in
   up) up ;;
   down) dc down -v --remove-orphans ;;
   token) token "${2:-alex}" ;;
-  shots) up; cd "$HERE" && npx playwright test --config playwright.config.ts ;;
+  shots) up; cd "$HERE" && "$REPO/node_modules/.bin/playwright" test --config playwright.config.ts "${@:2}" ;;
   *) sed -n '2,9p' "$0"; exit 1 ;;
 esac

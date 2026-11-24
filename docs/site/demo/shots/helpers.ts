@@ -61,3 +61,7 @@ export async function screencast(browser: Browser, name: string, fn: (page: Page
   if (secs > 60) throw new Error(`screencast ${name}: ${secs.toFixed(0)} s (limit 60 s)`);
   renameSync(await video!.path(), join(dir, `${name}.webm`));
 }
+
+/** Per-run working files (ids, downloads). demo.sh up empties it; gitignored. */
+export const RUN_DIR = join(REPO, 'docs', 'site', 'demo', '.run');
+for (const d of ['private-ca', 'k8s', 'integrations']) mkdirSync(join(RUN_DIR, d), { recursive: true });

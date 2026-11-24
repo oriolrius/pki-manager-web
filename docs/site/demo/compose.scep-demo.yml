@@ -1,0 +1,52 @@
+# SCEP gateway next to the demo stack, for docs/guides/integrations.md.
+# It is a SEPARATE compose project: it only adds containers, it never touches pki-demo.
+#
+#   export SCEP_DEMO_SECRETS=/path/to/dir   # holds the files: backend-token, challenge
+#   docker compose -p pki-demo-scep -f docs/site/demo/compose.scep-demo.yml up -d
+#   docker compose -p pki-demo-scep -f docs/site/demo/compose.scep-demo.yml down -v   # remove it
+#
+# The gateway accepts a plain-HTTP backend URL only on loopback. So it shares the network
+# namespace of a small socat container that forwards 127.0.0.1:3000 to the demo backend.
+# A real deployment points SCEP_BACKEND_URL at the HTTPS address of the backend instead.
+# The SCEP endpoint is then http://localhost:47385/scep (published by the socat container).
+services:
+  scep-net:
+    image: alpine/socat:1.8.0.1
+    container_name: pki-demo-scep-net
+    command: ["TCP-LISTEN:3000,bind=127.0.0.1,fork,reuseaddr", "TCP:pki-demo-backend:3000"]
+    ports:
+      - "127.0.0.1:47385:8085"
+    networks: [pki-demo-network]
+  scep:
+    image: ghcr.io/oriolrius/pki-manager-web/scep:${SCEP_IMAGE_TAG:-3.15.0}
+    container_name: pki-demo-scep
+    network_mode: "service:scep-net"
+    command: [serve]
+    read_only: true
+    user: '10001:10001'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment:
+      SCEP_AUTH_MODE: shared
+      SCEP_AUTO_PROVISION: "true"
+      SCEP_RA_AUTO_RENEW: "true"
+      SCEP_STATE_FILE: /data/ra.json
+      SCEP_BACKEND_URL: http://127.0.0.1:3000
+      SCEP_BACKEND_TOKEN_FILE: /run/secrets/scep_backend_token
+      SCEP_CHALLENGE_FILE: /run/secrets/scep_challenge
+      SCEP_VALIDITY_DAYS: "90"
+    secrets: [scep_backend_token, scep_challenge]
+    volumes:
+      - scep-state:/data
+    depends_on: [scep-net]
+secrets:
+  scep_backend_token:
+    file: ${SCEP_DEMO_SECRETS:?directory with backend-token and challenge}/backend-token
+  scep_challenge:
+    file: ${SCEP_DEMO_SECRETS:?directory with backend-token and challenge}/challenge
+volumes:
+  scep-state:
+networks:
+  pki-demo-network:
+    external: true

@@ -18,19 +18,16 @@ API clients must pass `kind: "kubernetes"` to `integration.register`.
 
 ## 2. Install controller via Helm
 
-```bash
-helm upgrade --install pki-manager-issuer \
-  https://raw.githubusercontent.com/oriolrius/pki-manager-web/main/k8s/issuer/deploy/helm/pki-manager-issuer \
-  --namespace pki-manager-issuer --create-namespace \
-  --set image.tag=0.1.0
-```
-
-Or from a local clone:
+The chart is not in a Helm repository: install it from a clone of this repository.
+The chart default image tag (`0.1.0`, the chart `appVersion`) is **not published**: set
+`image.tag` to a published tag of `ghcr.io/oriolrius/pki-manager-issuer` (`latest` or a
+commit tag such as `64d0e19`).
 
 ```bash
 cd k8s/issuer
 helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
-  -n pki-manager-issuer --create-namespace
+  -n pki-manager-issuer --create-namespace \
+  --set image.tag=64d0e19
 ```
 
 ### Approval (cert-manager 1.16+)

@@ -61,7 +61,7 @@ when management OIDC is disabled. A token is scoped to its integration and bound
 | POST | `/external/revoke` | Revoke an owned certificate and publish the CA CRL; retries are idempotent |
 
 `sign` requires `csrPem` and `requestUid`. Optional `durationDays` defaults to 90
-and is clamped to 1–825. `certificateType` is a display hint (`server`, `client`,
+and must be 1–825 (other values return `400`). `certificateType` is a display hint (`server`, `client`,
 `dual`), not a substitute for the CSR's key usage/EKU. Subject and SANs come from
 the signed CSR; compatibility body fields `sanDns`/`sanIp` are ignored.
 
@@ -72,7 +72,7 @@ or expired returns 409; submit a new CSR/request ID. SCEP uses a deterministic
 sources `k8s`, `scep`, or `integration` according to the identity type.
 
 Revocation accepts `serialNumber` and optional `reason` (default
-`cessationOfOperation`). It returns the certificate ID, serial, `status: revoked`
+`unspecified`). It returns the certificate ID, serial, `status: revoked`
 and revocation date; an already-revoked result also has `idempotent: true`.
 A different integration cannot revoke or establish renewal ownership of the
 certificate, even if it uses the same issuing CA.
