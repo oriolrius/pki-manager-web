@@ -154,7 +154,7 @@ test('5 renew', async ({ page }) => {
   await page.waitForTimeout(500);
   console.log(await page.locator('body').ariaSnapshot().then((t) => t.split('\n').filter((l) => /dialog|Renew|Cancel/.test(l)).join('\n')));
   await snap(page, '11-renew-confirm');
-  await page.getByRole('button', { name: 'Renew', exact: true }).last().click();
+  await page.getByRole('dialog', { name: 'Renew certificate' }).getByRole('button', { name: 'Renew', exact: true }).click();
   await page.waitForURL((u) => /\/certificates\/[0-9a-f-]{36}/.test(u.pathname) && !u.pathname.endsWith(load().serverId), { timeout: 120_000 });
   save({ renewedId: idFromUrl(page) });
   await expect(page.locator('h1')).toBeVisible();
