@@ -1,7 +1,7 @@
 ---
 id: TASK-266
 title: 'CA create form: key usage text matches the issued CA'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T10:19:00Z'
@@ -21,11 +21,13 @@ The CA form lists digitalSignature in the CA key usage, but the issued CA has on
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The key usages shown in the CA form are exactly those in the issued CA certificate
+- [x] #1 The key usages shown in the CA form are exactly those in the issued CA certificate
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 GitHub: https://github.com/oriolrius/pki-manager-web/issues/24
+
+Fixed in PR #36 (merged into main 2026-11-24).
 <!-- SECTION:NOTES:END -->
