@@ -102,7 +102,7 @@ function NewCA() {
           <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
             <li>X.509 v3 self-signed certificate</li>
             <li>Basic Constraints: CA=true, pathlen=unlimited</li>
-            <li>Key Usage: keyCertSign, cRLSign, digitalSignature</li>
+            <li>Key Usage: keyCertSign, cRLSign (critical)</li>
             <li>Private key stored securely in Cosmian KMS</li>
             <li>Subject DN equals Issuer DN (self-signed)</li>
           </ul>
