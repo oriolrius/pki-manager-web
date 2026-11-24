@@ -2577,9 +2577,7 @@ export const certificateRouter = router({
 
       // Special handling for JKS Keystore format - create a single keystore with all certificates and their private keys
       if (input.format === 'jks-keystore') {
-        const { promisify } = await import('util');
-        const { exec } = await import('child_process');
-        const execAsync = promisify(exec);
+        const { runKeytool } = await import('../../services/jks.service.js');
         const fs = await import('fs/promises');
         const os = await import('os');
         const path = await import('path');
@@ -2663,10 +2661,13 @@ export const certificateRouter = router({
 
               // Import into JKS keystore - use friendlyName as srcalias since that's what node-forge uses
               const srcPassword = password || '';
-              const keytoolCmd = `keytool -importkeystore -srckeystore "${p12Path}" -srcstoretype PKCS12 -srcstorepass "${srcPassword}" -srcalias "${alias}" -destalias "${alias}" -destkeystore "${jksPath}" -deststoretype JKS -deststorepass "${jksPassword}" -noprompt 2>&1`;
-
               try {
-                await execAsync(keytoolCmd);
+                await runKeytool(
+                  ['-importkeystore', '-srckeystore', p12Path, '-srcstoretype', 'PKCS12', '-srcstorepass:env', 'KEYTOOL_SRC_PASS',
+                    '-srcalias', alias, '-destalias', alias, '-destkeystore', jksPath, '-deststoretype', 'JKS',
+                    '-deststorepass:env', 'KEYTOOL_DEST_PASS', '-noprompt'],
+                  { KEYTOOL_SRC_PASS: srcPassword, KEYTOOL_DEST_PASS: jksPassword },
+                );
                 certCount++;
                 logger.info({ certId: certificate.id, alias }, 'Certificate added to JKS Keystore');
               } catch (keytoolError: any) {
@@ -2724,9 +2725,7 @@ export const certificateRouter = router({
 
       // Special handling for JKS Truststore format - create a truststore with ONLY unique CA certificates
       if (input.format === 'jks-truststore') {
-        const { promisify } = await import('util');
-        const { exec } = await import('child_process');
-        const execAsync = promisify(exec);
+        const { runKeytool } = await import('../../services/jks.service.js');
         const fs = await import('fs/promises');
         const os = await import('os');
         const path = await import('path');
@@ -2771,9 +2770,12 @@ export const certificateRouter = router({
               await fs.writeFile(caCertPath, pem);
 
               // Import CA as trusted certificate entry
-              const importCaCmd = `keytool -importcert -alias "${caAlias}" -file "${caCertPath}" -keystore "${jksPath}" -storepass "${jksPassword}" -noprompt 2>&1`;
-
-              await execAsync(importCaCmd);
+              // -storetype JKS: Java 9+ keytool would otherwise create PKCS#12.
+              await runKeytool(
+                ['-importcert', '-alias', caAlias, '-file', caCertPath, '-keystore', jksPath, '-storetype', 'JKS',
+                  '-storepass:env', 'KEYTOOL_STORE_PASS', '-noprompt'],
+                { KEYTOOL_STORE_PASS: jksPassword },
+              );
               caCount++;
               logger.info({ caId, caAlias }, 'CA certificate added to JKS Truststore as trusted entry');
             } catch (error: any) {
