@@ -213,11 +213,14 @@ describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
   it('scenario 5: a cert reissued to the blocked identity is denied on Y after the async regen', async () => {
     const freshKey = join(work, 'alice-fresh');
     execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', freshKey, '-N', '', '-q']);
-    const before = await getSshHostKrlService().getLatestRow(ctx, hostY.id);
-    await issueFor(alice.id, freshKey); // triggers the BLK-05 issuance hook (async fire-and-forget)
+    const fresh = await issueFor(alice.id, freshKey); // triggers the BLK-05 issuance hook (async fire-and-forget)
+    // Wait for a KRL that really lists the new serial: a newer krlNumber alone can come from a
+    // regeneration that started before this issuance (issue #40).
+    const userCaHex = parseSshPublicKey(userCa.opensshPublicKey).blob.toString('hex');
     await vi.waitFor(async () => {
       const row = await getSshHostKrlService().getLatestRow(ctx, hostY.id);
-      expect(row.krlNumber).toBeGreaterThan(before.krlNumber);
+      const decoded = decodeKrl(Buffer.from(row.krlBlob));
+      expect(decoded.serialsByCaHex.get(userCaHex)).toContain(BigInt(fresh.cert.serial));
     }, { timeout: 15_000, interval: 200 });
     await installComposed(hostY, hostY.dir);
     expect(ssh(PORT_Y, freshKey, 'echo reissued').code).not.toBe(0);
