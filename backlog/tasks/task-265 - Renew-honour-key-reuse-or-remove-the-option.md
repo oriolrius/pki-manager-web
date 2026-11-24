@@ -1,10 +1,11 @@
 ---
 id: TASK-265
 title: 'Renew: honour key reuse or remove the option'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:19:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T14:42:00Z'
 labels:
   - certificates
   - bug
