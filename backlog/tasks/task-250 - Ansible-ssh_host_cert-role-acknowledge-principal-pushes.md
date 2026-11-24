@@ -1,10 +1,11 @@
 ---
 id: TASK-250
 title: 'Ansible ssh_host_cert role: acknowledge principal pushes'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-23T19:03:00Z'
-updated_date: '2026-11-23T19:03:00Z'
+updated_date: '2026-11-24T14:42:00Z'
 labels:
   - ssh
   - ansible
