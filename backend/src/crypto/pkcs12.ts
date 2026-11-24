@@ -16,6 +16,11 @@ import { join } from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
+// openssl reads export passwords from its environment (`-passout env:NAME`) so they
+// never appear in argv or the process list.
+const PASS_ENV = 'PKI_EXPORT_PASSWORD';
+const withPassword = (password: string) => ({ env: { ...process.env, [PASS_ENV]: password } });
+
 export interface Pkcs12Input {
   /** Leaf certificate (PEM). */
   certPem: string;
@@ -52,7 +57,7 @@ export async function createPkcs12Bundle(input: Pkcs12Input): Promise<Buffer> {
       '-out',
       outPath,
       '-passout',
-      `pass:${input.password}`,
+      `env:${PASS_ENV}`,
       // Legacy PBE keeps the bundle readable by node-forge / keytool / older clients.
       '-keypbe',
       'PBE-SHA1-3DES',
@@ -71,7 +76,7 @@ export async function createPkcs12Bundle(input: Pkcs12Input): Promise<Buffer> {
       args.push('-certfile', caPath);
     }
 
-    await execFileAsync('openssl', args);
+    await execFileAsync('openssl', args, withPassword(input.password));
     return await readFile(outPath);
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -99,8 +104,8 @@ export async function encryptPrivateKeyPem(privateKeyPem: string, password: stri
       '-v2',
       'aes-256-cbc',
       '-passout',
-      `pass:${password}`,
-    ]);
+      `env:${PASS_ENV}`,
+    ], withPassword(password));
     return (await readFile(outPath)).toString('utf-8');
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});

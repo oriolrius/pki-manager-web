@@ -12,13 +12,29 @@
  */
 
 import { createPkcs12Bundle } from '../crypto/pkcs12.js';
-import { promisify } from 'util';
-import { exec } from 'child_process';
+import { execFile } from 'node:child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 
-const execAsync = promisify(exec);
+/**
+ * Runs keytool without a shell, so no argument (password, alias, path) is ever
+ * parsed as shell syntax. Pass passwords as `-storepass:env NAME` with the value
+ * in `secrets`: they reach keytool through its environment and never appear in
+ * argv or the process list. stdin is closed so a missing password fails instead
+ * of waiting on an interactive prompt.
+ */
+export function runKeytool(args: string[], secrets: Record<string, string> = {}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      'keytool',
+      args,
+      { env: { ...process.env, ...secrets }, timeout: 60_000, maxBuffer: 1024 * 1024 },
+      (error) => (error ? reject(error) : resolve()),
+    );
+    child.stdin?.end();
+  });
+}
 
 // Custom error classes for JKS operations
 export class JKSError extends Error {
@@ -128,10 +144,12 @@ export async function generateJKSKeystore(input: JKSKeystoreInput): Promise<JKSR
     const srcPassword = password || '';
 
     // Import the certificate with its private key from PKCS#12
-    const keytoolCmd = `keytool -importkeystore -srckeystore "${p12Path}" -srcstoretype PKCS12 -srcstorepass "${srcPassword}" -destkeystore "${jksPath}" -deststoretype JKS -deststorepass "${jksPassword}" -noprompt 2>&1`;
-
     try {
-      await execAsync(keytoolCmd);
+      await runKeytool(
+        ['-importkeystore', '-srckeystore', p12Path, '-srcstoretype', 'PKCS12', '-srcstorepass:env', 'KEYTOOL_SRC_PASS',
+          '-destkeystore', jksPath, '-deststoretype', 'JKS', '-deststorepass:env', 'KEYTOOL_DEST_PASS', '-noprompt'],
+        { KEYTOOL_SRC_PASS: srcPassword, KEYTOOL_DEST_PASS: jksPassword },
+      );
     } catch (keytoolError: any) {
       throw new JKSKeytoolError('keystore');
     }
@@ -182,10 +200,13 @@ export async function generateJKSTruststore(input: JKSTruststoreInput): Promise<
 
     // Import CA certificate as trusted certificate entry
     // Note: -storetype JKS is required since Java 9+ defaults to PKCS#12
-    const importCaCmd = `keytool -importcert -alias "${caAlias}" -file "${caCertPath}" -keystore "${jksPath}" -storetype JKS -storepass "${jksPassword}" -noprompt 2>&1`;
 
     try {
-      await execAsync(importCaCmd);
+      await runKeytool(
+        ['-importcert', '-alias', caAlias, '-file', caCertPath, '-keystore', jksPath, '-storetype', 'JKS',
+          '-storepass:env', 'KEYTOOL_STORE_PASS', '-noprompt'],
+        { KEYTOOL_STORE_PASS: jksPassword },
+      );
     } catch (keytoolError: any) {
       throw new JKSKeytoolError('truststore');
     }
