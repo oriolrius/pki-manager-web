@@ -36,6 +36,8 @@ plus one tRPC token mint (`seed.py`); OIDC is intentionally off.
 ## What each phase asserts
 
 1. **converge** — the role applies to both hosts with no failures (AC#1).
+   Each host must also be **not Stale** in PKI Manager afterwards: the role
+   acknowledges the installed principals (`principals-pushed`, TASK-250).
 2. **idempotence** — a second converge reports `changed=0` on both hosts (AC#2).
 3. **cert login / RBAC** — `alice` (mapped principal) logs in under
    `StrictHostKeyChecking=yes` with **no TOFU** via the `@cert-authority` line;
