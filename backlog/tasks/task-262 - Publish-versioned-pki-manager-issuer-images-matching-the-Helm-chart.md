@@ -1,10 +1,11 @@
 ---
 id: TASK-262
 title: Publish versioned pki-manager-issuer images matching the Helm chart
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:18:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T14:42:00Z'
 labels:
   - k8s
   - bug
