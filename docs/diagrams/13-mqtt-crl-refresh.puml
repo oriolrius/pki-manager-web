@@ -1,0 +1,18 @@
+@startuml 13-mqtt-crl-refresh
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title Revoke a client certificate and make the broker refuse it
+autonumber "<b>0."
+actor "Operator" as op
+participant "PKI Manager" as pki
+participant "refresh-crl.sh\n(cron / timer)" as job
+participant "Mosquitto\n(crlfile)" as mq
+participant "Client\nsensor-01" as cl
+op -> pki : revoke sensor-01 (UI)
+pki -> pki : new CRL at the URL\nin every certificate
+job -> pki : curl the CRL URL
+job -> job : openssl crl -verify, then mv to crl.pem
+job -> mq : SIGHUP (reload)
+cl -> mq : connect with the revoked certificate
+mq --> cl : <color:#C62828>refused: certificate verify failed</color>
+note over mq : until the reload, the broker still accepts it
+@enduml

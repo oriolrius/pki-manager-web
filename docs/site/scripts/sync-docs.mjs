@@ -20,13 +20,14 @@ export const MAP = {
   'OIDC.md': ['operations/oidc', 2],
   'KEYCLOAK.md': ['operations/keycloak', 3],
   'docs/guides/private-ca.md': ['guides/private-ca', 1],
-  'docs/guides/k8s-issuer.md': ['guides/kubernetes', 2],
-  'docs/guides/integrations.md': ['guides/automation', 3],
-  'docs/private-root-ca-deployment.md': ['guides/private-root-ca', 4],
-  'k8s/issuer/README.md': ['guides/k8s-issuer', 5],
-  'k8s/issuer/docs/install.md': ['guides/k8s-issuer-install', 6],
-  'docs/k8s-csr-signing.md': ['guides/k8s-csr-signing', 7],
-  'docs/api/integrations.md': ['guides/integrations', 8],
+  'docs/guides/mqtt-mtls.md': ['guides/mqtt', 2],
+  'docs/guides/k8s-issuer.md': ['guides/kubernetes', 3],
+  'docs/guides/integrations.md': ['guides/automation', 4],
+  'docs/private-root-ca-deployment.md': ['guides/private-root-ca', 5],
+  'k8s/issuer/README.md': ['guides/k8s-issuer', 6],
+  'k8s/issuer/docs/install.md': ['guides/k8s-issuer-install', 7],
+  'docs/k8s-csr-signing.md': ['guides/k8s-csr-signing', 8],
+  'docs/api/integrations.md': ['guides/integrations', 9],
   'docs/guides/get-started.md': ['get-started/install', 2],
   'docs/ssh/concept.md': ['ssh/concept'],
   'docs/ssh/operator-quickstart.md': ['ssh/operator-quickstart'],
@@ -42,7 +43,7 @@ export const MAP = {
   'docs/ssh/explainer/README.md': ['ssh/videos'],
   'docs/ssh/explainer': ['ssh/videos'],
 };
-const LABELS = {"get-started/install": "Install and log in", "operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-ca": "Private CA and certificates", "guides/kubernetes": "Kubernetes with cert-manager", "guides/automation": "Automation, tokens and SCEP", "guides/private-root-ca": "Trust your root CA on devices", "guides/k8s-csr-signing": "Reference: how Kubernetes CSRs are signed", "guides/k8s-issuer": "Reference: issuer overview", "guides/k8s-issuer-install": "Reference: issuer install", "guides/integrations": "Reference: integration API", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role"};
+const LABELS = {"get-started/install": "Install and log in", "operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-ca": "Private CA and certificates", "guides/mqtt": "From easy-rsa: Mosquitto mTLS", "guides/kubernetes": "Kubernetes with cert-manager", "guides/automation": "Automation, tokens and SCEP", "guides/private-root-ca": "Trust your root CA on devices", "guides/k8s-csr-signing": "Reference: how Kubernetes CSRs are signed", "guides/k8s-issuer": "Reference: issuer overview", "guides/k8s-issuer-install": "Reference: issuer install", "guides/integrations": "Reference: integration API", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role"};
 const GENERATED_DIRS = ['operations', 'guides', 'ssh'];
 const GENERATED_FILES = ['get-started/install.md'];
 
