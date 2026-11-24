@@ -1,10 +1,11 @@
 ---
 id: TASK-263
 title: Do not return stack traces in tRPC error responses in production
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:18:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T16:02:00Z'
 labels:
   - security
   - bug
