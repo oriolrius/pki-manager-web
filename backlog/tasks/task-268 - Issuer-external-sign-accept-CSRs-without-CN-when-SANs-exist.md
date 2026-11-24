@@ -1,7 +1,7 @@
 ---
 id: TASK-268
 title: 'Issuer/external sign: accept CSRs without CN when SANs exist'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T10:19:00Z'
@@ -20,11 +20,13 @@ cert-manager ingress-shim creates Certificates with no commonName; PKI Manager r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An Ingress with only the issuer annotations gets a certificate
+- [x] #1 An Ingress with only the issuer annotations gets a certificate
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 GitHub: https://github.com/oriolrius/pki-manager-web/issues/25
+
+Fixed in PR #38 (merged into main 2026-11-24).
 <!-- SECTION:NOTES:END -->
