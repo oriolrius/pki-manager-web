@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-24T09:15:00Z'
-updated_date: '2026-11-24T09:25:00Z'
+updated_date: '2026-11-24T09:33:00Z'
 labels:
   - docs
 milestone: m-0
@@ -26,3 +26,12 @@ Static docs site (recommended: Astro Starlight, it fits the pnpm workspace and h
 - [ ] #2 A push to main rebuilds and redeploys the site; a PR build fails on broken internal links
 - [ ] #3 Navigation has: Get started, Guides, SSH certificates, Operations, API reference
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Starlight site in docs/site (Node 24, npm)
+2. oriolrius.me theme, sidebar sections
+3. GitHub Actions build + Pages deploy, link check
+4. Enable Pages, first deploy
+<!-- SECTION:PLAN:END -->
