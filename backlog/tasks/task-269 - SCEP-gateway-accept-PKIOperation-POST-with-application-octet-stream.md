@@ -1,7 +1,7 @@
 ---
 id: TASK-269
 title: 'SCEP gateway: accept PKIOperation POST with application/octet-stream'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T10:19:00Z'
@@ -20,11 +20,13 @@ micromdm scepclient v2.3.0 posts PKIOperation as application/octet-stream and th
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 micromdm scepclient can enroll against the gateway
+- [x] #1 micromdm scepclient can enroll against the gateway
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 GitHub: https://github.com/oriolrius/pki-manager-web/issues/26
+
+Fixed in PR #34 (merged into main 2026-11-24).
 <!-- SECTION:NOTES:END -->
