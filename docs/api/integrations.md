@@ -89,7 +89,7 @@ The external issuer accepts only SAN, keyUsage, extendedKeyUsage and
 basicConstraints CSR extensions. Duplicate or unknown extensions (including
 CDP, AIA and nameConstraints), CA:true, path length, keyCertSign and cRLSign are
 rejected before KMS issuance. The backend adds its configured CRL distribution
-point itself. RSA keys must be 2048–8192 bits; CSRs and request IDs are bounded.
+point itself. Accepted keys are RSA 2048–8192 bits and ECDSA P-256 or P-384; the CSR signature is verified for both. The CSR must carry a subject CN or at least one SAN: an empty subject is accepted when a SAN is present (RFC 5280), a CSR with neither is rejected with `INVALID_CSR`. CSRs and request IDs are bounded.
 
 SCEP integrations require exactly the clientAuth EKU and at most 90 days validity.
 This applies to direct API callers as well as gateway requests; a certificateType

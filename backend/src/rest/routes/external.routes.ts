@@ -12,7 +12,7 @@ import { logger } from '../../lib/logger.js';
 import { isCertificateRevoked } from '../../crypto/crl.js';
 import { parseCertificate } from '../../crypto/x509.js';
 import { integrationAuthPreHandler } from '../middleware/integration-auth.js';
-import { randomUUID } from 'crypto';
+import { randomUUID, createPublicKey, verify as cryptoVerify } from 'crypto';
 import { externalHealthResponse, externalBundleResponse, externalStatusResponse, externalSignResponse, externalRevokeResponse } from '../schemas/external-openapi-schemas.js';
 import { errorResponse } from '../schemas/ssh-openapi-schemas.js';
 
@@ -90,13 +90,60 @@ interface ParsedCsr {
 
 class CSRProfileError extends Error {}
 
+const OID_RSA = '1.2.840.113549.1.1.1';
+const OID_EC = '1.2.840.10045.2.1';
+const EC_CURVE_OIDS = new Set(['1.2.840.10045.3.1.7', '1.3.132.0.34']); // P-256, P-384
+const ECDSA_SIG_HASH: Record<string, string> = {
+  '1.2.840.10045.4.3.2': 'sha256',
+  '1.2.840.10045.4.3.3': 'sha384',
+  '1.2.840.10045.4.3.4': 'sha512',
+};
+
+/**
+ * Parse a CSR. node-forge reads RSA keys only, so ECDSA (P-256/P-384) CSRs are verified with
+ * node:crypto and then handed to forge with a placeholder RSA key so subject and extension
+ * decoding stay identical for both key types. The placeholder is never used for signing: the
+ * KMS signs the original CSR text.
+ */
+function readCsr(csrPem: string): forge.pki.CertificateSigningRequest {
+  const msg = forge.pem.decode(csrPem)[0];
+  if (!msg || !/CERTIFICATE REQUEST$/.test(msg.type)) throw new Error('Invalid CSR PEM');
+  const asn1 = forge.asn1.fromDer(forge.util.createBuffer(msg.body), { decodeBitStrings: false } as unknown as boolean) /* @types/node-forge only types the strict flag */;
+  const parts = asn1.value as forge.asn1.Asn1[];
+  const info = parts[0]?.value as forge.asn1.Asn1[] | undefined;
+  const spki = info?.[2];
+  const algId = (spki?.value as forge.asn1.Asn1[] | undefined)?.[0]?.value as forge.asn1.Asn1[] | undefined;
+  const keyOid = algId?.[0] ? forge.asn1.derToOid(algId[0].value as string) : '';
+  if (keyOid === OID_RSA || !spki || !info) return forge.pki.certificationRequestFromPem(csrPem);
+  if (keyOid !== OID_EC) throw new Error('Unsupported public key type: RSA 2048..8192 or ECDSA P-256/P-384 is required');
+  const curveOid = algId?.[1] ? forge.asn1.derToOid(algId[1].value as string) : '';
+  if (!EC_CURVE_OIDS.has(curveOid)) throw new Error('Unsupported EC curve: ECDSA P-256 or P-384 is required');
+  const sigAlg = (parts[1]?.value as forge.asn1.Asn1[] | undefined)?.[0];
+  const hash = sigAlg ? ECDSA_SIG_HASH[forge.asn1.derToOid(sigAlg.value as string)] : undefined;
+  if (!hash) throw new Error('Unsupported CSR signature algorithm');
+  const sigBits = parts[2]?.value as string;
+  const infoDer = Buffer.from(forge.asn1.toDer(parts[0]).getBytes(), 'binary');
+  const spkiDer = Buffer.from(forge.asn1.toDer(spki).getBytes(), 'binary');
+  const sig = Buffer.from(sigBits.slice(1), 'binary'); // drop the unused-bits octet
+  const ok = cryptoVerify(hash, infoDer, createPublicKey({ key: spkiDer, format: 'der', type: 'spki' }), sig);
+  if (!ok) throw new Error('CSR signature verification failed');
+  const placeholder = forge.pki.publicKeyToAsn1(forge.pki.setRsaPublicKey(new forge.jsbn.BigInteger('3'), new forge.jsbn.BigInteger('3')));
+  info[2] = placeholder;
+  const parsed = forge.pki.certificationRequestFromAsn1(asn1) as forge.pki.CertificateSigningRequest;
+  (parsed as { ecdsa?: boolean }).ecdsa = true;
+  return parsed;
+}
+
 function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
-  const csr = forge.pki.certificationRequestFromPem(csrPem);
-  if (!csr.publicKey || !('n' in csr.publicKey) || csr.publicKey.n.bitLength() < 2048 || csr.publicKey.n.bitLength() > 8192) {
-    throw new Error('RSA 2048..8192 is required');
-  }
-  if (!csr.verify()) {
-    throw new Error('CSR signature verification failed');
+  const csr = readCsr(csrPem);
+  const isEcdsa = (csr as { ecdsa?: boolean }).ecdsa === true;
+  if (!isEcdsa) {
+    if (!csr.publicKey || !('n' in csr.publicKey) || csr.publicKey.n.bitLength() < 2048 || csr.publicKey.n.bitLength() > 8192) {
+      throw new Error('RSA 2048..8192 is required');
+    }
+    if (!csr.verify()) {
+      throw new Error('CSR signature verification failed');
+    }
   }
   const fields = ['CN', 'O', 'OU', 'C', 'ST', 'L'] as const;
   const parts: string[] = [];
@@ -327,9 +374,11 @@ export async function externalRoutes(fastify: FastifyInstance) {
         },
       });
     }
-    if (!parsed.cn) {
+    // RFC 5280 4.1.2.6: an empty subject is valid when the SAN extension carries the identity
+    // (cert-manager Ingress certificates have no CN). Require a CN or at least one SAN.
+    if (!parsed.cn && parsed.sanDns.length + parsed.sanIp.length + parsed.sanEmail.length === 0) {
       return reply.code(400).send({
-        error: { code: 'INVALID_CSR', message: 'CSR subject must include CN' },
+        error: { code: 'INVALID_CSR', message: 'CSR must include a subject CN or at least one SAN' },
       });
     }
     // Load CA bound to this integration
@@ -411,7 +460,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
     let kmsCertificateId: string;
     try {
       logger.info(
-        { certId, integrationId: req.integration!.id, cn: parsed.cn, caId: ca.id },
+        { certId, integrationId: req.integration!.id, cn: parsed.cn || undefined, caId: ca.id },
         'Signing CSR via KMS for integration'
       );
 

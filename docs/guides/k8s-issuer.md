@@ -244,7 +244,7 @@ spec:
     name: pki-manager
 ```
 
-PKI Manager needs a **Common Name** in the request. Always set `commonName`.
+PKI Manager needs an identity in the request: a **Common Name**, or at least one SAN (`dnsNames`, `ipAddresses`, `emailAddresses`). This example sets both.
 
 ```bash
 kubectl apply -f certificate.yaml
@@ -364,7 +364,7 @@ X509v3 Subject Alternative Name:
 Two rules to remember:
 
 - **Use `cert-manager.io/issuer`, not `cert-manager.io/cluster-issuer`.** The `cluster-issuer` annotation cannot be combined with kind and group. See [Troubleshooting](#7-troubleshooting).
-- **Add `cert-manager.io/common-name`.** An Ingress certificate has no CN by default, and PKI Manager rejects a CSR without a CN.
+- **No CN is needed.** An Ingress certificate has no CN by default. PKI Manager accepts a CSR with an empty subject when it has at least one SAN (RFC 5280). It rejects a CSR with neither a CN nor a SAN. The certificate then has an empty subject and carries the hosts in its SAN extension. The example above sets `cert-manager.io/common-name` so the certificate has a CN; remove it to get an empty subject.
 
 ## 6. Renew a certificate
 
@@ -420,7 +420,7 @@ All messages below were seen in this run.
 | Reason `Unreachable` | `pki-manager GET /api/v1/external/health: 401 UNAUTHORIZED: Invalid or revoked service token` | The token is wrong or the integration is revoked. | Create a new integration and replace the Secret. |
 | Reason `CAIDMismatch` | `token bound to caId=fcc188c4-... but spec.caId=00000000-...` | `spec.caId` is not the CA of the token. | Set `spec.caId` to the CA of the integration. |
 | `kubectl get certificaterequest`: APPROVED and READY empty, Certificate `False` | Request never approved. | The approver ClusterRole is missing (`approver.enabled=false`) or bound to the wrong ServiceAccount. | Install with `approver.enabled=true`. Set `approver.certManagerServiceAccount.*` to match cert-manager. Approval then happens on its own. |
-| CertificateRequest `Ready=False`, event `SignFailed` | `pki-manager POST /api/v1/external/sign: 400 INVALID_CSR: CSR subject must include CN` | The Certificate has no `commonName` (typical for Ingress certificates). | Set `commonName`, or the annotation `cert-manager.io/common-name` on the Ingress. |
+| CertificateRequest `Ready=False`, event `SignFailed` | `pki-manager POST /api/v1/external/sign: 400 INVALID_CSR: CSR must include a subject CN or at least one SAN` | The Certificate has neither `commonName` nor any SAN. | Set `dnsNames` (or `commonName`) on the Certificate. |
 | Ingress event `BadConfig` (no Certificate is created) | `Could not determine issuer for ingress due to bad annotations: both "cert-manager.io/cluster-issuer" and "cert-manager.io/issuer-group" may not be set, both "cert-manager.io/cluster-issuer" and "cert-manager.io/issuer-kind" may not be set` | The `cluster-issuer` annotation was used together with kind and group. | Use `cert-manager.io/issuer` with `issuer-kind` and `issuer-group`. |
 
 Useful commands:

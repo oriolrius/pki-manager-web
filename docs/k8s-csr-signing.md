@@ -28,6 +28,10 @@ Verified against Cosmian KMS 5.21.0 (see `backend/src/kms/spike-csr-certify.ts`)
 - the CSR's `subjectAltName`, `keyUsage`, and `extKeyUsage` are copied into the cert ✅
 - no duplicate extensions ✅
 
+## CSR policy
+
+The CSR may use RSA 2048-8192 or ECDSA P-256/P-384 keys; the signature is verified before the KMS call. The subject may be empty (RFC 5280) when the CSR has at least one SAN, as cert-manager Ingress certificates do; a CSR with neither a CN nor a SAN is rejected.
+
 ## How the request is built
 
 `backend/src/kms/client.ts` → `certify()` / `service.ts` → `signCertificate()`:
