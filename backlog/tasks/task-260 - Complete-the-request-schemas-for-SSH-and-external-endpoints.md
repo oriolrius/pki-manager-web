@@ -1,9 +1,10 @@
 ---
 id: TASK-260
-title: Complete the request schemas for SSH and external endpoints
+title: Check that the OpenAPI matches the real routes
 status: To Do
 assignee: []
 created_date: '2026-11-24T09:15:00Z'
+updated_date: '2026-11-24T09:15:00Z'
 labels:
   - docs
 milestone: m-2
@@ -15,11 +16,11 @@ ordinal: 80014
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Today the OpenAPI under-specifies SSH and external issuer bodies (the real shape lives only in the backend Zod schemas). Generate the OpenAPI bodies from those Zod schemas.
+Most write endpoints already take their OpenAPI body from the Zod schemas (TASK-134). On prod, 9 of 49 write operations show no body schema; most of them (disable, revoke, archive) take no body. Confirm which ones need a body, and check that responses are also described.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every SSH and external endpoint shows its full request and response body
-- [ ] #2 A test fails when a route schema and its OpenAPI body differ
+- [ ] #1 Every endpoint that accepts a body shows it in the API reference
+- [ ] #2 A test fails when a route schema and its OpenAPI description differ
 <!-- AC:END -->
