@@ -1,0 +1,17 @@
+{
+  "_comment": "Display form (script + subtitles) -> spoken form (TTS only). Whole-word, case-sensitive.",
+  "sshd": "S S H D",
+  "ssh-keygen": "S S H keygen",
+  "SSH": "S S H",
+  "KRL": "K R L",
+  "ECDSA": "E C D S A",
+  "Ed25519": "Ed twenty-five five-nineteen",
+  "RSA": "R S A",
+  "NTP": "N T P",
+  "PKI": "P K I",
+  "CAs": "C A's",
+  "CA": "C A",
+  "API": "A P I",
+  "UI": "U I",
+  "CI": "C I"
+}

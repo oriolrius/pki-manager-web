@@ -1,0 +1,24 @@
+@startuml 22-fleet-mapping
+!include theme-oriolrius.puml
+title Mapping by server class (auth_principals per account)
+left to right direction
+package "Dev\ndev-01 … dev-06" {
+  rectangle "deploy <- developers, sysadmins\nroot <- sysadmins\naudit <- security" as d <<file>>
+}
+package "Internal tools\nci, monitor" {
+  rectangle "appsvc <- developers, sysadmins\nroot <- sysadmins\naudit <- security" as t <<file>>
+}
+package "Acme production\nacme-web, acme-db, acme-app" {
+  rectangle "deploy <- client-acme, sysadmins, acme-deployer\nroot <- sysadmins, break-glass\naudit <- security" as a <<file>>
+}
+package "Internal sensitive\nvault, logs, backup, db-int" {
+  rectangle "root <- sysadmins\naudit <- security\nbackup <- backup (robot)" as v <<file>>
+}
+d -[hidden]- t
+t -[hidden]- a
+a -[hidden]- v
+legend bottom
+  audit is read-only in the OS: log read access, no sudo.
+  Accounts without a file (e.g. postgres) accept no certificate.
+endlegend
+@enduml

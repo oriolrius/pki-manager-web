@@ -1,0 +1,12 @@
+@startuml 27-four-levers
+!include theme-oriolrius.puml
+title Changing access: four levers
+rectangle "**New certificate**\nscope: one person\nwhen: after the old one is gone (expired or revoked)\nnote: bulk renew COPIES old principals" as l1 <<user>>
+rectangle "**Mapping change**\nscope: one server\nwhen: next login after the files are deployed\n(even with existing certificates)" as l2 <<file>>
+rectangle "**Revoke (KRL)**\nscope: one certificate, everywhere\nwhen: next KRL pull (~15 min)" as l3 <<danger>>
+rectangle "**Block**\nscope: one identity, one host\nwhen: next KRL pull (~15 min)" as l4 <<danger>>
+l1 -[hidden]right- l2
+l3 -[hidden]right- l4
+l1 -[hidden]down- l3
+caption None of the four closes a session that is already open.
+@enduml

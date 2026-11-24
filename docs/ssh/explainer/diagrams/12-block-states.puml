@@ -1,0 +1,16 @@
+@startuml 12-block-states
+!include theme-oriolrius.puml
+title KRL page: state of a block on each host
+state "Rolling out\n(new list not yet served to this host)" as ro <<warn>>
+state "Enforced\n(served to the host's puller)" as en <<good>>
+state "Clearing\n(unblock not yet served)" as cl <<warn>>
+state "Not enforced\n(no usable ECDSA key registration)" as ne <<bad>>
+[*] --> ro : Block user
+ro --> en : host pulls the new list
+en --> cl : Unblock
+cl --> [*] : host pulls the new list
+note bottom of ro
+  A host without krl-client never pulls:
+  it stays at "Rolling out" and the block never lands.
+end note
+@enduml

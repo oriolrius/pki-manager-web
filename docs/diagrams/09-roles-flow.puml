@@ -1,0 +1,18 @@
+@startuml 09-roles-flow
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title How roles flow through the system
+left to right direction
+rectangle "Keycloak user\n**testadmin**\nroles: [admin]" as ua <<machine>>
+rectangle "Token\n""realm_access.roles: [admin]""" as ta <<file>>
+rectangle "Keycloak user\n**testuser**\nroles: [user]" as uu <<machine>>
+rectangle "Token\n""realm_access.roles: [user]""" as tu <<file>>
+rectangle "Backend\nadmin procedure:\n""roles.has('admin')""" as chk <<pki>>
+rectangle "Allowed" as ok <<host>>
+rectangle "Forbidden" as no <<danger>>
+ua --> ta
+uu --> tu
+ta --> chk
+tu --> chk
+chk --> ok : admin
+chk --> no : user only
+@enduml

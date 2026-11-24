@@ -1,0 +1,23 @@
+@startuml 02-certificate-anatomy
+!include theme-oriolrius.puml
+title What is inside an SSH user certificate
+
+rectangle "**id_ed25519-cert.pub**" as cert <<file>> {
+  rectangle "Public key\n(Alice's normal ed25519 key)" as k
+  rectangle "Key ID: alice@acme.example\nSerial: 42" as id
+  rectangle "Principals: developers" as pr <<user>>
+  rectangle "Valid: 7 days (from ... to ...)" as v
+  rectangle "Extensions: permit-pty, permit-port-forwarding, ...\nCritical options: force-command, source-address (optional)" as ext
+  rectangle "Signature of the User CA\nover all fields above" as sig <<user>>
+}
+k -[hidden]down- id
+id -[hidden]down- pr
+pr -[hidden]down- v
+v -[hidden]down- ext
+ext -[hidden]down- sig
+note as N1
+  Read it with:
+  ""ssh-keygen -L -f &#126;/.ssh/id_ed25519-cert.pub""
+  Change one byte and the signature breaks.
+end note
+@enduml

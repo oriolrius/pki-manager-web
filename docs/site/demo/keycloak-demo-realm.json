@@ -1,0 +1,114 @@
+{
+  "realm": "pki-demo",
+  "enabled": true,
+  "displayName": "PKI Manager demo",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "permanentLockout": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrator role with full access to all operations"
+      },
+      {
+        "name": "user",
+        "description": "Regular user role with limited access"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "pki-web",
+      "name": "PKI Web Application",
+      "description": "Public client for SPA web application authentication",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://localhost:47380",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:47380/*"
+      ],
+      "webOrigins": [
+        "http://localhost:47380"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email",
+        "openid"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alex",
+      "email": "alex@example.com",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alex",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Demo-Pass-1",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "default-roles-pki-demo"
+      ]
+    },
+    {
+      "username": "uma",
+      "email": "uma@example.com",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Uma",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Demo-Pass-1",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user",
+        "default-roles-pki-demo"
+      ]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "roles",
+      "roles": [
+        "admin",
+        "user"
+      ]
+    }
+  ],
+  "defaultDefaultClientScopes": [
+    "role_list",
+    "profile",
+    "email",
+    "roles",
+    "web-origins"
+  ]
+}

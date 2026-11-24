@@ -74,8 +74,8 @@ unless the backend runs with `SSH_ECIES_ENABLED=true`.
 ```http
 { "fqdn": "server.example.com" }
 ```
-→ `200 { "hostId", "kmsPublicKeyId", "hostPrivKeyId" }`
-(`hostPrivKeyId` configures the puller's `HOST_PRIV_KEY_ID`).
+→ `200 { "hostId", "ready", "keyAlgorithm", "fingerprint" }`
+(the host must already have an `ecdsa-sha2-nistp256` host key on file; otherwise `409 ECIES_KEY_UNSUPPORTED`).
 
 ### `GET /api/v1/external/ssh/hosts/:fqdn/auth-principals`
 Token op: `get-principals`. Returns the host's rendered `AuthorizedPrincipalsFile`
@@ -123,7 +123,7 @@ Every attempt writes an `ssh.principal.mark_pushed` audit row (success or failur
 Content-Type: application/json
 If-None-Match: sha256:<local revoked_keys hash>
 
-{ "host_id": "server.example.com" }
+{ "host_id": "server.example.com" }        # optional "zone" (id or slug) when the FQDN exists in several zones
 ```
 → `304` (X-KRL-Version, no body) when current, or `200` `application/octet-stream`
 carrying an **ECIES ciphertext** only the host can decrypt. Inner payload:
@@ -143,7 +143,8 @@ pullers keep their last-good KRL. Both 200 and 304 stamp the host's
 | Status | Meaning |
 |---|---|
 | `200` | new/encrypted KRL | `304` | host already current |
-| `400` | malformed `host_id` | `404` | host not registered for distribution |
+| `400` | malformed `host_id` | `404` | host not registered for distribution, or offboarded |
+| `409` | `AMBIGUOUS_HOST`: FQDN exists in several zones, send `zone` | | |
 | `401/403` | invalid / out-of-scope token (sign/register); `403 TOKEN_LIMIT` = sign-user limit exceeded | `429` | rate-limited |
 | `501` | ECIES path disabled | `503` | no CA / per-host KRL not initialized |
 
@@ -155,11 +156,14 @@ to retry; without it a retry mints a new serial. `/krl` is always safe to retry.
 | Endpoint | Returns |
 |---|---|
 | `GET /ssh/cas/:id/ca.pub` | a CA's OpenSSH public key |
-| `GET /ssh/trusted-user-ca-keys` | `TrustedUserCAKeys` file (all active/rotating User CAs) |
-| `GET /ssh/cert-authority?pattern=*.example.com` | a `@cert-authority` known_hosts line |
+| `GET /ssh/zones/:zone/trusted-user-ca-keys` | `TrustedUserCAKeys` file for a zone (its active/rotating User CAs) |
+| `GET /ssh/trusted-user-ca-keys` | Deprecated: same file for the default zone only |
+| `GET /ssh/zones/:zone/cert-authority?pattern=*.example.com` | a `@cert-authority` known_hosts line for a zone |
+| `GET /ssh/cert-authority?pattern=*.example.com` | Deprecated: same line for the default zone only |
 | `GET /ssh/hosts/:id/cert.pub` | a host's current certificate |
 | `GET /ssh/hosts/:id/sshd-config` | the host's `sshd_config` drop-in |
-| `GET /ssh/host-ca-keys` | **Host-CA trust anchor** file (`/etc/ssh/ssh-host-ca.pub`) KRL signatures verify against (BLK-10) |
+| `GET /ssh/zones/:zone/host-ca-keys` | Zone-scoped Host-CA trust anchor (same format as below) |
+| `GET /ssh/host-ca-keys` | Deprecated (default zone): **Host-CA trust anchor** file (`/etc/ssh/ssh-host-ca.pub`) KRL signatures verify against (BLK-10) |
 | `GET /krl/:caId.bin` | the **bare** KRL bytes for `RevokedKeys` (ETag / `If-None-Match` → 304) |
 | `GET /krl/:caId.json` | the bare KRL + detached CA signature + version (for the puller) |
 | `GET /krl/hosts/:hostId.bin` | the **composed per-host** KRL bytes (`:hostId` = host id or fqdn; same ETag/304/last-good semantics). **Gated `SSH_HOST_KRL_PUBLIC`, default OFF** — enabling leaks per-host deny intel unauthenticated. |

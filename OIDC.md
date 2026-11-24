@@ -24,25 +24,7 @@ PKI Manager uses OIDC for authentication with a **public client** architecture. 
 - PKCE (Proof Key for Code Exchange) provides security instead
 - The backend only validates tokens - it never authenticates to Keycloak
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         PKI Manager Architecture                         │
-│                                                                          │
-│  ┌──────────────┐         ┌──────────────┐         ┌──────────────┐     │
-│  │   Frontend   │         │   Backend    │         │   Keycloak   │     │
-│  │   (React)    │         │   (Node.js)  │         │   (OIDC)     │     │
-│  └──────┬───────┘         └──────┬───────┘         └──────┬───────┘     │
-│         │                        │                        │             │
-│         │  Login Flow            │                        │             │
-│         │  (PKCE)                │                        │             │
-│         │<──────────────────────────────────────────────>│             │
-│         │                        │                        │             │
-│         │  API Calls             │  Token Validation      │             │
-│         │  (Bearer Token)        │  (JWKS Public Keys)    │             │
-│         │───────────────────────>│<──────────────────────>│             │
-│         │                        │                        │             │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+![Frontend logs in with Keycloak using PKCE; backend validates tokens with the JWKS keys](docs/diagrams/svg/06-oidc-overview.svg)
 
 ## Public vs Confidential Clients
 
@@ -87,59 +69,7 @@ Instead, we use **PKCE** - a cryptographic proof that the same browser session t
 
 Here's the complete flow when a user logs into PKI Manager:
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Browser    │     │   Frontend   │     │   Keycloak   │     │   Backend    │
-│   (User)     │     │   (React)    │     │   (OIDC)     │     │   (API)      │
-└──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
-       │                    │                    │                    │
-       │  1. Click Login    │                    │                    │
-       │───────────────────>│                    │                    │
-       │                    │                    │                    │
-       │                    │  2. Generate PKCE  │                    │
-       │                    │  code_verifier +   │                    │
-       │                    │  code_challenge    │                    │
-       │                    │                    │                    │
-       │  3. Redirect to Keycloak               │                    │
-       │<───────────────────│                    │                    │
-       │    /authorize?client_id=pki-web        │                    │
-       │    &code_challenge=abc123              │                    │
-       │    &code_challenge_method=S256         │                    │
-       │                    │                    │                    │
-       │  4. Login form     │                    │                    │
-       │<───────────────────────────────────────│                    │
-       │                    │                    │                    │
-       │  5. Enter credentials                  │                    │
-       │───────────────────────────────────────>│                    │
-       │                    │                    │                    │
-       │  6. Redirect back with authorization code                   │
-       │<───────────────────────────────────────│                    │
-       │    /callback?code=xyz789               │                    │
-       │                    │                    │                    │
-       │                    │  7. Exchange code  │                    │
-       │                    │  for tokens        │                    │
-       │                    │  (includes         │                    │
-       │                    │  code_verifier)    │                    │
-       │                    │───────────────────>│                    │
-       │                    │                    │                    │
-       │                    │  8. Access token   │                    │
-       │                    │  + Refresh token   │                    │
-       │                    │<───────────────────│                    │
-       │                    │                    │                    │
-       │                    │  9. API call with Bearer token          │
-       │                    │────────────────────────────────────────>│
-       │                    │                    │                    │
-       │                    │                    │  10. Validate token│
-       │                    │                    │  - Fetch JWKS     │
-       │                    │                    │<───────────────────│
-       │                    │                    │  - Verify signature│
-       │                    │                    │  - Check issuer   │
-       │                    │                    │  - Check audience │
-       │                    │                    │  - Extract roles  │
-       │                    │                    │                    │
-       │                    │  11. API response                       │
-       │                    │<────────────────────────────────────────│
-```
+![OIDC authorization code flow with PKCE, step by step](docs/diagrams/svg/07-oidc-login-flow.svg)
 
 ### Step-by-Step Breakdown
 
@@ -161,45 +91,7 @@ PKCE (pronounced "pixy") replaces the client secret with a **one-time cryptograp
 
 ### How It Works
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                            PKCE Flow                                     │
-│                                                                          │
-│  1. Frontend generates random code_verifier (43-128 characters)         │
-│     ┌─────────────────────────────────────────────────────────────┐     │
-│     │ code_verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk" │     │
-│     └─────────────────────────────────────────────────────────────┘     │
-│                              │                                           │
-│                              ▼                                           │
-│  2. Frontend computes SHA-256 hash (code_challenge)                     │
-│     ┌─────────────────────────────────────────────────────────────┐     │
-│     │ code_challenge = base64url(sha256(code_verifier))            │     │
-│     │                = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"│     │
-│     └─────────────────────────────────────────────────────────────┘     │
-│                              │                                           │
-│                              ▼                                           │
-│  3. Authorization request includes code_challenge (NOT verifier)        │
-│     ┌─────────────────────────────────────────────────────────────┐     │
-│     │ GET /authorize?code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8U│     │
-│     │                &code_challenge_method=S256                   │     │
-│     └─────────────────────────────────────────────────────────────┘     │
-│                              │                                           │
-│                              ▼                                           │
-│  4. Token request includes code_verifier                                │
-│     ┌─────────────────────────────────────────────────────────────┐     │
-│     │ POST /token                                                  │     │
-│     │   code=xyz789                                                │     │
-│     │   code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk  │     │
-│     └─────────────────────────────────────────────────────────────┘     │
-│                              │                                           │
-│                              ▼                                           │
-│  5. Keycloak verifies: sha256(code_verifier) === stored code_challenge  │
-│     ┌─────────────────────────────────────────────────────────────┐     │
-│     │ ✓ Match! Issue tokens to this client                        │     │
-│     └─────────────────────────────────────────────────────────────┘     │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+![PKCE: verifier, challenge, authorize, token request, Keycloak checks the hash](docs/diagrams/svg/08-pkce.svg)
 
 ### Why PKCE Is Secure
 
@@ -219,7 +111,7 @@ The backend **never authenticates to Keycloak**. It only validates tokens using 
 ### What the Backend Does
 
 ```typescript
-// backend/src/lib/oidc.ts
+// backend/src/lib/oidc.ts (discovery, JWKS) and backend/src/lib/jwt.ts (validation)
 
 // 1. At startup: Fetch OIDC discovery document
 const discovery = await fetch(
@@ -233,8 +125,8 @@ const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri));
 // 3. For each request: Validate the token
 const { payload } = await jwtVerify(token, jwks, {
   issuer: 'http://localhost:58180/realms/pki-e2e',
-  audience: 'pki-web',
 });
+// then check that `aud` (or, as a fallback, `azp`) matches OIDC_AUDIENCE
 
 // 4. Extract user info from token payload
 const userId = payload.sub;
@@ -271,9 +163,9 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgxODAvcmV
 
 1. **Signature verification** - Using Keycloak's public RSA key
 2. **Issuer check** - `iss` must match configured `OIDC_ISSUER`
-3. **Audience check** - `aud` must include configured `OIDC_AUDIENCE`
+3. **Audience check** - `aud` (or, as a fallback, `azp`) must match one of the configured `OIDC_AUDIENCE` values
 4. **Expiration check** - `exp` must be in the future
-5. **Not-before check** - `iat` must be in the past
+5. **Not-before check** - `nbf`, when present, must be in the past
 
 ## Role-Based Access Control
 
@@ -286,38 +178,15 @@ PKI Manager uses Keycloak realm roles for authorization:
 
 ### How Roles Flow Through the System
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Role-Based Access Control                        │
-│                                                                          │
-│  Keycloak User Config          Token Payload           Backend Check    │
-│  ┌─────────────────┐           ┌─────────────────┐     ┌─────────────┐  │
-│  │ testadmin       │           │ realm_access:   │     │ adminProc:  │  │
-│  │ Roles: [admin]  │ ────────> │   roles:        │ ──> │ roles.has   │  │
-│  │                 │           │     - admin     │     │ ('admin')   │  │
-│  └─────────────────┘           └─────────────────┘     └─────────────┘  │
-│                                                               │          │
-│  ┌─────────────────┐           ┌─────────────────┐           ▼          │
-│  │ testuser        │           │ realm_access:   │     ┌─────────────┐  │
-│  │ Roles: [user]   │ ────────> │   roles:        │ ──> │ ✓ Allow     │  │
-│  │                 │           │     - user      │     │ ✗ Forbidden │  │
-│  └─────────────────┘           └─────────────────┘     └─────────────┘  │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+![Realm roles go into the token; the backend allows admin procedures only for the admin role](docs/diagrams/svg/09-roles-flow.svg)
 
 ### Backend Middleware
 
 ```typescript
-// backend/src/trpc/middleware/auth.ts
+// backend/src/trpc/init.ts and backend/src/trpc/middleware/auth.ts (simplified)
 
 // Protected procedure - any authenticated user
-export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.user) {
-    throw new TRPCError({ code: 'UNAUTHORIZED' });
-  }
-  return next({ ctx: { user: ctx.user } });
-});
+export const protectedProcedure = t.procedure.use(authMiddleware);
 
 // Admin procedure - requires 'admin' role
 export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -341,26 +210,7 @@ When running in Docker, there's a networking challenge:
 
 ### Solution: OIDC_DISCOVERY_BASE_URL
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     Docker OIDC Networking                               │
-│                                                                          │
-│  Browser                                    Docker Network               │
-│  ┌─────────────────┐                       ┌─────────────────┐          │
-│  │ localhost:58180  │ ◄─── Port mapping ───►│ keycloak:8080   │          │
-│  └─────────────────┘                       └─────────────────┘          │
-│         │                                          ▲                    │
-│         │ Token issued with                        │                    │
-│         │ iss=localhost:58180                       │                    │
-│         ▼                                          │                    │
-│  ┌─────────────────┐    OIDC_DISCOVERY_BASE_URL    │                    │
-│  │ Backend         │ ──────────────────────────────┘                    │
-│  │ Validates:      │   Fetches from: keycloak:8080                      │
-│  │ iss=localhost   │   Validates:    localhost:58180                     │
-│  └─────────────────┘                                                    │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+![Backend fetches discovery from keycloak:8080 but validates the issuer localhost:58180](docs/diagrams/svg/10-docker-oidc-networking.svg)
 
 **Configuration:**
 ```yaml
@@ -377,28 +227,7 @@ backend:
 
 For server-to-server communication without user interaction, use a **confidential client**:
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Client Credentials Flow (M2M)                         │
-│                                                                          │
-│  ┌─────────────────┐                           ┌─────────────────┐      │
-│  │ Automated       │                           │   Keycloak      │      │
-│  │ Service         │                           │                 │      │
-│  └────────┬────────┘                           └────────┬────────┘      │
-│           │                                             │               │
-│           │  POST /token                                │               │
-│           │  grant_type=client_credentials              │               │
-│           │  client_id=pki-service                      │               │
-│           │  client_secret=super-secret-key             │               │
-│           │────────────────────────────────────────────>│               │
-│           │                                             │               │
-│           │  { access_token: "..." }                    │               │
-│           │<────────────────────────────────────────────│               │
-│           │                                             │               │
-│           │  Use token to call PKI Manager API          │               │
-│           │                                             │               │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+![Client credentials flow: service gets a token from Keycloak and calls the API](docs/diagrams/svg/11-client-credentials.svg)
 
 **When to use this:**
 - CI/CD pipelines issuing certificates
@@ -421,6 +250,7 @@ For server-to-server communication without user interaction, use a **confidentia
 | `OIDC_AUDIENCE` | Yes | Expected audience(s), comma-separated |
 | `OIDC_ROLES_CLAIM` | No | Path to roles in token (default: `realm_access.roles`) |
 | `OIDC_DISCOVERY_BASE_URL` | No | Override URL for fetching OIDC config |
+| `OIDC_ROLES_SOURCE` | No | `token` (default) or `userinfo`: where roles are read from |
 
 ### Frontend Environment Variables
 
@@ -429,6 +259,8 @@ For server-to-server communication without user interaction, use a **confidentia
 | `VITE_OIDC_AUTHORITY` | Yes | OIDC provider URL (same as `OIDC_ISSUER`) |
 | `VITE_OIDC_CLIENT_ID` | Yes | Public client ID (e.g., `pki-web`) |
 | `VITE_OIDC_SCOPE` | No | OAuth scopes (default: `openid profile email`) |
+
+The redirect URI is `<origin>/callback`, the post-logout URI is `<origin>/` and silent renewal uses `<origin>/silent-renew.html`.
 
 ### Example Configuration
 

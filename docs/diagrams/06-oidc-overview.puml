@@ -1,0 +1,10 @@
+@startuml 06-oidc-overview
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title OIDC with a public client
+participant "Frontend\n(React)" as fe
+participant "Backend\n(Node.js)" as be
+participant "Keycloak\n(OIDC)" as kc
+fe <-> kc : login flow (PKCE)
+fe -> be : API calls (Bearer token)
+be <-> kc : token validation (JWKS public keys)
+@enduml

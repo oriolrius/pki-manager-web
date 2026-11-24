@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+import { pathToFileURL } from 'node:url';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const here = dirname(fileURLToPath(import.meta.url));
+const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.6 });
+await p.goto(pathToFileURL(join(here, 'playlist.html')).href); await p.evaluate(() => document.fonts.ready);
+await p.screenshot({ path: join(here, 'playlist.png') });
+await p.setViewportSize({ width: 1280, height: 720 });
+await b.close(); console.log('ok');

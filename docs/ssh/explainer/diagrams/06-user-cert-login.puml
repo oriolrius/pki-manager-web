@@ -1,0 +1,23 @@
+@startuml 06-user-cert-login
+!include theme-oriolrius.puml
+title Issue a user certificate, then log in
+autonumber "<b>0."
+actor "Alice" as alice
+participant "Laptop" as lap
+participant "PKI Manager" as pki
+participant "Server web1\n(sshd)" as srv
+
+alice -> lap : ""ssh-keygen -t ed25519""
+lap -> pki : public key only (ed25519 or ECDSA, not RSA)
+note over pki : User certificates -> New Identity\nIssue Certificate: principals = developers\nvalidity = 7 days (default)
+pki --> lap : ""id_ed25519-cert.pub"" + ssh config block
+lap -> lap : ""ssh-keygen -L"" (check principals, dates)
+lap -> srv : ""ssh deploy@web1.acme.example"" (presents the certificate)
+group four checks on the server
+  srv -> srv : 1. key / certificate not in ""revoked_keys""
+  srv -> srv : 2. signed by a key in ""ssh-user-ca.pub""
+  srv -> srv : 3. now within the validity dates
+  srv -> srv : 4. a certificate principal is in\n""auth_principals/deploy""
+end
+srv --> lap : <color:#0C8760>shell as deploy</color> (no authorized_keys line added)
+@enduml

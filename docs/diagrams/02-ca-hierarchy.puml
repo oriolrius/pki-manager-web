@@ -1,0 +1,13 @@
+@startuml 02-ca-hierarchy
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title Private CA hierarchy
+rectangle "Private Root CA" as root <<user>>
+rectangle "Private Intermediate CA" as int <<pki>>
+rectangle "server01" as s1 <<file>>
+rectangle "portal.example.internal" as s2 <<file>>
+rectangle "api.example.internal" as s3 <<file>>
+root --> int : signs
+int --> s1
+int --> s2
+int --> s3
+@enduml

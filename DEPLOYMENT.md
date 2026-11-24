@@ -39,8 +39,12 @@ All images are published exclusively to **GitHub Container Registry (ghcr.io)**.
 
 1. **Clone and navigate to the project**:
    ```bash
-   cd pki-manager
+   cd pki-manager/docker
    ```
+
+   The Compose file is `docker/docker-compose.yml`: run the `docker-compose`
+   commands below from the `docker/` directory (or add
+   `-f docker/docker-compose.yml` from the repository root).
 
 2. **Create `.env` file** (optional, uses defaults if not present):
    ```bash
@@ -48,26 +52,32 @@ All images are published exclusively to **GitHub Container Registry (ghcr.io)**.
    # Edit .env with your preferred settings
    ```
 
-3. **Build and start all services**:
+3. **Create the backend data folder** (the backend runs as uid 1001; a folder that Docker
+   creates is owned by root and the backend fails with `SqliteError: unable to open database file`):
+   ```bash
+   mkdir -p ../pki && sudo chown 1001:1001 ../pki
+   ```
+
+4. **Build and start all services**:
    ```bash
    docker-compose up --build
    ```
 
-4. **Access the application**:
+5. **Access the application**:
    - Frontend: http://localhost:8080
    - Backend API: http://localhost:3000
-   - KMS: http://localhost:9998
+   - KMS: not published to the host (internal `kms-internal` network only)
 
 ### Building Individual Images
 
-**Build backend only**:
+**Build backend only** (from the repository root):
 ```bash
-docker build --target backend -t pki-manager-backend:dev .
+docker build -f docker/Dockerfile --target backend -t pki-manager-backend:dev .
 ```
 
 **Build frontend only**:
 ```bash
-docker build --target frontend \
+docker build -f docker/Dockerfile --target frontend \
   --build-arg VITE_API_URL=http://localhost:3000/trpc \
   -t pki-manager-frontend:dev .
 ```
@@ -102,13 +112,11 @@ Create a `.env` file with production values:
 
 ```bash
 # Image Configuration
-GITHUB_REPOSITORY_OWNER=your-org
 IMAGE_TAG=latest  # or specific version like v1.0.0
 
 # Network Configuration
 BACKEND_EXTERNAL_PORT=3000
 FRONTEND_EXTERNAL_PORT=80
-KMS_EXTERNAL_PORT=9998
 
 # Backend Configuration
 NODE_ENV=production
@@ -143,9 +151,11 @@ docker-compose ps
 docker-compose logs
 ```
 
-### Step 4: Run Database Migrations
+### Step 4: Database Migrations
 
-**Important**: On first deployment, you must run database migrations to create the required tables:
+The backend container entrypoint (`docker/docker-entrypoint.sh`) runs the database
+migrations automatically on every start, so no manual step is needed. To run them
+by hand (for example to inspect the output):
 
 ```bash
 docker exec pki-backend node /app/backend/dist/db/migrate.js
@@ -264,7 +274,8 @@ Backend-owned paths that MUST be routed to the backend:
 | `^/crl/` | Public CRL downloads (`/crl/<caId>.crl\|.der`) |
 | `^/cas/[^/]+\.(pem\|crt\|cer\|der)$` | Public CA-certificate downloads |
 | `^/krl/` | Public SSH KRL (`/krl/<caId>.bin\|.json`, `/krl/hosts/<id>.bin\|.json`) |
-| `^/ssh/(host-ca-keys\|trusted-user-ca-keys\|cert-authority)$` | SSH trust anchors + known_hosts lines |
+| `^/ssh/zones/[^/]+/(host-ca-keys\|trusted-user-ca-keys\|cert-authority)$` | Zone-scoped SSH trust anchors |
+| `^/ssh/(host-ca-keys\|trusted-user-ca-keys\|cert-authority)$` | SSH trust anchors + known_hosts lines (default zone) |
 | `^/ssh/cas/[^/]+/ca\.pub$` | A single SSH CA's public key |
 | `^/ssh/hosts/[^/]+/(cert\.pub\|sshd-config)$` | A host's cert + sshd drop-in |
 
@@ -294,7 +305,7 @@ curl -s http://localhost:8080/ssh/cas | head -1              # -> <!doctype html
 If you terminate on something other than this nginx (Traefik, Caddy, HAProxy, an
 ingress controller, a cloud LB), you **must replicate the same path routing** to
 the backend, or the `/ssh/*` trust-material routes will be shadowed by the SPA
-again. Route the eight path patterns in the table above to the backend service
+again. Route the nine path patterns in the table above to the backend service
 (`backend:3000`) and send everything else to the frontend. Sketches:
 
 **Caddy**
@@ -306,6 +317,7 @@ pki.example.com {
         path /crl/* /krl/*
         path_regexp cas ^/cas/[^/]+\.(pem|crt|cer|der)$
         path /ssh/host-ca-keys /ssh/trusted-user-ca-keys /ssh/cert-authority
+        path_regexp sshzone ^/ssh/zones/[^/]+/(host-ca-keys|trusted-user-ca-keys|cert-authority)$
         path_regexp sshpub ^/ssh/cas/[^/]+/ca\.pub$
         path_regexp sshhost ^/ssh/hosts/[^/]+/(cert\.pub|sshd-config)$
     }
@@ -328,15 +340,14 @@ None! The stack runs with sensible defaults. However, you should customize for p
 
 ### Available Variables
 
-See [.env.example](.env.example) for full list. Key variables:
+See [docker/.env.example](docker/.env.example) for full list. Key variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GITHUB_REPOSITORY_OWNER` | `pki-manager` | GitHub org/user for image naming |
 | `IMAGE_TAG` | `latest` | Docker image tag to use |
 | `BACKEND_EXTERNAL_PORT` | `3000` | Host port for backend API |
 | `FRONTEND_EXTERNAL_PORT` | `8080` | Host port for frontend |
-| `KMS_EXTERNAL_PORT` | `9998` | Host port for KMS |
+| `KMS_EXTERNAL_PORT` | `9998` | Listed in `docker/.env.example`, but `docker/docker-compose.yml` does not publish the KMS port |
 | `NODE_ENV` | `production` | Node environment |
 | `FRONTEND_URL` | `http://localhost:8080` | Frontend URL for CORS |
 | `DATABASE_PATH` | `/app/backend/data/pki.db` | Database file path (in container) |
@@ -392,7 +403,7 @@ For production Docker deployments, mount a custom `config.json` to configure OID
 
 ```bash
 # Create config.json with OIDC settings
-cat > /opt/stacks/pki-manager/config.json << 'EOF'
+cat > docker/config.json << 'EOF'
 {
   "apiUrl": "https://api.pki.example.com/trpc",
   "oidc": {
@@ -404,7 +415,7 @@ cat > /opt/stacks/pki-manager/config.json << 'EOF'
 EOF
 ```
 
-Add the volume mount to `docker-compose.yml`:
+The default `docker/docker-compose.yml` already mounts it:
 
 ```yaml
 services:
@@ -466,18 +477,15 @@ To run without authentication, simply leave the OIDC variables unset or empty:
 
 **For production**, use Docker secrets or environment variable injection:
 
+The backend reads `KMS_API_KEY` from its environment only (`*_FILE` variables are
+not supported), so inject it from your secret store into the environment:
+
 ```yaml
 # docker-compose.override.yml
 services:
   backend:
-    secrets:
-      - kms_api_key
     environment:
-      - KMS_API_KEY_FILE=/run/secrets/kms_api_key
-
-secrets:
-  kms_api_key:
-    external: true
+      - KMS_API_KEY=${KMS_API_KEY}
 ```
 
 ## GitHub Actions CI/CD
@@ -491,7 +499,7 @@ The [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) w
 3. **Publishes**: Only to `ghcr.io` (never Docker Hub)
 4. **Tags**: Semantic versioning, branch names, git SHA
 5. **Security**: Trivy vulnerability scanning, SLSA attestation
-6. **Multi-arch**: Builds for `linux/amd64` and `linux/arm64`
+6. **Platform**: Builds for `linux/amd64`
 
 ### Setup Requirements
 
@@ -511,13 +519,14 @@ The [`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml) w
 ### Published Image Tags
 
 Images are published to:
-- `ghcr.io/YOUR_ORG/pki-manager/backend:TAG`
-- `ghcr.io/YOUR_ORG/pki-manager/frontend:TAG`
+- `ghcr.io/YOUR_ORG/pki-manager-web/backend:TAG`
+- `ghcr.io/YOUR_ORG/pki-manager-web/frontend:TAG`
 
 Available tags:
 - `latest` - Latest main branch build
-- `v1.0.0`, `v1.0`, `v1` - Semantic version tags
-- `main-sha-abc123` - Branch + commit SHA
+- `1.0.0`, `1.0`, `1` - Semantic version tags (from `v1.0.0` tags, without the `v`)
+- `main` - Latest build of a branch
+- `sha-abc1234` - Commit SHA (short)
 - `pr-123` - Pull request builds
 
 ## E2E Testing
@@ -526,32 +535,9 @@ PKI Manager includes comprehensive E2E tests for Role-Based Access Control (RBAC
 
 ### E2E Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Host Machine                                  │
-│  ┌────────────────┐                                                 │
-│  │  Playwright    │ ──────────────────┐                             │
-│  │  Test Runner   │                   │                             │
-│  └────────────────┘                   ▼                             │
-│         │                    localhost:8080 (Frontend)              │
-│         │                    localhost:3000 (Backend API)           │
-│         │                    localhost:8180 (Keycloak)              │
-│         │                             │                             │
-│  ═══════╪═════════════════════════════╪═════════════════════════    │
-│         │          Docker Network     │                             │
-│         ▼               (pki-e2e-network)                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  Frontend   │  │   Backend   │  │  Keycloak   │  │     KMS     │ │
-│  │  (nginx)    │  │  (Node.js)  │  │   (OIDC)    │  │  (Cosmian)  │ │
-│  │  :8080      │──│  :3000      │──│  :8080      │  │  :9998      │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
-│                          │                                          │
-│                          └──── OIDC_DISCOVERY_BASE_URL ────┘        │
-│                                (keycloak:8080)                      │
-└─────────────────────────────────────────────────────────────────────┘
-```
+![E2E stack: Playwright on the host drives frontend, backend and Keycloak containers; backend uses the KMS](docs/diagrams/svg/05-e2e-architecture.svg)
 
-The backend uses `OIDC_DISCOVERY_BASE_URL` to fetch OIDC configuration from the Docker network (`keycloak:8080`) while validating tokens against the issuer URL that browsers use (`localhost:8180`).
+The backend uses `OIDC_DISCOVERY_BASE_URL` to fetch OIDC configuration from the Docker network (`keycloak:8080`) while validating tokens against the issuer URL that browsers use (`localhost:58180`).
 
 ### Local E2E Testing (Recommended)
 
@@ -588,9 +574,9 @@ The E2E environment includes pre-configured test users in Keycloak:
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Frontend | http://localhost:8080 | PKI Manager UI |
-| Backend API | http://localhost:3000 | tRPC API |
-| Keycloak | http://localhost:8180 | Identity Provider (admin/admin for Keycloak console) |
+| Frontend | http://localhost:58080 | PKI Manager UI |
+| Backend API | http://localhost:53000 | tRPC API |
+| Keycloak | http://localhost:58180 | Identity Provider (admin/admin for Keycloak console) |
 | KMS | Internal only | Cosmian Key Management System |
 
 ### Production E2E Testing
@@ -667,8 +653,8 @@ docker-compose logs kms
 # Stop services
 docker-compose down
 
-# Remove volume (⚠️ deletes data)
-docker volume rm pki-backend-data
+# Remove the bind-mounted data directory (⚠️ deletes data)
+rm -rf ../pki
 
 # Restart
 docker-compose up -d
@@ -681,7 +667,7 @@ docker-compose up -d
 **Check network**:
 ```bash
 docker-compose exec backend ping kms
-docker-compose exec backend wget -O- http://kms:9998/version
+docker-compose exec backend wget -qO- http://kms:9998/health
 ```
 
 **Verify KMS is healthy**:
@@ -697,7 +683,6 @@ docker-compose ps kms
 ```bash
 BACKEND_EXTERNAL_PORT=3001
 FRONTEND_EXTERNAL_PORT=8081
-KMS_EXTERNAL_PORT=9999
 ```
 
 ### E2E Test Failures
@@ -715,7 +700,7 @@ docker exec pki-e2e-backend node /app/backend/dist/db/migrate.js
 ```yaml
 # docker-compose.e2e.yml
 environment:
-  - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+  - OIDC_ISSUER=http://localhost:58180/realms/pki-e2e
   - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-e2e
 ```
 
@@ -737,7 +722,7 @@ docker compose -f docker/docker-compose.e2e.yml ps
 ### Production Configuration
 
 **Security Checklist**:
-- [ ] Run database migrations: `docker exec pki-backend node /app/backend/dist/db/migrate.js`
+- [ ] Check the migrations ran (the backend entrypoint runs them): `docker-compose logs backend`
 - [ ] Set `NODE_ENV=production`
 - [ ] Configure `FRONTEND_URL` with production domain
 - [ ] Set strong `KMS_API_KEY`
@@ -765,7 +750,7 @@ docker compose -f docker/docker-compose.e2e.yml ps
 
 ### Resource Limits
 
-Configured in `docker-compose.yml` (can be customized):
+Not set in `docker/docker-compose.yml`; add them in an override file if needed:
 
 ```yaml
 services:
@@ -783,12 +768,9 @@ services:
 ### Optional SCEP gateway (separate deployment)
 
 The [SCEP gateway](scep/README.md) is a separate device-facing service. Deploy
-the [integration foundation](https://github.com/oriolrius/pki-manager-web/pull/18)
-first; the gateway needs its integration token and external enrollment-state
+the integration foundation (migration 0010) first; the gateway needs its integration token and external enrollment-state
 endpoints. It adds no second backend. Use `scep/compose.yml` for an existing
 installation or the `docker/docker-compose.scep.yml` overlay for the full stack.
-This PR remains a draft while the review's backend-only RA operations and other
-gateway security changes are outstanding; its current gateway still reaches KMS.
 
 ### KMS upgrade: backup before recreating the container
 
@@ -839,8 +821,8 @@ from that still-existing container; a new empty volume does not recover CA keys.
    **untouched old data**, not the staging copy. Coordinate backend rollback
    with its pre-upgrade DB backup. Never delete the old CA keys as a repair step.
 
-Migration 0010 has its own backup/rollback runbook in the integration foundation
-PR; the integration and KMS upgrades are separate operations.
+Migration 0010 has its own backup/rollback runbook,
+[docs/deployment/integrations-0010.md](docs/deployment/integrations-0010.md); the integration and KMS upgrades are separate operations.
 
 ## Backup and Restore
 
@@ -851,21 +833,16 @@ PR; the integration and KMS upgrades are separate operations.
 docker-compose exec backend tar czf - /app/backend/data | \
   gzip > backup-$(date +%Y%m%d).tar.gz
 
-# Or backup volume directly
-docker run --rm \
-  -v pki-backend-data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/db-backup.tar.gz -C /data .
+# Or back up the bind-mounted data directory (docker/../pki) with the stack stopped
+tar czf db-backup.tar.gz -C ../pki .
 ```
 
 ### Restore
 
 ```bash
 # Restore from backup
-docker run --rm \
-  -v pki-backend-data:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/db-backup.tar.gz -C /data
+# With the stack stopped
+tar xzf db-backup.tar.gz -C ../pki
 ```
 
 ## Monitoring
@@ -881,7 +858,7 @@ docker-compose ps
 # Test endpoints
 curl http://localhost:3000/health  # Backend
 curl http://localhost:8080/health  # Frontend
-curl http://localhost:9998/version # KMS
+docker-compose exec backend wget -qO- http://kms:9998/health  # KMS (not published to the host)
 ```
 
 ### Logs

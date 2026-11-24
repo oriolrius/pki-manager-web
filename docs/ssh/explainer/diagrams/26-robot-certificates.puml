@@ -1,0 +1,17 @@
+@startuml 26-robot-certificates
+!include theme-oriolrius.puml
+title Robots: a short, restricted certificate per run
+autonumber "<b>0."
+participant "CI job\n(acme-deploy)" as job
+participant "Trusted signing service\n(holds the fleet token)" as svc
+participant "PKI Manager\n/api/v1/external/ssh/sign-user" as pki
+participant "acme-web\n(sshd)" as web
+job -> svc : I am job acme-deploy (CI identity)
+svc -> svc : check the job, pick ITS principal
+svc -> pki : sign-user · principals [acme-deployer]\nvalidForSeconds 900 · extensions []\nforceCommand /usr/local/bin/deploy
+pki --> svc : certificate (15 min)
+svc --> job : certificate only (token never leaves the service)
+job -> web : ssh deploy@acme-web
+web -> web : deploy file has acme-deployer -> match\nforced command runs, no pty, no forwarding
+note over svc, pki : A sign-user token can sign ANY principal in its zone:\nkeep it out of CI jobs.
+@enduml

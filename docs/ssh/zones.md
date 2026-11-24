@@ -13,16 +13,7 @@ domains** — prod vs staging, customer A vs customer B, datacenter vs lab.
 Before zones, the SSH manager had exactly **one** User CA and **one** Host CA for
 the whole installation, and *every host trusted every user CA*. With zones:
 
-```
-        zone: prod                         zone: staging
-  ┌───────────────────────┐          ┌───────────────────────┐
-  │ User CA   Host CA      │          │ User CA   Host CA      │
-  │ identities             │          │ identities             │
-  │ hosts                  │          │ hosts                  │
-  │ principals             │          │ principals             │
-  └───────────────────────┘          └───────────────────────┘
-   a prod host trusts ONLY prod's user CAs — never staging's
-```
+![Each zone has its own User CA and Host CA; a prod host trusts only prod user CAs](../diagrams/svg/04-ssh-zones.svg)
 
 ## The trust boundary — the one rule that matters
 

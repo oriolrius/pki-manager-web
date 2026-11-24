@@ -1,0 +1,33 @@
+@startuml 20-sshd-principal-decision
+!include theme-oriolrius.puml
+title How sshd decides a certificate login (PKI Manager setup)
+start
+:Client presents a user certificate
+for account **deploy**;
+if (Serial or key in revoked_keys?) then (yes)
+  :Denied; <<#FDECEC>>
+  stop
+endif
+if (Signed by a key in ssh-user-ca.pub?) then (no)
+  :Denied (not from your User CA); <<#FDECEC>>
+  stop
+endif
+if (Now inside the validity dates?) then (no)
+  :Denied (expired / not yet valid); <<#FDECEC>>
+  stop
+endif
+if (File /etc/ssh/auth_principals/deploy exists?) then (no)
+  :Denied: account closed to certificates; <<#FDECEC>>
+  stop
+endif
+if (At least ONE principal of the certificate
+is a line in that file?) then (yes)
+  :Login as deploy
+  sshd logs: ID <key id> (serial N) CA <fingerprint>; <<#E7F6F0>>
+  stop
+else (no)
+  :Denied:
+  "Certificate does not contain an authorized principal"; <<#FDECEC>>
+  stop
+endif
+@enduml

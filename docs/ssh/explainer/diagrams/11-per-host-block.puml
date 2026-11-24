@@ -1,0 +1,26 @@
+@startuml 11-per-host-block
+!include theme-oriolrius.puml
+title Per-host access block: one person, one server
+left to right direction
+
+rectangle "Host-CA revocations" as r1 <<danger>>
+rectangle "User-CA revocations" as r2 <<danger>>
+rectangle "Active blocks on db1\n(Alice's keys)" as r3 <<danger>>
+rectangle "KRL(db1)\nsigned with the Host CA key" as krl <<file>>
+rectangle "db1\nrefuses Alice" as db1 <<machine>>
+rectangle "KRL(web1)\nno block" as krlw <<file>>
+rectangle "web1\naccepts Alice" as web1 <<machine>>
+r1 --> krl
+r2 --> krl
+r3 --> krl
+r1 --> krlw
+r2 --> krlw
+krl --> db1 : next pull (~15 min)
+krlw --> web1
+note bottom of db1
+  A block is NOT a revocation: Alice's certificate stays valid elsewhere.
+  Blocks match keys: identities that share a key are blocked together.
+  Needs krl-client. Optional SSH_BLOCK_ISSUANCE_GATE stops NEW certificates
+  from opening the blocked host.
+end note
+@enduml

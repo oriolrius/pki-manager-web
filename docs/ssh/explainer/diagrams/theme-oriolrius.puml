@@ -1,0 +1,175 @@
+' PlantUML theme: oriolrius.me, for the SSH CA explainer.
+' Palette (oriolrius.me / oriolriusme-slidev-theme):
+'   navy #151652 · navy-deep #0E0F3A · orange #FF6600 · orange-ink #C95000
+'   green-ink #0C8760 · green-bright #3CCB98 · slate #54595F · body #575757
+'   mist #F4F4F4 · hairline #D5D6D7 · danger #C62828 (errors / revocation only)
+' Fonts: Ubuntu (text), Ubuntu Mono (code).
+' Semantic stereotypes (same colour code as the video):
+'   <<user>>    User CA and user certificates (orange)
+'   <<host>>    Host CA and host certificates (green)
+'   <<machine>> servers, laptops (navy)
+'   <<file>>    files and config (slate)
+'   <<pki>>     PKI Manager (navy outline, orange accent)
+'   <<danger>>  revocation, errors (red)
+' Use: !include theme-oriolrius.puml
+
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Ubuntu
+skinparam defaultFontSize 14
+skinparam defaultFontColor #575757
+skinparam defaultMonospacedFontName "Ubuntu Mono"
+skinparam shadowing false
+skinparam roundcorner 10
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+hide stereotype
+hide empty description
+
+skinparam ArrowColor #54595F
+skinparam ArrowThickness 1.6
+skinparam ArrowFontName Ubuntu
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #54595F
+
+skinparam title {
+  FontName Ubuntu
+  FontSize 22
+  FontStyle bold
+  FontColor #151652
+}
+skinparam caption {
+  FontSize 12
+  FontColor #7A7A7A
+}
+
+skinparam package {
+  BackgroundColor #F4F4F4
+  BorderColor #D5D6D7
+  BorderThickness 1.2
+  FontColor #151652
+  FontSize 15
+  FontStyle bold
+}
+skinparam frame {
+  BackgroundColor #FFFFFF
+  BorderColor #D5D6D7
+  FontColor #151652
+  FontStyle bold
+}
+
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #151652
+  BorderThickness 1.4
+  FontColor #151652
+
+  BackgroundColor<<user>> #FF6600
+  BorderColor<<user>> #C95000
+  FontColor<<user>> #FFFFFF
+
+  BackgroundColor<<host>> #0C8760
+  BorderColor<<host>> #0A7C58
+  FontColor<<host>> #FFFFFF
+
+  BackgroundColor<<machine>> #151652
+  BorderColor<<machine>> #0E0F3A
+  FontColor<<machine>> #FFFFFF
+
+  BackgroundColor<<file>> #F4F4F4
+  BorderColor<<file>> #54595F
+  FontColor<<file>> #151652
+
+  BackgroundColor<<pki>> #FFFFFF
+  BorderColor<<pki>> #FF6600
+  BorderThickness<<pki>> 2.4
+  FontColor<<pki>> #151652
+
+  BackgroundColor<<danger>> #FDECEC
+  BorderColor<<danger>> #C62828
+  FontColor<<danger>> #8E1B1B
+}
+
+skinparam file {
+  BackgroundColor #F4F4F4
+  BorderColor #54595F
+  FontColor #151652
+}
+
+skinparam note {
+  BackgroundColor #FFF4EC
+  BorderColor #F46524
+  FontColor #575757
+}
+skinparam legend {
+  BackgroundColor #F4F4F4
+  BorderColor #D5D6D7
+  FontColor #575757
+}
+
+' Sequence diagrams
+skinparam sequence {
+  ArrowColor #54595F
+  LifeLineBorderColor #D5D6D7
+  LifeLineBackgroundColor #F4F4F4
+  ParticipantBackgroundColor #151652
+  ParticipantBorderColor #0E0F3A
+  ParticipantFontColor #FFFFFF
+  ParticipantFontStyle bold
+  ActorBackgroundColor #FF6600
+  ActorBorderColor #C95000
+  ActorFontColor #151652
+  BoxBackgroundColor #F4F4F4
+  BoxBorderColor #D5D6D7
+  BoxFontColor #151652
+  GroupBackgroundColor #F4F4F4
+  GroupBorderColor #D5D6D7
+  GroupHeaderFontColor #151652
+  DividerBackgroundColor #F4F4F4
+  DividerBorderColor #D5D6D7
+  DividerFontColor #151652
+  ReferenceBackgroundColor #F4F4F4
+  ReferenceBorderColor #D5D6D7
+}
+
+' Activity diagrams
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #151652
+  FontColor #151652
+  DiamondBackgroundColor #F4F4F4
+  DiamondBorderColor #54595F
+  DiamondFontColor #151652
+  StartColor #151652
+  EndColor #151652
+  BarColor #FF6600
+}
+skinparam partition {
+  BackgroundColor #F4F4F4
+  BorderColor #D5D6D7
+  FontColor #151652
+}
+
+' State diagrams
+skinparam state {
+  BackgroundColor #FFFFFF
+  BorderColor #151652
+  FontColor #151652
+  StartColor #151652
+  EndColor #151652
+  BackgroundColor<<good>> #E7F6F0
+  BorderColor<<good>> #0C8760
+  BackgroundColor<<warn>> #FFF4EC
+  BorderColor<<warn>> #C95000
+  BackgroundColor<<bad>> #FDECEC
+  BorderColor<<bad>> #C62828
+}
+
+' Colour helpers for inline text and arrows
+!$ORANGE = "#FF6600"
+!$ORANGE_INK = "#C95000"
+!$GREEN = "#0C8760"
+!$NAVY = "#151652"
+!$SLATE = "#54595F"
+!$RED = "#C62828"

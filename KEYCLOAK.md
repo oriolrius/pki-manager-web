@@ -331,7 +331,7 @@ PKI Manager includes a pre-configured Keycloak realm for E2E testing with RBAC v
 
 ### E2E Test Users
 
-The E2E environment (`docker-compose.e2e.yml`) includes pre-configured test users:
+The E2E environment (`docker/docker-compose.e2e.yml`) includes pre-configured test users:
 
 | Username | Password | Roles | Use Case |
 |----------|----------|-------|----------|
@@ -355,17 +355,17 @@ The E2E environment handles OIDC token validation in Docker with special configu
 ```yaml
 # Keycloak (v26+) - use full URL for consistent issuer
 environment:
-  - KC_HOSTNAME=http://localhost:8180
+  - KC_HOSTNAME=http://localhost:58180
 
 # Backend - separate discovery URL for Docker networking
 environment:
-  - OIDC_ISSUER=http://localhost:8180/realms/pki-e2e
+  - OIDC_ISSUER=http://localhost:58180/realms/pki-e2e
   - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-e2e
 ```
 
 **Why this is needed:**
-1. Browser accesses Keycloak at `localhost:8180` and tokens have `iss: http://localhost:8180/...`
-2. Backend container cannot reach `localhost:8180` (it refers to the container itself)
+1. Browser accesses Keycloak at `localhost:58180` and tokens have `iss: http://localhost:58180/...`
+2. Backend container cannot reach `localhost:58180` (it refers to the container itself)
 3. `OIDC_DISCOVERY_BASE_URL` tells the backend to fetch OIDC config from Docker network (`keycloak:8080`)
 4. The backend validates tokens against `OIDC_ISSUER` (what's in tokens) while fetching from the discovery URL
 
@@ -389,8 +389,8 @@ docker compose -f docker/docker-compose.e2e.yml down -v
 
 | Service | URL | Credentials |
 |---------|-----|-------------|
-| Keycloak Console | http://localhost:8180 | admin / admin |
-| OIDC Discovery | http://localhost:8180/realms/pki-e2e/.well-known/openid-configuration | - |
+| Keycloak Console | http://localhost:58180 | admin / admin |
+| OIDC Discovery | http://localhost:58180/realms/pki-e2e/.well-known/openid-configuration | - |
 
 ### Production Test Users
 

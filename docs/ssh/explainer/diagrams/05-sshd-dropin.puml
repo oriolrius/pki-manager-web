@@ -1,0 +1,22 @@
+@startuml 05-sshd-dropin
+!include theme-oriolrius.puml
+title The deploy bundle on the server
+left to right direction
+
+rectangle "/etc/ssh/sshd_config.d/60-ssh-ca.conf" as cfg <<file>> {
+  rectangle "HostKey /etc/ssh/ssh_host_ecdsa_key" as l1 <<host>>
+  rectangle "HostCertificate /etc/ssh/ssh_host_ecdsa_key-cert.pub" as l2 <<host>>
+  rectangle "TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub" as l3 <<user>>
+  rectangle "AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u" as l4 <<file>>
+  rectangle "RevokedKeys /etc/ssh/revoked_keys" as l5 <<file>>
+}
+rectangle "Show this certificate to clients" as w2
+rectangle "Trust users signed by the User CA" as w3
+rectangle "Allowed principals per local account\n(%u = account name)" as w4
+rectangle "Refuse revoked keys\n<color:#C62828>missing file = every key login refused</color>" as w5
+l2 --> w2
+l3 --> w3
+l4 --> w4
+l5 --> w5
+caption Prerequisite: the main sshd_config includes /etc/ssh/sshd_config.d/*.conf (default on current distributions).
+@enduml

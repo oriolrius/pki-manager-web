@@ -10,7 +10,7 @@ This foundation exposes two backend interfaces:
 The backend Swagger UI is `/api/docs`; its generated JSON and YAML are
 `/api/v1/openapi.json` and `/api/v1/openapi.yaml`. Select **integrationToken**
 in Swagger for external-issuer requests; **bearerAuth** is the management OIDC JWT.
-The optional SCEP gateway and its device protocol are supplied by a separate PR.
+The optional SCEP gateway and its device protocol live in [`scep/`](../../scep/).
 
 ## Create and manage a service identity
 
@@ -61,7 +61,7 @@ when management OIDC is disabled. A token is scoped to its integration and bound
 | POST | `/external/revoke` | Revoke an owned certificate and publish the CA CRL; retries are idempotent |
 
 `sign` requires `csrPem` and `requestUid`. Optional `durationDays` defaults to 90
-and is clamped to 1–825. `certificateType` is a display hint (`server`, `client`,
+and must be 1–825 (other values return `400`). `certificateType` is a display hint (`server`, `client`,
 `dual`), not a substitute for the CSR's key usage/EKU. Subject and SANs come from
 the signed CSR; compatibility body fields `sanDns`/`sanIp` are ignored.
 
@@ -72,7 +72,7 @@ or expired returns 409; submit a new CSR/request ID. SCEP uses a deterministic
 sources `k8s`, `scep`, or `integration` according to the identity type.
 
 Revocation accepts `serialNumber` and optional `reason` (default
-`cessationOfOperation`). It returns the certificate ID, serial, `status: revoked`
+`unspecified`). It returns the certificate ID, serial, `status: revoked`
 and revocation date; an already-revoked result also has `idempotent: true`.
 A different integration cannot revoke or establish renewal ownership of the
 certificate, even if it uses the same issuing CA.
@@ -124,7 +124,7 @@ coordinate replicas. Failed first provisioning retains a 15-minute lease. After
 expiry, provision reuses recorded key IDs and resumes activation/issuance. If no
 IDs were recorded, it retries allocation; an ambiguous lost KMS response can leave
 an orphan object, so reconcile the integration audit trail and KMS objects. Renewals retain the key and public overlap
-certificates. Backend migration 0011 add this binding and lease state;
+certificates. Backend migration 0011 adds this binding and lease state;
 back up the database before upgrading and restore the full pre-upgrade backup
 with the corresponding old images to roll back. Do not drop binding rows to
 retry provisioning without reconciling KMS objects first.

@@ -1,0 +1,27 @@
+@startuml 21-principal-families
+!include theme-oriolrius.puml
+title A small, durable principal catalog
+left to right direction
+package "Roles\n(follow the person)" {
+  rectangle "developers" as r1 <<user>>
+  rectangle "sysadmins" as r2 <<user>>
+  rectangle "security" as r3 <<user>>
+}
+package "Customers\n(open one customer's servers)" {
+  rectangle "client-acme" as c1 <<user>>
+  rectangle "client-globex" as c2 <<user>>
+  rectangle "client-initech" as c3 <<user>>
+}
+package "Special\n(nobody carries it by default)" {
+  rectangle "break-glass" as s1 <<danger>>
+}
+package "Robots\n(one per job)" {
+  rectangle "acme-deployer" as b1 <<file>>
+  rectangle "backup" as b2 <<file>>
+}
+legend bottom
+  Names: ^[A-Za-z0-9][A-Za-z0-9._@-]{0,62}$ — no colon; keep "@" for the per-host form (P@fqdn).
+  No principal per person (the Key ID identifies the person) and none per server (slice in the mapping).
+  One match is enough (OR). Need "role AND customer"? Create one combined principal.
+endlegend
+@enduml
