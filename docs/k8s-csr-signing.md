@@ -38,10 +38,11 @@ Verified against Cosmian KMS 5.21.0 (see `backend/src/kms/spike-csr-certify.ts`)
   is belt-and-suspenders; it documents intent and protects against other versions.
 - `issuerCertificateId`: the cluster CA's `kms_certificate_id`. The KMS resolves the issuer
   private key from that certificate's links and signs — the key stays in the KMS.
-- `x509Extensions`: **only** `basicConstraints=critical,CA:FALSE`. Cosmian copies the CSR's
+- `x509Extensions`: `basicConstraints=critical,CA:FALSE` (added only when the CSR does not
+  already carry `basicConstraints`; CSRs requesting `CA:TRUE` or a path length are rejected) plus,
+  when a CRL URL is configured, the issuing CA's `crlDistributionPoints`. Cosmian copies the CSR's
   own `subjectAltName`/`keyUsage`/`extKeyUsage`, and OpenSSL's `append_extension` does **not**
-  dedupe — so re-supplying those here would produce duplicate, invalid extensions. CSRs never
-  carry `basicConstraints`, so adding `CA:FALSE` is safe and yields a proper end-entity cert.
+  dedupe — so re-supplying those here would produce duplicate, invalid extensions.
 
 The leaf certificate is stored with `source_type = 'k8s'`, a real `kms_certificate_id`,
 `kms_key_id = NULL` (PKI Manager never holds the leaf private key), and a cached
@@ -51,10 +52,10 @@ The leaf certificate is stored with `source_type = 'k8s'`, a real `kms_certifica
 
 - The cluster CA's **private key is held only in the KMS**; PKI Manager and the issuer
   controller never see it. There is no longer an on-disk CA key (`EXTERNAL_ISSUER_CA_KEY_PEM`).
-- One cluster token is scoped to one CA (`clusters.ca_id`); a cluster can only revoke certs it issued.
+- One integration token is scoped to one CA (`integrations.ca_id`); an integration can only revoke certs it issued.
 - keyUsage/EKU come from the cert-manager CSR (derived from the `Certificate` spec usages), so
   the certificate's purpose reflects the requester's intent. The API's `certificateType` field
-  is recorded for display only on this path.
+  is recorded as metadata only on this path (`server`, `client` or `dual`; default `dual`).
 
 ## Requirements / caveats
 
@@ -66,9 +67,8 @@ The leaf certificate is stored with `source_type = 'k8s'`, a real `kms_certifica
 ## Verifying
 
 ```bash
-# 1) start a KMS (default-config container works; the committed kms/docker-compose.yml needs a fix
-#    for current :latest — see TASK-109.22 notes)
-docker run -d --name kms -p 42998:9998 ghcr.io/cosmian/kms:latest
+# 1) start the dev KMS (kms/docker-compose.yml pins the Cosmian KMS version, port 42998)
+(cd kms && docker compose up -d)
 
 # 2) end-to-end KMS behaviour (key preservation + extension fidelity)
 cd backend && KMS_URL=http://localhost:42998 pnpm exec tsx src/kms/spike-csr-certify.ts

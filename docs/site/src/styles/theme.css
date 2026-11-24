@@ -1,0 +1,37 @@
+/* oriolrius.me palette: navy #151652, orange #FF6600 / ink #C95000, green #0C8760, slate #54595F. */
+@font-face { font-family: Ubuntu; src: url(../../public/fonts/Ubuntu-Regular.ttf); font-weight: 400; font-display: swap; }
+@font-face { font-family: Ubuntu; src: url(../../public/fonts/Ubuntu-Medium.ttf); font-weight: 500; font-display: swap; }
+@font-face { font-family: Ubuntu; src: url(../../public/fonts/Ubuntu-Bold.ttf); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Ubuntu Mono'; src: url(../../public/fonts/UbuntuMono-Regular.ttf); font-weight: 400; font-display: swap; }
+
+:root {
+  --sl-font: Ubuntu, system-ui, sans-serif;
+  --sl-font-mono: 'Ubuntu Mono', ui-monospace, monospace;
+  /* dark mode (Starlight default) */
+  --sl-color-accent-low: #2A1E2E;
+  --sl-color-accent: #FF6600;
+  --sl-color-accent-high: #FFC299;
+  --sl-color-white: #FFFFFF;
+  --sl-color-gray-1: #E8E9F3;
+  --sl-color-gray-2: #C9CAE6;
+  --sl-color-gray-3: #A9ABD0;
+  --sl-color-gray-4: #6A6CA0;
+  --sl-color-gray-5: #2E3070;
+  --sl-color-gray-6: #1C1D57;
+  --sl-color-black: #0E0F3A;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #FFE3CF;
+  --sl-color-accent: #C95000;
+  --sl-color-accent-high: #151652;
+  --sl-color-white: #151652;
+  --sl-color-gray-1: #26285F;
+  --sl-color-gray-2: #3B3D6E;
+  --sl-color-gray-3: #54595F;
+  --sl-color-gray-4: #7A7A7A;
+  --sl-color-gray-5: #D5D6D7;
+  --sl-color-gray-6: #F4F4F4;
+  --sl-color-gray-7: #FAFAFA;
+  --sl-color-black: #FFFFFF;
+}
+.sidebar-content .large { color: var(--sl-color-white); }

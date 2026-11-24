@@ -10,7 +10,7 @@ This foundation exposes two backend interfaces:
 The backend Swagger UI is `/api/docs`; its generated JSON and YAML are
 `/api/v1/openapi.json` and `/api/v1/openapi.yaml`. Select **integrationToken**
 in Swagger for external-issuer requests; **bearerAuth** is the management OIDC JWT.
-The optional SCEP gateway and its device protocol are supplied by a separate PR.
+The optional SCEP gateway and its device protocol live in [`scep/`](../../scep/).
 
 ## Create and manage a service identity
 
@@ -124,7 +124,7 @@ coordinate replicas. Failed first provisioning retains a 15-minute lease. After
 expiry, provision reuses recorded key IDs and resumes activation/issuance. If no
 IDs were recorded, it retries allocation; an ambiguous lost KMS response can leave
 an orphan object, so reconcile the integration audit trail and KMS objects. Renewals retain the key and public overlap
-certificates. Backend migration 0011 add this binding and lease state;
+certificates. Backend migration 0011 adds this binding and lease state;
 back up the database before upgrading and restore the full pre-upgrade backup
 with the corresponding old images to roll back. Do not drop binding rows to
 retry provisioning without reconciling KMS objects first.

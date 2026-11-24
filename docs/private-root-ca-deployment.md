@@ -71,14 +71,14 @@ In this project, the public certificate of a CA is produced and served by the PK
 
 1. Open the PKI Manager web interface.
 2. Go to **Certificate Authorities** and open the target CA (`/cas/<CA_ID>`).
-3. Use the **Download Certificate** panel and select a format:
+3. In the export section, choose a format in the **Download format** selector and click **Download**:
 
 ```text
 pem / crt   Public certificate, PEM text (this is CA.crt)
 der / cer   Public certificate, DER binary
 ```
 
-The panel also offers PKCS#12 and JKS **truststore** formats (public certificate only, for Java clients) and **keystore** formats. The keystore formats embed the CA private key and must never be distributed to client devices — see the warning in section 2.1.
+The selector also offers PKCS#12 and JKS **truststore** formats (public certificate only, for Java clients) and **keystore** formats. The PKCS#12 and JKS formats are password-protected; the UI requires a password of at least 8 characters. The keystore formats embed the CA private key and must never be distributed to client devices — see the warning in section 2.1.
 
 ### 2.2.2 REST API (authenticated)
 
@@ -96,7 +96,7 @@ p12-truststore, jks-truststore   public certificate in a truststore
 p12-keystore, jks-keystore       certificate + private key (do NOT distribute)
 ```
 
-The response is JSON with Base64-encoded content:
+The response is JSON with Base64-encoded content. The PKCS#12/JKS formats also take a `password` query parameter: it is required for the keystore formats and optional for the truststore formats (the default is `changeit`).
 
 ```json
 {
@@ -391,7 +391,7 @@ X509v3 Subject Alternative Name:
 
 The hostname entered into the browser must match a DNS SAN exactly, subject to standard wildcard rules.
 
-**In PKI Manager:** certificates are always issued with a real `subjectAltName` extension, so this failure mode does not occur when the SAN is populated. Supply the names when issuing a certificate through the **Subject Alternative Names** section of the *New Certificate* form (**DNS Names**, **IP Addresses**, **Email** fields), or through the API fields `sanDns`, `sanIp`, and `sanEmail` on the certificate-issue request. Every hostname a client may use must appear as its own DNS SAN entry.
+**In PKI Manager:** certificates are always issued with a real `subjectAltName` extension, so this failure mode does not occur when the SAN is populated. Supply the names when issuing a certificate through the **Subject Alternative Names** section of the *New Certificate* form (**DNS Names**, **IP Addresses**, **Email Addresses** fields), or through the API fields `sanDns`, `sanIp`, and `sanEmail` on the certificate-issue request. Every hostname a client may use must appear as its own DNS SAN entry.
 
 ## 5.2 Common Name alone is insufficient
 

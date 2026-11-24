@@ -219,7 +219,7 @@ The backend **never authenticates to Keycloak**. It only validates tokens using 
 ### What the Backend Does
 
 ```typescript
-// backend/src/lib/oidc.ts
+// backend/src/lib/oidc.ts (discovery, JWKS) and backend/src/lib/jwt.ts (validation)
 
 // 1. At startup: Fetch OIDC discovery document
 const discovery = await fetch(
@@ -233,8 +233,8 @@ const jwks = createRemoteJWKSet(new URL(discovery.jwks_uri));
 // 3. For each request: Validate the token
 const { payload } = await jwtVerify(token, jwks, {
   issuer: 'http://localhost:58180/realms/pki-e2e',
-  audience: 'pki-web',
 });
+// then check that `aud` (or, as a fallback, `azp`) matches OIDC_AUDIENCE
 
 // 4. Extract user info from token payload
 const userId = payload.sub;
@@ -271,9 +271,9 @@ eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjgxODAvcmV
 
 1. **Signature verification** - Using Keycloak's public RSA key
 2. **Issuer check** - `iss` must match configured `OIDC_ISSUER`
-3. **Audience check** - `aud` must include configured `OIDC_AUDIENCE`
+3. **Audience check** - `aud` (or, as a fallback, `azp`) must match one of the configured `OIDC_AUDIENCE` values
 4. **Expiration check** - `exp` must be in the future
-5. **Not-before check** - `iat` must be in the past
+5. **Not-before check** - `nbf`, when present, must be in the past
 
 ## Role-Based Access Control
 
@@ -309,15 +309,10 @@ PKI Manager uses Keycloak realm roles for authorization:
 ### Backend Middleware
 
 ```typescript
-// backend/src/trpc/middleware/auth.ts
+// backend/src/trpc/init.ts and backend/src/trpc/middleware/auth.ts (simplified)
 
 // Protected procedure - any authenticated user
-export const protectedProcedure = t.procedure.use(async ({ ctx, next }) => {
-  if (!ctx.user) {
-    throw new TRPCError({ code: 'UNAUTHORIZED' });
-  }
-  return next({ ctx: { user: ctx.user } });
-});
+export const protectedProcedure = t.procedure.use(authMiddleware);
 
 // Admin procedure - requires 'admin' role
 export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -421,6 +416,7 @@ For server-to-server communication without user interaction, use a **confidentia
 | `OIDC_AUDIENCE` | Yes | Expected audience(s), comma-separated |
 | `OIDC_ROLES_CLAIM` | No | Path to roles in token (default: `realm_access.roles`) |
 | `OIDC_DISCOVERY_BASE_URL` | No | Override URL for fetching OIDC config |
+| `OIDC_ROLES_SOURCE` | No | `token` (default) or `userinfo`: where roles are read from |
 
 ### Frontend Environment Variables
 
@@ -429,6 +425,8 @@ For server-to-server communication without user interaction, use a **confidentia
 | `VITE_OIDC_AUTHORITY` | Yes | OIDC provider URL (same as `OIDC_ISSUER`) |
 | `VITE_OIDC_CLIENT_ID` | Yes | Public client ID (e.g., `pki-web`) |
 | `VITE_OIDC_SCOPE` | No | OAuth scopes (default: `openid profile email`) |
+
+The redirect URI is `<origin>/callback`, the post-logout URI is `<origin>/` and silent renewal uses `<origin>/silent-renew.html`.
 
 ### Example Configuration
 

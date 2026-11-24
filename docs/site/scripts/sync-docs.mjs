@@ -1,0 +1,94 @@
+// Copy the repo's Markdown docs into the Starlight content folder.
+// The repo files stay the single source of truth; the copies are generated and gitignored.
+// - first "# Title" becomes frontmatter, and is removed from the body
+// - relative links to other mapped docs become site links; to other repo files, GitHub links
+// - relative images are copied to public/img/<repo path>
+import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, existsSync, readdirSync } from 'node:fs';
+import { dirname, join, normalize, posix } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const SITE = join(dirname(fileURLToPath(import.meta.url)), '..');
+const REPO = join(SITE, '..', '..');
+const BASE = '/pki-manager-web';
+const GH = 'https://github.com/oriolrius/pki-manager-web/blob/main/';
+const OUT = join(SITE, 'src', 'content', 'docs');
+
+/** repo path -> [site slug, sidebar order] */
+export const MAP = {
+  'DEPLOYMENT.md': ['operations/deployment', 1],
+  'docs/deployment/integrations-0010.md': ['operations/migration-0010', 5],
+  'OIDC.md': ['operations/oidc', 2],
+  'KEYCLOAK.md': ['operations/keycloak', 3],
+  'docs/private-root-ca-deployment.md': ['guides/private-root-ca', 1],
+  'docs/k8s-csr-signing.md': ['guides/k8s-csr-signing', 3],
+  'k8s/issuer/README.md': ['guides/k8s-issuer', 2],
+  'docs/api/integrations.md': ['guides/integrations', 4],
+  'docs/ssh/concept.md': ['ssh/concept'],
+  'docs/ssh/operator-quickstart.md': ['ssh/operator-quickstart'],
+  'docs/ssh/setup.md': ['ssh/setup'],
+  'docs/ssh/deploy-server-and-user.md': ['ssh/deploy-server-and-user'],
+  'docs/ssh/principals-guide.md': ['ssh/principals-guide'],
+  'docs/ssh/zones.md': ['ssh/zones'],
+  'docs/ssh/host-blocks-runbook.md': ['ssh/host-blocks-runbook'],
+  'docs/ssh-api-contract.md': ['ssh/api-contract'],
+  'ansible/README.md': ['ssh/ansible-role'],
+  // The companion page is rendered by src/pages/ssh/videos.astro
+  'docs/ssh/explainer/index.html': ['ssh/videos'],
+  'docs/ssh/explainer/README.md': ['ssh/videos'],
+  'docs/ssh/explainer': ['ssh/videos'],
+};
+const LABELS = {"operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-root-ca": "Private root CA on browsers and devices", "guides/k8s-csr-signing": "How Kubernetes CSRs are signed", "guides/k8s-issuer": "cert-manager issuer", "guides/integrations": "Integrations and SCEP", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role"};
+const GENERATED_DIRS = ['operations', 'guides', 'ssh'];
+
+const siteUrl = (slug, hash = '') => `${BASE}/${slug}/${hash}`;
+
+function rewriteTarget(target, srcRel) {
+  if (/^([a-z]+:|#|\/)/i.test(target)) return target;
+  const [path, hash = ''] = target.split('#');
+  const abs = posix.normalize(posix.join(posix.dirname(srcRel), decodeURI(path))).replace(/\/$/, '');
+  const h = hash ? `#${hash}` : '';
+  if (MAP[abs]) return siteUrl(MAP[abs][0], h);
+  if (/\.(png|jpe?g|gif|svg|webp)$/i.test(abs) && existsSync(join(REPO, abs))) {
+    const dest = join(SITE, 'public', 'img', abs);
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(join(REPO, abs), dest);
+    return `${BASE}/img/${abs}`;
+  }
+  if (!existsSync(join(REPO, abs))) throw new Error(`${srcRel}: broken link to ${target}`);
+  return GH + abs + h;
+}
+
+function convert(srcRel, [slug, order]) {
+  let md = readFileSync(join(REPO, srcRel), 'utf8');
+  const m = md.match(/^#\s+(.+)$/m);
+  if (!m) throw new Error(`${srcRel}: no "# Title" line`);
+  const title = m[1].replace(/`/g, '').trim();
+  md = md.replace(m[0], '');
+  // Markdown links and images outside code: [text](target) / ![alt](target)
+  const parts = md.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
+  md = parts.map((p, i) => (i % 2 ? p : p
+    .replace(/(!?\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g, (_, a, t, b) => a + rewriteTarget(t, srcRel) + b)
+    .replace(/(<img[^>]*\ssrc=")([^"]+)(")/g, (_, a, t, b) => a + rewriteTarget(t, srcRel) + b)
+    .replace(/^\[([^\]]+)\]:\s*(\S+)/gm, (_, k, t) => `[${k}]: ${rewriteTarget(t, srcRel)}`))).join('');
+  const fm = ['---', `title: ${JSON.stringify(title)}`,
+    `sidebar:\n  label: ${JSON.stringify(LABELS[slug] ?? title)}` + (order ? `\n  order: ${order}` : ''),
+    `editUrl: ${JSON.stringify('https://github.com/oriolrius/pki-manager-web/edit/main/' + srcRel)}`,
+    '---', '', `> Source: [\`${srcRel}\`](${GH}${srcRel})`, ''].filter((l) => l !== null).join('\n');
+  const dest = join(OUT, `${slug}.md`);
+  mkdirSync(dirname(dest), { recursive: true });
+  writeFileSync(dest, fm + md);
+}
+
+for (const d of GENERATED_DIRS) rmSync(join(OUT, d), { recursive: true, force: true });
+rmSync(join(SITE, 'public', 'img'), { recursive: true, force: true });
+let n = 0;
+for (const [src, v] of Object.entries(MAP)) {
+  if (!src.endsWith('.md') || v[0] === 'ssh/videos') continue;
+  convert(src, v);
+  n++;
+}
+// Ubuntu fonts (Ubuntu Font Licence) are kept once in the repo, under the video engine.
+const fonts = join(REPO, 'docs/ssh/explainer/video/engine/fonts');
+mkdirSync(join(SITE, 'public', 'fonts'), { recursive: true });
+for (const f of readdirSync(fonts)) copyFileSync(join(fonts, f), join(SITE, 'public', 'fonts', f));
+console.log(`sync-docs: ${n} docs -> src/content/docs`);

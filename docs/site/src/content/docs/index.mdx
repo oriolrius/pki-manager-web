@@ -1,0 +1,34 @@
+---
+title: PKI Manager
+description: Run your own X.509 and SSH certificate authorities.
+template: splash
+hero:
+  tagline: Run your own X.509 and SSH certificate authorities. CA hierarchies, certificates, CRLs, a cert-manager issuer for Kubernetes and a full SSH CA, with private keys kept in a Cosmian KMS.
+  actions:
+    - text: Get started
+      link: /pki-manager-web/get-started/
+      icon: right-arrow
+    - text: SSH certificates in 19 short videos
+      link: /pki-manager-web/ssh/videos/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="X.509 certificate authorities" icon="seti:lock">
+    Root and intermediate CAs; server, client, email and code-signing certificates with SANs;
+    renew, revoke and CRLs with distribution points; PEM, PKCS#12 and JKS downloads; bulk issuance.
+  </Card>
+  <Card title="SSH certificate authority" icon="seti:shell">
+    User and Host CAs, principals, KRL revocation, per-host access blocks, zones and Ansible.
+    [Start with the videos](/pki-manager-web/ssh/videos/).
+  </Card>
+  <Card title="Kubernetes and automation" icon="seti:kubernetes">
+    cert-manager external issuer, service identities with scoped tokens, and an optional SCEP gateway.
+  </Card>
+  <Card title="APIs" icon="seti:json">
+    A typed tRPC API for the web UI and a REST API with OpenAPI and Swagger.
+    [API reference](/pki-manager-web/api/).
+  </Card>
+</CardGrid>

@@ -73,11 +73,11 @@ ssh_certificates       84
 cd /opt/stacks/pki
 docker compose stop pki            # stop writes first
 # run the app's migrate step (NOT the raw SQL):
-docker compose run --rm pki node dist/db/migrate.js   # or `pnpm db:migrate`
+docker compose run --rm pki node backend/dist/db/migrate.js   # or `pnpm db:migrate`
 # expect: "Migrations completed successfully!"
 ```
 
-`migrate.js` disables FK enforcement for the rebuild and then asserts
+The image entrypoint also runs this migrate step on every start. `migrate.js` disables FK enforcement for the rebuild and then asserts
 `PRAGMA foreign_key_check` is empty; a non-empty check aborts with a non-zero
 exit and the DB is left on the pre-migration state inside the aborted
 transaction.
