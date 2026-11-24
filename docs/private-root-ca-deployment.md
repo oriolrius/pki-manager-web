@@ -135,6 +135,8 @@ This endpoint returns only the public certificate and is safe to expose. After o
 
 ## 2.3 Root CA versus intermediate CA
 
+> **PKI Manager today:** it creates **root CAs only** and issues certificates directly from them. It does not create intermediate (subordinate) CAs. With PKI Manager the chain is `server certificate → root CA`, and the server sends only its own certificate. The rest of this section is the general model.
+
 A common private PKI has this hierarchy:
 
 ![Private root CA signs an intermediate CA, which signs the server certificates](diagrams/svg/02-ca-hierarchy.svg)

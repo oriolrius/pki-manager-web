@@ -1,0 +1,56 @@
+# Demo stack for the documentation screenshots.
+# It runs the real docker/docker-compose.yml (the published images) with this overlay:
+# own names, ports and volumes (nothing touches kms/data or pki/), plus Keycloak with fake users.
+# Use scripts/demo.sh, not this file directly.
+services:
+  kms:
+    container_name: pki-demo-kms
+    volumes:
+      - demo-kms:/cosmian-kms/sqlite-data
+  backend:
+    container_name: pki-demo-backend
+    volumes:
+      - demo-pki:/app/backend/data
+    environment:
+      - OIDC_ISSUER=http://localhost:47381/realms/pki-demo
+      - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-demo
+      - OIDC_AUDIENCE=pki-web
+      - OIDC_ROLES_CLAIM=realm_access.roles
+    depends_on:
+      keycloak:
+        condition: service_healthy
+  frontend:
+    container_name: pki-demo-frontend
+    volumes:
+      - ${DEMO_DIR:?}/config.demo.json:/usr/share/nginx/html/config.json:ro
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.5
+    container_name: pki-demo-keycloak
+    command: start-dev --import-realm
+    ports:
+      - "47381:8080"
+    volumes:
+      - ${DEMO_DIR:?}/keycloak-demo-realm.json:/opt/keycloak/data/import/pki-demo-realm.json:ro
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_HEALTH_ENABLED=true
+      - KC_HTTP_PORT=8080
+      - KC_HOSTNAME=http://localhost:47381
+      - KC_HOSTNAME_STRICT=false
+    networks:
+      - pki-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e 'GET /realms/pki-demo/.well-known/openid-configuration HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3;grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+networks:
+  pki-network:
+    name: pki-demo-network
+
+volumes:
+  demo-kms:
+  demo-pki:

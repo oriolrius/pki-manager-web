@@ -23,6 +23,7 @@ export const MAP = {
   'docs/k8s-csr-signing.md': ['guides/k8s-csr-signing', 3],
   'k8s/issuer/README.md': ['guides/k8s-issuer', 2],
   'docs/api/integrations.md': ['guides/integrations', 4],
+  'docs/guides/get-started.md': ['get-started/install', 2],
   'docs/ssh/concept.md': ['ssh/concept'],
   'docs/ssh/operator-quickstart.md': ['ssh/operator-quickstart'],
   'docs/ssh/setup.md': ['ssh/setup'],
@@ -37,8 +38,9 @@ export const MAP = {
   'docs/ssh/explainer/README.md': ['ssh/videos'],
   'docs/ssh/explainer': ['ssh/videos'],
 };
-const LABELS = {"operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-root-ca": "Private root CA on browsers and devices", "guides/k8s-csr-signing": "How Kubernetes CSRs are signed", "guides/k8s-issuer": "cert-manager issuer", "guides/integrations": "Integrations and SCEP", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role"};
+const LABELS = {"get-started/install": "Install and log in", "operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-root-ca": "Private root CA on browsers and devices", "guides/k8s-csr-signing": "How Kubernetes CSRs are signed", "guides/k8s-issuer": "cert-manager issuer", "guides/integrations": "Integrations and SCEP", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role"};
 const GENERATED_DIRS = ['operations', 'guides', 'ssh'];
+const GENERATED_FILES = ['get-started/install.md'];
 
 const siteUrl = (slug, hash = '') => `${BASE}/${slug}/${hash}`;
 
@@ -48,7 +50,7 @@ function rewriteTarget(target, srcRel) {
   const abs = posix.normalize(posix.join(posix.dirname(srcRel), decodeURI(path))).replace(/\/$/, '');
   const h = hash ? `#${hash}` : '';
   if (MAP[abs]) return siteUrl(MAP[abs][0], h);
-  if (/\.(png|jpe?g|gif|svg|webp)$/i.test(abs) && existsSync(join(REPO, abs))) {
+  if (/\.(png|jpe?g|gif|svg|webp|webm|mp4)$/i.test(abs) && existsSync(join(REPO, abs))) {
     const dest = join(SITE, 'public', 'img', abs);
     mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(join(REPO, abs), dest);
@@ -68,7 +70,7 @@ function convert(srcRel, [slug, order]) {
   const parts = md.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
   md = parts.map((p, i) => (i % 2 ? p : p
     .replace(/(!?\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g, (_, a, t, b) => a + rewriteTarget(t, srcRel) + b)
-    .replace(/(<img[^>]*\ssrc=")([^"]+)(")/g, (_, a, t, b) => a + rewriteTarget(t, srcRel) + b)
+    .replace(/(<(?:img|video|source)[^>]*\ssrc=")([^"]+)(")/g, (_, a, t, b) => a + rewriteTarget(t, srcRel) + b)
     .replace(/^\[([^\]]+)\]:\s*(\S+)/gm, (_, k, t) => `[${k}]: ${rewriteTarget(t, srcRel)}`))).join('');
   const fm = ['---', `title: ${JSON.stringify(title)}`,
     `sidebar:\n  label: ${JSON.stringify(LABELS[slug] ?? title)}` + (order ? `\n  order: ${order}` : ''),
@@ -79,7 +81,7 @@ function convert(srcRel, [slug, order]) {
   writeFileSync(dest, fm + md);
 }
 
-for (const d of GENERATED_DIRS) rmSync(join(OUT, d), { recursive: true, force: true });
+for (const d of [...GENERATED_DIRS, ...GENERATED_FILES]) rmSync(join(OUT, d), { recursive: true, force: true });
 rmSync(join(SITE, 'public', 'img'), { recursive: true, force: true });
 let n = 0;
 for (const [src, v] of Object.entries(MAP)) {

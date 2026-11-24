@@ -52,12 +52,18 @@ All images are published exclusively to **GitHub Container Registry (ghcr.io)**.
    # Edit .env with your preferred settings
    ```
 
-3. **Build and start all services**:
+3. **Create the backend data folder** (the backend runs as uid 1001; a folder that Docker
+   creates is owned by root and the backend fails with `SqliteError: unable to open database file`):
+   ```bash
+   mkdir -p ../pki && sudo chown 1001:1001 ../pki
+   ```
+
+4. **Build and start all services**:
    ```bash
    docker-compose up --build
    ```
 
-4. **Access the application**:
+5. **Access the application**:
    - Frontend: http://localhost:8080
    - Backend API: http://localhost:3000
    - KMS: not published to the host (internal `kms-internal` network only)

@@ -1,0 +1,8 @@
+{
+  "apiUrl": "http://localhost:47300/trpc",
+  "oidc": {
+    "authority": "http://localhost:47381/realms/pki-demo",
+    "clientId": "pki-web",
+    "scope": "openid profile email"
+  }
+}
