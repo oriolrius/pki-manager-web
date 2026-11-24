@@ -4,6 +4,7 @@ title: 'Guide: build a private CA hierarchy and issue certificates'
 status: To Do
 assignee: []
 created_date: '2026-11-24T09:15:00Z'
+updated_date: '2026-11-24T09:55:00Z'
 labels:
   - docs
 milestone: m-1
@@ -16,7 +17,7 @@ ordinal: 76014
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Real use case: root CA, intermediate CA, server and client certificates with SANs, download formats (PEM, PKCS#12, JKS), renew, revoke, CRL distribution, bulk issuance, expiry monitoring.
+Real use case: root CA (PKI Manager creates root CAs only; no intermediate/subordinate CA exists in the product), server and client certificates with SANs, download formats (PEM, PKCS#12, JKS), renew, revoke, CRL distribution, bulk issuance, expiry monitoring.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
