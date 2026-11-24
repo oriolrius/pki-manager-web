@@ -53,6 +53,18 @@ opens.
 The CA page has a **Download format** list. Keep `PEM - Text format` and select **Download**.
 The file is `Acme_Internal_Root_CA.pem`. Save it as `ca.pem`.
 
+The list has these CA formats:
+
+| Format | Content | Availability |
+|---|---|---|
+| `PEM`, `CRT`, `DER`, `CER` | CA certificate only | always |
+| `P12 Truststore`, `JKS Truststore` | CA certificate only | always |
+| `P12 Keystore`, `JKS Keystore` | CA certificate + **CA private key** | only if the server has `ALLOW_CA_KEY_EXPORT=true` (default `false`), for the `admin` role, with a password; every export is audited as `ca.export_private_key` |
+
+By default the keystore formats are hidden in the UI and the REST API answers `403 CA_KEY_EXPORT_DISABLED`.
+A CA private key leaves the KMS in two cases only: to sign a CRL (in memory, never stored), and this
+audited admin keystore export.
+
 ```bash
 openssl x509 -in ca.pem -noout -subject -issuer -dates -ext basicConstraints,keyUsage
 ```

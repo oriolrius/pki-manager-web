@@ -59,6 +59,14 @@ function CADetail() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [lastExport, setLastExport] = useState<{ format: string; password: string } | null>(null);
 
+  // CA private-key export is off unless the server sets ALLOW_CA_KEY_EXPORT=true (admin only).
+  const keyExportPolicy = trpc.ca.keyExportPolicy.useQuery();
+  const keyExportEnabled = keyExportPolicy.data?.enabled ?? false;
+  const keyExportAllowed = keyExportPolicy.data?.allowed ?? false;
+  const keyExportNote = keyExportEnabled
+    ? 'CA private key export needs the admin role.'
+    : 'CA private key export is disabled on this server (ALLOW_CA_KEY_EXPORT=false). Keystore formats are not available.';
+
   const revokeMutation = trpc.ca.revoke.useMutation();
   const deleteMutation = trpc.ca.delete.useMutation();
 
@@ -145,6 +153,10 @@ function CADetail() {
   };
 
   const handleDownload = async (format = selectedFormat) => {
+    if (format.endsWith('-keystore') && !keyExportAllowed) {
+      toast.error(keyExportNote);
+      return;
+    }
     if (formatRequiresPassword(format) && downloadPassword.length < 8) {
       toast.error('Use an export password with at least 8 characters.');
       return;
@@ -550,11 +562,16 @@ function CADetail() {
               <option value="p12-truststore">P12 - PKCS#12 Truststore</option>
               <option value="jks-truststore">JKS - Java Truststore</option>
             </optgroup>
-            <optgroup label="Keystore (with private key)">
-              <option value="p12-keystore">P12 - PKCS#12 Keystore</option>
-              <option value="jks-keystore">JKS - Java Keystore</option>
-            </optgroup>
+            {keyExportAllowed && (
+              <optgroup label="Keystore (with private key)">
+                <option value="p12-keystore">P12 - PKCS#12 Keystore</option>
+                <option value="jks-keystore">JKS - Java Keystore</option>
+              </optgroup>
+            )}
           </select>
+          {!keyExportAllowed && (
+            <p className="text-xs text-muted-foreground" data-testid="ca-key-export-note">{keyExportNote}</p>
+          )}
           </div>
 
           <div className="w-full min-w-0 sm:flex-1">
@@ -754,7 +771,10 @@ function CADetail() {
                 <div>
                   <span className="text-muted-foreground text-xs block mb-1 font-semibold">🔑 Keystore Formats (with private key):</span>
                   <div className="space-y-0.5 ml-2">
-                    {(['p12-keystore', 'jks-keystore'] as const).map((format) => (
+                    {!keyExportAllowed && (
+                      <p className="text-xs text-muted-foreground">{keyExportNote}</p>
+                    )}
+                    {keyExportAllowed && (['p12-keystore', 'jks-keystore'] as const).map((format) => (
                       <div key={format} className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-muted-foreground w-24">
                           {format === 'p12-keystore' ? 'P12 Key:' : 'JKS Key:'}
@@ -768,9 +788,11 @@ function CADetail() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-orange-600 dark:text-orange-400 mt-1 ml-2">
-                    ⚠️ Keystore formats expose the private key
-                  </p>
+                  {keyExportAllowed && (
+                    <p className="text-xs text-orange-600 dark:text-orange-400 mt-1 ml-2">
+                      ⚠️ Keystore formats expose the private key. Every export is audited.
+                    </p>
+                  )}
                 </div>
 
                 {/* KMS Provider */}
