@@ -7,12 +7,20 @@ const ID = '00000000-0000-4000-8000-000000000000';
 
 describe('export password channel', () => {
   let app: FastifyInstance;
+  // CA keystore export is off by default (ALLOW_CA_KEY_EXPORT); this file tests the password
+  // channel, so enable the export for its requests and restore the previous value afterwards.
+  const previousExport = process.env.ALLOW_CA_KEY_EXPORT;
   beforeAll(async () => {
+    process.env.ALLOW_CA_KEY_EXPORT = 'true';
     app = Fastify({ logger: false });
     await registerRestApi(app);
     await app.ready();
   });
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    await app.close();
+    if (previousExport === undefined) delete process.env.ALLOW_CA_KEY_EXPORT;
+    else process.env.ALLOW_CA_KEY_EXPORT = previousExport;
+  });
 
   const call = (url: string, headers: Record<string, string> = {}) =>
     app.inject({ method: 'GET', url, headers });
