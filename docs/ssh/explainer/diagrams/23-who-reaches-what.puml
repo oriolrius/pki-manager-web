@@ -1,0 +1,29 @@
+@startuml 23-who-reaches-what
+!include theme-oriolrius.puml
+title Who reaches what (least privilege)
+left to right direction
+rectangle "Ana · junior dev\ndevelopers client-acme" as ana <<user>>
+rectangle "Pau · senior dev\ndevelopers client-acme client-globex" as pau <<user>>
+rectangle "Marta · sysadmin\nsysadmins" as marta <<user>>
+rectangle "Sara · security\nsecurity" as sara <<user>>
+rectangle "Dev: deploy" as dev <<machine>>
+rectangle "Tools: appsvc" as tools <<machine>>
+rectangle "Acme: deploy" as acme <<machine>>
+rectangle "Globex: deploy" as globex <<machine>>
+rectangle "Everywhere: root" as root <<danger>>
+rectangle "Everywhere: audit" as audit <<file>>
+ana --> dev
+ana --> tools
+ana --> acme
+pau --> dev
+pau --> tools
+pau --> acme
+pau --> globex
+marta --> root
+marta --> tools
+marta --> dev
+marta --> acme
+marta --> globex
+sara --> audit
+sara .[$RED].> root : <color:#C62828>no (separation of duties)</color>
+@enduml

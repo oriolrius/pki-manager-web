@@ -1,0 +1,12 @@
+@startuml 15-setup-order
+!include theme-oriolrius.puml
+title The setup order
+start
+:1. Create the **User CA** and the **Host CA**;
+:2. Hand out trust:\nUser CA key -> every server\nHost CA line -> every client;
+:3. Enrol each host\n(host certificate + deploy bundle);
+:4. Create principals and map them\nto local accounts per host;
+:5. Issue user certificates\nwith matching principals;
+:6. End access: short lifetimes;\nKRL or per-host block when urgent;
+stop
+@enduml

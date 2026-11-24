@@ -1,0 +1,34 @@
+@startuml 16-troubleshooting
+!include theme-oriolrius.puml
+title Login troubleshooting
+start
+if (Fingerprint prompt or host key warning?) then (yes)
+  :Laptop does not trust the Host CA:
+  check ""@cert-authority"" line + pattern,
+  connect with the exact FQDN in the host certificate;
+  stop
+else (no)
+endif
+if (Every key login fails, for all users?) then (yes)
+  :""/etc/ssh/revoked_keys"" missing or unreadable;
+  stop
+else (no)
+endif
+if (Time errors: expired / not yet valid?) then (yes)
+  :Fix NTP / chrony on server and laptop;
+  stop
+else (no)
+endif
+if (Permission denied with a valid certificate?) then (yes)
+  :Principal missing on the server:
+  compare ""ssh-keygen -L"" with
+  ""/etc/ssh/auth_principals/ACCOUNT"".
+  if the host shows Stale: deploy the file,
+  then click Mark pushed;
+  stop
+else (no)
+endif
+:""ssh -v"" on the laptop +
+""journalctl -u ssh"" (RHEL: sshd) on the server;
+stop
+@enduml

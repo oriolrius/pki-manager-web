@@ -305,7 +305,7 @@ export class SshHostService {
           // before install by krl-client — not the legacy unsigned /krl/<caId>.bin.
           url: '/api/v1/external/ssh/krl',
           setup: [
-            '# sshd refuses to start unless RevokedKeys exists. A default host ships a',
+            '# sshd refuses EVERY key login while RevokedKeys is missing. A default host ships a',
             '# fail-closed EMPTY placeholder — create it once:',
             `sudo install -m 0444 /dev/null ${REVOKED_KEYS_PATH}`,
             '',

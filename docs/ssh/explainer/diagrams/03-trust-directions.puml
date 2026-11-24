@@ -1,0 +1,27 @@
+@startuml 03-trust-directions
+!include theme-oriolrius.puml
+title Two CAs: trust crosses over
+left to right direction
+
+rectangle "PKI Manager" as pki <<pki>> {
+  rectangle "User CA\nsigns people's keys" as uca <<user>>
+  rectangle "Host CA\nsigns servers' keys" as hca <<host>>
+}
+rectangle "Laptop (Alice)" as laptop <<machine>> {
+  file "&#126;/.ssh/known_hosts\n@cert-authority *.acme.example ecdsa-sha2-nistp256 AAAA..." as kh
+  file "&#126;/.ssh/id_ed25519-cert.pub\n(signed by User CA)" as ucert
+}
+rectangle "Server web1.acme.example" as srv <<machine>> {
+  file "/etc/ssh/ssh-user-ca.pub\nTrustedUserCAKeys" as tuk
+  file "/etc/ssh/ssh_host_ecdsa_key-cert.pub\n(signed by Host CA)" as hcert
+}
+uca -[$ORANGE,thickness=2]-> tuk : User CA public key\n-> every server
+hca -[$GREEN,thickness=2]-> kh : Host CA line\n-> every client
+uca .[$ORANGE].> ucert : signs
+hca .[$GREEN].> hcert : signs
+legend bottom
+  | You install | Where | So that |
+  | <color:#C95000>User CA public key</color> | every **server** | servers trust users |
+  | <color:#0C8760>Host CA ""@cert-authority"" line</color> | every **client** | clients trust servers |
+endlegend
+@enduml

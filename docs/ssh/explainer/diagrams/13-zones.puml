@@ -1,0 +1,26 @@
+@startuml 13-zones
+!include theme-oriolrius.puml
+title Zones: separate trust domains in one PKI Manager
+left to right direction
+
+package "zone: prod" {
+  rectangle "User CA (prod)" as up <<user>>
+  rectangle "Host CA (prod)" as hp <<host>>
+  rectangle "web1.acme.example\n(prod)" as wp <<machine>>
+  rectangle "Alice (prod identity)" as ap <<file>>
+}
+package "zone: staging" {
+  rectangle "User CA (staging)" as us <<user>>
+  rectangle "Host CA (staging)" as hs <<host>>
+  rectangle "web1.acme.example\n(staging)" as ws <<machine>>
+  rectangle "Alice (staging identity)" as as <<file>>
+}
+up --> wp : trusted
+us --> ws : trusted
+us -[$RED,dashed]-> wp : <color:#C62828>never trusted</color>
+legend bottom
+  A host trusts only its own zone's User CA. Revocations and blocks stay in the zone.
+  Names unique per zone · one identity per person per zone · zone is fixed (offboard + re-enrol)
+  · archive, don't delete · with 2+ zones every request must name its zone (fleet tokens carry it).
+endlegend
+@enduml

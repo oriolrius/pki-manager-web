@@ -38,6 +38,20 @@ login allowed  ⇔  { principals in cert }  ∩  { principals in auth_principals
 If the label is in only one place, OpenSSH validates the certificate **signature**
 but **denies the login**. This is the single most common mistake.
 
+Three consequences of that formula:
+
+- **One match is enough (OR, never AND).** `deploy ← client-acme sysadmins` accepts a
+  certificate that carries *either* label. If an account must require "developer **and**
+  Acme", one principal cannot express it: create a combined principal (e.g.
+  `acme-deployer`) and give it only to the people who need both.
+- **An account with no principals file accepts no certificate from the User CA** (with the
+  `AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u` that PKI Manager deploys).
+  Unmapped accounts stay closed to certificates. `authorized_keys` entries and passwords
+  are checked separately — disable them too.
+- Each rendered file holds **two lines per principal**: `P` and `P@<fqdn>`. The second form is
+  used by the optional per-host block issuance gate, so keep `@` out of your own principal
+  names. Names must match `^[A-Za-z0-9][A-Za-z0-9._@-]{0,62}$` (no colon).
+
 ### The real insight: you split TWO decisions that used to be one
 
 | Decision | Where it lives | How often it changes | Follows… |
@@ -76,21 +90,26 @@ Use a **prefix** so you never mix dimensions (role vs. client). Three families:
 | `client-globex` | tenant scope | … | … |
 | `client-initech` | tenant scope | … | … |
 | `break-glass` | special | Emergency root, very short TTL, heavily audited | nobody by default; issued ad hoc |
-| `u:oriol.rius` | personal (optional) | Personal label for **traceability** in sshd logs | everyone (but **never** mapped) |
 
-> On `u:oriol.rius`: it grants access to nothing (no `auth_principals` lists it).
-> It exists so sshd logs **which principal matched**, letting you correlate
-> exactly who logged in. An optional but very useful audit pattern, especially
-> for the CISO.
+> **No personal principals.** An earlier version of this guide suggested a `u:<name>`
+> label in every certificate "for traceability". Do not do it: a colon is not a valid
+> principal name in PKI Manager, and a principal that is never mapped never matches, so it
+> never shows up in the logs anyway. Traceability is built in: on every accepted
+> certificate login sshd logs
+> `Accepted publickey for <account> … CERT … ID <key id> (serial N) CA <fingerprint>`, and
+> PKI Manager sets the **Key ID** to the identity subject by default. Match **CA + serial**
+> in the server logs with the certificate record in PKI Manager (identity, principals) to
+> know exactly who logged in with which roles. Ship sshd logs to a central server so root
+> on a host cannot edit them.
 
 ### What each profile carries in the certificate
 
 | Person | Principals in cert | Rationale |
 |---|---|---|
-| Junior dev on Acme | `developers client-acme u:ana` | Role + **only** the client they work on (least privilege) |
-| Senior dev (Acme + Globex) | `developers client-acme client-globex u:pau` | Two scopes because they touch two accounts |
-| Sysadmin | `sysadmins u:marta` | The admin role is mapped everywhere; no client scope needed |
-| CISO / security | `security u:oriol` | **Read-only / audit**. **NEVER** `sysadmins` → *separation of duties* |
+| Junior dev on Acme | `developers client-acme` | Role + **only** the client they work on (least privilege) |
+| Senior dev (Acme + Globex) | `developers client-acme client-globex` | Two scopes because they touch two accounts |
+| Sysadmin | `sysadmins` | The admin role is mapped everywhere; no client scope needed |
+| CISO / security | `security` | **Read-only / audit**. **NEVER** `sysadmins` → *separation of duties* |
 | Emergency | `break-glass` (+ whatever is needed) | Ephemeral cert, issued by hand, mandatory post-review |
 
 **Note the CISO:** they do *not* carry `sysadmins`. A security lead who can become
@@ -140,22 +159,25 @@ The key trick for client prod: on the `deploy` account you do **not** put
 
 | Piece | Purpose | Provisioning criterion |
 |---|---|---|
-| **Roles** (`developers`, `sysadmins`, `security`) | Stability: they follow the person, change rarely | Derive them from your **IdP group membership** (Keycloak) if you can; 1 role = 1 group |
+| **Roles** (`developers`, `sysadmins`, `security`) | Stability: they follow the person, change rarely | Keep them aligned with your **IdP groups** (1 role = 1 group) — but PKI Manager does not read IdP groups: your issuing process must request the new principals when a group changes |
 | **Tenant scopes** (`client-*`) | Least privilege + client isolation | Issue them **only** to devs actually assigned to that client |
-| **Personal** (`u:*`) | Fine-grained traceability / audit | To everyone; never in the mapping |
 | **`break-glass`** | Break the glass in an emergency | **Ephemeral** cert (hours), issued by hand, alert + post-mortem review |
-| **Short TTL** (~1 week, the tool's default) | The cert *is* the revocation: a role change propagates by itself on the next issuance | Do not lengthen user-cert TTL |
+| **Short TTL** (~1 week, the tool's default) | The cert *is* the revocation: a role change propagates on the next issuance | Do not lengthen user-cert TTL; never bulk-renew a cert whose principals are wrong (renewal copies them) |
+| **Revocation by serial** (KRL) | End one certificate **everywhere** now — e.g. after issuing a replacement with fewer principals | Issue the new cert, revoke the old one; lands within ≤1 pull interval |
 | **Per-host block** (composed KRL, the *access block*) | Cut off **this person on this host** now, without waiting for the TTL | Orthogonal to principals: one reversible, audited click; lands within ≤1 pull interval (~7–15 min) |
 
 Two things people conflate, worth stating plainly:
 
-- **Principals ≠ revocation.** Principals decide access *at issue/mapping time*.
-  To remove access **now** you have two different levers: let the cert expire
-  (short TTL) or the **per-host block** (KRL). A principal change only takes
-  effect on the **next cert issued**.
+- **Principals ≠ revocation.** There are four levers, and none closes a session that
+  is already open:
+  - a **new certificate** changes what a person can reach once the old one is gone
+    (expired or revoked);
+  - a **mapping change**, once the files are deployed, affects the **next login — even
+    with existing certificates**;
+  - **revocation** rejects one certificate everywhere (next KRL pull);
+  - a **per-host block** rejects one identity on one host (next KRL pull).
 - **Do not put usernames as mapping principals.** It couples the cert to a
-  specific account and kills the role model. The personal name goes as `u:*`
-  **for logs only**, not to grant access.
+  specific account and kills the role model. The person is already in the Key ID.
 
 ## The onboarding flow, condensed
 

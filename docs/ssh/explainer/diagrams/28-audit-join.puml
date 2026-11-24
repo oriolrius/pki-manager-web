@@ -1,0 +1,13 @@
+@startuml 28-audit-join
+!include theme-oriolrius.puml
+title Who did what: join on CA + serial
+left to right direction
+rectangle "PKI Manager certificate record\nidentity: ana@ops.example\nprincipals: developers client-acme\nserial: 42 · CA: User CA (prod)" as rec <<pki>>
+rectangle "Central log (from acme-web sshd)\nAccepted publickey for deploy\nfrom 10.0.4.17 … ED25519-CERT …\nID ana@ops.example (serial 42)\nCA ECDSA SHA256:…" as logl <<file>>
+rec <-right-> logl : serial 42 + CA fingerprint
+note bottom of logl
+  The Key ID is a label (default = identity subject).
+  Serials are unique per CA: always join on CA + serial.
+  Ship sshd logs centrally: root on the host can edit local logs.
+end note
+@enduml

@@ -1,15 +1,15 @@
 # SSH CA with PKI Manager: video script
 
 Series of short clips. Audience: Linux sysadmins who use SSH every day but have
-never used SSH certificates. Voice: `oriol-en`. Pace: ~150 words per minute.
+never used SSH certificates. Voice: VoiceStudio profile `dbai24-narrator-vox48` (female, native English). Pace: ~150 words per minute.
 
 Conventions for every episode:
 
 - One idea per scene. Each scene has the **narration** (read word for word by the
   voice) and the **visual** (what the vector animation shows).
 - **Narration is written to be spoken.** Paths, flags and symbols appear only on
-  screen; the narration uses a spoken form ("the authorized keys file", "S S H D").
-  Pronunciation hints for the voice build are in [`pronunciation.md`](pronunciation.md).
+  screen; the narration uses a spoken form ("the authorized keys file", "sshd").
+  Spoken forms for the voice (e.g. `sshd` → "S S H D") are in [`pronunciation.json`](pronunciation.json); subtitles keep the written form.
 - Same running example in all episodes: company **Acme**, servers
   **`web1.acme.example`** and **`db1.acme.example`**, user **Alice**, role
   **`developers`**, local account **`deploy`**, PKI Manager at **`pki.acme.example`**.
@@ -19,18 +19,18 @@ Conventions for every episode:
 - On-screen code is real and short. Paths and file contents match what PKI Manager
   renders today (checked against the code, not only the docs).
 
-| # | Episode | Target |
+| # | Episode | Length |
 |---|---|---|
-| 01 | Why SSH certificates | 2:00 |
-| 02 | Two CAs, trust crosses over | 1:45 |
-| 03 | Host certificates: no more "fingerprint?" prompt | 2:45 |
-| 04 | User certificates: log in with a signed key | 2:30 |
-| 05 | Principals: the one rule that matters | 2:45 |
-| 06 | Lifecycle: expiry, revocation, rotation | 2:45 |
-| 07 | Per-host access blocks | 2:15 |
-| 08 | Zones: separate trust domains | 2:00 |
-| 09 | Automation: fleet tokens and Ansible | 2:45 |
-| 10 | Recap and troubleshooting | 2:15 |
+| 01 | Why SSH certificates | 1:39 |
+| 02 | Two CAs, trust crosses over | 1:06 |
+| 03 | Host certificates: no more "fingerprint?" prompt | 1:44 |
+| 04 | User certificates: log in with a signed key | 1:29 |
+| 05 | Principals: the one rule that matters | 1:38 |
+| 06 | Lifecycle: expiry, revocation, rotation | 1:56 |
+| 07 | Per-host access blocks | 1:20 |
+| 08 | Zones: separate trust domains | 1:05 |
+| 09 | Automation: fleet tokens and Ansible | 1:39 |
+| 10 | Recap and troubleshooting | 1:28 |
 
 ---
 
@@ -68,7 +68,7 @@ and everybody sees a scary warning. Most people just delete the old line.
 
 ### 01.4 — The idea: a trusted signer
 **Narration:** Certificates fix both problems with one idea. Instead of trusting every key,
-you trust one signer: a certificate authority, or CA. The CA signs keys. Anyone who trusts
+you trust one signer: a certificate authority, or CA. The CA puts its signature on keys. Anyone who trusts
 the CA trusts every key it signed. You install one line, once.
 
 **Visual:** All the lines from 01.2 collapse into one central CA badge. Each server now has
@@ -108,14 +108,14 @@ separate CAs.
 you?", from the laptop "Who are *you*?".
 
 ### 02.2 — The User CA
-**Narration:** The User CA signs people's keys. Servers trust it. On every server you install
-the User CA public key, and one S S H D setting points to it.
+**Narration:** The User CA puts its signature on people's keys. Servers trust it. On every server you install
+the User CA public key, and one sshd setting points to it.
 
 **Visual:** Orange *User CA* badge. An orange arrow goes to the server. Server file appears:
 `/etc/ssh/ssh-user-ca.pub` and the line `TrustedUserCAKeys /etc/ssh/ssh-user-ca.pub`.
 
 ### 02.3 — The Host CA
-**Narration:** The Host CA signs servers' keys. Clients trust it. On every laptop you add one
+**Narration:** The Host CA puts its signature on servers' keys. Clients trust it. On every laptop you add one
 line to the known hosts file. It says: trust any server under this domain that the Host CA
 signed.
 
@@ -151,8 +151,8 @@ Authority*, type *User*, then type *Host*. Two badges appear in the CA list, bot
 
 ### 03.1 — The key stays on the server
 **Narration:** Let us enrol web one. One rule for every key in this series: the private key
-never leaves its machine. The server already has host keys. You send only one public key to
-PKI Manager: the E C D S A one. PKI Manager accepts only that type, and episode six shows why.
+never leaves its machine. The server already has host keys. You send only the ECDSA public key to
+PKI Manager. PKI Manager accepts only that type, and episode six shows why.
 
 **Visual:** Server `web1`. Terminal: `cat /etc/ssh/ssh_host_ecdsa_key.pub`. The private key
 file stays inside the server with a lock icon; only the `.pub` card travels to PKI Manager.
@@ -169,7 +169,7 @@ connect with that exact name.
 
 ### 03.3 — The deploy bundle
 **Narration:** The host page then shows "Files to place on this server". That one panel is
-everything the server needs: the host certificate, both CA public keys, a small S S H D
+everything the server needs: the host certificate, both CA public keys, a small sshd
 config file, the principals files, and a command that creates the revocation file.
 
 **Visual:** Redraw of the host detail panel. File cards fan out with their paths:
@@ -181,10 +181,10 @@ config file, the principals files, and a command that creates the revocation fil
 - command: `sudo install -m 0444 /dev/null /etc/ssh/revoked_keys` (grey)
 
 ### 03.4 — The config file, line by line
-**Narration:** The config file goes in the S S H D drop-in folder, and it has five settings.
+**Narration:** The config file goes in the sshd drop-in folder, and it has five settings.
 One: the host key. Two: show this certificate to clients. Three: trust users signed by the
 User CA. Four: look up the allowed roles for each account. Five: refuse revoked keys. The
-revocation file must exist, even empty. If it is missing, S S H D refuses every key login.
+revocation file must exist, even empty. If it is missing, sshd refuses every key login.
 
 **Visual:** The file `60-ssh-ca.conf`; each line highlights as it is read:
 ```
@@ -200,7 +200,7 @@ contain `Include /etc/ssh/sshd_config.d/*.conf` (default on current distribution
 
 ### 03.5 — Test, then reload
 **Narration:** Before you reload, give your clients the Host CA line, because this server now
-shows only its E C D S A key. Then test the config, and reload, not restart, so open sessions
+shows only its ECDSA key. Then test the config, and reload, not restart, so open sessions
 stay up.
 
 **Visual:** Terminal:
@@ -239,7 +239,7 @@ Identity card "Alice — active".
 
 ### 04.2 — Alice keeps her private key
 **Narration:** Alice creates a key pair on her own laptop, as usual, and sends only the public
-key. Use an Ed twenty-five five-nineteen or an E C D S A key: PKI Manager does not accept R S A
+key. Use an Ed25519 or an ECDSA key: PKI Manager does not accept R S A
 keys. Her private key never leaves her laptop.
 
 **Visual:** Laptop terminal:
@@ -274,7 +274,7 @@ Host *.acme.example
 ```
 
 ### 04.5 — Read it, then log in
-**Narration:** Before you log in, read the certificate with S S H keygen. You see the key ID, the
+**Narration:** Before you log in, read the certificate with ssh-keygen. You see the key ID, the
 principals and the validity dates. Then log in. The server does four checks: the key is not
 revoked, the signature comes from the User CA, the dates are valid, and a principal matches.
 Nobody added a line to the authorized keys file.
@@ -372,7 +372,7 @@ A Globex developer's certificate (`developers client-globex`) bounces off Acme p
 ### 06.1 — Tier one: expiry
 **Narration:** Access ends in two ways. Tier one is expiry. User certificates last one week,
 host certificates one year. To remove someone, disable their identity: no new certificates,
-and within a week they are out. One warning: S S H D still accepts old authorized keys
+and within a week they are out. One warning: sshd still accepts old authorized keys
 entries, so remove those first.
 
 **Visual:** Timeline bar of 7 days with the certificate fading out at the end. Label
@@ -380,17 +380,17 @@ entries, so remove those first.
 card: *old `authorized_keys` entries still work → remove them*.
 
 ### 06.2 — Tier two: the revocation list
-**Narration:** Tier two is the emergency stop: the key revocation list, or K R L. Revoke a
-certificate in PKI Manager, and it goes on the list. S S H D reads that file on every login, so
+**Narration:** Tier two is the emergency stop: the key revocation list, or KRL. Revoke a
+certificate in PKI Manager, and it goes on the list. sshd reads that file on every login, so
 no reload is needed once the new file is in place.
 
 **Visual:** Red *KRL* list. A certificate card is dropped into it. Arrow to the server file
 `/etc/ssh/revoked_keys` (setting `RevokedKeys`). Gate *not revoked* turns red for that card.
 
 ### 06.3 — Getting the list to the servers
-**Narration:** PKI Manager does not push. Each server pulls. The recommended way is the K R L
+**Narration:** PKI Manager does not push. Each server pulls. The recommended way is the KRL
 client. About every fifteen minutes it asks for the list. The list arrives encrypted to the
-server's own E C D S A key, which is why hosts use that key type. The client checks the Host
+server's own ECDSA key, which is why hosts use that key type. The client checks the Host
 CA signature, and only then installs the file. A simpler cron download exists, but it has no
 signature check and no per-host blocks.
 
@@ -400,15 +400,18 @@ signature check and no per-host blocks.
 *cron + curl `/krl/<userCaId>.bin` — no signature, no blocks*.
 
 ### 06.4 — When someone leaves, when a server goes
-**Narration:** When someone leaves, revoke their certificates and disable their identity. The
-API does both in one call, named offboard. When you decommission a server, use Offboard on the
-host page. It is final: it removes the mappings and the host gets no more certificates. Also
-destroy the server's host key, because laptops do not check the revocation list.
+**Narration:** When someone leaves, click Offboard on their identity. One action revokes all their
+active certificates and disables the identity, and it cannot be undone. Disable alone only stops new
+certificates. When you decommission a server, use Offboard on the host page. It is final: it removes
+the mappings and the host gets no more certificates. Also destroy the server's host key, because
+laptops do not check the revocation list.
 
-**Visual:** Identity card Alice → her two certificate cards fall into the KRL → identity turns
-grey *disabled*. Caption: `POST /api/v1/ssh/identities/:id/offboard`. Then server card
-`old-db` → *Offboard* button → mapping rows vanish, host badge *offboarded*; a shredder icon on
-the host key.
+**Visual:** Redraw of the *User certificates* identity card for Alice with buttons *Issue*,
+*Disable*, *Offboard*. Click *Offboard* → dialog *Offboard alice@acme.example?*: "This revokes
+**2 active certificates** of **alice@acme.example** and **disables the identity**", bullets
+(KRL, no new certificates, cannot be undone), reason "left the company", red *Offboard* button.
+Her two certificate cards fall into the KRL → identity turns grey *disabled*. Then server card
+`old-db` → *Offboard* → mapping rows vanish, host badge *offboarded*; a shredder icon on the host key.
 
 ### 06.5 — Rotating a CA
 **Narration:** CA keys can rotate too. When you rotate a CA, the old one becomes "rotating": it is
@@ -420,7 +423,7 @@ file on a server lists both keys. A server without the new file rejects a new ce
 Calendar runs; old certificates expire; old badge → *retired*.
 
 ### 06.6 — Clocks
-**Narration:** All of this depends on time. Run N T P or chrony on every server and every laptop.
+**Narration:** All of this depends on time. Run NTP or chrony on every server and every laptop.
 A wrong clock makes a valid certificate look expired, or an expired one look valid. Next:
 blocking one person on one server.
 
@@ -461,9 +464,9 @@ undo it with Unblock.
 *Block user…* → Alice → reason "incident 42" → confirm. Row shows a red *Blocked* pill.
 
 ### 07.4 — When it takes effect
-**Narration:** The block lands on the host's next pull, so in about fifteen minutes. The K R L
+**Narration:** The block lands on the host's next pull, so in about fifteen minutes. The KRL
 page shows the state of each host: "Rolling out", then "Enforced" when the host has downloaded
-the new list. This needs the K R L client. A host without it stays at "Rolling out", and the
+the new list. This needs the KRL client. A host without it stays at "Rolling out", and the
 block never lands there.
 
 **Visual:** State pill animates *Rolling out → Enforced*. Tooltip: *served to the host's
@@ -536,25 +539,22 @@ themselves, with a fleet token and the Ansible role.
 of them.
 
 ### 09.2 — Fleet tokens
-**Narration:** A fleet token is a secret string for the automation API. It is limited to one CA
-pair and to a list of operations: for example, sign host keys and read principals. You create it
-through the API or with the Ansible module. PKI Manager shows it only once and stores only a
-hash. Keep it in Ansible Vault.
+**Narration:** A fleet token is a secret string for the automation API. It works in one zone, with
+its CAs, and only for a list of operations. Mint it on the Fleet tokens page, or with the Ansible
+module. Pick a preset, for example a self-provisioning host with KRL. PKI Manager shows the token
+only once and stores only a hash. Keep it in Ansible Vault.
 
-**Visual:**
-```yaml
-- oriolrius.pki_manager.pki_manager:
-    action: ssh_token_mint
-    token_name: acme-fleet
-    host_ca_id: "{{ host_ca_id }}"
-    token_ops: [sign-host, get-principals, register-host-pubkey]
-```
-A token `pkimg_…` appears once, then masks, and drops into a vault icon.
+**Visual:** Redraw of *SSH → Fleet tokens → Mint token*: name `acme-fleet`, preset
+*Self-provisioning host with KRL (recommended)* ticks `sign-host`, `get-principals`,
+`register-host-pubkey`; Host CA preselected, User CA *Not needed*. Click *Mint token* → amber panel
+*Token "acme-fleet" created. Copy it now.* with `pkimg_…` and *Copy*; warning "You will not see
+this token again." The token drops into a vault icon. Small caption: also `ssh_token_mint` in the
+Ansible module.
 
 ### 09.3 — The Ansible role
-**Narration:** Install the PKI Manager Ansible collection and apply its S S H host cert role. One
+**Narration:** Install the PKI Manager Ansible collection and apply its ssh host cert role. One
 run does it all. It uses the host key, or creates one, and gets it signed. It installs both CA
-public keys, writes the principals files and the S S H D config, tests and reloads S S H D, and
+public keys, writes the principals files and the sshd config, tests and reloads sshd, and
 sets up automatic renewal.
 
 **Visual:**
@@ -572,8 +572,8 @@ Four phase boxes light up in order: *key + cert + CA keys*, *principals*, *sshd 
 
 ### 09.4 — Turn on revocation
 **Narration:** By default the role installs an empty revocation list. To get live revocation and
-blocks, turn on the encrypted K R L channel. The role then registers the host for encrypted
-delivery and installs the K R L client. The PKI Manager server needs this channel enabled too.
+blocks, turn on the encrypted KRL channel. The role then registers the host for encrypted
+delivery and installs the KRL client. The PKI Manager server needs this channel enabled too.
 
 **Visual:**
 ```yaml
@@ -611,7 +611,7 @@ false` to avoid it*. *Next: 10 Recap*.
 
 ### 10.1 — The order
 **Narration:** Here is the whole setup in six steps. One: create the User CA and the Host CA. Two:
-hand out trust: User CA to servers, Host CA to laptops. Three: enrol each host. Four: create
+hand out trust, with the User CA going to the servers and the Host CA to the laptops. Three: enrol each host. Four: create
 principals and map them to accounts. Five: issue user certificates with matching principals. Six:
 end access with short lifetimes, or with the revocation list when it is urgent.
 
@@ -637,7 +637,7 @@ account. And check that the host is not "Stale".
 ### 10.4 — Other quick checks
 **Narration:** Every key login fails, for every user? The revocation file is missing or
 unreadable. Certificate expired too early, or not valid yet? Check the clocks. For anything else,
-run SSH in verbose mode on the laptop, and read the S S H D log on the server. They tell you
+run SSH in verbose mode on the laptop, and read the sshd log on the server. They tell you
 which check failed.
 
 **Visual:** Three cards: *all key logins denied → `/etc/ssh/revoked_keys` missing*,

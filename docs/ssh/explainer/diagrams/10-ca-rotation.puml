@@ -1,0 +1,17 @@
+@startuml 10-ca-rotation
+!include theme-oriolrius.puml
+title Rotating a CA
+hide empty description
+[*] --> active
+state "active\n(signs new certificates)" as active <<good>>
+state "rotating\n(still trusted, signs nothing)" as rotating <<warn>>
+state "retired\n(no longer trusted)" as retired <<bad>>
+active --> rotating : Rotate\n(a new active CA is created)
+rotating --> retired : Retire, after its\ncertificates have expired
+retired --> [*]
+note right of rotating
+  During the overlap the trust files list BOTH keys.
+  Deploy the new trust files first: a server without the
+  new key rejects certificates from the new CA.
+end note
+@enduml
