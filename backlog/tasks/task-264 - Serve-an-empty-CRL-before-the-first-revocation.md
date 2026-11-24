@@ -4,6 +4,7 @@ title: Serve an empty CRL before the first revocation
 status: To Do
 assignee: []
 created_date: '2026-11-24T10:18:00Z'
+updated_date: '2026-11-24T11:04:00Z'
 labels:
   - crl
   - bug
@@ -21,3 +22,9 @@ Every certificate embeds the CRL distribution URL, but it returns 404 (No CRL av
 <!-- AC:BEGIN -->
 - [ ] #1 The CRL URL of a new CA returns a valid, signed, empty CRL
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+GitHub: https://github.com/oriolrius/pki-manager-web/issues/22
+<!-- SECTION:NOTES:END -->
