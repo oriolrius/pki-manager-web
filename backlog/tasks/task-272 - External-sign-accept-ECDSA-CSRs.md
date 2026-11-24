@@ -4,6 +4,7 @@ title: 'External sign: accept ECDSA CSRs'
 status: To Do
 assignee: []
 created_date: '2026-11-24T10:44:00Z'
+updated_date: '2026-11-24T11:04:00Z'
 labels:
   - integrations
 dependencies: []
@@ -20,3 +21,9 @@ POST /api/v1/external/sign parses CSRs with node-forge, which reads RSA keys onl
 <!-- AC:BEGIN -->
 - [ ] #1 An ECDSA P-256 and P-384 CSR is signed by the external API
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+GitHub: https://github.com/oriolrius/pki-manager-web/issues/28
+<!-- SECTION:NOTES:END -->
