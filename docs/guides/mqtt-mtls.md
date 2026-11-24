@@ -1,4 +1,4 @@
-# From easy-rsa to PKI Manager: Mosquitto with mutual TLS
+# Client certificate authentication with revocation (worked example: Mosquitto)
 
 Acme Example Ltd runs a Mosquitto broker for factory sensors. Only sensors with a valid
 certificate may connect, and the broker must use TLS. This guide builds that setup with

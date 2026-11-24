@@ -36,7 +36,7 @@ PKI Manager is a self-hosted web application to run your own certificate authori
 |---|---|
 | Install it and log in | [Install and log in](/pki-manager-web/get-started/install/) |
 | Build an internal CA and issue, renew and revoke certificates | [Private CA and certificates](/pki-manager-web/guides/private-ca/) |
-| Replace an easy-rsa PKI (Mosquitto with mutual TLS) | [From easy-rsa to PKI Manager](/pki-manager-web/guides/mqtt/) |
+| Let only devices with a valid certificate connect, and revoke them (Mosquitto example) | [Client certificate authentication with revocation](/pki-manager-web/guides/mqtt/) |
 | Trust your root CA on browsers and devices | [Trust your root CA](/pki-manager-web/guides/private-root-ca/) |
 | Issue certificates to Kubernetes workloads | [Kubernetes with cert-manager](/pki-manager-web/guides/kubernetes/) |
 | Connect automation or SCEP devices | [Automation, tokens and SCEP](/pki-manager-web/guides/automation/) |
