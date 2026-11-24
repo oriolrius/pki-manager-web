@@ -1,7 +1,7 @@
 ---
 id: TASK-261
 title: 'API how-to: authentication and verified curl examples'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T09:15:00Z'
@@ -23,5 +23,13 @@ How to call the API: OIDC bearer token, cluster tokens, fleet tokens (pkimg_), w
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every curl example runs green against the demo stack in CI
+- [x] #1 Every curl example runs green against the demo stack in CI
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- docs/api/how-to.md (site /api/how-to/): credentials table (OIDC JWT, integration token, SSH fleet token) and 7 runnable examples.
+- docs/site/demo/doc-examples.sh runs every bash block of a doc in order (skip marker for placeholders); CI job "examples" starts the demo stack and runs it; deploy needs it. First CI run green (run 45377785897).
+- Found: external sign rejects ECDSA CSRs (TASK-272); the doc says RSA only.
+<!-- SECTION:NOTES:END -->
