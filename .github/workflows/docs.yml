@@ -4,7 +4,8 @@ name: Docs site
 # Pull requests: build + internal link check only. Push to main: build and deploy to GitHub Pages.
 on:
   push:
-    branches: [main]
+    # docs/site: first publication before the merge to main. Remove it after the merge.
+    branches: [main, docs/site]
     paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/README.md', '.github/workflows/docs.yml']
   pull_request:
     paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/README.md', '.github/workflows/docs.yml']
@@ -53,8 +54,8 @@ jobs:
           path: docs/site/dist
 
   deploy:
-    # main on push; any branch by hand (Actions → Docs site → Run workflow)
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    # Push to main (or docs/site, see above), or by hand (Actions → Docs site → Run workflow)
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:
