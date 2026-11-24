@@ -1,3 +1,4 @@
+import { kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../init.js';
 import {
@@ -868,7 +869,7 @@ export const certificateRouter = router({
         } as any);
 
         // Optional: Destroy KMS key if requested
-        if (input.destroyKey && cert.kmsKeyId) {
+        if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
           try {
             const kmsService = getKMSService();
             await kmsService.destroyKey(cert.kmsKeyId);
@@ -2095,7 +2096,7 @@ export const certificateRouter = router({
             }
 
             kmsKeyId = originalCert.kmsKeyId;
-            publicKeyId = kmsKeyId.replace('-private', '-public');
+            publicKeyId = await kmsService.getPublicKeyIdForPrivateKey(kmsKeyId);
           }
 
           const subjectName = formatDN(subjectDN);
@@ -2142,7 +2143,7 @@ export const certificateRouter = router({
             notBefore: certMetadata.validity.notBefore,
             notAfter: certMetadata.validity.notAfter,
             kmsCertificateId: certInfo.certificateId,
-            kmsKeyId: kmsKeyId, // Always store since we always generate new keys
+            kmsKeyId: kmsKeyId,
             status: 'active',
             sanDns: sanDns ? JSON.stringify(sanDns) : null,
             sanIp: sanIp ? JSON.stringify(sanIp) : null,
@@ -2322,7 +2323,7 @@ export const certificateRouter = router({
           } as any);
 
           // Optional: Destroy KMS key if requested
-          if (input.destroyKey && cert.kmsKeyId) {
+          if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
             try {
               const kmsService = getKMSService();
               await kmsService.destroyKey(cert.kmsKeyId);

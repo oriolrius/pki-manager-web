@@ -16,6 +16,23 @@ import { getCRLService } from './crl.service.js';
 import type { ServiceContext } from './types.js';
 
 // Types for Certificate Service inputs and outputs
+/**
+ * A renewal with key reuse makes several certificates share one KMS key pair.
+ * True when a certificate other than `certId` still uses `kmsKeyId`: its key must not be destroyed.
+ */
+export async function kmsKeyUsedByOtherCertificate(
+  database: { select: typeof import('../db/client.js').db.select },
+  kmsKeyId: string,
+  certId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: certificates.id })
+    .from(certificates)
+    .where(and(eq(certificates.kmsKeyId, kmsKeyId), sql`${certificates.id} != ${certId}`))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export interface ListCertificatesParams {
   caId?: string;
   status?: 'active' | 'revoked' | 'expired';
@@ -958,27 +975,30 @@ export class CertificateService {
       const validityDays = params.validityDays ||
         Math.ceil((originalCert.notAfter.getTime() - originalCert.notBefore.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Always generate a new key pair for renewal
-      // Key reuse is not supported because we don't store the public key ID separately,
-      // and deriving it from the private key ID is unreliable
-      if (!params.generateNewKey) {
-        logger.warn({ newCertId, originalCertId: params.id },
-          'Key reuse requested but not supported - generating new key pair instead');
-      }
-
       // Preserve the original certificate's key algorithm on renewal (RSA-2048/4096 or EC).
       const renewKeyAlgorithm = originalParsed.keyAlgorithm;
-      logger.info({ newCertId, originalCertId: params.id, keyAlgorithm: renewKeyAlgorithm }, 'Creating new key pair for certificate renewal');
+      let kmsKeyId: string;
+      let publicKeyId: string;
 
-      const keyPair = await kmsService.createKeyPair({
-        keyAlgorithm: renewKeyAlgorithm,
-        tags: [],
-        purpose: 'certificate',
-        entityId: newCertId,
-      });
-
-      const kmsKeyId = keyPair.privateKeyId;
-      const publicKeyId = keyPair.publicKeyId;
+      if (params.generateNewKey) {
+        logger.info({ newCertId, originalCertId: params.id, keyAlgorithm: renewKeyAlgorithm }, 'Creating new key pair for certificate renewal');
+        const keyPair = await kmsService.createKeyPair({
+          keyAlgorithm: renewKeyAlgorithm,
+          tags: [],
+          purpose: 'certificate',
+          entityId: newCertId,
+        });
+        kmsKeyId = keyPair.privateKeyId;
+        publicKeyId = keyPair.publicKeyId;
+      } else {
+        // Key reuse: certify the EXISTING KMS key pair again (same public key, new serial/dates).
+        if (!originalCert.kmsKeyId) {
+          throw new Error('Original certificate has no KMS private key to reuse');
+        }
+        kmsKeyId = originalCert.kmsKeyId;
+        publicKeyId = await kmsService.getPublicKeyIdForPrivateKey(kmsKeyId);
+        logger.info({ newCertId, originalCertId: params.id, kmsKeyId, publicKeyId }, 'Reusing existing key pair for certificate renewal');
+      }
 
       const subjectName = formatDN(subjectDN);
       logger.info({ newCertId, subjectName, caId: originalCert.caId }, 'Signing renewed certificate via KMS');
@@ -1024,7 +1044,7 @@ export class CertificateService {
         notBefore: certMetadata.validity.notBefore,
         notAfter: certMetadata.validity.notAfter,
         kmsCertificateId: certInfo.certificateId,
-        kmsKeyId: kmsKeyId, // Always store since we always generate new keys
+        kmsKeyId: kmsKeyId,
         status: 'active',
         sanDns: sanDns ? JSON.stringify(sanDns) : null,
         sanIp: sanIp ? JSON.stringify(sanIp) : null,
@@ -1047,6 +1067,20 @@ export class CertificateService {
           .where(eq(certificates.id, params.id));
 
         logger.info({ originalCertId: params.id }, 'Original certificate revoked (superseded by renewal)');
+
+        await ctx.db.insert(auditLog).values({
+          id: randomUUID(),
+          operation: 'certificate.revoke',
+          entityType: 'certificate',
+          entityId: params.id,
+          status: 'success',
+          details: JSON.stringify({
+            reason: 'superseded',
+            supersededBy: newCertId,
+            via: 'certificate.renew',
+          }),
+          ipAddress: ctx.ipAddress,
+        } as any);
 
         // Keep the CA CRL current so the superseded serial appears (best-effort).
         await getCRLService().regenerateForCa(ctx, originalCert.caId);
@@ -1276,7 +1310,18 @@ export class CertificateService {
 
       // Optional: Destroy KMS key if requested
       let keyDestroyed = false;
-      if (params.destroyKey && cert.kmsKeyId) {
+      // A renewal with key reuse makes several certificates share one KMS key pair:
+      // never destroy a key that another certificate still uses.
+      const keyStillUsed = cert.kmsKeyId
+        ? await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, params.id)
+        : false;
+      if (params.destroyKey && cert.kmsKeyId && keyStillUsed) {
+        logger.info(
+          { certId: params.id, kmsKeyId: cert.kmsKeyId },
+          'KMS key kept: another certificate still uses it (renewed with key reuse)'
+        );
+      }
+      if (params.destroyKey && cert.kmsKeyId && !keyStillUsed) {
         try {
           const kmsService = getKMSService();
           await kmsService.destroyKey(cert.kmsKeyId);

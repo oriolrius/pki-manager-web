@@ -339,8 +339,14 @@ The IP address works because it is in the SAN list. A name that is not in the li
 
 ## 6. Renew a certificate
 
-Open the certificate page and select **Renew**. A dialog asks "Renew this certificate?".
-Select **Renew**.
+Open the certificate page and select **Renew**. The **Renew Certificate** dialog states what
+renewal does and has two options, both off by default:
+
+- **Keep the current key pair (same public key).** Only for certificates less than 90 days old.
+  Off: renewal creates a new private key.
+- **Revoke the previous certificate (superseded).** Off: the previous certificate stays active.
+
+Leave both off for this guide and select **Renew**.
 
 ![Renew confirmation dialog](img/private-ca/11-renew-confirm.png)
 
@@ -369,10 +375,11 @@ notAfter=Nov 24 10:02:38 2027 GMT
 What to know:
 
 - The serial number is new, and the validity starts at the renewal time.
-- The key is **new** too. The public keys of `portal.pem` and `portal2.pem` differ. Install the new
-  key together with the new certificate (download `PEM with Private Key` again).
-- The **old certificate stays active**. Renewal does not revoke it. Revoke it yourself when
-  you no longer need it (step 7).
+- The key is **new** too, because **Keep the current key pair** was off. The public keys of
+  `portal.pem` and `portal2.pem` differ. Install the new key together with the new certificate
+  (download `PEM with Private Key` again). With the option on, the public key stays the same.
+- The **old certificate stays active** unless you select **Revoke the previous certificate
+  (superseded)**. Revoke it yourself when you no longer need it (step 7).
 
 ## 7. Revoke, end to end
 

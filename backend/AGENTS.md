@@ -88,7 +88,7 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
 - CA `kmsKeyId` may be missing from the Certify response (certify-from-subject generates the
   keypair server-side); it is resolved from the cert's KMIP `PrivateKeyLink`
   (`getCertificatePrivateKeyId`). Needed for CRL signing and PKCS#12/key export.
-- Renewal always generates a new KMS key pair (no reuse); rejected for certs ≥90 days old.
+- Renewal with `generateNewKey:false` re-certifies the existing KMS key pair (public key id resolved via KMIP `PublicKeyLink`, `getPublicKeyIdForPrivateKey`); key reuse rejected for certs ≥90 days old. `revokeOriginal` revokes the old cert (superseded) and writes a `certificate.revoke` audit row.
 - Tests are Vitest **single-fork, `fileParallelism:false`** (SQLite races); KMS integration
   tests auto-start/skip via `src/test/kms-helper.ts`. CORS is `origin:true` (review for prod).
 
