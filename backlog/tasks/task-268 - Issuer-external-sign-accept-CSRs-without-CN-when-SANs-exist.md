@@ -1,10 +1,11 @@
 ---
 id: TASK-268
 title: 'Issuer/external sign: accept CSRs without CN when SANs exist'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:19:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T14:42:00Z'
 labels:
   - k8s
 dependencies: []
