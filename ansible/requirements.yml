@@ -4,5 +4,5 @@
 # pulls in community.crypto.
 collections:
   - name: oriolrius.pki_manager
-    version: ">=2.3.0"
+    version: ">=2.5.0"  # 2.5.0 adds ssh_principals_pushed (hosts stop being Stale)
   - name: community.crypto

@@ -121,6 +121,18 @@ ansible-playbook -i inventory.ini converge.yml 2>&1 | tee _artifacts/converge1.l
 grep -qE 'failed=[1-9]' _artifacts/converge1.log && fail "converge run 1 had failures"
 ok "converge run 1"
 
+# TASK-250: the role acknowledged the principal install (principals-pushed), so
+# neither host may be Stale in PKI Manager any more.
+principals_stale() { # fqdn -> prints true|false
+  curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+    "${BASE}/api/v1/external/ssh/hosts/${1}/auth-principals" \
+    | python3 -c 'import json,sys;print(str(json.load(sys.stdin).get("stale")).lower())'
+}
+echo "==> VERIFY: principals acknowledged (host not Stale, TASK-250)"
+[ "$(principals_stale "$FQDN_PUBLIC")" = "false" ] || fail "host_public still Stale after converge (principals-pushed not called)"
+[ "$(principals_stale "$FQDN_ECIES")" = "false" ] || fail "host_ecies still Stale after converge (principals-pushed not called)"
+ok "both hosts are not Stale after the role ran (principals acknowledged)"
+
 echo "==> IDEMPOTENCE (run 2 — expect changed=0)"
 ansible-playbook -i inventory.ini converge.yml 2>&1 | tee _artifacts/converge2.log
 grep -qE 'failed=[1-9]' _artifacts/converge2.log && fail "converge run 2 had failures"
