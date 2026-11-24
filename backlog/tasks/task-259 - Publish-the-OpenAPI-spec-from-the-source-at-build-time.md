@@ -1,9 +1,11 @@
 ---
 id: TASK-259
 title: Publish the OpenAPI spec from the source at build time
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T09:15:00Z'
+updated_date: '2026-11-24T10:47:00Z'
 labels:
   - docs
 milestone: m-2
