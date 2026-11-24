@@ -1,7 +1,7 @@
 ---
 id: TASK-265
 title: 'Renew: honour key reuse or remove the option'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T10:19:00Z'
@@ -21,12 +21,14 @@ The UI sends generateNewKey:false, but renew always creates a new key ("Key reus
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Renew with key reuse keeps the same public key, or the UI no longer offers it
-- [ ] #2 The UI states what happens to the old certificate after renew
+- [x] #1 Renew with key reuse keeps the same public key, or the UI no longer offers it
+- [x] #2 The UI states what happens to the old certificate after renew
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 GitHub: https://github.com/oriolrius/pki-manager-web/issues/23
+
+Fixed in PR #35 (merged into main 2026-11-24).
 <!-- SECTION:NOTES:END -->
