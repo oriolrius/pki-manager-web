@@ -12,6 +12,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import forge from 'node-forge';
+import { execFileSync } from 'child_process';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 // --- mocks (vi.hoisted so the fns exist when the mock factories run at import time) ---
 const { signCertificate, getCertificate, verifyToken, regenerateForCa } = vi.hoisted(() => ({
@@ -51,7 +55,15 @@ const caCertPem = forge.pki.certificateToPem(caCert);
 
 // Helper: build a leaf cert PEM (mimics what the KMS would return)
 function makeLeafPem(csrPem: string): string {
-  const csr = forge.pki.certificationRequestFromPem(csrPem);
+  let csr: forge.pki.CertificateSigningRequest;
+  try {
+    csr = forge.pki.certificationRequestFromPem(csrPem);
+  } catch {
+    // ECDSA CSR: forge cannot read it; the mocked KMS returns a leaf with a stand-in key.
+    csr = forge.pki.createCertificationRequest();
+    csr.publicKey = caKp.publicKey;
+    csr.setSubject([{ name: 'commonName', value: 'ecdsa-leaf' }]);
+  }
   const leaf = forge.pki.createCertificate();
   leaf.publicKey = csr.publicKey!;
   leaf.serialNumber = '00' + randomUUID().replace(/-/g, '').slice(0, 30);
@@ -72,6 +84,20 @@ function makeCsr(cn = 'svc.default.svc', extensions?: Array<Record<string, unkno
   csr.setAttributes([{ name: 'extensionRequest', extensions: extensions ?? [{ name: 'subjectAltName', altNames: [{ type: 2, value: cn }] }, { name: 'extKeyUsage', clientAuth: true }] }]);
   csr.sign(kp.privateKey, forge.md.sha256.create());
   return forge.pki.certificationRequestToPem(csr);
+}
+
+// openssl-built CSR for key types forge cannot generate (ECDSA).
+function makeOpensslCsr(curve: 'prime256v1' | 'secp384r1', opts: { subj: string; san?: string; ca?: boolean }): string {
+  const dir = mkdtempSync(join(tmpdir(), 'csr-'));
+  try {
+    const cfg = ['[req]', 'distinguished_name=dn', 'prompt=no', 'req_extensions=ext', '[dn]', '[ext]'];
+    if (opts.san) cfg.push(`subjectAltName=${opts.san}`);
+    if (opts.ca) cfg.push('basicConstraints=CA:TRUE');
+    writeFileSync(join(dir, 'c.cnf'), cfg.join('\n') + '\n');
+    execFileSync('openssl', ['ecparam', '-name', curve, '-genkey', '-noout', '-out', join(dir, 'k.pem')]);
+    execFileSync('openssl', ['req', '-new', '-key', join(dir, 'k.pem'), '-config', join(dir, 'c.cnf'), '-subj', opts.subj, '-out', join(dir, 'r.csr')]);
+    return readFileSync(join(dir, 'r.csr'), 'utf8');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
 describe('External /sign wiring (KMS certify)', () => {
@@ -143,7 +169,7 @@ describe('External /sign wiring (KMS certify)', () => {
     const requestUid = randomUUID();
     const res = await postSign({ csrPem, requestUid, certificateType: 'server', k8sNamespace: 'default', k8sResource: 'svc' });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
     const json = res.json();
     expect(json.idempotent).toBe(false);
     expect(json.certificatePem).toContain('BEGIN CERTIFICATE');
@@ -225,7 +251,7 @@ describe('External /sign wiring (KMS certify)', () => {
     csr.setAttributes([{ name: 'extensionRequest', extensions: [{ name: 'basicConstraints', cA: false }] }]);
     csr.sign(kp.privateKey, forge.md.sha256.create());
     const res = await postSign({ csrPem: forge.pki.certificationRequestToPem(csr), requestUid: randomUUID() });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
     expect(signCertificate.mock.calls[0][0].x509Extensions).not.toContain('basicConstraints');
   });
 
@@ -238,6 +264,48 @@ describe('External /sign wiring (KMS certify)', () => {
     csr.sign(kp.privateKey, forge.md.sha256.create());
     const res = await postSign({ csrPem: forge.pki.certificationRequestToPem(csr), requestUid: randomUUID() });
     expect(res.statusCode).toBe(400);
+    expect(signCertificate).not.toHaveBeenCalled();
+  });
+
+  it.each([['prime256v1'], ['secp384r1']] as const)('signs an ECDSA %s CSR (issue #28)', async (curve) => {
+    const csrPem = makeOpensslCsr(curve, { subj: '/CN=ec.example/O=Acme/C=ES', san: 'DNS:ec.example,IP:10.0.0.1' });
+    const res = await postSign({ csrPem, requestUid: randomUUID() });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(signCertificate.mock.calls[0][0].csr).toBe(csrPem);
+    const [row] = await db.select().from(certificates).where(eq(certificates.caId, caId));
+    expect(row.subjectDn).toBe('CN=ec.example,O=Acme,C=ES');
+    expect(JSON.parse(row.sanDns!)).toEqual(['ec.example']);
+    expect(JSON.parse(row.sanIp!)).toEqual(['10.0.0.1']);
+  });
+
+  it('rejects an ECDSA CSR with a tampered signature and CA:true ECDSA CSRs', async () => {
+    const good = makeOpensslCsr('prime256v1', { subj: '/CN=ec.example', san: 'DNS:ec.example' });
+    const bytes = forge.pem.decode(good)[0].body;
+    const tampered = forge.pem.encode({ type: 'CERTIFICATE REQUEST', body: bytes.replace('ec.example', 'ed.example') });
+    let res = await postSign({ csrPem: tampered, requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INVALID_CSR');
+    res = await postSign({ csrPem: makeOpensslCsr('secp384r1', { subj: '/CN=ca', ca: true }), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code, res.body).toBe('CSR_PROFILE_REJECTED');
+    expect(signCertificate).not.toHaveBeenCalled();
+  });
+
+  it('accepts a CSR with an empty subject when it has a SAN (issue #25)', async () => {
+    const rsa = makeCsr('', [{ name: 'subjectAltName', altNames: [{ type: 2, value: 'web.example' }] }]);
+    let res = await postSign({ csrPem: rsa, requestUid: randomUUID() });
+    expect(res.statusCode, res.body).toBe(200);
+    const ec = makeOpensslCsr('prime256v1', { subj: '/', san: 'DNS:web2.example' });
+    res = await postSign({ csrPem: ec, requestUid: randomUUID() });
+    expect(res.statusCode, res.body).toBe(200);
+    const rows = await db.select().from(certificates).where(eq(certificates.caId, caId));
+    expect(rows.map(r => r.subjectDn)).toEqual(['', '']);
+  });
+
+  it('rejects a CSR with neither CN nor SAN', async () => {
+    const res = await postSign({ csrPem: makeCsr('', []), requestUid: randomUUID() });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('INVALID_CSR');
     expect(signCertificate).not.toHaveBeenCalled();
   });
 
@@ -260,7 +328,7 @@ describe('External /sign wiring (KMS certify)', () => {
     process.env.CRL_DISTRIBUTION_URL = 'http://crl.test/crl';
     try {
       const res = await postSign({ csrPem: makeCsr(), requestUid: randomUUID() });
-      expect(res.statusCode).toBe(200);
+      expect(res.statusCode, res.body).toBe(200);
       const arg = signCertificate.mock.calls[0][0];
       expect(arg.x509Extensions).toContain(`crlDistributionPoints=URI:http://crl.test/crl/${caId}.crl`);
     } finally {
@@ -312,7 +380,7 @@ describe('External /sign wiring (KMS certify)', () => {
       payload: { serialNumber, reason: 'keyCompromise' },
     });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
     expect(res.json().status).toBe('revoked');
     expect(regenerateForCa).toHaveBeenCalledTimes(1);
     expect(regenerateForCa.mock.calls[0][1]).toBe(caId);
@@ -321,7 +389,7 @@ describe('External /sign wiring (KMS certify)', () => {
   it('records SCEP provenance and generic ownership without a Kubernetes cluster', async () => {
     verifyToken.mockResolvedValue({ id: clusterId, name: 'MDM', caId, kind: 'scep' });
     const res = await postSign({ csrPem: makeCsr('device'), requestUid: 'scep:' + randomUUID(), certificateType: 'client', k8sNamespace: 'ignored', k8sResource: 'ignored' });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
     const [cert] = await db.select().from(certificates).where(eq(certificates.id, res.json().id));
     expect(cert).toMatchObject({ sourceType: 'scep', integrationId: clusterId, k8sClusterId: null, k8sNamespace: null, k8sResource: null });
     expect(signCertificate.mock.calls[0][0].tags).toContain(`integration:${clusterId}`);
