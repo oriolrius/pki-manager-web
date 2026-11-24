@@ -1,3 +1,39 @@
+## v3.16.0 (2026-11-24)
+
+**SSH principal fixes, fleet tokens UI and the documentation site**
+
+SSH access is easier to run day to day: offboard people in one step, manage fleet tokens in the UI,
+remove mappings and grants, and limit what a token may sign. The project now has a public
+documentation site with verified guides, a generated API reference and the SSH certificate videos.
+Database migrations 0012 and 0013 run automatically at start.
+
+### Feat
+
+- **ssh**: optional principal and lifetime limits on sign-user tokens
+- **ssh**: host Access list shows who can really reach the host
+- **ssh**: remove a host mapping and an identity grant
+- **ssh**: stale means principal files changed and not pushed
+- **frontend**: add SSH fleet tokens page
+- **frontend**: add Offboard action for SSH identities
+- **backend**: take client IPs from trusted proxies (TRUST_PROXY) and log dropped audit rows
+
+### Fix
+
+- **docs**: explainer render never leaves a truncated MP4
+- **ssh**: issue form mapping panel shows only the identity zone
+
+### Refactor
+
+- **frontend**: move SSH principal UI copy out of component files
+
+### Docs
+
+- **site**: public documentation at https://oriolrius.github.io/pki-manager-web/ (Astro Starlight, GitHub Pages), built from the repository docs.
+- **guides**: install and log in, private CA and certificates, from easy-rsa to PKI Manager (Mosquitto mTLS), Kubernetes with cert-manager, automation with integration tokens and SCEP. Every step was run on a demo stack; screenshots come from `docs/site/demo`.
+- **api**: reference generated from the backend source (107 operations), a test that keeps routes and the OpenAPI document in sync, and a how-to whose `curl` examples run in CI.
+- **ssh**: two video series (19 episodes, on YouTube) with diagrams and a reference page; principals guide corrected.
+- **fixes**: Docker data folder must be owned by uid 1001, OIDC audience/`nbf` checks, issuer install (image tag), integrations limits; all diagrams in PlantUML.
+
 ## v3.15.0 (2026-10-23)
 
 ### Feat
