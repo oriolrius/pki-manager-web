@@ -1,3 +1,27 @@
+## v3.17.0 (2026-11-24)
+
+**Security hardening: no stack traces, no passwords in URLs, CA key export opt-in**
+
+Three security fixes. **Behaviour change:** downloading a CA as a keystore that contains its
+private key (`p12-keystore`, `jks-keystore`) is now **off by default**. Set
+`ALLOW_CA_KEY_EXPORT=true` to allow it; then only admins can export, and every attempt is
+audited (`ca.export_private_key`). CA certificate formats and leaf keystores are unchanged.
+Export passwords now go in the `X-Export-Password` header (the `password` query parameter
+still works and is deprecated). This release also carries the 3.16.1 changes as a minor
+version: they included new features (audit actors, ECDSA external signing).
+
+### Fix
+
+- **ca**: disable CA private key keystore export by default
+- **security**: send export passwords in a header, never in URLs
+- **trpc**: keep the message of errors thrown on purpose
+- **backend**: strip stack traces and internal messages from tRPC errors in production
+
+### Upgrade notes
+
+- Add `ALLOW_CA_KEY_EXPORT=true` only if you need CA keystores with the private key (see DEPLOYMENT.md).
+- Scripts that send `?password=` keep working; move them to the `X-Export-Password` header.
+
 ## v3.16.1 (2026-11-24)
 
 ### Feat
