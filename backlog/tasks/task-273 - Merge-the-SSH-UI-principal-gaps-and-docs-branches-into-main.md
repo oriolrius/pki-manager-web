@@ -1,9 +1,11 @@
 ---
 id: TASK-273
 title: Merge the SSH UI, principal gaps and docs branches into main
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T11:52:00Z'
+updated_date: '2026-11-24T12:56:00Z'
 labels:
   - release
 milestone: m-3
