@@ -1,9 +1,11 @@
 ---
 id: TASK-252
 title: Move existing docs into the site
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T09:15:00Z'
+updated_date: '2026-11-24T09:33:00Z'
 labels:
   - docs
 milestone: m-0
