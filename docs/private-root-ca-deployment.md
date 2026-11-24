@@ -137,15 +137,7 @@ This endpoint returns only the public certificate and is safe to expose. After o
 
 A common private PKI has this hierarchy:
 
-```text
-Private Root CA
-    │
-    └── Private Intermediate CA
-            │
-            ├── server01 certificate
-            ├── portal.example.internal certificate
-            └── api.example.internal certificate
-```
+![Private root CA signs an intermediate CA, which signs the server certificates](diagrams/svg/02-ca-hierarchy.svg)
 
 Normally, clients should trust the **root CA**.
 
@@ -160,15 +152,7 @@ The server should normally not send the root certificate because clients already
 
 The validation path is:
 
-```text
-Server certificate
-    │ signed by
-    ▼
-Intermediate CA
-    │ signed by
-    ▼
-Trusted root CA installed on client
-```
+![Server certificate, signed by the intermediate CA, signed by the root CA trusted on the client](diagrams/svg/03-chain-validation.svg)
 
 Installing only the intermediate CA as a trusted root can technically work in some environments, but it changes the intended trust boundary and is generally not the preferred PKI design.
 
@@ -836,7 +820,7 @@ Alternatively, import `CA.crt` directly into Firefox:
 
 ```text
 Settings
-→ Privacy &amp; Security
+→ Privacy & Security
 → Certificates
 → View Certificates
 → Authorities
@@ -1017,7 +1001,7 @@ Alternatively, import the CA directly into Firefox:
 
 ```text
 Settings
-→ Privacy &amp; Security
+→ Privacy & Security
 → Certificates
 → View Certificates
 → Authorities
@@ -1210,7 +1194,7 @@ The most deterministic manual procedure is:
 ```text
 Firefox
 → Settings
-→ Privacy &amp; Security
+→ Privacy & Security
 → Certificates
 → View Certificates
 → Authorities
@@ -1287,9 +1271,9 @@ A common path is:
 
 ```text
 Settings
-→ Security &amp; privacy
+→ Security & privacy
 → More security settings
-→ Encryption &amp; credentials
+→ Encryption & credentials
 → Install a certificate
 → CA certificate
 ```
@@ -1455,9 +1439,9 @@ A typical path is:
 
 ```text
 Settings
-→ Security &amp; privacy
+→ Security & privacy
 → More security settings
-→ Encryption &amp; credentials
+→ Encryption & credentials
 → Trusted credentials
 → User
 ```
@@ -1467,7 +1451,7 @@ or:
 ```text
 Settings
 → Security
-→ Encryption &amp; credentials
+→ Encryption & credentials
 → User credentials
 ```
 
@@ -1528,7 +1512,7 @@ Then open:
 ```text
 Settings
 → General
-→ VPN &amp; Device Management
+→ VPN & Device Management
 ```
 
 A temporary direct entry may also appear as:
@@ -1646,7 +1630,7 @@ Then remove the profile:
 ```text
 Settings
 → General
-→ VPN &amp; Device Management
+→ VPN & Device Management
 → Select profile
 → Remove Profile
 ```

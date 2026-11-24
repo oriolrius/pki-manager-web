@@ -1,0 +1,21 @@
+@startuml 07-oidc-login-flow
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title Login flow (authorization code + PKCE)
+autonumber "<b>0."
+actor "Browser\n(user)" as br
+participant "Frontend\n(React)" as fe
+participant "Keycloak\n(OIDC)" as kc
+participant "Backend\n(API)" as be
+br -> fe : click Login
+fe -> fe : generate PKCE\ncode_verifier + code_challenge
+fe --> br : redirect to Keycloak\n""/authorize?client_id=pki-web&code_challenge=…&code_challenge_method=S256""
+kc --> br : login form
+br -> kc : credentials
+kc --> br : redirect back with code\n""/callback?code=…""
+fe -> kc : exchange code for tokens (with code_verifier)
+kc --> fe : access token + refresh token
+fe -> be : API call with Bearer token
+be -> kc : fetch JWKS
+be -> be : verify signature, issuer, audience;\nextract roles
+be --> fe : API response
+@enduml

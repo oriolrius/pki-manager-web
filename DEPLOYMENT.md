@@ -529,30 +529,7 @@ PKI Manager includes comprehensive E2E tests for Role-Based Access Control (RBAC
 
 ### E2E Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Host Machine                                  │
-│  ┌────────────────┐                                                 │
-│  │  Playwright    │ ──────────────────┐                             │
-│  │  Test Runner   │                   │                             │
-│  └────────────────┘                   ▼                             │
-│         │                    localhost:58080 (Frontend)             │
-│         │                    localhost:53000 (Backend API)           │
-│         │                    localhost:58180 (Keycloak)             │
-│         │                             │                             │
-│  ═══════╪═════════════════════════════╪═════════════════════════    │
-│         │          Docker Network     │                             │
-│         ▼               (pki-e2e-network)                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐ │
-│  │  Frontend   │  │   Backend   │  │  Keycloak   │  │     KMS     │ │
-│  │  (nginx)    │  │  (Node.js)  │  │   (OIDC)    │  │  (Cosmian)  │ │
-│  │  :8080      │──│  :3000      │──│  :8080      │  │  :9998      │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘ │
-│                          │                                          │
-│                          └──── OIDC_DISCOVERY_BASE_URL ────┘        │
-│                                (keycloak:8080)                      │
-└─────────────────────────────────────────────────────────────────────┘
-```
+![E2E stack: Playwright on the host drives frontend, backend and Keycloak containers; backend uses the KMS](docs/diagrams/svg/05-e2e-architecture.svg)
 
 The backend uses `OIDC_DISCOVERY_BASE_URL` to fetch OIDC configuration from the Docker network (`keycloak:8080`) while validating tokens against the issuer URL that browsers use (`localhost:58180`).
 

@@ -1,0 +1,19 @@
+@startuml 05-e2e-architecture
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title E2E test stack
+rectangle "Host machine" {
+  rectangle "Playwright\ntest runner" as pw <<machine>>
+  package "Docker network: pki-e2e-network" {
+    rectangle "Frontend (nginx)\n:8080 → localhost:58080" as fe <<pki>>
+    rectangle "Backend (Node.js)\n:3000 → localhost:53000" as be <<pki>>
+    rectangle "Keycloak (OIDC)\n:8080 → localhost:58180" as kc <<file>>
+    rectangle "KMS (Cosmian)\n:9998" as kms <<user>>
+  }
+}
+pw --> fe
+pw --> be
+pw --> kc
+fe --> be
+be --> kms
+be --> kc : OIDC_DISCOVERY_BASE_URL\n(keycloak:8080)
+@enduml

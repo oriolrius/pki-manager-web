@@ -1,0 +1,10 @@
+@startuml 03-chain-validation
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title How a client validates the server chain
+left to right direction
+rectangle "Server certificate\n(sent by the server)" as leaf <<file>>
+rectangle "Intermediate CA\n(sent by the server)" as int <<pki>>
+rectangle "Root CA\n(installed on the client, trusted)" as root <<host>>
+leaf --> int : signed by
+int --> root : signed by
+@enduml

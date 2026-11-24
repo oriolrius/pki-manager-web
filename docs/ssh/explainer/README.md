@@ -15,13 +15,13 @@ used SSH certificates. English only.
 
 ## Build
 
-Requirements: Node ≥ 20, ffmpeg, Java (PlantUML), and a local
+Requirements: Node ≥ 20, ffmpeg, and a local
 [VoiceStudio](https://github.com/debpalash/VoiceStudio) server with the narrator voice
 profile `dbai24-narrator-vox48` (female, native English; default `http://localhost:3900`, override with `VOICESTUDIO_URL` / `VOICE_ID`).
 
 ```bash
-# diagrams
-java -jar plantuml.jar -tsvg -o svg diagrams/[0-9]*.puml
+# diagrams (rendered by https://plantuml.joor.net, see docs/diagrams/README.md)
+node ../site/scripts/plantuml.mjs
 
 # videos
 cd video

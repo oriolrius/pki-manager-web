@@ -1,0 +1,20 @@
+@startuml 08-pkce
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title PKCE: a one-time proof instead of a client secret
+start
+:Frontend generates a random **code_verifier**
+(43–128 characters);
+:Frontend computes
+""code_challenge = base64url(sha256(code_verifier))"";
+:Authorization request sends the **code_challenge**
+(not the verifier)
+""GET /authorize?code_challenge=…&code_challenge_method=S256"";
+:Token request sends the **code_verifier**
+""POST /token  code=…  code_verifier=…"";
+if (Keycloak: sha256(code_verifier) = stored code_challenge?) then (match)
+  :Issue tokens to this client; <<#E7F6F0>>
+else (no match)
+  :Reject; <<#FDECEC>>
+endif
+stop
+@enduml

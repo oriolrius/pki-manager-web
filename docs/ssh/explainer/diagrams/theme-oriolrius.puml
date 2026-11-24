@@ -24,7 +24,6 @@ skinparam nodesep 30
 skinparam ranksep 40
 skinparam packageStyle rectangle
 skinparam componentStyle rectangle
-skinparam padding 4
 hide stereotype
 hide empty description
 

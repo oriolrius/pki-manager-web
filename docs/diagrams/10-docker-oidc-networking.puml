@@ -1,0 +1,11 @@
+@startuml 10-docker-oidc-networking
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title Docker OIDC networking
+rectangle "Browser" as br <<machine>>
+rectangle "Keycloak\nlocalhost:58180 ⇄ keycloak:8080" as kc <<file>>
+rectangle "Backend container\nOIDC_ISSUER = http://localhost:58180/…\nOIDC_DISCOVERY_BASE_URL = http://keycloak:8080/…" as be <<pki>>
+br --> kc : login (port mapping 58180)
+kc --> br : token with iss = localhost:58180
+be --> kc : fetch discovery + JWKS\nfrom keycloak:8080
+note right of be : validates iss = localhost:58180\n(the value in the token)
+@enduml

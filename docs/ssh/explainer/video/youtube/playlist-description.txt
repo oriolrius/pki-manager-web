@@ -1,0 +1,33 @@
+SSH certificates for Linux sysadmins who know SSH keys and are new to certificate authorities. Learn how servers verify users and laptops verify hosts.
+
+Follow the setup in PKI Manager, Oriol Rius's open-source tool for X.509 and SSH certificate authorities.
+
+19 episodes, 1-2 minutes each, about 26 minutes total. A synthetic voice narrates the series. Every episode has English subtitles.
+
+Part 1 — SSH certificates from zero
+01 Why trust a signer instead of tracking each key?
+02 Where to install the User CA and Host CA public keys
+03 Verify a host without a fingerprint prompt
+04 Log in with a user certificate
+05 Match a certificate principal to a server account
+06 Handle expiry, revocation and CA rotation
+07 Block one user on one host
+08 Separate trust domains with zones
+09 Enrol servers with fleet tokens and Ansible
+10 Diagnose login failures in the sshd log
+
+Part 2 — Principals in depth
+11 How sshd checks the account's principals file
+12 Choose role names for principals
+13 Map roles to server classes
+14 Assign access with user profiles
+15 Isolate, move and remove customer access
+16 Set up emergency and temporary access
+17 Restrict CI/CD identities
+18 Trace a login by CA and serial number
+19 Test one accepted login and two refused logins
+
+Companion page, diagrams and scripts: https://github.com/oriolrius/pki-manager-web/tree/main/docs/ssh/explainer
+PKI Manager (open source): https://github.com/oriolrius/pki-manager-web
+
+#SSH #OpenSSH #Linux #PKI

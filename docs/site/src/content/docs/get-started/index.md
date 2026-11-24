@@ -12,12 +12,7 @@ PKI Manager is a self-hosted web application to run your own certificate authori
 
 ## Architecture
 
-```
-React SPA ──tRPC──┐                 OIDC provider (optional) ── bearer JWT
-                  ▼
-Backend (Fastify): /trpc · /api/v1 (REST + Swagger) · /api/v1/external (integration tokens)
-   └ services → crypto · Cosmian KMS (private keys) · SQLite (metadata)
-```
+![Web UI and automation call the backend; the backend keeps private keys in Cosmian KMS and metadata in SQLite; login uses an optional OIDC provider](/pki-manager-web/diagrams/01-architecture.svg)
 
 - Private keys live in a **Cosmian KMS** and never leave it. The database stores only KMS key ids and metadata.
 - Login uses **OIDC** (Keycloak, Auth0, Okta, Azure AD and others). OIDC is optional: with no

@@ -1,0 +1,17 @@
+@startuml 04-ssh-zones
+!include ../ssh/explainer/diagrams/theme-oriolrius.puml
+title SSH zones: separate trust domains
+package "zone: prod" {
+  rectangle "User CA" as pu <<user>>
+  rectangle "Host CA" as ph <<host>>
+  rectangle "identities · hosts · principals" as pr <<file>>
+  rectangle "prod host" as phost <<machine>>
+}
+package "zone: staging" {
+  rectangle "User CA" as su <<user>>
+  rectangle "Host CA" as sh <<host>>
+  rectangle "identities · hosts · principals" as sr <<file>>
+}
+phost --> pu : trusts
+phost .[#C62828].> su : <color:#C62828>never trusts</color>
+@enduml
