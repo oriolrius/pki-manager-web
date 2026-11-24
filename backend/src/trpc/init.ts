@@ -5,9 +5,25 @@ import { createAuthMiddleware } from './middleware/auth.js';
 import { isOIDCEnabled } from '../lib/oidc.js';
 import { logger } from '../lib/logger.js';
 
+/**
+ * Strip server internals (stack trace) from a tRPC error shape. Evaluated per
+ * error (not once at import) and fail-safe: only an explicit development/test
+ * NODE_ENV keeps stacks; anything else (production, unset) removes them.
+ */
+function stripInternals<S extends { data?: unknown }>(shape: S): S {
+  const keepStack = ['development', 'test'].includes(process.env.NODE_ENV ?? '');
+  if (keepStack || !shape.data || typeof shape.data !== 'object') return shape;
+  const { stack: _stack, ...data } = shape.data as Record<string, unknown>;
+  // Raw internal errors may embed file paths / DB details in their message.
+  const internal = (shape as { code?: number }).code === -32603;
+  return { ...shape, ...(internal ? { message: 'Internal server error' } : {}), data };
+}
+
 const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
+  // Stacks are always generated; stripInternals() decides per error whether they leave the process.
+  isDev: true,
   errorFormatter({ shape, error }) {
-    return {
+    return stripInternals({
       ...shape,
       data: {
         ...shape.data,
@@ -16,7 +32,7 @@ const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
             ? error.cause
             : null,
       },
-    };
+    });
   },
 });
 
