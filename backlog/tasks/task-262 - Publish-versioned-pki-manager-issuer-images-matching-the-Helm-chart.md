@@ -4,6 +4,7 @@ title: Publish versioned pki-manager-issuer images matching the Helm chart
 status: To Do
 assignee: []
 created_date: '2026-11-24T10:18:00Z'
+updated_date: '2026-11-24T11:04:00Z'
 labels:
   - k8s
   - bug
@@ -22,3 +23,9 @@ The chart default image tag is the chart appVersion (0.1.0), but CI publishes on
 - [ ] #1 A helm install with default values pulls an image that exists
 - [ ] #2 Each release publishes an issuer image tag that matches the chart appVersion
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+GitHub: https://github.com/oriolrius/pki-manager-web/issues/21
+<!-- SECTION:NOTES:END -->
