@@ -1181,6 +1181,12 @@ docker run --rm -v my-certs:/target \\
                   Are you sure you want to {confirmAction.type} {selectedCertificates.size} certificate
                   {selectedCertificates.size !== 1 ? 's' : ''}? This action cannot be undone.
                 </p>
+                {confirmAction.type === 'renew' && (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Each renewal creates a new key and a new certificate. The previous certificates are
+                    revoked (superseded).
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex gap-2 justify-end">

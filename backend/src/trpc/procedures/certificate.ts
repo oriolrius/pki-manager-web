@@ -2095,7 +2095,7 @@ export const certificateRouter = router({
             }
 
             kmsKeyId = originalCert.kmsKeyId;
-            publicKeyId = kmsKeyId.replace('-private', '-public');
+            publicKeyId = await kmsService.getPublicKeyIdForPrivateKey(kmsKeyId);
           }
 
           const subjectName = formatDN(subjectDN);
@@ -2142,7 +2142,7 @@ export const certificateRouter = router({
             notBefore: certMetadata.validity.notBefore,
             notAfter: certMetadata.validity.notAfter,
             kmsCertificateId: certInfo.certificateId,
-            kmsKeyId: kmsKeyId, // Always store since we always generate new keys
+            kmsKeyId: kmsKeyId,
             status: 'active',
             sanDns: sanDns ? JSON.stringify(sanDns) : null,
             sanIp: sanIp ? JSON.stringify(sanIp) : null,

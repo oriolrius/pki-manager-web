@@ -64,6 +64,9 @@ function CertificateDetail() {
   });
   const utils = trpc.useUtils();
   const [showRevokeDialog, setShowRevokeDialog] = useState(false);
+  const [showRenewDialog, setShowRenewDialog] = useState(false);
+  const [renewKeepKey, setRenewKeepKey] = useState(false);
+  const [renewRevokeOld, setRenewRevokeOld] = useState(false);
   const [selectedReason, setSelectedReason] = useState<string>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
@@ -187,22 +190,26 @@ function CertificateDetail() {
     }
   };
 
-  const handleRenew = async () => {
-    const { confirmed } = await confirm({
-      title: 'Renew this certificate?',
-      description: 'This will create a new certificate with the same details.',
-      confirmLabel: 'Renew',
-    });
-    if (confirmed) {
-      try {
-        const data = await renewMutation.mutateAsync({ id, generateNewKey: false });
-        await certQuery.refetch();
-        utils.certificate.list.invalidate();
-        toast.success(`Certificate renewed successfully. New ID: ${data.id}`);
-        navigate({ to: `/certificates/${data.id}` });
-      } catch (error: any) {
-        toast.error(`Failed to renew certificate: ${error.message}`);
-      }
+  const handleRenew = () => {
+    setRenewKeepKey(false);
+    setRenewRevokeOld(false);
+    setShowRenewDialog(true);
+  };
+
+  const confirmRenew = async () => {
+    try {
+      const data = await renewMutation.mutateAsync({
+        id,
+        generateNewKey: !renewKeepKey,
+        revokeOriginal: renewRevokeOld,
+      });
+      setShowRenewDialog(false);
+      await certQuery.refetch();
+      utils.certificate.list.invalidate();
+      toast.success(`Certificate renewed successfully. New ID: ${data.id}`);
+      navigate({ to: `/certificates/${data.id}` });
+    } catch (error: any) {
+      toast.error(`Failed to renew certificate: ${error.message}`);
     }
   };
 
@@ -755,6 +762,64 @@ function CertificateDetail() {
       )}
 
       {/* Revocation Dialog */}
+      {showRenewDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div role="dialog" aria-label="Renew certificate" className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">
+            <h2 className="text-xl font-bold mb-4">Renew Certificate</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Renewing issues a new certificate (new serial number and dates) with the same subject
+              and SANs. By default it also creates a new private key.
+            </p>
+            <div className="space-y-4">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={renewKeepKey}
+                  onChange={(e) => setRenewKeepKey(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  Keep the current key pair (same public key)
+                  <span className="block text-xs text-muted-foreground">
+                    Only for certificates less than 90 days old. Otherwise a new key is created.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={renewRevokeOld}
+                  onChange={(e) => setRenewRevokeOld(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  Revoke the previous certificate (superseded)
+                  <span className="block text-xs text-muted-foreground">
+                    If unchecked, the previous certificate stays active until it expires or you revoke it.
+                  </span>
+                </span>
+              </label>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowRenewDialog(false)}
+                disabled={renewMutation.isPending}
+                className="flex-1 px-4 py-2 border rounded-md hover:bg-muted font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRenew}
+                disabled={renewMutation.isPending}
+                className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium shadow-sm disabled:opacity-50"
+              >
+                {renewMutation.isPending ? 'Renewing...' : 'Renew'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showRevokeDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4 shadow-lg">

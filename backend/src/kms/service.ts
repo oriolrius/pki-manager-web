@@ -208,6 +208,11 @@ export class KMSService {
     }
   }
 
+  /** Resolve the public key id linked to a private key (KMIP PublicKeyLink). */
+  async getPublicKeyIdForPrivateKey(privateKeyId: string): Promise<string> {
+    return this.client.getPrivateKeyPublicKeyId(privateKeyId);
+  }
+
   /**
    * Get public key in PEM format
    */

@@ -961,6 +961,32 @@ export class KMSClient {
   }
 
   /**
+   * Resolve the public-key UniqueIdentifier linked to a private key via its KMIP
+   * PublicKeyLink. Lets us certify an EXISTING key pair again (renewal with key reuse).
+   */
+  async getPrivateKeyPublicKeyId(privateKeyId: string): Promise<string> {
+    const request: KMIPRequest = {
+      tag: "GetAttributes",
+      value: [{ tag: "UniqueIdentifier", type: "TextString", value: privateKeyId }],
+    };
+    const response = await this.sendKMIPRequest(request);
+    const attributes = this.findElement(response.value, "Attributes");
+    if (!attributes || !Array.isArray((attributes as any).value)) {
+      throw new Error(`No attributes returned for private key ${privateKeyId}`);
+    }
+    for (const attr of (attributes as any).value as KMIPElement[]) {
+      if (attr.tag === "Link" && Array.isArray(attr.value)) {
+        const linkType = this.findElement(attr.value as KMIPElement[], "LinkType");
+        if (linkType && this.getStringValue(linkType) === "PublicKeyLink") {
+          const linkedId = this.findElement(attr.value as KMIPElement[], "LinkedObjectIdentifier");
+          return this.getStringValue(linkedId);
+        }
+      }
+    }
+    throw new Error(`No PublicKeyLink found for private key ${privateKeyId}`);
+  }
+
+  /**
    * Resolve the private-key UniqueIdentifier linked to a certificate via its KMIP
    * PrivateKeyLink. Needed because certify-from-subject (CA creation) generates the keypair
    * server-side and does not surface the private-key id in the Certify response — so the CA

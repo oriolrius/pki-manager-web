@@ -17,7 +17,8 @@ import { eq, like } from "drizzle-orm";
 import { appRouter } from "../router.js";
 import { createContext } from "../context.js";
 import { db } from "../../db/client.js";
-import { certificateAuthorities, certificates } from "../../db/schema.js";
+import { auditLog, certificateAuthorities, certificates } from "../../db/schema.js";
+import { X509Certificate } from "node:crypto";
 import { isKmsAvailable } from "../../test/kms-helper.js";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
@@ -156,7 +157,7 @@ describe("Certificate Renew - KMS Integration", () => {
     console.log(`✅ Certificate renewed with new key: ${result.id}`);
   });
 
-  it("should renew a certificate (generateNewKey=false still generates new key)", async (ctx) => {
+  it("should renew a certificate (generateNewKey=false reuses the key pair)", async (ctx) => {
     if (!kmsAvailable) {
       ctx.skip();
       return;
@@ -186,29 +187,40 @@ describe("Certificate Renew - KMS Integration", () => {
 
     createdCertIds.push(freshCert.id);
 
-    // Now renew - note: key reuse is not supported, a new key will be generated
-    // even when generateNewKey: false is specified
     const result = await caller.certificate.renew({
       id: freshCert.id,
-      generateNewKey: false, // Ignored - new key is always generated
+      generateNewKey: false,
       validityDays: 365,
     });
 
-    expect(result).toBeDefined();
-    expect(result.id).toBeDefined();
     expect(result.renewedFromId).toBe(freshCert.id);
     expect(result.certificatePem).toMatch(/^-----BEGIN CERTIFICATE-----/);
     expect(result.status).toBe("active");
-
-    // Store for cleanup
     createdCertIds.push(result.id);
 
-    // Verify that kmsKeyId is set (new key is always generated due to key reuse not being supported)
+    // Same KMS key and same public key, different serial.
+    const oldRows = await db.select().from(certificates).where(eq(certificates.id, freshCert.id));
     const dbCert = await db.select().from(certificates).where(eq(certificates.id, result.id));
     expect(dbCert).toHaveLength(1);
-    expect(dbCert[0].kmsKeyId).not.toBeNull(); // New key is always generated
+    expect(dbCert[0].kmsKeyId).toBe(oldRows[0].kmsKeyId);
+    const spki = (pem: string) =>
+      new X509Certificate(pem).publicKey.export({ type: "spki", format: "der" });
+    expect(spki(result.certificatePem).equals(spki(freshCert.certificatePem))).toBe(true);
+    expect(new X509Certificate(result.certificatePem).serialNumber)
+      .not.toBe(new X509Certificate(freshCert.certificatePem).serialNumber);
 
-    console.log(`✅ Certificate renewed (new key generated): ${result.id}`);
+    // The old certificate stays active (no revokeOriginal) and the audit row records it.
+    expect(oldRows[0].status).toBe("active");
+    const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, result.id));
+    const row = audit.find((r) => r.operation === "certificate.renew");
+    expect(JSON.parse(row!.details as string)).toMatchObject({ generateNewKey: false, revokeOriginal: false });
+
+    // With generateNewKey=true the public key changes.
+    const rekeyed = await caller.certificate.renew({ id: freshCert.id, generateNewKey: true, validityDays: 365 });
+    createdCertIds.push(rekeyed.id);
+    expect(spki(rekeyed.certificatePem).equals(spki(freshCert.certificatePem))).toBe(false);
+
+    console.log(`✅ Certificate renewed (key reused): ${result.id}`);
   });
 
   it("should renew a certificate with updated subject info", async (ctx) => {
@@ -315,6 +327,9 @@ describe("Certificate Renew - KMS Integration", () => {
     expect(dbOriginal).toHaveLength(1);
     expect(dbOriginal[0].status).toBe("revoked");
     expect(dbOriginal[0].revocationReason).toBe("superseded");
+    const revokeAudit = await db.select().from(auditLog).where(eq(auditLog.entityId, originalCert.id));
+    expect(revokeAudit.some((r) => r.operation === "certificate.revoke"
+      && JSON.parse(r.details as string).supersededBy === result.id)).toBe(true);
 
     console.log(`✅ Certificate renewed and original revoked: ${result.id}`);
   });

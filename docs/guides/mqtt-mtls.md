@@ -41,7 +41,7 @@ Each PKI Manager cell is something that was run in this guide, or is written in
 | Export PKCS#12 | `export-p12` | **Download**, format `PKCS#12`. Also `PEM with Private Key` (ZIP) and `JKS`. Password is optional for PEM and PKCS#12. |
 | Revoke | `revoke`, then `gen-crl`. | **Revoke** on the certificate page. The CRL is made at once. |
 | Publish the CRL | You copy `crl.pem` to every place that needs it. | PKI Manager serves it at the URL inside each certificate. **The broker still reads a local file**, so you fetch it (step 7 and 8). |
-| Renew and revoke the old one | `renew`, then `revoke-renewed`, then `gen-crl`. | **Renew** makes a new certificate **and a new key**. The old certificate stays active until you revoke it (TASK-265). |
+| Renew and revoke the old one | `renew`, then `revoke-renewed`, then `gen-crl`. | **Renew** makes a new certificate and, by default, a new key (an option keeps the key). The old certificate stays active unless you select "Revoke the previous certificate (superseded)" in the dialog. |
 | OCSP | `openssl ocsp` with your own responder. | **Not available.** No responder, and the certificates have no OCSP URL. Use the CRL. |
 | First CRL | You run `gen-crl` once. | The CRL URL returns `404` until the first revocation (TASK-264). Mosquitto does not start without the file (step 4). |
 | Inventory and expiry | `index.txt` | Dashboard "Expiring Soon" and the certificate list with filters. |
@@ -469,7 +469,7 @@ WantedBy=timers.target
 | No CA key file and no CA passphrase to look after. | The broker reads a local CRL file. You still copy and reload it. |
 | One form for the certificate, the SAN list and the key. | No OCSP. A revoked client is refused only after the broker has the new CRL. |
 | The CRL is made and served for you. | `crlfile` must exist at start, and a new CA has no CRL (TASK-264). |
-| A CSR flow with a scoped token, no shell access to the CA. | Renew makes a new key and leaves the old certificate active (TASK-265). |
+| A CSR flow with a scoped token, no shell access to the CA. | Renew makes a new key by default and leaves the old certificate active unless you ask to revoke it. |
 | Inventory, expiry view and audit rows. | Audit rows show no user name. The UI has no audit page. |
 
 Source of the screenshots: `docs/site/demo/shots/05-mqtt.spec.ts` (run with `PHASE=issue`,
