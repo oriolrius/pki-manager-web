@@ -91,6 +91,6 @@ paths:
         '400':
           description: Invalid SCEP message/operation, message exceeds 1 MiB, or enrollment service unavailable.
         '415':
-          description: Content-Type must be application/x-pki-message.
+          description: Content-Type must be application/x-pki-message or application/octet-stream.
         '503':
           description: CA/RA unavailable, expired or revoked, or concurrent-request limit reached.

@@ -6,6 +6,9 @@ on:
     paths:
       - 'k8s/issuer/**'
       - '.github/workflows/k8s-issuer.yml'
+    # A release tag vX.Y.Z also publishes the image tag X.Y.Z (the chart appVersion).
+    tags: ['v*.*.*']
+  workflow_dispatch: # run on an existing tag to (re)publish its image
   pull_request:
     paths:
       - 'k8s/issuer/**'
@@ -38,7 +41,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -47,7 +50,11 @@ jobs:
 
       - name: Compute tag
         id: tag
-        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build (and push on main)
         uses: docker/build-push-action@v6
@@ -55,24 +62,25 @@ jobs:
           context: k8s/issuer
           file: k8s/issuer/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:latest
+            ${{ steps.tag.outputs.version && format('ghcr.io/{0}/pki-manager-issuer:{1}', github.repository_owner, steps.tag.outputs.version) || '' }}
 
       - name: Install cosign
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v3
 
       - name: Sign image (keyless)
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         env:
           COSIGN_EXPERIMENTAL: '1'
         run: |
           cosign sign --yes ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}
 
       - name: Generate SBOM with syft
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@v0
         with:
           image: ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}

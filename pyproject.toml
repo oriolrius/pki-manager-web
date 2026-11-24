@@ -5,6 +5,7 @@ tag_format = "v$version"
 version_files = [
     "package.json:version",
     "frontend/package.json:version",
-    "backend/package.json:version"
+    "backend/package.json:version",
+    "k8s/issuer/deploy/helm/pki-manager-issuer/Chart.yaml:^(app)?[vV]ersion"
 ]
 update_changelog_on_bump = true
