@@ -11,6 +11,7 @@ export type AuditOperation =
   | 'ca.delete'
   | 'ca.list'
   | 'ca.getById'
+  | 'ca.export_private_key'
   // Certificate operations
   | 'certificate.issue'
   | 'certificate.renew'

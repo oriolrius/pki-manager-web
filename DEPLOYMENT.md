@@ -355,6 +355,7 @@ See [docker/.env.example](docker/.env.example) for full list. Key variables:
 | `KMS_API_KEY` | _(empty)_ | Optional KMS authentication |
 | `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |
 | `TRUST_PROXY` | _(empty)_ | Reverse proxies allowed to set the client IP ([details](#client-ips-behind-a-reverse-proxy-trust_proxy)) |
+| `ALLOW_CA_KEY_EXPORT` | `false` | When `true`, an `admin` may download a CA as a PKCS#12/JKS keystore (contains the CA private key); each export is audited as `ca.export_private_key`. When `false`, `GET /api/v1/cas/{id}/download?format=p12-keystore\|jks-keystore` returns `403 CA_KEY_EXPORT_DISABLED` and the UI hides those formats. A CA key also leaves the KMS, in memory only, to sign CRLs (decision-010). |
 | `VITE_API_URL` | `http://localhost:3000/trpc` | API URL for frontend |
 
 ### OIDC Authentication Configuration

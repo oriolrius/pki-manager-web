@@ -11,6 +11,7 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/lib/download', () => ({ downloadFile: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/config', () => ({ getApiUrl: () => 'https://pki.example/trpc' }));
 vi.mock('@/components/ui', () => ({ useToast: () => ({ error: vi.fn() }), useConfirm: () => vi.fn() }));
+const policy = vi.hoisted(() => ({ data: { enabled: true, allowed: true } as { enabled: boolean; allowed: boolean } }));
 vi.mock('@/lib/trpc', () => ({ trpc: {
   useUtils: () => ({}),
   ca: {
@@ -19,6 +20,7 @@ vi.mock('@/lib/trpc', () => ({ trpc: {
       status: 'active', kmsKeyId: 'kms-key', notBefore: '2026-01-01', notAfter: '2036-01-01',
       createdAt: '2026-01-01', updatedAt: '2026-01-01', certificatePem: 'certificate',
     } }) },
+    keyExportPolicy: { useQuery: () => ({ data: policy.data }) },
     revoke: { useMutation: () => ({}) }, delete: { useMutation: () => ({}) },
   },
 } }));
@@ -68,5 +70,34 @@ describe('CA export passwords', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
       `https://pki.example/api/v1/cas/test-ca/download?format=p12-keystore&password=${password}`,
     ));
+  });
+});
+
+describe('CA private key export policy', () => {
+  afterEach(() => { policy.data = { enabled: true, allowed: true }; });
+
+  it('hides keystore formats and explains why when export is disabled', () => {
+    policy.data = { enabled: false, allowed: false };
+    render(<Page />);
+    expect(screen.queryByRole('option', { name: /Keystore/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/CA private key export is disabled/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /format=p12-keystore/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /format=jks-keystore/ })).not.toBeInTheDocument();
+    // certificate-only formats stay available
+    expect(screen.getByRole('option', { name: /PEM/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /P12 - PKCS#12 Truststore/ })).toBeInTheDocument();
+  });
+
+  it('hides keystore formats for a non-admin when export is enabled', () => {
+    policy.data = { enabled: true, allowed: false };
+    render(<Page />);
+    expect(screen.queryByRole('option', { name: /P12 - PKCS#12 Keystore/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/needs the admin role/).length).toBeGreaterThan(0);
+  });
+
+  it('shows keystore formats when export is allowed', () => {
+    render(<Page />);
+    expect(screen.getByRole('option', { name: /P12 - PKCS#12 Keystore/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /format=p12-keystore/ })).toBeInTheDocument();
   });
 });

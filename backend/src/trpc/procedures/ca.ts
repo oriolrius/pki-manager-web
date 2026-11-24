@@ -17,6 +17,7 @@ import {
   CAKmsInconsistencyError,
 } from '../../services/ca.service.js';
 import { isOIDCEnabled } from '../../lib/oidc.js';
+import { decideCAKeyExport, isCAKeyExportEnabled } from '../../lib/ca-key-export.js';
 
 // Helper to map service errors to tRPC errors
 function mapServiceError(error: unknown): never {
@@ -91,6 +92,19 @@ export const caRouter = router({
         offset: params.offset,
       }
     );
+  }),
+
+  /**
+   * Whether the current caller may export a CA private key (keystore formats).
+   * `enabled` mirrors ALLOW_CA_KEY_EXPORT; `allowed` also applies the admin check.
+   * The download endpoint enforces the same rule; this only drives the UI.
+   */
+  keyExportPolicy: protectedProcedure.query(({ ctx }) => {
+    const user = (ctx as { user?: { roles?: string[] } }).user;
+    return {
+      enabled: isCAKeyExportEnabled(),
+      allowed: decideCAKeyExport(user).allowed,
+    };
   }),
 
   getById: protectedProcedure.input(getCaSchema).query(async ({ ctx, input }) => {

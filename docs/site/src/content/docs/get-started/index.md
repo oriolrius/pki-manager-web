@@ -15,9 +15,11 @@ PKI Manager is a self-hosted web application to run your own certificate authori
 ![Web UI and automation call the backend; the backend keeps private keys in Cosmian KMS and metadata in SQLite; login uses an optional OIDC provider](/pki-manager-web/diagrams/01-architecture.svg)
 
 - Private keys are created and stored in a **Cosmian KMS**; the database stores only KMS key ids and
-  metadata. Certificates are signed inside the KMS. The backend exports a private key from the KMS
-  only when it must: to sign a CRL with the CA key (in memory, for that call), and when a user downloads
-  a keystore that contains a private key (PKCS#12/JKS, also for a CA).
+  metadata. Certificates are signed inside the KMS. A CA private key leaves the KMS in two cases only:
+  to sign a CRL (in memory, for that call, never stored), and — only when the server runs with
+  `ALLOW_CA_KEY_EXPORT=true` (default `false`) — when an admin downloads the CA as a PKCS#12/JKS
+  keystore. Each such export is written to the audit log (`ca.export_private_key`). Leaf-certificate
+  keystores (a user downloading their own certificate with its key) are a separate feature.
 - Login uses **OIDC** (Keycloak, Auth0, Okta, Azure AD and others). OIDC is optional: with no
   `OIDC_ISSUER` / `OIDC_AUDIENCE`, the backend runs without authentication — use that only for tests.
 

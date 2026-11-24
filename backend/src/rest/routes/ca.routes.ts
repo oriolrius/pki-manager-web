@@ -20,6 +20,8 @@ import {
 import {
   getCertificateService,
 } from '../../services/certificate.service.js';
+import { createAuditLog } from '../../lib/audit.js';
+import { decideCAKeyExport, isCAKeyExportFormat } from '../../lib/ca-key-export.js';
 import {
   generateJKSKeystore,
   generateJKSTruststore,
@@ -831,7 +833,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
 - \`p12-keystore\` - PKCS#12 keystore with CA certificate and private key
 - \`jks-keystore\` - Java KeyStore with CA certificate and private key
 
-**Security Note:** Keystore formats expose the CA's private key. Only use these for CA operations that require signing capability (e.g., offline CA scenarios).`,
+**Security Note:** Keystore formats expose the CA's private key. They are refused with \`403 CA_KEY_EXPORT_DISABLED\` unless the server runs with \`ALLOW_CA_KEY_EXPORT=true\`. When enabled, only the \`admin\` role may use them (\`403 CA_KEY_EXPORT_ADMIN_REQUIRED\` otherwise) and every attempt is written to the audit log as \`ca.export_private_key\`.`,
       tags: ['Certificate Authorities'],
       params: {
         type: 'object',
@@ -874,6 +876,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           },
         },
         400: errorResponseSchema,
+        403: errorResponseSchema,
         404: errorResponseSchema,
         500: errorResponseSchema,
       },
@@ -881,6 +884,27 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const { format, password } = request.query;
     const caId = request.params.id;
+    const isKeyExport = isCAKeyExportFormat(format);
+
+    // CA private-key export: opt-in by server setting, admin only, always audited.
+    const auditKeyExport = (status: 'success' | 'failure', details: Record<string, unknown>) =>
+      createAuditLog({
+        db,
+        operation: 'ca.export_private_key',
+        entityType: 'ca',
+        entityId: caId,
+        status,
+        details: { format, ...details },
+        ipAddress: request.ip,
+      });
+
+    if (isKeyExport) {
+      const decision = decideCAKeyExport(request.user);
+      if (!decision.allowed) {
+        await auditKeyExport('failure', { reason: decision.code });
+        return sendError(reply, 403, decision.code, decision.message);
+      }
+    }
 
     // Validate password requirement for keystore formats (contains private key)
     const keystoreFormats = ['p12-keystore', 'jks-keystore'];
@@ -951,6 +975,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         case 'p12-keystore': {
           // PKCS#12 keystore: CA certificate + private key
           if (!ca.kmsKeyId) {
+            await auditKeyExport('failure', { reason: 'KEY_NOT_FOUND' });
             return sendError(reply, 404, 'KEY_NOT_FOUND', 'CA has no associated private key in KMS');
           }
 
@@ -999,6 +1024,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         case 'jks-keystore': {
           // JKS Keystore: CA certificate + private key (for CA signing operations)
           if (!ca.kmsKeyId) {
+            await auditKeyExport('failure', { reason: 'KEY_NOT_FOUND' });
             return sendError(reply, 404, 'KEY_NOT_FOUND', 'CA has no associated private key in KMS. JKS Keystore requires a private key.');
           }
 
@@ -1016,9 +1042,11 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
               serialShort,
             });
 
+            await auditKeyExport('success', { caSubject: ca.subjectDn });
             return jksResult;
           } catch (jksError) {
             if (jksError instanceof JKSKeytoolError) {
+              await auditKeyExport('failure', { reason: 'JKS_GENERATION_FAILED' });
               return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
             }
             throw jksError;
@@ -1029,12 +1057,21 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           return sendError(reply, 400, 'INVALID_FORMAT', `Unsupported format: ${format}`);
       }
 
+      if (isKeyExport) {
+        await auditKeyExport('success', { caSubject: ca.subjectDn });
+      }
+
       return {
         data,
         mimeType,
         filename,
       };
     } catch (error) {
+      if (isKeyExport) {
+        await auditKeyExport('failure', {
+          reason: error instanceof Error ? error.message : 'unknown error',
+        });
+      }
       return handleServiceError(error, reply);
     }
   });
