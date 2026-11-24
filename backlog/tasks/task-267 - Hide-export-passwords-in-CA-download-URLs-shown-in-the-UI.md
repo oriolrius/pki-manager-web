@@ -4,6 +4,7 @@ title: Hide export passwords in CA download URLs shown in the UI
 status: To Do
 assignee: []
 created_date: '2026-11-24T10:19:00Z'
+updated_date: '2026-11-24T11:04:00Z'
 labels:
   - security
   - ui
@@ -22,3 +23,9 @@ The CA detail page prints download URLs that contain the export password in the 
 - [ ] #1 No page shows a URL that contains an export password
 - [ ] #2 Keystore downloads do not need the password in the URL
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+GitHub: https://github.com/oriolrius/pki-manager-web/security/advisories/GHSA-r6w7-c6gj-h7hr
+<!-- SECTION:NOTES:END -->
