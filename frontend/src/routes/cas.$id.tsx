@@ -75,16 +75,11 @@ function CADetail() {
     return formatNeedsPassword(format);
   };
 
-  // Build download URL with password parameter if needed
-  const getDownloadUrl = (format: string, includePassword = true) => {
-    const baseUrl = `${apiBaseUrl}/api/v1/cas/${id}/download?format=${format}`;
-    if (includePassword && formatNeedsPassword(format) && downloadPassword) {
-      return `${baseUrl}&password=${encodeURIComponent(downloadPassword)}`;
-    }
-    return baseUrl;
-  };
+  // Download URL. It never carries the export password: URLs end up in browser
+  // history and proxy/server logs. The password goes in the X-Export-Password header.
+  const getDownloadUrl = (format: string) => `${apiBaseUrl}/api/v1/cas/${id}/download?format=${format}`;
 
-  // All protected URLs carry the displayed password, including direct-download buttons.
+  // Displayed and copied URLs are password-free.
   const downloadUrls = {
     // Certificate formats
     pem: getDownloadUrl('pem'),
@@ -99,7 +94,7 @@ function CADetail() {
     'jks-keystore': getDownloadUrl('jks-keystore'),
   };
 
-  const downloadUrl = getDownloadUrl(selectedFormat, true);
+  const downloadUrl = getDownloadUrl(selectedFormat);
 
   const handleRevoke = () => {
     setShowRevokeDialog(true);
@@ -157,7 +152,11 @@ function CADetail() {
     setIsDownloading(true);
     const extension = format.startsWith('p12-') ? 'p12' : format.startsWith('jks-') ? 'jks' : format;
     try {
-      await downloadFile(getDownloadUrl(format, true), `ca-${id}.${extension}`);
+      await downloadFile(
+        getDownloadUrl(format),
+        `ca-${id}.${extension}`,
+        formatNeedsPassword(format) ? { password: downloadPassword } : undefined,
+      );
       if (formatNeedsPassword(format)) setLastExport({ format, password: downloadPassword });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Download failed.');
@@ -573,9 +572,8 @@ function CADetail() {
           </button>
 
           <button
-            title="API URL: an Authorization header is required when OIDC is enabled."
+            title="API URL without the password. Send the password in the X-Export-Password header; an Authorization header is required when OIDC is enabled."
             onClick={handleCopyPermalink}
-            disabled={formatRequiresPassword(selectedFormat) && downloadPassword.length < 8}
             className="flex items-center gap-2 min-h-10 px-3 py-2 text-sm border bg-background text-foreground rounded-md hover:bg-muted font-medium shadow-sm disabled:opacity-50"
           >
             {linkCopied ? (
@@ -593,6 +591,10 @@ function CADetail() {
 
           </div>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Copied and displayed links never contain the export password. For API calls, send it in the
+          X-Export-Password header: a password in a URL ends up in browser history and server logs.
+        </p>
       </section>
 
       {lastExport && <div className="p-4 border rounded-md bg-muted/50 space-y-2">

@@ -33,8 +33,9 @@ describe('CA export passwords', () => {
     expect(password).toMatch(/^[A-Za-z0-9_-]{32}$/);
     fireEvent.click(screen.getByRole('button', { name: new RegExp(`format=${format}`) }));
     await waitFor(() => expect(downloadFile).toHaveBeenCalledWith(
-      `https://pki.example/api/v1/cas/test-ca/download?format=${format}&password=${password}`,
+      `https://pki.example/api/v1/cas/test-ca/download?format=${format}`,
       expect.any(String),
+      { password },
     ));
     expect(screen.getByLabelText('Export password')).toHaveValue(password);
     expect(screen.getByLabelText('Downloaded file password')).toHaveValue(password);
@@ -53,11 +54,11 @@ describe('CA export passwords', () => {
     fireEvent.change(field, { target: { value: 'Edited#Password&123' } });
     fireEvent.click(screen.getByRole('button', { name: /format=p12-truststore/ }));
     await waitFor(() => expect(downloadFile).toHaveBeenCalledWith(
-      expect.stringContaining('&password=Edited%23Password%26123'), expect.any(String),
+      expect.not.stringContaining('password'), expect.any(String), { password: 'Edited#Password&123' },
     ));
   });
 
-  it('copies a protected URL with the displayed password', async () => {
+  it('copies a protected URL without the password', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     render(<Page />);
@@ -66,7 +67,14 @@ describe('CA export passwords', () => {
     fireEvent.change(formats, { target: { value: 'p12-keystore' } });
     fireEvent.click(screen.getByRole('button', { name: 'Copy Link' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(
-      `https://pki.example/api/v1/cas/test-ca/download?format=p12-keystore&password=${password}`,
+      'https://pki.example/api/v1/cas/test-ca/download?format=p12-keystore',
     ));
+    expect(writeText.mock.calls[0][0]).not.toContain(password);
+  });
+
+  it('renders no href or text containing password=', () => {
+    const { container } = render(<Page />);
+    for (const a of container.querySelectorAll('[href]')) expect(a.getAttribute('href')).not.toMatch(/password=/i);
+    expect(container.textContent).not.toMatch(/password=/i);
   });
 });

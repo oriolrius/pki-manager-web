@@ -1,3 +1,4 @@
+import { resolveExportPassword, exportPasswordHeaderSchema, deprecatedPasswordQueryDescription } from '../export-password.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { eq } from 'drizzle-orm';
@@ -781,7 +782,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           },
           password: {
             type: 'string',
-            description: 'Password for encrypted formats (P12, JKS, encrypted PKCS8)',
+            deprecated: true,
+            description: deprecatedPasswordQueryDescription + 'Password for encrypted formats (P12, JKS, encrypted PKCS8)',
           },
           encryptPrivateKey: {
             type: 'boolean',
@@ -795,6 +797,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           },
         },
       },
+      headers: exportPasswordHeaderSchema,
       response: {
         200: {
           type: 'object',
@@ -810,7 +813,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
       },
     },
   }, async (request, reply) => {
-    const { format, password } = request.query;
+    const { format } = request.query;
+    const password = resolveExportPassword(request, request.query.password);
 
     // Validate password requirement for encrypted formats
     // Note: JKS formats use 'changeit' as default if no password provided

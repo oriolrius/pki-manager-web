@@ -96,7 +96,7 @@ p12-truststore, jks-truststore   public certificate in a truststore
 p12-keystore, jks-keystore       certificate + private key (do NOT distribute)
 ```
 
-The response is JSON with Base64-encoded content. The PKCS#12/JKS formats also take a `password` query parameter: it is required for the keystore formats and optional for the truststore formats (the default is `changeit`).
+The response is JSON with Base64-encoded content. The PKCS#12/JKS formats also need an export password. Send it in the `X-Export-Password` header, not in the URL (URLs end up in browser history and proxy logs). The `password` query parameter still works but is deprecated. The password is required for the keystore formats and optional for the truststore formats (the default is `changeit`).
 
 ```json
 {
