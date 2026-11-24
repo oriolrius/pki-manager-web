@@ -1,3 +1,20 @@
+## v3.16.1 (2026-11-24)
+
+### Feat
+
+- **audit**: record the actor (user, integration, SSH token) on every audit row
+- **external**: sign ECDSA CSRs and accept empty-subject CSRs with a SAN
+
+### Fix
+
+- **certificates**: never destroy a KMS key that another certificate still uses
+- **renew**: reuse the key pair when requested and state what happens to the old certificate
+- **backend**: initial empty CRL on CA creation; keyAlgorithm in create response
+- **frontend**: CA form lists the key usages actually issued
+- **issuer**: publish chart appVersion image tag on release
+- **scep**: accept application/octet-stream for PKIOperation POST
+- **export**: run keytool and openssl without a shell
+
 ## v3.16.0 (2026-11-24)
 
 **SSH principal fixes, fleet tokens UI and the documentation site**
