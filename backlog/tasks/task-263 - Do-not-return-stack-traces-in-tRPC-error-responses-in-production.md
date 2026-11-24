@@ -4,6 +4,7 @@ title: Do not return stack traces in tRPC error responses in production
 status: To Do
 assignee: []
 created_date: '2026-11-24T10:18:00Z'
+updated_date: '2026-11-24T11:04:00Z'
 labels:
   - security
   - bug
@@ -23,3 +24,9 @@ With the published 3.15.0 image, a tRPC 401 response body contains the server st
 - [ ] #1 With NODE_ENV=production, tRPC error responses contain no stack trace
 - [ ] #2 A test covers an unauthenticated tRPC call in production mode
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+GitHub: https://github.com/oriolrius/pki-manager-web/security/advisories/GHSA-74c2-xrr6-jw46
+<!-- SECTION:NOTES:END -->
