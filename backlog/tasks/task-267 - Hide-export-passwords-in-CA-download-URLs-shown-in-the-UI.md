@@ -1,10 +1,11 @@
 ---
 id: TASK-267
 title: Hide export passwords in CA download URLs shown in the UI
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:19:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T16:02:00Z'
 labels:
   - security
   - ui
