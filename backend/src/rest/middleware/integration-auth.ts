@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { db } from '../../db/client.js';
+import { setAuditActor, integrationActor } from '../../lib/audit-actor.js';
 import { getIntegrationService } from '../../services/integration.service.js';
 
 declare module 'fastify' {
@@ -36,4 +37,5 @@ export async function integrationAuthPreHandler(
     return;
   }
   req.integration = integration;
+  setAuditActor(integrationActor(integration));
 }

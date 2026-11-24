@@ -210,6 +210,10 @@ export const auditLog = sqliteTable(
       .default('success'),
     details: text('details'), // JSON blob
     kmsOperationId: text('kms_operation_id'),
+    // Who did it (issue #27). Nullable: rows written before this column exist have no actor.
+    actorType: text('actor_type', { enum: ['user', 'integration', 'ssh_token', 'anonymous'] }),
+    actorId: text('actor_id'),
+    actorName: text('actor_name'),
   },
   (table) => ({
     timestampIdx: index('idx_audit_timestamp').on(table.timestamp),

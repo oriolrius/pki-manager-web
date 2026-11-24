@@ -5,6 +5,7 @@
  * Idempotent on the Idempotency-Key header. Issued certs are source=automation.
  */
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { setAuditActor, sshTokenActor } from '../../lib/audit-actor.js';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
@@ -85,6 +86,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       err(reply, 401, 'UNAUTHORIZED', 'missing or invalid fleet token');
       return null;
     }
+    setAuditActor(sshTokenActor(verified));
     if (!verified.opSet.includes(op)) {
       err(reply, 403, 'FORBIDDEN', `token is not scoped for ${op}`);
       return null;

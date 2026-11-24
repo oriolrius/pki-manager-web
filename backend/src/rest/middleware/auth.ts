@@ -8,6 +8,7 @@
 import type { FastifyRequest, FastifyReply, preHandlerHookHandler } from 'fastify';
 import { validateAuthHeader, JWTValidationError, type AuthUser } from '../../lib/jwt.js';
 import { isOIDCEnabled } from '../../lib/oidc.js';
+import { setAuditActor, userActor, ANONYMOUS_ACTOR } from '../../lib/audit-actor.js';
 import { logger } from '../../lib/logger.js';
 
 /**
@@ -32,12 +33,14 @@ export const authPreHandler: preHandlerHookHandler = async (
   // Skip auth if OIDC is disabled
   if (!isOIDCEnabled()) {
     logger.debug('OIDC disabled, skipping REST API authentication');
+    setAuditActor(ANONYMOUS_ACTOR);
     return;
   }
 
   try {
     const user = await validateAuthHeader(request.headers.authorization);
     request.user = user;
+    setAuditActor(userActor(user));
     return;
   } catch (error) {
     if (error instanceof JWTValidationError) {
@@ -74,12 +77,14 @@ async function authenticateRequest(
   // Skip auth if OIDC is disabled
   if (!isOIDCEnabled()) {
     logger.debug('OIDC disabled, skipping REST API authentication');
+    setAuditActor(ANONYMOUS_ACTOR);
     return true;
   }
 
   try {
     const user = await validateAuthHeader(request.headers.authorization);
     request.user = user;
+    setAuditActor(userActor(user));
     return true;
   } catch (error) {
     if (error instanceof JWTValidationError) {
