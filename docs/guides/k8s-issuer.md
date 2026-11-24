@@ -14,7 +14,7 @@ Output is trimmed. Names and IDs are from that run.
 | Kubernetes (kind node) | v1.35.0 |
 | cert-manager (Helm chart) | v1.19.1 |
 | cmctl (for renewal) | v2.1.1 |
-| Issuer chart | `pki-manager-issuer` 0.1.0, from `k8s/issuer/deploy/helm/` in the repository |
+| Issuer chart | `pki-manager-issuer` 3.16.0, from `k8s/issuer/deploy/helm/` in the repository |
 | Issuer image | `ghcr.io/oriolrius/pki-manager-issuer:64d0e19` |
 
 ## How it fits together
@@ -158,7 +158,7 @@ issuers.pki-manager.issuer.io          2026-11-24T09:58:50Z
 
 Notes:
 
-- **Set `image.tag`.** The chart default is its `appVersion` (`0.1.0`). No image has that tag. Published tags are the short commit SHA and `latest`. Pin a SHA tag.
+- **`image.tag` defaults to the chart `appVersion`.** The version is the release version (`cz bump` keeps it in sync), and the `k8s-issuer` workflow publishes the image tag `X.Y.Z` on each `vX.Y.Z` tag. The workflow also publishes the short commit SHA and `latest` from `main`. Pin a tag with `image.tag` if you need one.
 - The chart also installs an approver ClusterRole (`approver.enabled=true`, default). Without it, cert-manager never approves requests for this issuer. See [Troubleshooting](#7-troubleshooting).
 - If cert-manager runs under another ServiceAccount than `cert-manager` in namespace `cert-manager`, set `approver.certManagerServiceAccount.name` and `.namespace`.
 
@@ -414,7 +414,7 @@ All messages below were seen in this run.
 
 | Where | Message or symptom | Cause | Fix |
 |---|---|---|---|
-| Pod events | `Failed to pull image "ghcr.io/oriolrius/pki-manager-issuer:0.1.0": ... not found` (`ErrImagePull`) | No image has the chart default tag `0.1.0`. | Set `image.tag` to a published tag (short SHA or `latest`). |
+| Pod events | `Failed to pull image "ghcr.io/oriolrius/pki-manager-issuer:<tag>": ... not found` (`ErrImagePull`) | The image tag is not published (for example a chart from an unreleased commit, or a release whose `k8s-issuer` run has not finished). | Wait for the workflow, or set `image.tag` to a published tag (release `X.Y.Z`, short SHA or `latest`). |
 | ClusterIssuer `Ready=False`, reason `SecretMissing` | `Secret "missing-secret" not found` | Wrong Secret name, or Secret not in the controller namespace. | Create the Secret in `pki-manager-issuer` (ClusterIssuer) or in the Issuer namespace. |
 | Reason `Unreachable` | `Get "http://localhost:3000/api/v1/external/health": dial tcp [::1]:3000: connect: connection refused` | The URL is not reachable from the pod. `localhost` is the pod itself. | Use a URL the pod can reach. Set `caBundle` for a private TLS CA. |
 | Reason `Unreachable` | `pki-manager GET /api/v1/external/health: 401 UNAUTHORIZED: Invalid or revoked service token` | The token is wrong or the integration is revoked. | Create a new integration and replace the Secret. |

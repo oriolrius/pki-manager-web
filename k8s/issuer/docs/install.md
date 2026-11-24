@@ -19,15 +19,17 @@ API clients must pass `kind: "kubernetes"` to `integration.register`.
 ## 2. Install controller via Helm
 
 The chart is not in a Helm repository: install it from a clone of this repository.
-The chart default image tag (`0.1.0`, the chart `appVersion`) is **not published**: set
-`image.tag` to a published tag of `ghcr.io/oriolrius/pki-manager-issuer` (`latest` or a
-commit tag such as `64d0e19`).
+The chart default image tag is its `appVersion`. `cz bump` keeps `appVersion` equal to the
+release version, and the `k8s-issuer` workflow publishes the image tag `X.Y.Z` when the tag
+`vX.Y.Z` is pushed. So a default install pulls a published image. The workflow also
+publishes the short commit SHA and `latest` on every push to `main`. To pin another tag,
+set `image.tag`.
 
 ```bash
 cd k8s/issuer
 helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
-  -n pki-manager-issuer --create-namespace \
-  --set image.tag=64d0e19
+  -n pki-manager-issuer --create-namespace
+# optional: --set image.tag=<published tag>, for example a short commit SHA
 ```
 
 ### Approval (cert-manager 1.16+)
