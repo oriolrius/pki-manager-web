@@ -10,12 +10,15 @@ import { logger } from '../lib/logger.js';
  * error (not once at import) and fail-safe: only an explicit development/test
  * NODE_ENV keeps stacks; anything else (production, unset) removes them.
  */
-function stripInternals<S extends { data?: unknown }>(shape: S): S {
+function stripInternals<S extends { data?: unknown }>(shape: S, error: TRPCError): S {
   const keepStack = ['development', 'test'].includes(process.env.NODE_ENV ?? '');
   if (keepStack || !shape.data || typeof shape.data !== 'object') return shape;
   const { stack: _stack, ...data } = shape.data as Record<string, unknown>;
-  // Raw internal errors may embed file paths / DB details in their message.
-  const internal = (shape as { code?: number }).code === -32603;
+  // An unexpected exception (tRPC wrapped a raw Error, copying its message) may embed file paths
+  // or DB details: replace its message. A TRPCError thrown on purpose keeps its message.
+  const cause = error.cause;
+  const internal = (shape as { code?: number }).code === -32603
+    && cause instanceof Error && !(cause instanceof TRPCError) && error.message === cause.message;
   return { ...shape, ...(internal ? { message: 'Internal server error' } : {}), data };
 }
 
@@ -32,7 +35,7 @@ const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
             ? error.cause
             : null,
       },
-    });
+    }, error);
   },
 });
 

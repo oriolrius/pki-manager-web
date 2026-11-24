@@ -15,6 +15,9 @@ const testRouter = router({
   bad: publicProcedure.query(() => {
     throw new TRPCError({ code: 'BAD_REQUEST', message: 'bad' });
   }),
+  deliberate: publicProcedure.query(() => {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete certificate: KMS unreachable' });
+  }),
 });
 
 async function call(path: string) {
@@ -47,6 +50,18 @@ describe('tRPC error responses', () => {
       expect(body).not.toMatch(/\.(ts|js):\d+/);
     });
   }
+
+  it('production: an unexpected exception gets a generic message', async () => {
+    process.env.NODE_ENV = 'production';
+    expect((await call('boom')).json.error.message).toBe('Internal server error');
+  });
+
+  it('production: a TRPCError thrown on purpose keeps its message', async () => {
+    process.env.NODE_ENV = 'production';
+    const { json } = await call('deliberate');
+    expect(json.error.message).toBe('Failed to delete certificate: KMS unreachable');
+    expect(json.error.data.stack).toBeUndefined();
+  });
 
   it('production: unauthenticated call is 401', async () => {
     process.env.NODE_ENV = 'production';
