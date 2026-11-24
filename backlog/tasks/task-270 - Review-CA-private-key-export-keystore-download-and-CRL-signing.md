@@ -1,7 +1,7 @@
 ---
 id: TASK-270
 title: Review CA private key export (keystore download and CRL signing)
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T10:33:00Z'
@@ -21,12 +21,14 @@ The CA private key leaves the KMS in two cases: CRL signing exports it to backen
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Only an explicit, audited admin action can export a CA private key, or the export is removed
-- [ ] #2 The docs state exactly when a CA private key leaves the KMS
+- [x] #1 Only an explicit, audited admin action can export a CA private key, or the export is removed
+- [x] #2 The docs state exactly when a CA private key leaves the KMS
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 GitHub: https://github.com/oriolrius/pki-manager-web/security/advisories/GHSA-59wc-9fpc-hv58
+
+Fixed in PR #44 (merged 2026-11-24; #45 fixed the combined test). Ships in the next release (3.17.0 planned). Advisory stays a private draft until prod (k5) runs the fix.
 <!-- SECTION:NOTES:END -->
