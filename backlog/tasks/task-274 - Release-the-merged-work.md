@@ -1,9 +1,11 @@
 ---
 id: TASK-274
 title: Release the merged work
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T11:52:00Z'
+updated_date: '2026-11-24T13:10:00Z'
 labels:
   - release
 milestone: m-3
