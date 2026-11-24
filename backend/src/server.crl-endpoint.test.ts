@@ -47,6 +47,8 @@ function makeCa() {
   return { certPem: forge.pki.certificateToPem(cert), keyPem: forge.pki.privateKeyToPem(keys.privateKey) };
 }
 
+// A missing CRL triggers lazy first-CRL generation (issue #22); with fake KMS ids it fails and
+// the endpoint still answers 404. The success path is covered in ca-create-initial-crl.test.ts.
 describe('Public CRL HTTP endpoint (real handler)', () => {
   let server: FastifyInstance;
   const caId = randomUUID();
@@ -161,7 +163,7 @@ describe('Public CRL HTTP endpoint (real handler)', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('returns 404 when the CA exists but has no CRL', async () => {
+  it('returns 404 when the CA has no CRL and the first (empty) one cannot be generated', async () => {
     const res = await server.inject({ method: 'GET', url: `/crl/${noCrlCaId}.crl` });
     expect(res.statusCode).toBe(404);
   });

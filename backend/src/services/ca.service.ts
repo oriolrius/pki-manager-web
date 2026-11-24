@@ -3,6 +3,7 @@ import { eq, and, sql, like, desc, asc } from 'drizzle-orm';
 import forge from 'node-forge';
 import { certificateAuthorities, certificates, crls, auditLog } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
+import { getCRLService } from './crl.service.js';
 import { formatDN } from '../crypto/dn.js';
 import { parseCertificate } from '../crypto/x509.js';
 import { logger } from '../lib/logger.js';
@@ -79,6 +80,7 @@ export interface CreateCAResult {
   notBefore: string;
   notAfter: string;
   status: 'active';
+  keyAlgorithm: string | null;
 }
 
 export interface RevokeCAParams {
@@ -464,10 +466,16 @@ subjectKeyIdentifier=hash
 
       logger.info({ caId, subjectName }, 'CA created successfully');
 
+      // Publish an initial (empty) signed CRL so the CRL distribution URL embedded in issued
+      // certificates works immediately (best-effort; the public endpoint also generates one
+      // lazily if this fails). CRL number starts at 1 and stays monotonic from there.
+      await getCRLService().regenerateForCa(ctx, caId);
+
       return {
         id: caId,
         subject: subjectName,
         serialNumber: certMetadata.serialNumber,
+        keyAlgorithm: certMetadata.keyAlgorithm,
         notBefore: notBefore.toISOString(),
         notAfter: notAfter.toISOString(),
         status: 'active',
