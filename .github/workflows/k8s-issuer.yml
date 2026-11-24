@@ -86,6 +86,9 @@ jobs:
           image: ghcr.io/${{ github.repository_owner }}/pki-manager-issuer:${{ steps.tag.outputs.tag }}
           format: spdx-json
           artifact-name: sbom.spdx.json
+          # On tag pushes the action would also attach the SBOM to the GitHub release, which needs
+          # contents: write; keep least privilege and publish it as a workflow artifact only.
+          upload-release-assets: false
 
   helm-lint:
     runs-on: ubuntu-latest
