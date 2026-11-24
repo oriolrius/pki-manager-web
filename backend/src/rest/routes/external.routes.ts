@@ -170,7 +170,12 @@ function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
  */
 export async function externalRoutes(fastify: FastifyInstance) {
   fastify.addHook('onRequest', integrationAuthPreHandler);
-  const anonymousAuditBudget = new RejectionAuditBudget();
+  const anonymousAuditBudget = new RejectionAuditBudget(({ windowStart, dropped }) => {
+    logger.warn({ windowStart: windowStart.toISOString(), dropped }, 'Anonymous external rejections not audited: per-minute audit budget exhausted');
+  });
+  const budgetTimer = setInterval(() => anonymousAuditBudget.roll(), 60_000);
+  budgetTimer.unref();
+  fastify.addHook('onClose', async () => clearInterval(budgetTimer));
   fastify.addHook('onSend', async (req, reply, payload) => {
     if (reply.statusCode >= 400 && typeof payload === 'string') {
       try {

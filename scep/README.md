@@ -196,15 +196,24 @@ go build .
 ```
 
 Tests cover protocol/CMS/OpenSSL, identity policy, backend RA adapters, renewal,
-and mocked Intune contracts. For an isolated real backend/KMS:
+and mocked Intune contracts. The live tests are opt-in and skip unless their URL
+variable is set:
+
+| Test | Variables | Checks |
+|---|---|---|
+| `TestLiveBackendRABoundary` | `SCEP_TEST_BACKEND_URL`, `SCEP_TEST_TOKEN_FILE` | backend-mediated RA signatures/decryption; caller key IDs rejected |
+| `TestLiveManagedProfileWithKMS` | `SCEP_TEST_BACKEND_URL`, `SCEP_TEST_TOKEN_FILE` | managed SANs, key-rotating renewal and revocation (MDM approval is a test double) |
+| `TestLiveEnrollment` | `SCEP_TEST_SERVER_URL`, `SCEP_TEST_CHALLENGE_FILE` | black-box enrollment through a running gateway |
+
+`SCEP_TEST_TOKEN_FILE` holds the `scep` integration token. The RA is read from the
+backend, so no RA state file is needed. Against an isolated backend/KMS:
 
 ```sh
 SCEP_TEST_BACKEND_URL=http://127.0.0.1:52081 \
-SCEP_TEST_TOKEN_FILE=/secure/test-token go test -run TestLiveBackendRABoundary -v
+SCEP_TEST_TOKEN_FILE=/secure/test-token go test -run 'TestLive(BackendRABoundary|ManagedProfileWithKMS)' -v
 ```
 
-This checks real backend-mediated RA signatures/decryption and rejects caller
-key IDs. Live enrollment tests create real certificates; use an isolated CA.
+Live tests create real certificates; use an isolated CA.
 Live Intune/device acceptance remains a deployment-specific check.
 
 ## Other MDM providers

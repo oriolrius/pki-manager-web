@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, Link, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Terminal, ShieldCheck, Server, Users, Tags, Ban, Boxes, CheckCircle2, Circle, Lock, ArrowRight, ChevronDown, LayoutDashboard } from 'lucide-react';
+import { Terminal, ShieldCheck, Server, Users, Tags, Ban, Boxes, KeyRound, CheckCircle2, Circle, Lock, ArrowRight, ChevronDown, LayoutDashboard } from 'lucide-react';
 import { Callout } from '@/components/ssh/Callout';
 import { ZoneProvider, useZone } from '@/lib/zone-context';
 import { ZoneSwitcher } from '@/components/ssh/ZoneSwitcher';
@@ -31,7 +31,10 @@ const SSH_NAV_GROUPS = [
   },
   {
     label: 'Administration',
-    items: [{ to: '/ssh/zones', label: 'Zones', icon: Boxes }],
+    items: [
+      { to: '/ssh/tokens', label: 'Fleet tokens', icon: KeyRound },
+      { to: '/ssh/zones', label: 'Zones', icon: Boxes },
+    ],
   },
 ] as const;
 

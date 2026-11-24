@@ -54,6 +54,9 @@ services:
       # CRL Distribution Point
       - CRL_DISTRIBUTION_URL=${CRL_DISTRIBUTION_URL:-http://localhost:3000/crl}
 
+      # Reverse proxies allowed to set the client IP (see DEPLOYMENT.md)
+      - TRUST_PROXY=${TRUST_PROXY:-}
+
       # OIDC Authentication (optional - leave OIDC_ISSUER unset to disable)
       - OIDC_ISSUER=${OIDC_ISSUER:-}
       - OIDC_AUDIENCE=${OIDC_AUDIENCE:-}

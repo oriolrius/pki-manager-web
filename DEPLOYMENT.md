@@ -193,6 +193,33 @@ server {
 }
 ```
 
+### Client IPs behind a reverse proxy (`TRUST_PROXY`)
+
+Behind a proxy, the backend sees the proxy as the client, so every audit row
+(`audit_log.ip_address`) and every per-IP limit (KRL fetches, the anonymous
+external-API rejection budget) uses the proxy's address. Set `TRUST_PROXY` on
+the backend to the addresses of the proxies that forward to it, so it takes
+the client IP from `X-Forwarded-For`:
+
+| Value | Meaning |
+|---|---|
+| _unset_ / `false` | Ignore proxy headers (default; correct when clients connect directly) |
+| `10.222.35.0/24,172.18.0.5` | Trust only these peers (IPs/CIDRs; also `loopback`, `linklocal`, `uniquelocal`). **Recommended** |
+| `1`..`10` | Trust that many hops whatever the peer: only safe if the backend is unreachable except through them |
+
+`true` (trust anyone) is rejected and so are malformed entries, so the backend
+fails at startup instead of silently ignoring a typo. List **every** proxy hop
+that can reach the backend: e.g. the edge proxy's network **and** the frontend
+nginx, which also forwards `/cas/*`, `/krl/*` and `/ssh/zones/*`. Each proxy
+must send `X-Forwarded-For $proxy_add_x_forwarded_for` (the example above and
+`docker/nginx.conf` do). Never list networks whose other containers are untrusted:
+any listed peer can choose the recorded client IP.
+
+Check it: make a request that will be rejected, such as
+`curl https://your-domain.com/api/v1/external/health` without a token, then look
+at the newest `external.reject` row in the audit log. Its IP must be your
+public address, not a Docker network address.
+
 ## Single-Origin Edge Proxy & the `/ssh/*` Namespace Collision
 
 > **Read this if you serve the SPA and the backend on ONE origin** (one
@@ -316,6 +343,7 @@ See [.env.example](.env.example) for full list. Key variables:
 | `KMS_URL` | `http://kms:9998` | KMS service URL |
 | `KMS_API_KEY` | _(empty)_ | Optional KMS authentication |
 | `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |
+| `TRUST_PROXY` | _(empty)_ | Reverse proxies allowed to set the client IP ([details](#client-ips-behind-a-reverse-proxy-trust_proxy)) |
 | `VITE_API_URL` | `http://localhost:3000/trpc` | API URL for frontend |
 
 ### OIDC Authentication Configuration
