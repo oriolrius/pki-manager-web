@@ -27,7 +27,12 @@ Part 2 — Principals in depth
 18 Trace a login by CA and serial number
 19 Test one accepted login and two refused logins
 
-Companion page, diagrams and scripts: https://github.com/oriolrius/pki-manager-web/tree/main/docs/ssh/explainer
+Blog series (English, Spanish and Catalan):
+Part 1: https://oriolrius.blog/en/series/ssh-certificates/
+Part 2: https://oriolrius.blog/en/series/ssh-principals/
+Why I built PKI Manager: https://oriolrius.blog/en/2026/09/01/why-i-built-pki-manager/
+Companion page and diagrams: https://oriolrius.github.io/pki-manager-web/ssh/videos/
+
 PKI Manager (open source): https://github.com/oriolrius/pki-manager-web
 
 #SSH #OpenSSH #Linux #PKI

@@ -7,7 +7,106 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const VIDEO = join(HERE, '..');
 const REPO = 'https://github.com/oriolrius/pki-manager-web';
-const DOCS = `${REPO}/tree/main/docs/ssh/explainer`;
+const DOCS = 'https://oriolrius.github.io/pki-manager-web/ssh/videos/';
+// Blog post of each episode (oriolrius.blog, published 2026-11-24 with September dates), per language.
+const BLOG = {
+  '01': {
+    'en': 'https://oriolrius.blog/en/2026/09/03/ssh-certificates-01-why/',
+    'es': 'https://oriolrius.blog/es/2026/09/03/certificados-ssh-01-por-que-los-certificados-ssh/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/03/certificats-ssh-01-per-que-els-certificats-ssh/'
+  },
+  '02': {
+    'en': 'https://oriolrius.blog/en/2026/09/04/ssh-certificates-02-two-cas/',
+    'es': 'https://oriolrius.blog/es/2026/09/04/certificados-ssh-02-dos-cas-la-confianza-se-cruza/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/04/certificats-ssh-02-dues-cas-la-confianca-es-creua/'
+  },
+  '03': {
+    'en': 'https://oriolrius.blog/en/2026/09/05/ssh-certificates-03-host-certificates/',
+    'es': 'https://oriolrius.blog/es/2026/09/05/certificados-ssh-03-certificados-de-host-el-aviso-de-huella-digital-ya-no-aparece/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/05/certificats-ssh-03-certificats-d-amfitrio-no-mes-pregunta-del-fingerprint/'
+  },
+  '04': {
+    'en': 'https://oriolrius.blog/en/2026/09/06/ssh-certificates-04-user-certificates/',
+    'es': 'https://oriolrius.blog/es/2026/09/06/certificados-ssh-04-certificados-de-usuario-iniciar-sesion-con-una-clave-firmada/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/06/certificats-ssh-04-certificats-d-usuari-iniciar-sessio-amb-una-clau-signada/'
+  },
+  '05': {
+    'en': 'https://oriolrius.blog/en/2026/09/08/ssh-certificates-05-principals/',
+    'es': 'https://oriolrius.blog/es/2026/09/08/certificados-ssh-05-principales-la-unica-regla-que-importa/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/08/certificats-ssh-05-principals-l-unica-regla-que-importa/'
+  },
+  '06': {
+    'en': 'https://oriolrius.blog/en/2026/09/09/ssh-certificates-06-lifecycle/',
+    'es': 'https://oriolrius.blog/es/2026/09/09/certificados-ssh-06-caducidad-revocacion-y-rotacion/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/09/certificats-ssh-06-caducitat-revocacio-i-rotacio/'
+  },
+  '07': {
+    'en': 'https://oriolrius.blog/en/2026/09/10/ssh-certificates-07-per-host-blocks/',
+    'es': 'https://oriolrius.blog/es/2026/09/10/certificados-ssh-07-bloqueos-de-acceso-por-host/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/10/certificats-ssh-07-bloquejos-d-acces-per-servidor/'
+  },
+  '08': {
+    'en': 'https://oriolrius.blog/en/2026/09/11/ssh-certificates-08-zones/',
+    'es': 'https://oriolrius.blog/es/2026/09/11/certificados-ssh-08-zonas-dominios-de-confianza-separados/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/11/certificats-ssh-08-zones-dominis-de-confianca-separats/'
+  },
+  '09': {
+    'en': 'https://oriolrius.blog/en/2026/09/12/ssh-certificates-09-automation/',
+    'es': 'https://oriolrius.blog/es/2026/09/12/certificados-ssh-09-tokens-de-flota-y-ansible/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/12/certificats-ssh-09-tokens-de-flota-i-ansible/'
+  },
+  '10': {
+    'en': 'https://oriolrius.blog/en/2026/09/13/ssh-certificates-10-troubleshooting/',
+    'es': 'https://oriolrius.blog/es/2026/09/13/certificados-ssh-10-resumen-y-resolucion-de-problemas/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/13/certificats-ssh-10-resum-i-resolucio-de-problemes/'
+  },
+  '11': {
+    'en': 'https://oriolrius.blog/en/2026/09/18/ssh-principals-11-what-sshd-checks/',
+    'es': 'https://oriolrius.blog/es/2026/09/18/certificados-ssh-11-por-dentro-que-comprueba-realmente-sshd/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/18/certificats-ssh-11-sota-el-capo-que-comprova-realment-sshd/'
+  },
+  '12': {
+    'en': 'https://oriolrius.blog/en/2026/09/19/ssh-principals-12-catalog/',
+    'es': 'https://oriolrius.blog/es/2026/09/19/certificados-ssh-12-disenando-tu-catalogo-de-principales/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/19/certificats-ssh-12-dissenyant-el-vostre-cataleg-de-principals/'
+  },
+  '13': {
+    'en': 'https://oriolrius.blog/en/2026/09/20/ssh-principals-13-mapping-a-fleet/',
+    'es': 'https://oriolrius.blog/es/2026/09/20/certificados-ssh-13-mapear-una-flota-real/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/20/certificats-ssh-13-mapatge-d-una-flota-real/'
+  },
+  '14': {
+    'en': 'https://oriolrius.blog/en/2026/09/22/ssh-principals-14-people-profiles/',
+    'es': 'https://oriolrius.blog/es/2026/09/22/certificados-ssh-14-personas-y-perfiles/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/22/certificats-ssh-14-persones-i-perfils/'
+  },
+  '15': {
+    'en': 'https://oriolrius.blog/en/2026/09/23/ssh-principals-15-customers/',
+    'es': 'https://oriolrius.blog/es/2026/09/23/certificados-ssh-15-clientes-aislamiento-traslados-y-bajas/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/23/certificats-ssh-15-clients-aillament-trasllats-i-sortides/'
+  },
+  '16': {
+    'en': 'https://oriolrius.blog/en/2026/09/24/ssh-principals-16-break-glass/',
+    'es': 'https://oriolrius.blog/es/2026/09/24/certificados-ssh-16-acceso-break-glass-y-acceso-temporal/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/24/certificats-ssh-16-break-glass-i-acces-temporal/'
+  },
+  '17': {
+    'en': 'https://oriolrius.blog/en/2026/09/25/ssh-principals-17-robots-pipelines/',
+    'es': 'https://oriolrius.blog/es/2026/09/25/certificados-ssh-17-robots-y-pipelines/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/25/certificats-ssh-17-robots-i-pipelines/'
+  },
+  '18': {
+    'en': 'https://oriolrius.blog/en/2026/09/26/ssh-principals-18-who-did-what/',
+    'es': 'https://oriolrius.blog/es/2026/09/26/certificados-ssh-18-cambiar-el-acceso-y-demostrar-quien-hizo-que/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/26/certificats-ssh-18-canviar-l-acces-i-demostrar-qui-va-fer-que/'
+  },
+  '19': {
+    'en': 'https://oriolrius.blog/en/2026/09/27/ssh-principals-19-test-your-design/',
+    'es': 'https://oriolrius.blog/es/2026/09/27/certificados-ssh-19-prueba-tu-diseno/',
+    'ca': 'https://oriolrius.blog/ca/2026/09/27/certificats-ssh-19-posa-a-prova-el-teu-disseny/'
+  }
+};
+const SERIES = (ep) => `https://oriolrius.blog/en/series/${Number(ep) >= 11 ? 'ssh-principals' : 'ssh-certificates'}/`;
 
 // One short summary per episode (plain text, first lines of the description).
 const SUMMARY = {
@@ -80,7 +179,12 @@ for (const ep of eps) {
     'Chapters',
     ...chapters,
     '',
-    `Companion page, diagrams and scripts: ${DOCS}`,
+    'Read the post (text, commands, diagram):',
+    `English: ${BLOG[ep].en}`,
+    `Spanish: ${BLOG[ep].es}`,
+    `Catalan: ${BLOG[ep].ca}`,
+    `Series page: ${SERIES(ep)}`,
+    `Companion page and diagrams: ${DOCS}`,
     `PKI Manager (open source): ${REPO}`,
     'Playlist: {{PLAYLIST_URL}}',
     '',
