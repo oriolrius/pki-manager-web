@@ -18,7 +18,7 @@ scheme for external issuance. The gateway `/scep` protocol runs on its own serve
 | --- | --- |
 | `GET /scep?operation=GetCACaps` | `POSTPKIOperation`, `SHA-256`, `AES` |
 | `GET /scep?operation=GetCACert` | DER CMS certificate bundle containing CA and RA |
-| `POST /scep?operation=PKIOperation` | `application/x-pki-message` |
+| `POST /scep?operation=PKIOperation` | `application/x-pki-message` or `application/octet-stream` |
 | Legacy GET `PKIOperation&message=<URL-encoded base64>` | Supported within HTTP header limits |
 | Initial `PKCSReq` | Immediate signed/encrypted `CertRep` success or failure |
 | `RenewalReq` / `UpdateReq` | Active, service-owned old signer plus shared challenge or fresh MDM validation |

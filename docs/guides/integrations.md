@@ -432,7 +432,7 @@ The gateway needs a client that sends an AES-encrypted request and a CSR with th
 
 | Client | Result |
 |---|---|
-| micromdm `scepclient` v2.3.0 (released binary) | **Does not work.** It POSTs with `Content-Type: application/octet-stream`, and the gateway answers `415 expected application/x-pki-message`. With the header fixed by a proxy, the gateway answers `400 invalid SCEP message`. Its CSR has no extensions, so it cannot send the required `clientAuth` EKU. |
+| micromdm `scepclient` v2.3.0 (released binary) | **Not verified end to end.** It POSTs with `Content-Type: application/octet-stream`. The gateway accepts this type (besides `application/x-pki-message`). In an earlier test, the gateway then answered `400 invalid SCEP message`. Its CSR has no extensions, so it cannot send the required `clientAuth` EKU. |
 | The project test `TestLiveEnrollment` in `scep/live_test.go` (Go, Smallstep SCEP library) | **Works.** |
 
 Use the project test as a reference client. It needs Go and a clone of this repository. It

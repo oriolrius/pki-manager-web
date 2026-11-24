@@ -95,8 +95,10 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("operation") == "PKIOperation" {
 		if r.Method == http.MethodPost {
 			mediaType, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
-			if mediaErr != nil || !strings.EqualFold(mediaType, "application/x-pki-message") {
-				http.Error(w, "expected application/x-pki-message", 415)
+			// Common SCEP clients (for example micromdm scepclient) send application/octet-stream.
+			if mediaErr != nil || !(strings.EqualFold(mediaType, "application/x-pki-message") ||
+				strings.EqualFold(mediaType, "application/octet-stream")) {
+				http.Error(w, "expected application/x-pki-message or application/octet-stream", 415)
 				return
 			}
 			data, err = io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessage))
