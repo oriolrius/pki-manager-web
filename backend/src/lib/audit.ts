@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { auditLog } from '../db/schema.js';
 import { logger } from './logger.js';
+import { getAuditActor, type AuditActor } from './audit-actor.js';
 
 export type AuditOperation =
   // CA operations
@@ -92,6 +93,8 @@ export interface AuditLogOptions {
   details?: Record<string, any>;
   ipAddress?: string;
   kmsOperationId?: string;
+  /** Overrides the actor taken from the current request context. */
+  actor?: AuditActor;
 }
 
 /**
@@ -109,6 +112,7 @@ export async function createAuditLog(options: AuditLogOptions): Promise<string> 
     ipAddress,
     kmsOperationId,
   } = options;
+  const actor = options.actor ?? getAuditActor();
 
   const auditId = randomUUID();
 
@@ -122,6 +126,9 @@ export async function createAuditLog(options: AuditLogOptions): Promise<string> 
       details: details ? JSON.stringify(details) : null,
       ipAddress: ipAddress || null,
       kmsOperationId: kmsOperationId || null,
+      actorType: actor?.type ?? null,
+      actorId: actor?.id ?? null,
+      actorName: actor?.name ?? null,
     } as any);
 
     logger.debug(

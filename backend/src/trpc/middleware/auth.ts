@@ -14,6 +14,7 @@ import {
   type AuthUser,
 } from '../../lib/jwt.js';
 import { isOIDCEnabled } from '../../lib/oidc.js';
+import { setAuditActor, userActor, ANONYMOUS_ACTOR } from '../../lib/audit-actor.js';
 import { logger } from '../../lib/logger.js';
 import type { Context } from '../context.js';
 
@@ -56,12 +57,15 @@ export async function authMiddlewareHandler({
   // Skip auth if OIDC is not enabled
   if (!isOIDCEnabled()) {
     logger.debug('OIDC disabled, skipping tRPC authentication');
+    setAuditActor(ANONYMOUS_ACTOR);
     return next();
   }
 
   try {
     // Validate token and extract user using shared JWT module
     const user = await validateAuthHeader(ctx.req.headers.authorization);
+
+    setAuditActor(userActor(user));
 
     // Add user to context and continue
     return next({

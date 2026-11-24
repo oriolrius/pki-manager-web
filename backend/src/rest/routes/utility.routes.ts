@@ -853,6 +853,9 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
                   ipAddress: { type: 'string', nullable: true },
                   status: { type: 'string', enum: ['success', 'failure'] },
                   details: { type: 'object', nullable: true },
+                  actorType: { type: 'string', nullable: true, enum: ['user', 'integration', 'ssh_token', 'anonymous', null], description: 'Kind of caller that did the action; null for rows written before actors were recorded' },
+                  actorId: { type: 'string', nullable: true, description: 'OIDC subject, integration id or SSH fleet token id' },
+                  actorName: { type: 'string', nullable: true, description: 'Readable name: preferred_username/email, integration name, token name or anonymous' },
                 },
               },
             },
@@ -930,6 +933,9 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
         ipAddress: log.ipAddress,
         status: log.status,
         details: log.details ? JSON.parse(log.details) : null,
+        actorType: log.actorType,
+        actorId: log.actorId,
+        actorName: log.actorName,
       }));
 
       // Create audit log entry for this query (non-blocking)

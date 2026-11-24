@@ -76,6 +76,9 @@ export const auditRouter = router({
         status: log.status,
         details: log.details ? JSON.parse(log.details) : null,
         kmsOperationId: log.kmsOperationId,
+        actorType: log.actorType,
+        actorId: log.actorId,
+        actorName: log.actorName,
       }));
 
       // Create audit log entry for this query (non-blocking)

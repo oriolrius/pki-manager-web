@@ -99,6 +99,13 @@
       "when": 1795461232614,
       "tag": "0013_overjoyed_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1795528906809,
+      "tag": "0014_lowly_logan",
+      "breakpoints": true
     }
   ]
 }

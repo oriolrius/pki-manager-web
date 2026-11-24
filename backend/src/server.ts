@@ -12,6 +12,7 @@ import { db } from './db/client.js';
 import { certificateAuthorities } from './db/schema.js';
 import { eq } from 'drizzle-orm';
 import { initializeOIDC } from './lib/oidc.js';
+import { installAuditActorContext } from './lib/audit-actor.js';
 import { parseTrustProxy } from './lib/trust-proxy.js';
 
 const server = Fastify({
@@ -28,6 +29,9 @@ const server = Fastify({
     },
   },
 });
+
+// Per-request slot for the audit actor (issue #27); auth fills it.
+installAuditActorContext(server);
 
 // Register CORS - Allow multiple origins
 await server.register(cors, {
