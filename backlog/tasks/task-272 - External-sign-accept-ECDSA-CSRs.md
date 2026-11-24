@@ -1,10 +1,11 @@
 ---
 id: TASK-272
 title: 'External sign: accept ECDSA CSRs'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:44:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T14:42:00Z'
 labels:
   - integrations
 dependencies: []
