@@ -50,7 +50,9 @@ export async function publicCrlRoutes(fastify: FastifyInstance): Promise<void> {
       // On-demand refresh: if the newest CRL has passed its nextUpdate, regenerate a fresh
       // one (with an incremented crlNumber) before serving (best-effort; falls back to the
       // stale CRL if the KMS/signing is unavailable).
-      if (latestCrl.length > 0 && new Date() > latestCrl[0].nextUpdate) {
+      // A CA that has no CRL yet (created before initial-CRL generation, or generation failed
+      // at creation) gets its first, empty CRL generated now; numbering starts at 1.
+      if (latestCrl.length === 0 || new Date() > latestCrl[0].nextUpdate) {
         const refreshed = await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, caId);
         if (refreshed) {
           latestCrl = await db
