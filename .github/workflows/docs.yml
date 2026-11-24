@@ -6,9 +6,9 @@ on:
   push:
     # docs/site: first publication before the merge to main. Remove it after the merge.
     branches: [main, docs/site]
-    paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/README.md', '.github/workflows/docs.yml']
+    paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/**', 'backend/src/**', '.github/workflows/docs.yml']
   pull_request:
-    paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/README.md', '.github/workflows/docs.yml']
+    paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/**', 'backend/src/**', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -31,18 +31,38 @@ jobs:
           node-version-file: docs/site/.nvmrc
           cache: npm
           cache-dependency-path: docs/site/package-lock.json
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      # The API reference is generated from the backend source (scripts/openapi.mjs starts it briefly).
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
       - run: npm ci
-      - name: Build (sync docs, render diagrams with plantuml.joor.net, Astro, link check)
+      - name: Build (sync docs, render diagrams with plantuml.joor.net, OpenAPI from source, Astro, link check)
         run: npm run build
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/site/dist
 
+  # Every runnable example of the API how-to must work against a real stack (published images).
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the demo stack
+        run: docs/site/demo/demo.sh up
+      - name: Run the API how-to examples
+        run: docs/site/demo/doc-examples.sh docs/api/how-to.md
+      - name: Stop the demo stack
+        if: always()
+        run: docs/site/demo/demo.sh down
+
   deploy:
     # Push to main (or docs/site, see above), or by hand (Actions → Docs site → Run workflow)
     if: github.event_name != 'pull_request'
-    needs: build
+    needs: [build, examples]
     runs-on: ubuntu-latest
     permissions:
       pages: write

@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
 
 const REPO = 'https://github.com/oriolrius/pki-manager-web';
 
@@ -17,6 +18,16 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
       editLink: { baseUrl: `${REPO}/edit/main/` },
       customCss: ['./src/styles/theme.css'],
+      // OpenAPI reference generated from the backend source at build time (scripts/openapi.mjs).
+      plugins: [
+        starlightOpenAPI([
+          {
+            base: 'api/reference',
+            schema: './src/openapi/openapi.json',
+            sidebar: { label: 'Endpoints', collapsed: true, operations: { badges: true, labels: 'summary' } },
+          },
+        ]),
+      ],
       lastUpdated: false,
       sidebar: [
         { label: 'Get started', items: [{ autogenerate: { directory: 'get-started' } }] },
@@ -29,7 +40,7 @@ export default defineConfig({
           ],
         },
         { label: 'Operations', items: [{ autogenerate: { directory: 'operations' } }] },
-        { label: 'API reference', items: [{ autogenerate: { directory: 'api' } }] },
+        { label: 'API reference', items: [{ autogenerate: { directory: 'api' } }, ...openAPISidebarGroups] },
       ],
     }),
   ],

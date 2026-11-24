@@ -10,3 +10,5 @@ public/fonts/
 public/ssh/
 public/diagrams/
 src/content/docs/get-started/install.md
+src/openapi/
+src/content/docs/api/how-to.md

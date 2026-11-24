@@ -4,7 +4,11 @@ sidebar:
   order: 1
 ---
 
-Every PKI Manager instance serves its own API description. Replace `https://pki.example.com`
+- **[Call the API](/pki-manager-web/api/how-to/)**: credentials and working `curl` examples (they run in CI).
+- **[Endpoints](/pki-manager-web/api/reference/)**: every operation and field, generated from the source code of
+  this version.
+
+Every PKI Manager instance also serves its own API description. Replace `https://pki.example.com`
 with the URL of your instance.
 
 | What | Path |
