@@ -435,9 +435,9 @@ Revoked Certificates:
 The CRL lists the serial of the renewed certificate (`3941…FBF46`) with the reason `Superseded`.
 It is valid for 7 days (`Next Update`). The same URL with `.der` instead of `.crl` gives the CRL in DER format (`application/pkix-crl`).
 
-> **Note:** a CA has **no CRL** until its first revocation. Before it, the URL in the certificates
-> answers `404` (`No CRL available for CA …`). A client that must find a CRL (strict mode) fails
-> until you revoke something.
+> **Note:** since 3.16.1, each new CA gets an empty, signed CRL at creation. The URL in the
+> certificates works before the first revocation, so a client that must find a CRL (strict mode)
+> works from the start. Before 3.16.1, the URL answered `404` until the first revocation.
 
 ### Check: clients reject the revoked certificate
 

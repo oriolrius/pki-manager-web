@@ -43,9 +43,9 @@ Each PKI Manager cell is something that was run in this guide, or is written in
 | Publish the CRL | You copy `crl.pem` to every place that needs it. | PKI Manager serves it at the URL inside each certificate. **The broker still reads a local file**, so you fetch it (step 7 and 8). |
 | Renew and revoke the old one | `renew`, then `revoke-renewed`, then `gen-crl`. | **Renew** makes a new certificate and, by default, a new key (an option keeps the key). The old certificate stays active unless you select "Revoke the previous certificate (superseded)" in the dialog. |
 | OCSP | `openssl ocsp` with your own responder. | **Not available.** No responder, and the certificates have no OCSP URL. Use the CRL. |
-| First CRL | You run `gen-crl` once. | The CRL URL returns `404` until the first revocation (TASK-264). Mosquitto does not start without the file (step 4). |
+| First CRL | You run `gen-crl` once. | Each new CA gets an empty, signed CRL at creation. The CRL URL works at once (step 4). |
 | Inventory and expiry | `index.txt` | Dashboard "Expiring Soon" and the certificate list with filters. |
-| Who did what | Shell history. | Audit log with operation, entity, time and IP address. The rows have no user name in this release. The UI has no audit page: use the API. |
+| Who did what | Shell history. | Audit log with operation, entity, time, IP address and the actor (`actorType` user, integration, SSH token or anonymous, with `actorId` and `actorName`). Rows written before 3.16.1 have no actor. The UI has no audit page: use the API. |
 | Several operators | Everyone who can read the CA key. | OIDC login with two roles: `user` (view, issue, download) and `admin` (also create CAs, revoke, delete). |
 
 ## 1. Create the CA, the server certificate and the client certificate
@@ -167,32 +167,9 @@ block with `protocol websockets` and the same files.
 
 ## 4. The CRL file must exist before the broker starts
 
-`crlfile` needs a file. Ask PKI Manager for it with the URL from the certificate:
-
-```bash
-curl -s -w '\n[%{http_code}]\n' http://localhost:47300/crl/ad5bf329-0b3d-4619-ac67-21bc7b6d95a6.crl
-```
-
-```text
-{"error":"No CRL available for CA ad5bf329-0b3d-4619-ac67-21bc7b6d95a6"}
-[404]
-```
-
-A new CA has no CRL until the first revocation (TASK-264). Without the file, Mosquitto does
-not start:
-
-```text
-Error: Unable to load certificate revocation file "/mosquitto/certs/crl.pem". Check crlfile.
-Error: No such file or directory
-```
-
-You have two ways out:
-
-- Remove the `crlfile` line, and add it after the first revocation.
-- Make a spare certificate and revoke it, so the CA has a CRL. This guide does that: it issued a
-  client certificate `sensor-spare` and revoked it (reason `Superseded`).
-
-Then fetch the CRL and check it:
+`crlfile` needs a file. Since 3.16.1, PKI Manager makes an empty, signed CRL when it creates
+the CA (CRL number 1), so the URL in the certificate works before the first revocation.
+Fetch the CRL with that URL and check it:
 
 ```bash
 curl -sS -o certs/crl.pem http://localhost:47300/crl/ad5bf329-0b3d-4619-ac67-21bc7b6d95a6.crl
@@ -333,6 +310,9 @@ openssl crl -in certs/crl.pem -noout -text | grep -E "CRL Number|Serial Number|R
 ```
 
 The serial `3391…FB56` is `sensor-01` (`openssl x509 -in certs/client.pem -noout -serial`).
+This output comes from a run before 3.16.1. A new CA had no CRL then, so that run also
+revoked a spare certificate (`2925…5D1E`, reason `Superseded`) to get a first CRL. With
+3.16.1 the CRL has only the `sensor-01` entry.
 Tell the broker to reload. In this test `SIGHUP` was enough, no restart:
 
 ```bash
@@ -468,9 +448,9 @@ WantedBy=timers.target
 |---|---|
 | No CA key file and no CA passphrase to look after. | The broker reads a local CRL file. You still copy and reload it. |
 | One form for the certificate, the SAN list and the key. | No OCSP. A revoked client is refused only after the broker has the new CRL. |
-| The CRL is made and served for you. | `crlfile` must exist at start, and a new CA has no CRL (TASK-264). |
+| The CRL is made and served for you, from the moment the CA exists. | `crlfile` must exist at start. You fetch it once before the first start. |
 | A CSR flow with a scoped token, no shell access to the CA. | Renew makes a new key by default and leaves the old certificate active unless you ask to revoke it. |
-| Inventory, expiry view and audit rows. | Audit rows show no user name. The UI has no audit page. |
+| Inventory, expiry view and audit rows with the actor of each operation. | The UI has no audit page. Read the audit log through the API. |
 
 Source of the screenshots: `docs/site/demo/shots/05-mqtt.spec.ts` (run with `PHASE=issue`,
 `bootstrap`, `revoke` and `csr`).
