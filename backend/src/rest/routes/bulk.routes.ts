@@ -19,7 +19,7 @@ import {
   generateJKSTruststore,
   JKSKeytoolError,
 } from '../../services/jks.service.js';
-import { buildCertificateExtensions } from '../../services/certificate.service.js';
+import { buildCertificateExtensions, kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { getCRLService } from '../../services/crl.service.js';
 import { convertCertificateFormat } from '../../crypto/x509.js';
@@ -1145,7 +1145,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         } as any);
 
         // Optional: Destroy KMS key if requested
-        if (destroyKey && cert.kmsKeyId) {
+        if (destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(db, cert.kmsKeyId, cert.id))) {
           try {
             await kmsService.destroyKey(cert.kmsKeyId);
             logger.info(

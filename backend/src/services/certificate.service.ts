@@ -16,6 +16,23 @@ import { getCRLService } from './crl.service.js';
 import type { ServiceContext } from './types.js';
 
 // Types for Certificate Service inputs and outputs
+/**
+ * A renewal with key reuse makes several certificates share one KMS key pair.
+ * True when a certificate other than `certId` still uses `kmsKeyId`: its key must not be destroyed.
+ */
+export async function kmsKeyUsedByOtherCertificate(
+  database: { select: typeof import('../db/client.js').db.select },
+  kmsKeyId: string,
+  certId: string,
+): Promise<boolean> {
+  const rows = await database
+    .select({ id: certificates.id })
+    .from(certificates)
+    .where(and(eq(certificates.kmsKeyId, kmsKeyId), sql`${certificates.id} != ${certId}`))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export interface ListCertificatesParams {
   caId?: string;
   status?: 'active' | 'revoked' | 'expired';
@@ -1293,7 +1310,18 @@ export class CertificateService {
 
       // Optional: Destroy KMS key if requested
       let keyDestroyed = false;
-      if (params.destroyKey && cert.kmsKeyId) {
+      // A renewal with key reuse makes several certificates share one KMS key pair:
+      // never destroy a key that another certificate still uses.
+      const keyStillUsed = cert.kmsKeyId
+        ? await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, params.id)
+        : false;
+      if (params.destroyKey && cert.kmsKeyId && keyStillUsed) {
+        logger.info(
+          { certId: params.id, kmsKeyId: cert.kmsKeyId },
+          'KMS key kept: another certificate still uses it (renewed with key reuse)'
+        );
+      }
+      if (params.destroyKey && cert.kmsKeyId && !keyStillUsed) {
         try {
           const kmsService = getKMSService();
           await kmsService.destroyKey(cert.kmsKeyId);

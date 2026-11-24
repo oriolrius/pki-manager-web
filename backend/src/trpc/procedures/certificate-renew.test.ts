@@ -12,6 +12,7 @@
  * 5. Validation errors (revoked certs, old certs for key reuse)
  */
 
+import { getKMSService } from '../../kms/service.js';
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { eq, like } from "drizzle-orm";
 import { appRouter } from "../router.js";
@@ -219,6 +220,13 @@ describe("Certificate Renew - KMS Integration", () => {
     const rekeyed = await caller.certificate.renew({ id: freshCert.id, generateNewKey: true, validityDays: 365 });
     createdCertIds.push(rekeyed.id);
     expect(spki(rekeyed.certificatePem).equals(spki(freshCert.certificatePem))).toBe(false);
+
+    // Deleting the renewed certificate (destroyKey defaults to true) must not destroy the key
+    // pair that the original certificate, still active, uses.
+    await caller.certificate.delete({ id: result.id, destroyKey: true, forceDelete: true });
+    createdCertIds.splice(createdCertIds.indexOf(result.id), 1);
+    const kept = await getKMSService().getPrivateKey(oldRows[0].kmsKeyId!, freshCert.id);
+    expect(kept).toMatch(/PRIVATE KEY/);
 
     console.log(`✅ Certificate renewed (key reused): ${result.id}`);
   });

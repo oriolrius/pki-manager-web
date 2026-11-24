@@ -1,3 +1,4 @@
+import { kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../init.js';
 import {
@@ -868,7 +869,7 @@ export const certificateRouter = router({
         } as any);
 
         // Optional: Destroy KMS key if requested
-        if (input.destroyKey && cert.kmsKeyId) {
+        if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
           try {
             const kmsService = getKMSService();
             await kmsService.destroyKey(cert.kmsKeyId);
@@ -2322,7 +2323,7 @@ export const certificateRouter = router({
           } as any);
 
           // Optional: Destroy KMS key if requested
-          if (input.destroyKey && cert.kmsKeyId) {
+          if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
             try {
               const kmsService = getKMSService();
               await kmsService.destroyKey(cert.kmsKeyId);
