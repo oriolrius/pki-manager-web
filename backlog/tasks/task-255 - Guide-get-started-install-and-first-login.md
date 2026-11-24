@@ -1,9 +1,11 @@
 ---
 id: TASK-255
 title: 'Guide: get started (install and first login)'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T09:15:00Z'
+updated_date: '2026-11-24T09:55:00Z'
 labels:
   - docs
 milestone: m-1
