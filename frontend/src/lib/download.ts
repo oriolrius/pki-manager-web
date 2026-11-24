@@ -1,10 +1,16 @@
 import { getAccessToken } from './auth/token';
 
 /** Download through the renewable OIDC session, without exposing tokens in URLs. */
-export async function downloadFile(url: string, filename: string): Promise<void> {
+export async function downloadFile(
+  url: string,
+  filename: string,
+  options: { password?: string } = {},
+): Promise<void> {
   const token = await getAccessToken();
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  // An export password travels in a header, never in the URL (history and server logs).
+  if (options.password) headers['X-Export-Password'] = options.password;
   const response = await fetch(url, { headers, redirect: 'error' });
   if (!response.ok) {
     throw new Error(response.status === 401

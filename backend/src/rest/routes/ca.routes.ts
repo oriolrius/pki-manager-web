@@ -1,3 +1,4 @@
+import { resolveExportPassword, exportPasswordHeaderSchema, deprecatedPasswordQueryDescription } from '../export-password.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
@@ -860,10 +861,12 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           },
           password: {
             type: 'string',
-            description: 'Password for P12 and JKS formats. Required for keystore formats, optional for truststore formats (defaults to "changeit" if not provided)',
+            deprecated: true,
+            description: deprecatedPasswordQueryDescription + 'Password for P12 and JKS formats. Required for keystore formats, optional for truststore formats (defaults to "changeit" if not provided)',
           },
         },
       },
+      headers: exportPasswordHeaderSchema,
       response: {
         200: {
           type: 'object',
@@ -879,7 +882,8 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
       },
     },
   }, async (request, reply) => {
-    const { format, password } = request.query;
+    const { format } = request.query;
+    const password = resolveExportPassword(request, request.query.password);
     const caId = request.params.id;
 
     // Validate password requirement for keystore formats (contains private key)

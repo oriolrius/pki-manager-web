@@ -100,8 +100,18 @@ openssl x509 -in api.pem -noout -subject -ext subjectAltName,extendedKeyUsage
 openssl verify -CAfile ca.pem api.pem
 ```
 
-Other formats: `der`, `p12` / `pfx` and `jks-keystore` (need `password=`), `key-pem`,
+Other formats: `der`, `p12` / `pfx` and `jks-keystore` (need an export password), `key-pem`,
 `full-pem`, `chain-pem`, and more; see the reference for `GET /certificates/{id}/download`.
+
+Send the export password in the `X-Export-Password` header, never in the URL: URLs end up in
+browser history and in proxy and server logs. The `password` query parameter still works but is
+deprecated. Example (not run in CI; it needs a server version that reads the header):
+
+```text
+curl -s "$API/api/v1/certificates/$CERT_ID/download?format=p12" \
+  -H "Authorization: Bearer $TOKEN" -H "X-Export-Password: $EXPORT_PASSWORD" \
+  | jq -r .data | base64 -d > api.p12
+```
 
 ## 5. Revoke it and get the new CRL
 
