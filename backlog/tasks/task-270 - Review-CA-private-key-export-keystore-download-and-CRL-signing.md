@@ -1,10 +1,11 @@
 ---
 id: TASK-270
 title: Review CA private key export (keystore download and CRL signing)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-11-24T10:33:00Z'
-updated_date: '2026-11-24T11:04:00Z'
+updated_date: '2026-11-24T16:02:00Z'
 labels:
   - security
 dependencies: []
