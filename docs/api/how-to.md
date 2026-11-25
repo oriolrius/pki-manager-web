@@ -1,7 +1,7 @@
 # Call the REST API
-<!-- tested-with: 3.15.0 -->
+<!-- tested-with: 3.17.0 -->
 
-Every command on this page runs in CI against a demo stack (release 3.15.0), so it works as
+Every command on this page runs in CI against a demo stack (release 3.17.0), so it works as
 written. You need `curl`, `jq` and `openssl`.
 
 The full list of endpoints, with every field, is the [API reference](https://oriolrius.github.io/pki-manager-web/api/reference/). Each instance
@@ -106,7 +106,7 @@ Other formats: `der`, `p12` / `pfx` and `jks-keystore` (need an export password)
 
 Send the export password in the `X-Export-Password` header, never in the URL: URLs end up in
 browser history and in proxy and server logs. The `password` query parameter still works but is
-deprecated. Example (not run in CI; it needs a server version that reads the header):
+deprecated. Example (not run in CI):
 
 ```text
 curl -s "$API/api/v1/certificates/$CERT_ID/download?format=p12" \
@@ -134,8 +134,8 @@ The CRL URL is written into each certificate. `reason` is one of the RFC 5280 re
 ## 6. Sign a CSR with an integration token
 
 Machines that make their own key send a CSR to the external API. The integration token is bound
-to one CA; the request does not name the CA. The CSR key must be **RSA** (2048–8192 bits): an
-ECDSA CSR is rejected today with `400 INVALID_CSR` ("Cannot read public key. OID is not RSA.").
+to one CA; the request does not name the CA. The CSR key is **RSA** (2048–8192 bits) or
+**ECDSA** (P-256 or P-384).
 
 ```bash
 openssl req -new -newkey rsa:2048 -nodes -keyout device.key -out device.csr \

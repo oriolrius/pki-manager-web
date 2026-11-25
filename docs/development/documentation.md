@@ -122,7 +122,9 @@ just demo down      # stop it and delete its volumes
 ```
 
 - Demo users: `alex` (admin) and `uma` (user), password `Demo-Pass-1`.
-- `IMAGE_TAG` selects the release of the images, for example `IMAGE_TAG=3.17.0 just demo up`.
+- `IMAGE_TAG` selects the release of the images, for example `IMAGE_TAG=3.16.1 just demo up`. The
+  default is in `site/demo/demo.sh`; change it when you run the examples and the screenshots again
+  on a new release, and change the `tested-with` line of those pages too.
 - The specs in `site/demo/shots/` write the screenshots of the guides to `docs/guides/img/` and the
   screenshots of the product pages to `docs/features/img/`. Commit the images.
 - `site/demo/doc-examples.sh docs/api/how-to.md` runs every `bash` block of a document against the

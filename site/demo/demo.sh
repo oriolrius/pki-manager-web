@@ -9,7 +9,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-export IMAGE_TAG="${IMAGE_TAG:-3.15.0}"
+# The release that runs the API examples in CI. Each guide says which release took its screenshots.
+export IMAGE_TAG="${IMAGE_TAG:-3.17.0}"
 export BACKEND_EXTERNAL_PORT=47300 FRONTEND_EXTERNAL_PORT=47380
 export FRONTEND_URL=http://localhost:47380 CRL_DISTRIBUTION_URL=http://localhost:47300/crl
 export VITE_API_URL=http://localhost:47300/trpc DEMO_DIR="$HERE"
