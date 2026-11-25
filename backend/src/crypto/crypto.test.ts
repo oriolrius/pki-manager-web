@@ -166,6 +166,14 @@ describe('X.509 Certificate Utilities', () => {
       expect(validateSerialNumber(serial)).toBe(true);
     });
 
+    it('generates a positive 20-octet serial (RFC 5280)', () => {
+      for (let i = 0; i < 2000; i++) {
+        const first = parseInt(generateSerialNumber().slice(0, 2), 16);
+        expect(first).toBeGreaterThan(0);
+        expect(first).toBeLessThan(0x80);
+      }
+    });
+
     it('should validate serial numbers', () => {
       expect(validateSerialNumber('abc123')).toBe(true);
       expect(validateSerialNumber(12345)).toBe(true);

@@ -144,11 +144,18 @@ export function validateKeyAlgorithm(
 }
 
 /**
- * Generate a random serial number (20 bytes = 160 bits)
+ * Generate a random serial number: 20 bytes, 159 random bits.
+ *
+ * RFC 5280 4.1.2.2: the serial is a positive INTEGER of at most 20 octets. The
+ * top bit of the first byte is cleared so the DER INTEGER is positive, and the
+ * first byte is never 0 so the value keeps its 20 octets. A first byte of 0xff
+ * followed by a byte >= 0x80 was a negative number that DER encodes with fewer
+ * octets, so the parsed serial was not the generated one.
  */
 export function generateSerialNumber(): string {
   const bytes = forge.random.getBytesSync(20);
-  return forge.util.bytesToHex(bytes);
+  const first = (bytes.charCodeAt(0) & 0x7f) || 0x01;
+  return forge.util.bytesToHex(String.fromCharCode(first) + bytes.slice(1));
 }
 
 /**
