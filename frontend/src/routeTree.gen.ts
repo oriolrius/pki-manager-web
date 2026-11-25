@@ -9,61 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SshRouteImport } from './routes/ssh'
-import { Route as IntegrationsRouteImport } from './routes/integrations'
-import { Route as ClustersRouteImport } from './routes/clusters'
-import { Route as CertificatesRouteImport } from './routes/certificates'
-import { Route as CasRouteImport } from './routes/cas'
-import { Route as CallbackRouteImport } from './routes/callback'
-import { Route as ApiDocsRouteImport } from './routes/api-docs'
-import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SshZonesRouteImport } from './routes/ssh.zones'
-import { Route as SshUsersRouteImport } from './routes/ssh.users'
-import { Route as SshTokensRouteImport } from './routes/ssh.tokens'
-import { Route as SshPrincipalsRouteImport } from './routes/ssh.principals'
-import { Route as SshKrlRouteImport } from './routes/ssh.krl'
-import { Route as SshHostsRouteImport } from './routes/ssh.hosts'
-import { Route as SshCasRouteImport } from './routes/ssh.cas'
-import { Route as CertificatesNewRouteImport } from './routes/certificates.new'
-import { Route as CertificatesBulkRouteImport } from './routes/certificates.bulk'
-import { Route as CertificatesIdRouteImport } from './routes/certificates.$id'
-import { Route as CasNewRouteImport } from './routes/cas.new'
+import { Route as ApiDocsRouteImport } from './routes/api-docs'
+import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as CasRouteImport } from './routes/cas'
+import { Route as CertificatesRouteImport } from './routes/certificates'
+import { Route as ClustersRouteImport } from './routes/clusters'
+import { Route as IntegrationsRouteImport } from './routes/integrations'
+import { Route as SshRouteImport } from './routes/ssh'
 import { Route as CasIdRouteImport } from './routes/cas.$id'
-import { Route as SshUsersNewRouteImport } from './routes/ssh.users.new'
-import { Route as SshHostsNewRouteImport } from './routes/ssh.hosts.new'
-import { Route as SshHostsIdRouteImport } from './routes/ssh.hosts.$id'
-import { Route as SshCasNewRouteImport } from './routes/ssh.cas.new'
+import { Route as CasNewRouteImport } from './routes/cas.new'
+import { Route as CertificatesIdRouteImport } from './routes/certificates.$id'
+import { Route as CertificatesBulkRouteImport } from './routes/certificates.bulk'
+import { Route as CertificatesNewRouteImport } from './routes/certificates.new'
+import { Route as SshCasRouteImport } from './routes/ssh.cas'
+import { Route as SshHostsRouteImport } from './routes/ssh.hosts'
+import { Route as SshKrlRouteImport } from './routes/ssh.krl'
+import { Route as SshPrincipalsRouteImport } from './routes/ssh.principals'
+import { Route as SshTokensRouteImport } from './routes/ssh.tokens'
+import { Route as SshUsersRouteImport } from './routes/ssh.users'
+import { Route as SshZonesRouteImport } from './routes/ssh.zones'
 import { Route as SshCasIdRouteImport } from './routes/ssh.cas.$id'
+import { Route as SshCasNewRouteImport } from './routes/ssh.cas.new'
+import { Route as SshHostsIdRouteImport } from './routes/ssh.hosts.$id'
+import { Route as SshHostsNewRouteImport } from './routes/ssh.hosts.new'
+import { Route as SshUsersNewRouteImport } from './routes/ssh.users.new'
 
-const SshRoute = SshRouteImport.update({
-  id: '/ssh',
-  path: '/ssh',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IntegrationsRoute = IntegrationsRouteImport.update({
-  id: '/integrations',
-  path: '/integrations',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ClustersRoute = ClustersRouteImport.update({
-  id: '/clusters',
-  path: '/clusters',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CertificatesRoute = CertificatesRouteImport.update({
-  id: '/certificates',
-  path: '/certificates',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CasRoute = CasRouteImport.update({
-  id: '/cas',
-  path: '/cas',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CallbackRoute = CallbackRouteImport.update({
-  id: '/callback',
-  path: '/callback',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDocsRoute = ApiDocsRouteImport.update({
@@ -71,53 +45,49 @@ const ApiDocsRoute = ApiDocsRouteImport.update({
   path: '/api-docs',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedRoute = AuthenticatedRouteImport.update({
-  id: '/_authenticated',
+const CallbackRoute = CallbackRouteImport.update({
+  id: '/callback',
+  path: '/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SshZonesRoute = SshZonesRouteImport.update({
-  id: '/zones',
-  path: '/zones',
-  getParentRoute: () => SshRoute,
-} as any)
-const SshUsersRoute = SshUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => SshRoute,
-} as any)
-const SshTokensRoute = SshTokensRouteImport.update({
-  id: '/tokens',
-  path: '/tokens',
-  getParentRoute: () => SshRoute,
-} as any)
-const SshPrincipalsRoute = SshPrincipalsRouteImport.update({
-  id: '/principals',
-  path: '/principals',
-  getParentRoute: () => SshRoute,
-} as any)
-const SshKrlRoute = SshKrlRouteImport.update({
-  id: '/krl',
-  path: '/krl',
-  getParentRoute: () => SshRoute,
-} as any)
-const SshHostsRoute = SshHostsRouteImport.update({
-  id: '/hosts',
-  path: '/hosts',
-  getParentRoute: () => SshRoute,
-} as any)
-const SshCasRoute = SshCasRouteImport.update({
+const CasRoute = CasRouteImport.update({
   id: '/cas',
   path: '/cas',
-  getParentRoute: () => SshRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-const CertificatesNewRoute = CertificatesNewRouteImport.update({
+const CertificatesRoute = CertificatesRouteImport.update({
+  id: '/certificates',
+  path: '/certificates',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClustersRoute = ClustersRouteImport.update({
+  id: '/clusters',
+  path: '/clusters',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IntegrationsRoute = IntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SshRoute = SshRouteImport.update({
+  id: '/ssh',
+  path: '/ssh',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CasIdRoute = CasIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => CasRoute,
+} as any)
+const CasNewRoute = CasNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => CasRoute,
+} as any)
+const CertificatesIdRoute = CertificatesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
   getParentRoute: () => CertificatesRoute,
 } as any)
 const CertificatesBulkRoute = CertificatesBulkRouteImport.update({
@@ -125,45 +95,70 @@ const CertificatesBulkRoute = CertificatesBulkRouteImport.update({
   path: '/bulk',
   getParentRoute: () => CertificatesRoute,
 } as any)
-const CertificatesIdRoute = CertificatesIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
+const CertificatesNewRoute = CertificatesNewRouteImport.update({
+  id: '/new',
+  path: '/new',
   getParentRoute: () => CertificatesRoute,
 } as any)
-const CasNewRoute = CasNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => CasRoute,
+const SshCasRoute = SshCasRouteImport.update({
+  id: '/cas',
+  path: '/cas',
+  getParentRoute: () => SshRoute,
 } as any)
-const CasIdRoute = CasIdRouteImport.update({
+const SshHostsRoute = SshHostsRouteImport.update({
+  id: '/hosts',
+  path: '/hosts',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshKrlRoute = SshKrlRouteImport.update({
+  id: '/krl',
+  path: '/krl',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshPrincipalsRoute = SshPrincipalsRouteImport.update({
+  id: '/principals',
+  path: '/principals',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshTokensRoute = SshTokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshUsersRoute = SshUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshZonesRoute = SshZonesRouteImport.update({
+  id: '/zones',
+  path: '/zones',
+  getParentRoute: () => SshRoute,
+} as any)
+const SshCasIdRoute = SshCasIdRouteImport.update({
   id: '/$id',
   path: '/$id',
-  getParentRoute: () => CasRoute,
-} as any)
-const SshUsersNewRoute = SshUsersNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => SshUsersRoute,
-} as any)
-const SshHostsNewRoute = SshHostsNewRouteImport.update({
-  id: '/new',
-  path: '/new',
-  getParentRoute: () => SshHostsRoute,
-} as any)
-const SshHostsIdRoute = SshHostsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => SshHostsRoute,
+  getParentRoute: () => SshCasRoute,
 } as any)
 const SshCasNewRoute = SshCasNewRouteImport.update({
   id: '/new',
   path: '/new',
   getParentRoute: () => SshCasRoute,
 } as any)
-const SshCasIdRoute = SshCasIdRouteImport.update({
+const SshHostsIdRoute = SshHostsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
-  getParentRoute: () => SshCasRoute,
+  getParentRoute: () => SshHostsRoute,
+} as any)
+const SshHostsNewRoute = SshHostsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => SshHostsRoute,
+} as any)
+const SshUsersNewRoute = SshUsersNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => SshUsersRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -223,7 +218,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/_authenticated': typeof AuthenticatedRoute
   '/api-docs': typeof ApiDocsRoute
   '/callback': typeof CallbackRoute
   '/cas': typeof CasRouteWithChildren
@@ -307,7 +301,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/_authenticated'
     | '/api-docs'
     | '/callback'
     | '/cas'
@@ -336,7 +329,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AuthenticatedRoute: typeof AuthenticatedRoute
   ApiDocsRoute: typeof ApiDocsRoute
   CallbackRoute: typeof CallbackRoute
   CasRoute: typeof CasRouteWithChildren
@@ -348,46 +340,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/ssh': {
-      id: '/ssh'
-      path: '/ssh'
-      fullPath: '/ssh'
-      preLoaderRoute: typeof SshRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/integrations': {
-      id: '/integrations'
-      path: '/integrations'
-      fullPath: '/integrations'
-      preLoaderRoute: typeof IntegrationsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/clusters': {
-      id: '/clusters'
-      path: '/clusters'
-      fullPath: '/clusters'
-      preLoaderRoute: typeof ClustersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/certificates': {
-      id: '/certificates'
-      path: '/certificates'
-      fullPath: '/certificates'
-      preLoaderRoute: typeof CertificatesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/cas': {
-      id: '/cas'
-      path: '/cas'
-      fullPath: '/cas'
-      preLoaderRoute: typeof CasRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/callback': {
-      id: '/callback'
-      path: '/callback'
-      fullPath: '/callback'
-      preLoaderRoute: typeof CallbackRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api-docs': {
@@ -397,74 +354,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDocsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated': {
-      id: '/_authenticated'
-      path: ''
-      fullPath: ''
-      preLoaderRoute: typeof AuthenticatedRouteImport
+    '/callback': {
+      id: '/callback'
+      path: '/callback'
+      fullPath: '/callback'
+      preLoaderRoute: typeof CallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/ssh/zones': {
-      id: '/ssh/zones'
-      path: '/zones'
-      fullPath: '/ssh/zones'
-      preLoaderRoute: typeof SshZonesRouteImport
-      parentRoute: typeof SshRoute
-    }
-    '/ssh/users': {
-      id: '/ssh/users'
-      path: '/users'
-      fullPath: '/ssh/users'
-      preLoaderRoute: typeof SshUsersRouteImport
-      parentRoute: typeof SshRoute
-    }
-    '/ssh/tokens': {
-      id: '/ssh/tokens'
-      path: '/tokens'
-      fullPath: '/ssh/tokens'
-      preLoaderRoute: typeof SshTokensRouteImport
-      parentRoute: typeof SshRoute
-    }
-    '/ssh/principals': {
-      id: '/ssh/principals'
-      path: '/principals'
-      fullPath: '/ssh/principals'
-      preLoaderRoute: typeof SshPrincipalsRouteImport
-      parentRoute: typeof SshRoute
-    }
-    '/ssh/krl': {
-      id: '/ssh/krl'
-      path: '/krl'
-      fullPath: '/ssh/krl'
-      preLoaderRoute: typeof SshKrlRouteImport
-      parentRoute: typeof SshRoute
-    }
-    '/ssh/hosts': {
-      id: '/ssh/hosts'
-      path: '/hosts'
-      fullPath: '/ssh/hosts'
-      preLoaderRoute: typeof SshHostsRouteImport
-      parentRoute: typeof SshRoute
-    }
-    '/ssh/cas': {
-      id: '/ssh/cas'
+    '/cas': {
+      id: '/cas'
       path: '/cas'
-      fullPath: '/ssh/cas'
-      preLoaderRoute: typeof SshCasRouteImport
-      parentRoute: typeof SshRoute
+      fullPath: '/cas'
+      preLoaderRoute: typeof CasRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/certificates/new': {
-      id: '/certificates/new'
+    '/certificates': {
+      id: '/certificates'
+      path: '/certificates'
+      fullPath: '/certificates'
+      preLoaderRoute: typeof CertificatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clusters': {
+      id: '/clusters'
+      path: '/clusters'
+      fullPath: '/clusters'
+      preLoaderRoute: typeof ClustersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/integrations': {
+      id: '/integrations'
+      path: '/integrations'
+      fullPath: '/integrations'
+      preLoaderRoute: typeof IntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ssh': {
+      id: '/ssh'
+      path: '/ssh'
+      fullPath: '/ssh'
+      preLoaderRoute: typeof SshRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cas/$id': {
+      id: '/cas/$id'
+      path: '/$id'
+      fullPath: '/cas/$id'
+      preLoaderRoute: typeof CasIdRouteImport
+      parentRoute: typeof CasRoute
+    }
+    '/cas/new': {
+      id: '/cas/new'
       path: '/new'
-      fullPath: '/certificates/new'
-      preLoaderRoute: typeof CertificatesNewRouteImport
+      fullPath: '/cas/new'
+      preLoaderRoute: typeof CasNewRouteImport
+      parentRoute: typeof CasRoute
+    }
+    '/certificates/$id': {
+      id: '/certificates/$id'
+      path: '/$id'
+      fullPath: '/certificates/$id'
+      preLoaderRoute: typeof CertificatesIdRouteImport
       parentRoute: typeof CertificatesRoute
     }
     '/certificates/bulk': {
@@ -474,47 +424,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CertificatesBulkRouteImport
       parentRoute: typeof CertificatesRoute
     }
-    '/certificates/$id': {
-      id: '/certificates/$id'
-      path: '/$id'
-      fullPath: '/certificates/$id'
-      preLoaderRoute: typeof CertificatesIdRouteImport
+    '/certificates/new': {
+      id: '/certificates/new'
+      path: '/new'
+      fullPath: '/certificates/new'
+      preLoaderRoute: typeof CertificatesNewRouteImport
       parentRoute: typeof CertificatesRoute
     }
-    '/cas/new': {
-      id: '/cas/new'
-      path: '/new'
-      fullPath: '/cas/new'
-      preLoaderRoute: typeof CasNewRouteImport
-      parentRoute: typeof CasRoute
+    '/ssh/cas': {
+      id: '/ssh/cas'
+      path: '/cas'
+      fullPath: '/ssh/cas'
+      preLoaderRoute: typeof SshCasRouteImport
+      parentRoute: typeof SshRoute
     }
-    '/cas/$id': {
-      id: '/cas/$id'
+    '/ssh/hosts': {
+      id: '/ssh/hosts'
+      path: '/hosts'
+      fullPath: '/ssh/hosts'
+      preLoaderRoute: typeof SshHostsRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/krl': {
+      id: '/ssh/krl'
+      path: '/krl'
+      fullPath: '/ssh/krl'
+      preLoaderRoute: typeof SshKrlRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/principals': {
+      id: '/ssh/principals'
+      path: '/principals'
+      fullPath: '/ssh/principals'
+      preLoaderRoute: typeof SshPrincipalsRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/tokens': {
+      id: '/ssh/tokens'
+      path: '/tokens'
+      fullPath: '/ssh/tokens'
+      preLoaderRoute: typeof SshTokensRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/users': {
+      id: '/ssh/users'
+      path: '/users'
+      fullPath: '/ssh/users'
+      preLoaderRoute: typeof SshUsersRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/zones': {
+      id: '/ssh/zones'
+      path: '/zones'
+      fullPath: '/ssh/zones'
+      preLoaderRoute: typeof SshZonesRouteImport
+      parentRoute: typeof SshRoute
+    }
+    '/ssh/cas/$id': {
+      id: '/ssh/cas/$id'
       path: '/$id'
-      fullPath: '/cas/$id'
-      preLoaderRoute: typeof CasIdRouteImport
-      parentRoute: typeof CasRoute
-    }
-    '/ssh/users/new': {
-      id: '/ssh/users/new'
-      path: '/new'
-      fullPath: '/ssh/users/new'
-      preLoaderRoute: typeof SshUsersNewRouteImport
-      parentRoute: typeof SshUsersRoute
-    }
-    '/ssh/hosts/new': {
-      id: '/ssh/hosts/new'
-      path: '/new'
-      fullPath: '/ssh/hosts/new'
-      preLoaderRoute: typeof SshHostsNewRouteImport
-      parentRoute: typeof SshHostsRoute
-    }
-    '/ssh/hosts/$id': {
-      id: '/ssh/hosts/$id'
-      path: '/$id'
-      fullPath: '/ssh/hosts/$id'
-      preLoaderRoute: typeof SshHostsIdRouteImport
-      parentRoute: typeof SshHostsRoute
+      fullPath: '/ssh/cas/$id'
+      preLoaderRoute: typeof SshCasIdRouteImport
+      parentRoute: typeof SshCasRoute
     }
     '/ssh/cas/new': {
       id: '/ssh/cas/new'
@@ -523,12 +494,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SshCasNewRouteImport
       parentRoute: typeof SshCasRoute
     }
-    '/ssh/cas/$id': {
-      id: '/ssh/cas/$id'
+    '/ssh/hosts/$id': {
+      id: '/ssh/hosts/$id'
       path: '/$id'
-      fullPath: '/ssh/cas/$id'
-      preLoaderRoute: typeof SshCasIdRouteImport
-      parentRoute: typeof SshCasRoute
+      fullPath: '/ssh/hosts/$id'
+      preLoaderRoute: typeof SshHostsIdRouteImport
+      parentRoute: typeof SshHostsRoute
+    }
+    '/ssh/hosts/new': {
+      id: '/ssh/hosts/new'
+      path: '/new'
+      fullPath: '/ssh/hosts/new'
+      preLoaderRoute: typeof SshHostsNewRouteImport
+      parentRoute: typeof SshHostsRoute
+    }
+    '/ssh/users/new': {
+      id: '/ssh/users/new'
+      path: '/new'
+      fullPath: '/ssh/users/new'
+      preLoaderRoute: typeof SshUsersNewRouteImport
+      parentRoute: typeof SshUsersRoute
     }
   }
 }
@@ -624,7 +609,6 @@ const SshRouteWithChildren = SshRoute._addFileChildren(SshRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AuthenticatedRoute: AuthenticatedRoute,
   ApiDocsRoute: ApiDocsRoute,
   CallbackRoute: CallbackRoute,
   CasRoute: CasRouteWithChildren,

@@ -11,10 +11,8 @@ describe('parseTrustProxy', () => {
   it('accepts IPs, CIDRs and proxy-addr keywords', () => {
     expect(parseTrustProxy('10.222.35.0/24, 172.18.0.5,uniquelocal, fd00::/8')).toEqual(['10.222.35.0/24', '172.18.0.5', 'uniquelocal', 'fd00::/8']);
   });
-  it('accepts a bounded hop count', () => {
-    expect(parseTrustProxy('2')).toBe(2);
-    expect(() => parseTrustProxy('0')).toThrow(/1\.\.10/);
-    expect(() => parseTrustProxy('11')).toThrow(/1\.\.10/);
+  it('rejects numeric hop counts', () => {
+    for (const count of ['0', '2', '11']) expect(() => parseTrustProxy(count)).toThrow(/list the proxy IPs/);
   });
   it('rejects trust-everyone and malformed entries', () => {
     expect(() => parseTrustProxy('true')).toThrow(/forged/);

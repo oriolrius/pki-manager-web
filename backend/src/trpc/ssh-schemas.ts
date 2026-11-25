@@ -1,6 +1,6 @@
 /**
  * SSH Certificate Manager Zod schemas (SSH-16) — the single source of truth for
- * tRPC input validation AND OpenAPI (via zod-to-json-schema). Mirrors trpc/schemas.ts.
+ * tRPC input validation AND OpenAPI (via Zod JSON Schema). Mirrors trpc/schemas.ts.
  */
 import { z } from 'zod';
 import { validateCidrList, isValidPrincipalName, isValidHostId } from '../services/ssh-config.js';

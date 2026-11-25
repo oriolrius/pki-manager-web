@@ -1,11 +1,11 @@
 /**
  * OpenAPI JSON Schema definitions generated from Zod schemas
  *
- * This file uses zod-to-json-schema to convert Zod validation schemas
+ * This file uses Zod to convert Zod validation schemas
  * to JSON Schema format for use in OpenAPI documentation.
  */
 
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
 import type { OpenAPIV3 } from 'openapi-types';
 import {
   // Common schemas
@@ -53,87 +53,76 @@ import {
   certificateDetailSchema,
 } from '../../trpc/schemas.js';
 
-// Helper function to convert Zod schema to JSON Schema with proper typing
-// Extracts the actual schema from definitions to make it OpenAPI-compatible
-function toJsonSchema(schema: Parameters<typeof zodToJsonSchema>[0], name: string): OpenAPIV3.SchemaObject {
-  const result = zodToJsonSchema(schema, {
-    name,
-    target: 'openApi3',
-  }) as Record<string, unknown>;
-
-  // Extract the schema from definitions if present
-  if (result.definitions && typeof result.definitions === 'object') {
-    const definitions = result.definitions as Record<string, unknown>;
-    if (definitions[name]) {
-      return definitions[name] as OpenAPIV3.SchemaObject;
-    }
-  }
-
-  // If no $ref/definitions pattern, return the schema directly
-  // But remove $schema if present (not needed in OpenAPI)
-  const { $schema, definitions, $ref, ...cleanSchema } = result;
-  return cleanSchema as OpenAPIV3.SchemaObject;
+function toJsonSchema(schema: z.ZodType): OpenAPIV3.SchemaObject {
+  const { $schema, ...definition } = z.toJSONSchema(schema, {
+    target: 'openapi-3.0',
+    io: 'input',
+    unrepresentable: ({ zodSchema }) => zodSchema._zod.def.type === 'date'
+      ? { type: 'string', format: 'date-time' }
+      : 'throw',
+  });
+  return definition as OpenAPIV3.SchemaObject;
 }
 
 // ============================================================================
 // Common/Enum Schemas
 // ============================================================================
 
-export const IdSchema = toJsonSchema(idSchema, 'Id');
-export const TimestampSchema = toJsonSchema(timestampSchema, 'Timestamp');
-export const DistinguishedNameSchema = toJsonSchema(distinguishedNameSchema, 'DistinguishedName');
-export const KeyAlgorithmSchema = toJsonSchema(keyAlgorithmSchema, 'KeyAlgorithm');
-export const CertificateStatusSchema = toJsonSchema(certificateStatusSchema, 'CertificateStatus');
-export const CertificateTypeSchema = toJsonSchema(certificateTypeSchema, 'CertificateType');
-export const RevocationReasonSchema = toJsonSchema(revocationReasonSchema, 'RevocationReason');
+export const IdSchema = toJsonSchema(idSchema);
+export const TimestampSchema = toJsonSchema(timestampSchema);
+export const DistinguishedNameSchema = toJsonSchema(distinguishedNameSchema);
+export const KeyAlgorithmSchema = toJsonSchema(keyAlgorithmSchema);
+export const CertificateStatusSchema = toJsonSchema(certificateStatusSchema);
+export const CertificateTypeSchema = toJsonSchema(certificateTypeSchema);
+export const RevocationReasonSchema = toJsonSchema(revocationReasonSchema);
 
 // ============================================================================
 // CA Schemas
 // ============================================================================
 
-export const CreateCaRequestSchema = toJsonSchema(createCaSchema, 'CreateCaRequest');
-export const ListCasRequestSchema = toJsonSchema(listCasSchema, 'ListCasRequest');
-export const GetCaRequestSchema = toJsonSchema(getCaSchema, 'GetCaRequest');
-export const RevokeCaRequestSchema = toJsonSchema(revokeCaSchema, 'RevokeCaRequest');
-export const DeleteCaRequestSchema = toJsonSchema(deleteCaSchema, 'DeleteCaRequest');
+export const CreateCaRequestSchema = toJsonSchema(createCaSchema);
+export const ListCasRequestSchema = toJsonSchema(listCasSchema);
+export const GetCaRequestSchema = toJsonSchema(getCaSchema);
+export const RevokeCaRequestSchema = toJsonSchema(revokeCaSchema);
+export const DeleteCaRequestSchema = toJsonSchema(deleteCaSchema);
 
 // ============================================================================
 // Certificate Schemas
 // ============================================================================
 
-export const CreateCertificateRequestSchema = toJsonSchema(createCertificateSchema, 'CreateCertificateRequest');
-export const ListCertificatesRequestSchema = toJsonSchema(listCertificatesSchema, 'ListCertificatesRequest');
-export const GetCertificateRequestSchema = toJsonSchema(getCertificateSchema, 'GetCertificateRequest');
-export const RenewCertificateRequestSchema = toJsonSchema(renewCertificateSchema, 'RenewCertificateRequest');
-export const RevokeCertificateRequestSchema = toJsonSchema(revokeCertificateSchema, 'RevokeCertificateRequest');
-export const DeleteCertificateRequestSchema = toJsonSchema(deleteCertificateSchema, 'DeleteCertificateRequest');
-export const DownloadCertificateRequestSchema = toJsonSchema(downloadCertificateSchema, 'DownloadCertificateRequest');
-export const CertificateDetailSchema = toJsonSchema(certificateDetailSchema, 'CertificateDetail');
+export const CreateCertificateRequestSchema = toJsonSchema(createCertificateSchema);
+export const ListCertificatesRequestSchema = toJsonSchema(listCertificatesSchema);
+export const GetCertificateRequestSchema = toJsonSchema(getCertificateSchema);
+export const RenewCertificateRequestSchema = toJsonSchema(renewCertificateSchema);
+export const RevokeCertificateRequestSchema = toJsonSchema(revokeCertificateSchema);
+export const DeleteCertificateRequestSchema = toJsonSchema(deleteCertificateSchema);
+export const DownloadCertificateRequestSchema = toJsonSchema(downloadCertificateSchema);
+export const CertificateDetailSchema = toJsonSchema(certificateDetailSchema);
 
 // ============================================================================
 // Bulk Operation Schemas
 // ============================================================================
 
-export const BulkCreateCertificatesRequestSchema = toJsonSchema(bulkCreateCertificatesSchema, 'BulkCreateCertificatesRequest');
-export const BulkRevokeCertificatesRequestSchema = toJsonSchema(bulkRevokeCertificatesSchema, 'BulkRevokeCertificatesRequest');
-export const BulkRenewCertificatesRequestSchema = toJsonSchema(bulkRenewCertificatesSchema, 'BulkRenewCertificatesRequest');
-export const BulkDeleteCertificatesRequestSchema = toJsonSchema(bulkDeleteCertificatesSchema, 'BulkDeleteCertificatesRequest');
-export const BulkDownloadCertificatesRequestSchema = toJsonSchema(bulkDownloadCertificatesSchema, 'BulkDownloadCertificatesRequest');
+export const BulkCreateCertificatesRequestSchema = toJsonSchema(bulkCreateCertificatesSchema);
+export const BulkRevokeCertificatesRequestSchema = toJsonSchema(bulkRevokeCertificatesSchema);
+export const BulkRenewCertificatesRequestSchema = toJsonSchema(bulkRenewCertificatesSchema);
+export const BulkDeleteCertificatesRequestSchema = toJsonSchema(bulkDeleteCertificatesSchema);
+export const BulkDownloadCertificatesRequestSchema = toJsonSchema(bulkDownloadCertificatesSchema);
 
 // ============================================================================
 // CRL Schemas
 // ============================================================================
 
-export const GenerateCrlRequestSchema = toJsonSchema(generateCrlSchema, 'GenerateCrlRequest');
-export const GetCrlRequestSchema = toJsonSchema(getCrlSchema, 'GetCrlRequest');
-export const ListCrlsRequestSchema = toJsonSchema(listCrlsSchema, 'ListCrlsRequest');
+export const GenerateCrlRequestSchema = toJsonSchema(generateCrlSchema);
+export const GetCrlRequestSchema = toJsonSchema(getCrlSchema);
+export const ListCrlsRequestSchema = toJsonSchema(listCrlsSchema);
 
 // ============================================================================
 // Audit Schemas
 // ============================================================================
 
-export const ListAuditLogRequestSchema = toJsonSchema(listAuditLogSchema, 'ListAuditLogRequest');
-export const GenerateReportRequestSchema = toJsonSchema(generateReportSchema, 'GenerateReportRequest');
+export const ListAuditLogRequestSchema = toJsonSchema(listAuditLogSchema);
+export const GenerateReportRequestSchema = toJsonSchema(generateReportSchema);
 
 // ============================================================================
 // OpenAPI Component Schemas

@@ -2,7 +2,7 @@
 
 React 19 SPA: **TanStack Router** (file-based) + **TanStack Query** + a **tRPC v11** client
 that imports the backend's `AppRouter` type for end-to-end type safety. **OIDC** auth
-(oidc-client-ts + react-oidc-context, provider-agnostic), **Tailwind 4**, **Vite 7**, Vitest +
+(oidc-client-ts + react-oidc-context, provider-agnostic), **Tailwind 4**, **Vite 8**, Vitest +
 RTL. See the root `AGENTS.md` for repo-wide rules.
 
 ## Commands

@@ -7,7 +7,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [
     react(),
-    TanStackRouterVite(),
+    TanStackRouterVite({ routeFileIgnorePattern: '\\.test\\.[tj]sx?$' }),
   ],
   resolve: {
     alias: {
