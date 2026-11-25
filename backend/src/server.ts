@@ -14,6 +14,7 @@ import { eq } from 'drizzle-orm';
 import { initializeOIDC } from './lib/oidc.js';
 import { installAuditActorContext } from './lib/audit-actor.js';
 import { parseTrustProxy } from './lib/trust-proxy.js';
+import { parseCorsOrigins } from './lib/cors-origins.js';
 
 const server = Fastify({
   // Behind a reverse proxy, req.ip (audit rows, rate limits) is the proxy's
@@ -33,9 +34,10 @@ const server = Fastify({
 // Per-request slot for the audit actor (issue #27); auth fills it.
 installAuditActorContext(server);
 
-// Register CORS - Allow multiple origins
+// CORS: FRONTEND_URL lists the browser origins allowed to call the API from
+// another origin; unset allows every origin. See docs/operations/deployment.md.
 await server.register(cors, {
-  origin: true, // Allow all origins in development
+  origin: parseCorsOrigins(process.env.FRONTEND_URL),
   credentials: true,
 });
 

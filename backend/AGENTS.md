@@ -90,10 +90,11 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
   (`getCertificatePrivateKeyId`). Needed for CRL signing and PKCS#12/key export.
 - Renewal with `generateNewKey:false` re-certifies the existing KMS key pair (public key id resolved via KMIP `PublicKeyLink`, `getPublicKeyIdForPrivateKey`); key reuse rejected for certs ≥90 days old. `revokeOriginal` revokes the old cert (superseded) and writes a `certificate.revoke` audit row.
 - Tests are Vitest **single-fork, `fileParallelism:false`** (SQLite races); KMS integration
-  tests auto-start/skip via `src/test/kms-helper.ts`. CORS is `origin:true` (review for prod).
+  tests auto-start/skip via `src/test/kms-helper.ts`. CORS allows the origins in `FRONTEND_URL`
+  (comma-separated, `src/lib/cors-origins.ts`); unset allows every origin.
 
 ## Env
 
-`PORT` (3000) · `HOST` · `DATABASE_PATH` · `KMS_URL` · `KMS_API_KEY?` · `TRUST_PROXY?` · `OIDC_ISSUER` ·
+`PORT` (3000) · `HOST` · `DATABASE_PATH` · `KMS_URL` · `KMS_API_KEY?` · `TRUST_PROXY?` · `FRONTEND_URL?` · `OIDC_ISSUER` ·
 `OIDC_AUDIENCE` · `OIDC_ROLES_SOURCE` · `OIDC_ROLES_CLAIM` · `OIDC_DISCOVERY_BASE_URL`. See `.env.example`.
 (The old `EXTERNAL_ISSUER_CA_*` offline-signing vars were removed — `/sign` signs via the KMS.)

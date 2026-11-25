@@ -57,8 +57,14 @@ mounts into the frontend container:
 }
 ```
 
-`VITE_API_URL` in `.env` is a build argument: it takes effect only when you build the frontend
-image yourself. With the published images, use `apiUrl` in `docker/config.json`.
+`docker/config.json` is the only run-time setting of the web UI. The frontend container does not
+read environment variables. `VITE_API_URL` is a build argument: it sets the default that is
+compiled into a frontend image that you build yourself, and `apiUrl` overrides it. The published
+images have the default `http://localhost:3000/trpc`.
+
+When the browser calls the API on another origin (for example the UI on `:8080` and the API on
+`:3000`), set `FRONTEND_URL` to the origin of the UI. See
+[Browser origins (`FRONTEND_URL`)](#browser-origins-frontend_url).
 
 ### Step 2: Pull Images from GHCR
 
@@ -157,6 +163,23 @@ Check it: make a request that will be rejected, such as
 `curl https://your-domain.com/api/v1/external/health` without a token, then look
 at the newest `external.reject` row in the audit log. Its IP must be your
 public address, not a Docker network address.
+
+### Browser origins (`FRONTEND_URL`)
+
+`FRONTEND_URL` is the list of browser origins that can call the API from another origin (CORS).
+The backend sends CORS headers only to these origins.
+
+| Value | Meaning |
+|---|---|
+| _unset_ / empty | Every origin can call the API (the Compose default, and the behaviour of 3.17.0 and earlier) |
+| `http://localhost:8080` | Only the web UI on this origin. Use it with the two-port model (UI `:8080`, API `:3000`) |
+| `https://pki.example.com,https://admin.example.com` | Comma-separated list of origins |
+
+Each entry is an origin: scheme, host and optional port, with no path. An invalid entry stops the
+backend at startup. When one proxy serves the UI and the API on one origin (`"apiUrl": "/trpc"`),
+set `FRONTEND_URL` to that origin. CORS does not replace the login: it only controls which web
+pages can read the API responses. Clients that send no `Origin` header (the CLI, scripts, the
+Kubernetes issuer, the SCEP gateway) are not affected.
 
 ## Single-Origin Edge Proxy & the `/ssh/*` Namespace Collision
 
@@ -275,28 +298,37 @@ See [docker/.env.example](../../docker/.env.example) for full list. Key variable
 | `IMAGE_TAG` | `latest` | Docker image tag to use |
 | `BACKEND_EXTERNAL_PORT` | `3000` | Host port for backend API |
 | `FRONTEND_EXTERNAL_PORT` | `8080` | Host port for frontend |
-| `KMS_EXTERNAL_PORT` | `9998` | Listed in `docker/.env.example`, but `docker/docker-compose.yml` does not publish the KMS port |
 | `NODE_ENV` | `production` | Node environment |
-| `FRONTEND_URL` | `http://localhost:8080` | Set by the Compose file, but the backend does not read it |
+| `FRONTEND_URL` | _(empty)_ | Browser origins allowed to call the API (CORS). Empty allows every origin ([details](#browser-origins-frontend_url)) |
 | `DATABASE_PATH` | `/app/backend/data/pki.db` | Database file path (in container) |
 | `KMS_URL` | `http://kms:9998` | KMS service URL |
 | `KMS_API_KEY` | _(empty)_ | Optional KMS authentication |
 | `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |
 | `TRUST_PROXY` | _(empty)_ | Reverse proxies allowed to set the client IP ([details](#client-ips-behind-a-reverse-proxy-trust_proxy)) |
 | `ALLOW_CA_KEY_EXPORT` | `false` | When `true`, an `admin` may download a CA as a PKCS#12/JKS keystore (contains the CA private key); each export is audited as `ca.export_private_key`. When `false`, `GET /api/v1/cas/{id}/download?format=p12-keystore\|jks-keystore` returns `403 CA_KEY_EXPORT_DISABLED` and the UI hides those formats. A CA key also leaves the KMS, in memory only, to sign CRLs (decision-010). |
-| `VITE_API_URL` | `http://localhost:3000/trpc` | Build argument of the frontend image. With the published images, set `apiUrl` in `docker/config.json` instead |
+| `OIDC_DISCOVERY_BASE_URL` | _(empty)_ | Base URL to fetch the OIDC discovery document and the JWKS when the backend cannot reach `OIDC_ISSUER` ([OIDC login](oidc.md)) |
+| `ALLOW_UNAUTHENTICATED_SSH_CA` | `false` | Allow the SSH CA operations with OIDC off. Local tests only |
+| `SSH_ECIES_ENABLED` | `false` | Serve the ECIES-encrypted per-host KRL to `krl-client` |
+| `SSH_HOST_KRL_SERVE` | `true` | `false` serves the per-CA KRL instead of the per-host KRL (rollback switch) |
+| `SSH_HOST_KRL_PUBLIC` | `false` | Serve the per-host KRL with no token at `/krl/hosts/<id>.bin\|.json` |
+| `SSH_BLOCK_ISSUANCE_GATE` | `false` | On user certificate issue, remove the principals that reach only hosts where the identity is blocked |
+| `VITE_API_URL` | `http://localhost:3000/trpc` | Build argument of the frontend image only. At run time, set `apiUrl` in `docker/config.json` |
 
-The Compose file passes only the variables that it lists. A backend variable that is not in
-`docker/docker-compose.yml` (for example `OIDC_DISCOVERY_BASE_URL`, or the `SSH_*` switches of the
-[SSH API contract](../ssh/api-contract.md)) needs an override file:
+The defaults of the `SSH_*` switches are the backend defaults; the
+[SSH API contract](../ssh/api-contract.md) describes them. The Compose file passes only the
+variables that it lists. Another backend variable needs an override file:
 
 ```yaml
 # docker/docker-compose.override.yml
 services:
   backend:
     environment:
-      - SSH_ECIES_ENABLED=true
+      - KRL_VALID_FOR_SECONDS=3600
 ```
+
+The KMS runs in config-file mode (`COSMIAN_KMS_CONF`): it ignores its environment variables.
+Set its port and log level (`[http] port`, `[logging] rust_log`) in `kms/kms.toml`. If you change
+the port, change `KMS_URL` too. The Compose file does not publish the KMS port.
 
 ### Login (OIDC)
 
