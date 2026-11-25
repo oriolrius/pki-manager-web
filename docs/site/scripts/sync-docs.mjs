@@ -6,6 +6,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join, normalize, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { siteVersion, changedIn } from './version.mjs';
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = join(SITE, '..', '..');
@@ -28,6 +29,7 @@ export const MAP = {
   'k8s/issuer/docs/install.md': ['guides/k8s-issuer-install', 7],
   'docs/k8s-csr-signing.md': ['guides/k8s-csr-signing', 8],
   'docs/api/integrations.md': ['guides/integrations', 9],
+  'CHANGELOG.md': ['operations/releases', 9],
   'docs/guides/get-started.md': ['get-started/install', 2],
   'docs/api/how-to.md': ['api/how-to', 2],
   'docs/ssh/concept.md': ['ssh/concept'],
@@ -44,7 +46,9 @@ export const MAP = {
   'docs/ssh/explainer/README.md': ['ssh/videos'],
   'docs/ssh/explainer': ['ssh/videos'],
 };
-const LABELS = {"get-started/install": "Install and log in", "api/how-to": "Call the API (examples)", "operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-ca": "Private CA and certificates", "guides/mqtt": "Client cert auth: Mosquitto", "guides/kubernetes": "Kubernetes with cert-manager", "guides/automation": "Automation, tokens and SCEP", "guides/private-root-ca": "Trust your root CA on devices", "guides/k8s-csr-signing": "Reference: how Kubernetes CSRs are signed", "guides/k8s-issuer": "Reference: issuer overview", "guides/k8s-issuer-install": "Reference: issuer install", "guides/integrations": "Reference: integration API", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role"};
+const LABELS = {"get-started/install": "Install and log in", "api/how-to": "Call the API (examples)", "operations/deployment": "Docker deployment", "operations/migration-0010": "Migration 0010 rollback", "operations/oidc": "OIDC login", "operations/keycloak": "Keycloak setup", "guides/private-ca": "Private CA and certificates", "guides/mqtt": "Client cert auth: Mosquitto", "guides/kubernetes": "Kubernetes with cert-manager", "guides/automation": "Automation, tokens and SCEP", "guides/private-root-ca": "Trust your root CA on devices", "guides/k8s-csr-signing": "Reference: how Kubernetes CSRs are signed", "guides/k8s-issuer": "Reference: issuer overview", "guides/k8s-issuer-install": "Reference: issuer install", "guides/integrations": "Reference: integration API", "ssh/concept": "How it works", "ssh/operator-quickstart": "Operator quickstart", "ssh/setup": "Host and client setup", "ssh/deploy-server-and-user": "Deploy a server and a user", "ssh/principals-guide": "Principals guide", "ssh/zones": "Zones", "ssh/host-blocks-runbook": "Per-host access blocks", "ssh/api-contract": "External API contract", "ssh/ansible-role": "Ansible role", "operations/releases": "Release notes"};
+// Docs without a "# Title" line
+const TITLES = { 'CHANGELOG.md': 'Release notes' };
 const GENERATED_DIRS = ['operations', 'guides', 'ssh'];
 const GENERATED_FILES = ['get-started/install.md', 'api/how-to.md'];
 
@@ -68,10 +72,15 @@ function rewriteTarget(target, srcRel) {
 
 function convert(srcRel, [slug, order]) {
   let md = readFileSync(join(REPO, srcRel), 'utf8');
-  const m = md.match(/^#\s+(.+)$/m);
-  if (!m) throw new Error(`${srcRel}: no "# Title" line`);
-  const title = m[1].replace(/`/g, '').trim();
-  md = md.replace(m[0], '');
+  let title = TITLES[srcRel];
+  if (!title) {
+    const m = md.match(/^#\s+(.+)$/m);
+    if (!m) throw new Error(`${srcRel}: no "# Title" line`);
+    title = m[1].replace(/`/g, '').trim();
+    md = md.replace(m[0], '');
+  }
+  // <!-- tested-with: X.Y.Z --> in a doc: the release its steps were run against
+  const tested = md.match(/<!--\s*tested-with:\s*(\d+\.\d+\.\d+)\s*-->/)?.[1];
   // Markdown links and images outside code: [text](target) / ![alt](target)
   const parts = md.split(/(```[\s\S]*?```|`[^`\n]*`)/g);
   md = parts.map((p, i) => (i % 2 ? p : p
@@ -81,12 +90,15 @@ function convert(srcRel, [slug, order]) {
   const fm = ['---', `title: ${JSON.stringify(title)}`,
     `sidebar:\n  label: ${JSON.stringify(LABELS[slug] ?? title)}` + (order ? `\n  order: ${order}` : ''),
     `editUrl: ${JSON.stringify('https://github.com/oriolrius/pki-manager-web/edit/main/' + srcRel)}`,
+    `pki:\n  changedIn: ${JSON.stringify(changedIn(srcRel))}` + (tested ? `\n  testedWith: ${JSON.stringify(tested)}` : ''),
     '---', '', `> Source: [\`${srcRel}\`](${GH}${srcRel})`, ''].filter((l) => l !== null).join('\n');
   const dest = join(OUT, `${slug}.md`);
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, fm + md);
 }
 
+// Site version (SiteTitle, PageTitle components)
+writeFileSync(join(SITE, 'src', 'version.json'), JSON.stringify(siteVersion(), null, 1) + '\n');
 for (const d of [...GENERATED_DIRS, ...GENERATED_FILES]) rmSync(join(OUT, d), { recursive: true, force: true });
 rmSync(join(SITE, 'public', 'img'), { recursive: true, force: true });
 let n = 0;
@@ -99,4 +111,4 @@ for (const [src, v] of Object.entries(MAP)) {
 const fonts = join(REPO, 'docs/ssh/explainer/video/engine/fonts');
 mkdirSync(join(SITE, 'public', 'fonts'), { recursive: true });
 for (const f of readdirSync(fonts)) copyFileSync(join(fonts, f), join(SITE, 'public', 'fonts', f));
-console.log(`sync-docs: ${n} docs -> src/content/docs`);
+console.log(`sync-docs: ${n} docs -> src/content/docs, PKI Manager ${siteVersion().version}`);

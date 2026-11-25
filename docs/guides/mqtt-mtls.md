@@ -1,4 +1,5 @@
 # Client certificate authentication with revocation (worked example: Mosquitto)
+<!-- tested-with: 3.15.0 -->
 
 Acme Example Ltd runs a Mosquitto broker for factory sensors. Only sensors with a valid
 certificate may connect, and the broker must use TLS. This guide builds that setup with

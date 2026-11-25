@@ -1,0 +1,25 @@
+---
+// Page title, then the versions: the release the site describes, the release that tested
+// the steps of this page, and the first release that has the last change of the page.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import v from '../version.json';
+const pki = Astro.locals.starlightRoute.entry.data.pki;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const rel = (ver: string) => `https://github.com/oriolrius/pki-manager-web/releases/tag/v${ver}`;
+---
+
+<Default />
+<p class="pki-version">
+  Docs for <a href={`${base}/operations/releases/`}>PKI Manager {v.version}</a>{v.date && ` (released ${v.date})`}{v.commitsAfter > 0 && `, from main ${v.commit} (${v.commitsAfter} commits after the release)`}.{' '}
+  {pki?.testedWith && (
+    <>Steps tested with <a href={rel(pki.testedWith)}>{pki.testedWith}</a>.{' '}</>
+  )}
+  {pki && (pki.changedIn
+    ? <>Page last changed in <a href={rel(pki.changedIn)}>{pki.changedIn}</a>.</>
+    : <>Page changed after {v.version}, not in a release yet.</>)}
+</p>
+
+<style>
+  .pki-version { margin-top: 0.5rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); }
+  .pki-version a { color: inherit; }
+</style>
