@@ -333,7 +333,9 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
                 }
               });
             }
-          } catch {}
+          } catch {
+            // Malformed sanDns JSON: skip the SAN matches of this row.
+          }
         }
       }
 

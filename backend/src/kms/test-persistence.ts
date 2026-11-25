@@ -17,7 +17,7 @@ async function waitForKMS(client: KMSClient, maxAttempts = 10): Promise<boolean>
     try {
       const connected = await client.testConnection();
       if (connected) return true;
-    } catch (error) {
+    } catch {
       console.log(`   Waiting for KMS... (attempt ${i + 1}/${maxAttempts})`);
     }
     await new Promise(resolve => setTimeout(resolve, 2000));

@@ -953,7 +953,7 @@ export class KMSClient {
           }
         }
       }
-    } catch (e) {
+    } catch {
       // Key IDs not found in response - need to implement key discovery via Locate/Query operations
     }
 

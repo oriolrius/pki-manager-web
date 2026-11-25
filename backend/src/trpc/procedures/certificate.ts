@@ -1602,7 +1602,7 @@ export const certificateRouter = router({
 
           // Type-specific validation (simplified from issue procedure)
           switch (certificateType) {
-            case 'server':
+            case 'server': {
               const serverValidityCheck = validateCertificateValidity(validityDays, 825);
               if (!serverValidityCheck.valid) {
                 throw new Error(serverValidityCheck.error || 'Invalid validity period');
@@ -1618,8 +1618,9 @@ export const certificateRouter = router({
                 throw new Error(`Invalid SANs: ${sansValidation.errors.join(', ')}`);
               }
               break;
+            }
 
-            case 'client':
+            case 'client': {
               const clientValidityCheck = validateCertificateValidity(validityDays, 730);
               if (!clientValidityCheck.valid) {
                 throw new Error(clientValidityCheck.error || 'Invalid validity period');
@@ -1632,8 +1633,9 @@ export const certificateRouter = router({
                 throw new Error('Client certificate CN must be a valid email address, username, or hostname');
               }
               break;
+            }
 
-            case 'dual':
+            case 'dual': {
               // Dual certificates use server validation rules
               const dualValidityCheck = validateCertificateValidity(validityDays, 825);
               if (!dualValidityCheck.valid) {
@@ -1650,15 +1652,17 @@ export const certificateRouter = router({
                 throw new Error(`Invalid SANs: ${dualSansValidation.errors.join(', ')}`);
               }
               break;
+            }
 
-            case 'code_signing':
+            case 'code_signing': {
               const codeSignValidityCheck = validateCertificateValidity(validityDays, 1095);
               if (!codeSignValidityCheck.valid) {
                 throw new Error(codeSignValidityCheck.error || 'Invalid validity period');
               }
               break;
+            }
 
-            case 'email':
+            case 'email': {
               if (sanEmail.length === 0) {
                 throw new Error('Email protection certificates require at least one email address in SANs');
               }
@@ -1668,6 +1672,7 @@ export const certificateRouter = router({
                 throw new Error(emailValidityCheck.error || 'Invalid validity period');
               }
               break;
+            }
           }
 
           // Generate certificate
@@ -2605,7 +2610,7 @@ export const certificateRouter = router({
                   ca.id
                 );
                 caMap.set(ca.id, { ca, pem: caCertificatePem });
-              } catch (error) {
+              } catch {
                 logger.warn({ caId: ca.id }, 'Failed to fetch CA certificate');
               }
             }
@@ -2752,7 +2757,7 @@ export const certificateRouter = router({
                   ca.id
                 );
                 caMap.set(ca.id, { ca, pem: caCertificatePem });
-              } catch (error) {
+              } catch {
                 logger.warn({ caId: ca.id }, 'Failed to fetch CA certificate');
               }
             }
@@ -2858,7 +2863,7 @@ export const certificateRouter = router({
                 ca.id
               );
               caMap.set(ca.id, { ca, pem: caCertificatePem });
-            } catch (error) {
+            } catch {
               logger.warn({ caId: ca.id }, 'Failed to fetch CA certificate');
             }
           }

@@ -19,5 +19,24 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Same convention as tsc (noUnusedLocals/noUnusedParameters): a leading
+      // underscore marks a value that is unused on purpose.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+      // Existing debt, reported as warnings until it is typed (issue #73).
+      // New code must not add `any`.
+      '@typescript-eslint/no-explicit-any': 'warn',
+      // Fast refresh hint for the Vite dev server only; it has no effect on the
+      // build. Files that export a hook next to a provider stay as they are.
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
   },
 ])

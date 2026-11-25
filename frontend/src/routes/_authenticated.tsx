@@ -27,6 +27,20 @@ function AuthenticatedLayout() {
     isOIDCEnabledAsync().then(setOidcEnabled);
   }, []);
 
+  // Handle authentication redirect. This hook must run before the early
+  // returns below: React needs the same hooks in the same order on every
+  // render (oidcEnabled goes from null to true/false after the first render).
+  useEffect(() => {
+    if (!oidcEnabled) return;
+    if (!auth.isLoading && !auth.isAuthenticated) {
+      // Store current path for redirect after login
+      sessionStorage.setItem('returnUrl', window.location.pathname);
+
+      // Redirect to OIDC provider login
+      auth.signinRedirect();
+    }
+  }, [oidcEnabled, auth.isLoading, auth.isAuthenticated, auth.signinRedirect]);
+
   // Still checking if OIDC is enabled
   if (oidcEnabled === null) {
     return (
@@ -43,17 +57,6 @@ function AuthenticatedLayout() {
   if (!oidcEnabled) {
     return <Outlet />;
   }
-
-  // Handle authentication redirect
-  useEffect(() => {
-    if (!auth.isLoading && !auth.isAuthenticated) {
-      // Store current path for redirect after login
-      sessionStorage.setItem('returnUrl', window.location.pathname);
-
-      // Redirect to OIDC provider login
-      auth.signinRedirect();
-    }
-  }, [auth.isLoading, auth.isAuthenticated, auth.signinRedirect]);
 
   // Loading state while checking authentication
   if (auth.isLoading) {

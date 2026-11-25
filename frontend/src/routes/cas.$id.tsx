@@ -4,7 +4,7 @@ import { getApiUrl } from '@/lib/config';
 import { downloadFile } from '@/lib/download';
 import { generateExportPassword } from '@/lib/export-password';
 import { ExportPasswordField } from '@/components/ExportPasswordField';
-import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Copy, Download } from 'lucide-react';
+import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Download } from 'lucide-react';
 import { useState } from 'react';
 import { useToast, useConfirm } from '@/components/ui';
 
