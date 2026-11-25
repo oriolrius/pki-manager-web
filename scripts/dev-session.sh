@@ -32,8 +32,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 COMMON="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 MAIN="$REPO"
 [ -n "$COMMON" ] && MAIN="$(dirname "$COMMON")"
-SESSION="dev-$(basename "$MAIN")"
-BL_SESSION="backlog-$(basename "$MAIN")"
+# Fixed names: the folder is pki-manager-web, but the sessions keep the project name.
+SESSION="dev-pki-manager"
+BL_SESSION="backlog-pki-manager"
 
 # Value of KEY in backend/.env, or empty (also when the file is missing or the line is commented out).
 env_value() { sed -n "s/^$1=\(.*\)/\1/p" "$REPO/backend/.env" 2>/dev/null | head -1 || true; }
