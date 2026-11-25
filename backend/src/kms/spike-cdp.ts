@@ -9,6 +9,7 @@
  *
  * Usage: cd backend && KMS_URL=http://localhost:42998 pnpm exec tsx src/kms/spike-cdp.ts
  */
+import { processOutput } from '../lib/process-output.js';
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -38,8 +39,8 @@ function showCdp(label: string, certPem: string): boolean {
   let out = "";
   try {
     out = execFileSync("openssl", ["x509", "-in", p, "-noout", "-ext", "crlDistributionPoints"], { encoding: "utf-8" });
-  } catch (e: any) {
-    out = `${e.stdout || ""}${e.stderr || ""}`;
+  } catch (e) {
+    out = processOutput(e);
   }
   const ok = out.includes(CDP_URL);
   console.log(`   ${label}: ${ok ? "✅ CDP present" : "❌ CDP missing"}\n     ${out.trim().replace(/\n/g, "\n     ")}`);

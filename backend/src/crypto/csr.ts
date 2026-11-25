@@ -1,6 +1,7 @@
 /**
  * Certificate Signing Request (CSR) generation utilities
  */
+import type { ForgeExtension } from './types.js';
 
 import forge from 'node-forge';
 import { logger } from '../lib/logger.js';
@@ -16,12 +17,12 @@ import type {
 /**
  * Add extension attributes to CSR
  */
-function addCSRExtensions(csr: any, extensions?: X509Extensions): void {
+function addCSRExtensions(csr: forge.pki.CertificateSigningRequest, extensions?: X509Extensions): void {
   if (!extensions) {
     return;
   }
 
-  const attrs: any[] = [];
+  const attrs: ForgeExtension[] = [];
 
   // Basic Constraints
   if (extensions.basicConstraints) {
@@ -35,7 +36,7 @@ function addCSRExtensions(csr: any, extensions?: X509Extensions): void {
 
   // Key Usage
   if (extensions.keyUsage) {
-    const keyUsage: any = {
+    const keyUsage: ForgeExtension = {
       name: 'keyUsage',
       critical: true,
     };
@@ -68,7 +69,7 @@ function addCSRExtensions(csr: any, extensions?: X509Extensions): void {
 
   // Subject Alternative Names
   if (extensions.subjectAltName) {
-    const altNames: any[] = [];
+    const altNames: { type: number; value: string }[] = [];
 
     if (extensions.subjectAltName.dns) {
       for (const dns of extensions.subjectAltName.dns) {
@@ -186,12 +187,12 @@ export function parseCSR(
   data: string,
   format: CertificateFormat = 'PEM',
 ): {
-  subject: any;
+  subject: ReturnType<typeof forgeAttributesToDn>;
   publicKey: string;
-  attributes: any[];
+  attributes: forge.pki.CertificateField[];
 } {
   try {
-    let csr: any;
+    let csr: forge.pki.CertificateSigningRequest;
 
     if (format === 'PEM') {
       csr = forge.pki.certificationRequestFromPem(data);
@@ -240,7 +241,7 @@ export function convertCSRFormat(
   }
 
   try {
-    let csr: any;
+    let csr: forge.pki.CertificateSigningRequest;
 
     if (fromFormat === 'PEM') {
       csr = forge.pki.certificationRequestFromPem(data);
@@ -267,7 +268,7 @@ export function convertCSRFormat(
 /**
  * Extract requested extensions from CSR
  */
-export function extractCSRExtensions(csrPem: string): any[] {
+export function extractCSRExtensions(csrPem: string): ForgeExtension[] {
   try {
     const csr = forge.pki.certificationRequestFromPem(csrPem);
     const extReq = csr.getAttribute({ name: 'extensionRequest' });

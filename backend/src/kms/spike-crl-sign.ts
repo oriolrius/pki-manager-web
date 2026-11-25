@@ -8,6 +8,8 @@
  *
  * Usage:  cd backend && KMS_URL=http://localhost:42998 pnpm exec tsx src/kms/spike-crl-sign.ts
  */
+import type { KMIPRequest } from './types.js';
+import { processOutput } from '../lib/process-output.js';
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -21,13 +23,13 @@ import { CRLReason } from "../crypto/types.js";
 
 const KMS_URL = (process.env.KMS_URL || "http://localhost:42998").replace(/\/$/, "");
 
-async function rawKmip(request: unknown): Promise<{ ok: boolean; status: number; body: any }> {
+async function rawKmip(request: unknown): Promise<{ ok: boolean; status: number; body: unknown }> {
   const res = await fetch(`${KMS_URL}/kmip/2_1`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  let body: any;
+  let body: unknown;
   const text = await res.text();
   try {
     body = JSON.parse(text);
@@ -37,9 +39,11 @@ async function rawKmip(request: unknown): Promise<{ ok: boolean; status: number;
   return { ok: res.ok, status: res.status, body };
 }
 
-function findTag(elements: any[], tag: string): any {
-  if (!Array.isArray(elements)) return undefined;
-  return elements.find((e) => e?.tag === tag);
+function findTag(body: unknown, tag: string): { value: unknown } | undefined {
+  if (!body || typeof body !== "object" || !("value" in body) || !Array.isArray(body.value)) return undefined;
+  return body.value.find((element: unknown): element is { value: unknown } =>
+    element !== null && typeof element === "object" && "tag" in element && element.tag === tag && "value" in element
+  );
 }
 
 async function run() {
@@ -70,7 +74,7 @@ async function run() {
     const digestHex = forge.util.bytesToHex(md.digest().getBytes());
 
     // Probe several Sign request shapes; Cosmian's exact TTLV expectations are unknown.
-    const probes: Array<{ name: string; req: any }> = [
+    const probes: Array<{ name: string; req: KMIPRequest }> = [
       {
         name: "Sign(Data, RSA+SHA256)",
         req: {
@@ -131,7 +135,7 @@ async function run() {
         continue;
       }
       // Try to find a SignatureData element in the response.
-      const sigEl = findTag(body?.value, "SignatureData");
+      const sigEl = findTag(body, "SignatureData");
       if (sigEl && typeof sigEl.value === "string") {
         console.log(`   ✅ HTTP ${status}: got SignatureData (${sigEl.value.length / 2} bytes)\n`);
         workingSignatureHex = sigEl.value;
@@ -199,9 +203,9 @@ async function run() {
       });
       opensslVerify = true;
       void out;
-    } catch (e: any) {
+    } catch (e) {
       opensslVerify = false;
-      console.log("   openssl verify error:", `${e.stdout || ""}${e.stderr || ""}`.trim());
+      console.log("   openssl verify error:", processOutput(e).trim());
     }
     console.log(`   openssl signature verify against CA ? ${opensslVerify ? "✅ verify OK" : "❌ FAILED"}\n`);
 

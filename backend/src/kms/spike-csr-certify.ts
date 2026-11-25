@@ -11,6 +11,7 @@
  * Usage:  cd backend && KMS_URL=http://localhost:42998 pnpm exec tsx src/kms/spike-csr-certify.ts
  * Requires a running Cosmian KMS (cd kms && docker compose up -d, or a plain default container).
  */
+import { findForgeExtension } from '../crypto/x509.js';
 
 import forge from "node-forge";
 import { KMSClient } from "./client.js";
@@ -71,12 +72,12 @@ function certManagerStyleCsr(): { keys: forge.pki.rsa.KeyPair; pem: string } {
 
 function inspect(certPem: string) {
   const cert = forge.pki.certificateFromPem(certPem);
-  const names = cert.extensions.map((e: any) => e.name || e.id);
+  const names = cert.extensions.map((e) => e.name || e.id);
   const dupes = names.filter((n: string, i: number) => names.indexOf(n) !== i);
-  const ku = cert.extensions.find((e: any) => e.name === "keyUsage") as any;
-  const eku = cert.extensions.find((e: any) => e.name === "extKeyUsage") as any;
-  const bc = cert.extensions.find((e: any) => e.name === "basicConstraints") as any;
-  const san = cert.extensions.find((e: any) => e.name === "subjectAltName") as any;
+  const ku = findForgeExtension(cert, "keyUsage");
+  const eku = findForgeExtension(cert, "extKeyUsage");
+  const bc = findForgeExtension(cert, "basicConstraints");
+  const san = findForgeExtension(cert, "subjectAltName");
   return {
     mod: modHex(cert.publicKey as forge.pki.rsa.PublicKey),
     exts: names,
@@ -84,7 +85,7 @@ function inspect(certPem: string) {
     keyUsage: ku ? { digitalSignature: !!ku.digitalSignature, keyEncipherment: !!ku.keyEncipherment } : null,
     eku: eku ? { serverAuth: !!eku.serverAuth, clientAuth: !!eku.clientAuth } : null,
     basicConstraints: bc ? { cA: !!bc.cA } : null,
-    sans: san?.altNames?.map((a: any) => a.value ?? a.ip) ?? [],
+    sans: san?.altNames?.map((a) => a.value ?? a.ip) ?? [],
   };
 }
 

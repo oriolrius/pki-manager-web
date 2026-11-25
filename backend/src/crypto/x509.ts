@@ -1,6 +1,7 @@
 /**
  * X.509 Certificate generation utilities
  */
+import type { ForgeExtension } from './types.js';
 
 import forge from 'node-forge';
 import { X509Certificate } from 'node:crypto';
@@ -34,7 +35,7 @@ function addExtensions(cert: forge.pki.Certificate, extensions?: X509Extensions)
     return;
   }
 
-  const certExtensions: any[] = [];
+  const certExtensions: ForgeExtension[] = [];
 
   // Basic Constraints
   if (extensions.basicConstraints) {
@@ -48,7 +49,7 @@ function addExtensions(cert: forge.pki.Certificate, extensions?: X509Extensions)
 
   // Key Usage
   if (extensions.keyUsage) {
-    const keyUsage: any = {
+    const keyUsage: ForgeExtension = {
       name: 'keyUsage',
       critical: true,
     };
@@ -81,7 +82,7 @@ function addExtensions(cert: forge.pki.Certificate, extensions?: X509Extensions)
 
   // Subject Alternative Names
   if (extensions.subjectAltName) {
-    const altNames: any[] = [];
+    const altNames: { type: number; value: string }[] = [];
 
     if (extensions.subjectAltName.dns) {
       for (const dns of extensions.subjectAltName.dns) {
@@ -290,10 +291,10 @@ export function generateCertificate(params: CertificateParams): GeneratedCertifi
  * Extract key algorithm from certificate's public key
  */
 function getKeyAlgorithmFromCert(cert: forge.pki.Certificate): string {
-  const publicKey = cert.publicKey as any;
+  const publicKey = cert.publicKey;
 
   // Check if it's an RSA key (has 'n' and 'e' properties)
-  if (publicKey.n && publicKey.e) {
+  if ('n' in publicKey && publicKey.n && publicKey.e) {
     const keySize = publicKey.n.bitLength();
     return keySize >= 4096 ? 'RSA-4096' : 'RSA-2048';
   }
@@ -308,10 +309,10 @@ export function parseCertificate(
   format: CertificateFormat = 'PEM',
 ): {
   serialNumber: string;
-  subject: any;
-  issuer: any;
+  subject: ReturnType<typeof forgeAttributesToDn>;
+  issuer: ReturnType<typeof forgeAttributesToDn>;
   validity: { notBefore: Date; notAfter: Date };
-  extensions: any[];
+  extensions: ForgeExtension[];
   keyAlgorithm: string;
 } {
   try {
@@ -351,12 +352,12 @@ export function parseCertificate(
 }
 
 /** Parse Node's newline/comma-separated DN string ("CN=x\nO=y") into a DistinguishedName. */
-function nodeDnToObject(dn: string): any {
+function nodeDnToObject(dn: string) {
   return parseDN(dn.replace(/[\r\n]+/g, ',').replace(/,+/g, ','));
 }
 
 /** Map a Node KeyObject to our KeyAlgorithm label. */
-function nodeKeyAlgorithm(publicKey: any): string {
+function nodeKeyAlgorithm(publicKey: import('node:crypto').KeyObject): string {
   const type = publicKey.asymmetricKeyType;
   if (type === 'ec') {
     const curve = String(publicKey.asymmetricKeyDetails?.namedCurve || '').toLowerCase();
@@ -388,7 +389,7 @@ function parseCertificateViaNode(
     // Generic ASN.1 extension list isn't exposed by X509Certificate; EC leaf flows don't
     // consume parseCertificate().extensions (only CA/RSA paths do).
     extensions: [],
-    keyAlgorithm: nodeKeyAlgorithm(x.publicKey as any),
+    keyAlgorithm: nodeKeyAlgorithm(x.publicKey),
   };
 }
 
@@ -484,7 +485,7 @@ export function extractSANs(certificatePem: string): SubjectAlternativeNames {
     uri: [],
   };
 
-  const sanExtension = cert.extensions.find((ext: any) => ext.name === 'subjectAltName');
+  const sanExtension = findForgeExtension(cert, 'subjectAltName');
   if (!sanExtension || !sanExtension.altNames) {
     return sans;
   }
@@ -507,4 +508,10 @@ export function extractSANs(certificatePem: string): SubjectAlternativeNames {
   }
 
   return sans;
+}
+
+/** node-forge exposes its decoded extension array without field types. */
+export function findForgeExtension(cert: forge.pki.Certificate | null, name: string): ForgeExtension | undefined {
+  const extensions: ForgeExtension[] | undefined = cert?.extensions;
+  return extensions?.find((extension) => extension.name === name);
 }

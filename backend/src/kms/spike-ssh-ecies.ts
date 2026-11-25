@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     try {
       cosmian(['ec', 'keys', 'create', '--curve', 'nist-p256', '--tag', hostTag, '--tag', 'host-pubkey', keyId]);
       record('(a) register per-host ECIES keypair (tagged)', true, `created ${keyId} / ${keyId}_pk tagged ${hostTag}`);
-    } catch (e: any) {
+    } catch (e) {
       record('(a) register per-host ECIES keypair (tagged)', false, String(e).slice(0, 140));
     }
 
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
       const out = cosmian(['locate', '--tag', hostTag]);
       const found = out.split('\n').map((s) => s.trim()).filter(Boolean).filter((s) => s.includes(keyId));
       record('(b) locate-by-tag', found.length >= 1, `resolved ${found.length} id(s) for tag ${hostTag}`);
-    } catch (e: any) {
+    } catch (e) {
       record('(b) locate-by-tag', false, String(e).slice(0, 140));
     }
 
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       cosmian(['ec', 'decrypt', '--key-id', keyId, '-o', rt, ct]);
       const ok = Buffer.compare(payload, readFileSync(rt)) === 0;
       record('(c) ECIES encrypt -> decrypt round-trip', ok, ok ? 'plaintext recovered exactly' : 'MISMATCH');
-    } catch (e: any) {
+    } catch (e) {
       record('(c) ECIES encrypt -> decrypt round-trip', false, String(e).slice(0, 140));
     }
   } finally {
