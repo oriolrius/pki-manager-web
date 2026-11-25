@@ -5,7 +5,9 @@ run `just` to list the recipes.
 
 ## Prerequisites
 
-- Node.js >= 20 and pnpm >= 9
+- Node.js 22 (LTS) and pnpm >= 9. The file `.nvmrc` at the repository root holds the Node.js
+  major version (`nvm use`, `fnm use`). CI reads the same file, and `docker/Dockerfile` uses
+  `node:22-alpine`. The website in `site/` pins its own exact version in `site/.nvmrc`.
 - Docker (for the Cosmian KMS and Keycloak containers)
 - [just](https://just.systems), [tmux](https://github.com/tmux/tmux) and [mprocs](https://github.com/pvolok/mprocs) for the dev stack
 - Optional: the [Backlog.md](https://backlog.md) CLI (`npm install -g backlog.md`) and

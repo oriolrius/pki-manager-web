@@ -118,7 +118,7 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 | Frontend | React 19 · TanStack Router/Query · tRPC client · Tailwind 4 · Vite 7 · Vitest+RTL |
 | Issuer | Go 1.23 · controller-runtime 0.20 · cert-manager 1.16 · Helm |
 | Website | Astro · Starlight, in `site/` (content comes from `docs/` and `backlog/`) |
-| Tooling | just · pnpm workspaces (Node ≥20, pnpm ≥9) · Commitizen conventional commits |
+| Tooling | just · pnpm workspaces (Node 22 LTS, `.nvmrc`; pnpm ≥9) · Commitizen conventional commits |
 
 ## Commands
 

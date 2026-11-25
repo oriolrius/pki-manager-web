@@ -77,6 +77,9 @@ cd backend && pnpm typecheck
 | Docs site | `docs.yml` | changes to the documentation, the site or the backend source | Builds the site, runs the API examples against the demo stack; from `main`, publishes the site image (see [Website deploy](#website-deploy)) |
 | Release | `release.yml` | tags `v*.*.*` | Creates the GitHub Release from the matching `CHANGELOG.md` section |
 
+The Node.js version of the Test workflow comes from `.nvmrc` (major 22), and the Docs site
+workflow uses `site/.nvmrc`.
+
 Images go only to GitHub Container Registry. The image names and tags are in
 [Docker deployment](../operations/deployment.md#published-images).
 
