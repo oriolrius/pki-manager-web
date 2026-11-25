@@ -1,10 +1,11 @@
 import { generateOpenApiDocument } from 'trpc-swagger';
 import { appRouter } from './router.js';
 import type { OpenAPIV3 } from 'openapi-types';
+import { APP_VERSION } from '../lib/version.js';
 
 export const openApiDocument: OpenAPIV3.Document = generateOpenApiDocument(appRouter, {
   title: 'PKI Manager API',
-  version: '1.0.0',
+  version: APP_VERSION,
   baseUrl: 'http://localhost:3000/api',
   description: 'Public Key Infrastructure (PKI) Management System API - Certificate Authority and Certificate Management',
   tags: [

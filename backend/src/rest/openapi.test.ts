@@ -7,11 +7,18 @@
  * 3. All required components are present
  */
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { registerOpenAPI, swaggerOptions } from './openapi.js';
 import { openApiSchemas } from './schemas/openapi-schemas.js';
+
+const packageVersion = (
+  JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;
 
 describe('REST API OpenAPI 3.1.0 Specification', () => {
   let app: FastifyInstance;
@@ -54,7 +61,7 @@ describe('REST API OpenAPI 3.1.0 Specification', () => {
       const info = openApiSpec.info as Record<string, unknown>;
       expect(info).toBeDefined();
       expect(info.title).toBe('PKI Manager REST API');
-      expect(info.version).toBe('1.0.0');
+      expect(info.version).toBe(packageVersion);
       expect(info.description).toBeDefined();
     });
 
@@ -66,7 +73,9 @@ describe('REST API OpenAPI 3.1.0 Specification', () => {
     it('should have license information', () => {
       const info = openApiSpec.info as Record<string, unknown>;
       expect(info.license).toBeDefined();
-      expect((info.license as Record<string, unknown>).name).toBe('MIT');
+      // Apache-2.0 (see LICENSE), with the SPDX identifier. OpenAPI 3.1 forbids
+      // `identifier` together with `url`.
+      expect(info.license).toEqual({ name: 'Apache-2.0', identifier: 'Apache-2.0' });
     });
   });
 

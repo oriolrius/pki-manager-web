@@ -15,6 +15,7 @@ import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
 import { openApiDocument } from './trpc/openapi.js';
+import { APP_VERSION } from './lib/version.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
@@ -166,7 +167,7 @@ describe('Server - OpenAPI Integration', () => {
 
       const spec = JSON.parse(response.body);
       expect(spec.info.title).toBe('PKI Manager API');
-      expect(spec.info.version).toBe('1.0.0');
+      expect(spec.info.version).toBe(APP_VERSION);
       expect(spec.info.description).toBeDefined();
     });
   });

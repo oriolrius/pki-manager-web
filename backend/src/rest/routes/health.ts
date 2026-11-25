@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { APP_VERSION } from '../../lib/version.js';
 
 /**
  * Health check routes for the REST API
@@ -19,7 +20,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
             },
             version: {
               type: 'string',
-              description: 'API version',
+              description: 'PKI Manager release version',
             },
             timestamp: {
               type: 'string',
@@ -34,7 +35,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
   }, async (_request, _reply) => {
     return {
       status: 'ok',
-      version: '1.0.0',
+      version: APP_VERSION,
       timestamp: new Date().toISOString(),
     };
   });
