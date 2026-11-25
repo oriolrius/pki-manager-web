@@ -1,3 +1,4 @@
+# Dev stack processes. Start it with `just dev` (tmux session, restart, port checks), never with a bare `mprocs`.
 procs:
   backend:
     shell: pnpm dev

@@ -5,18 +5,11 @@
   "description": "PKI Manager - Web-based Public Key Infrastructure management application",
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "bash scripts/dev-session.sh up",
-    "dev:status": "bash scripts/dev-session.sh status",
-    "dev:stop": "bash scripts/dev-session.sh stop",
-    "dev:down": "bash scripts/dev-session.sh down",
-    "dev:raw": "mprocs",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
-    "clean": "pnpm -r clean && rm -rf node_modules",
-    "test:screenshots": "playwright test tests/screenshots.spec.ts",
-    "test:screenshots:ui": "playwright test tests/screenshots.spec.ts --ui"
+    "clean": "pnpm -r clean && rm -rf node_modules"
   },
   "engines": {
     "node": ">=20.0.0",
