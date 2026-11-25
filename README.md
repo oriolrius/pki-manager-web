@@ -4,7 +4,7 @@
 > Private keys are made and kept in a KMS.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-oriolrius.github.io-FF6600.svg)](https://pki-manager.oriolrius.cat/)
+[![Website](https://img.shields.io/badge/website-pki--manager.oriolrius.cat-FF6600.svg)](https://pki-manager.oriolrius.cat/)
 
 **Website: <https://pki-manager.oriolrius.cat/>**. It says what PKI Manager does, how it
 works and how to use it. This file does not repeat it.
