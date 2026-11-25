@@ -348,3 +348,18 @@ func TestOpenSSLCertRep(t *testing.T) {
 		t.Fatal("wrong leaf key")
 	}
 }
+
+func TestSerialHexKeepsTheLeadingZero(t *testing.T) {
+	// A serial that starts with a zero digit, as about one in eight backend serials do.
+	const want = "018fb7bee70904921dc90b599ee30cc76e3ab12a"
+	serial, ok := new(big.Int).SetString(want, 16)
+	if !ok {
+		t.Fatal("bad test serial")
+	}
+	if got := serialHex(serial); got != want {
+		t.Fatalf("serialHex = %q, want %q", got, want)
+	}
+	if got := serialHex(big.NewInt(0x7f)); got != "7f" {
+		t.Fatalf("serialHex(0x7f) = %q, want 7f", got)
+	}
+}
