@@ -62,6 +62,9 @@ with `400 SSH_ERROR`:
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | the body fails the Zod schema (for example, an invalid `fqdn`) |
 | `400` | `SSH_ERROR` | the service refused or failed: host key not `ecdsa-sha2-nistp256`, not an OpenSSH public key, host offboarded, no active Host CA in the token's zone, KMS error. `message` gives the cause. |
+| `400` | `VALIDATION_ERROR` | the `Idempotency-Key` header is not 1 to 255 printable ASCII characters without spaces |
+| `409` | `IDEMPOTENCY_IN_PROGRESS` | a request with the same token and `Idempotency-Key` is in progress |
+| `422` | `IDEMPOTENCY_KEY_REUSED` | the `Idempotency-Key` was used for another endpoint or another request |
 
 Plus the token errors above and the Fastify schema `400`.
 
@@ -83,6 +86,9 @@ User keys can be `ssh-ed25519` or `ecdsa-sha2-nistp256`.
 | `400` | `VALIDATION_ERROR` | the body fails the Zod schema (for example, an invalid principal name or CIDR) |
 | `403` | `TOKEN_LIMIT` | the request is outside the token limits (see below) |
 | `400` | `SSH_ERROR` | the service refused or failed: not an OpenSSH public key, identity disabled, identity not entitled to a requested principal, no active User CA in the token's zone, KMS error. `message` gives the cause. |
+| `400` | `VALIDATION_ERROR` | the `Idempotency-Key` header is not 1 to 255 printable ASCII characters without spaces |
+| `409` | `IDEMPOTENCY_IN_PROGRESS` | a request with the same token and `Idempotency-Key` is in progress |
+| `422` | `IDEMPOTENCY_KEY_REUSED` | the `Idempotency-Key` was used for another endpoint or another request |
 
 Plus the token errors above and the Fastify schema `400`.
 
@@ -105,6 +111,36 @@ POST /api/v1/ssh/tokens          # OIDC (operator) — or trpc.ssh.token.mint
 { "name": "ci-deploy", "userCaId": "…", "opSet": ["sign-user"],
   "allowedPrincipals": ["deployer"], "maxValidForSeconds": 900 }
 ```
+
+### `Idempotency-Key` (sign-host, sign-user)
+
+The header is optional. Send it to make a retry safe: a retry with the same key
+gets the same certificate, and no new serial is minted.
+
+- **Scope: one fleet token.** The server keys the cache on (fleet token, key).
+  Two tokens that send the same key get two independent certificates. A token
+  never receives a response that was cached for another token.
+- **Binding: one endpoint and one request.** A key used on `sign-host` can not be
+  used on `sign-user`. A key can not be reused for a different request:
+  - `sign-host`: a different `fqdn`, `opensshHostPubkey`, `validForSeconds` or `keyId`.
+    The `addresses` field is not compared: the role sends the live IPs of the node,
+    and an existing host keeps its stored addresses.
+  - `sign-user`: any different field (`subject`, `sshPublicKey`, `principals`,
+    `extensions`, `forceCommand`, `sourceAddress`, `validForSeconds`, `keyId`).
+
+  Such a request gets `422 IDEMPOTENCY_KEY_REUSED`. Use a new key.
+- **Concurrency.** While the first request with a key is in progress, a second
+  request with the same token and key gets `409 IDEMPOTENCY_IN_PROGRESS`. Retry it.
+  When the first request fails, its key is free again.
+- **Lifetime.** The cache keeps a response until the certificate's `validBefore`.
+  After that time, or after the certificate is revoked, the same key mints a new
+  certificate.
+- **Format.** 1 to 255 printable ASCII characters, no spaces. Otherwise `400 VALIDATION_ERROR`.
+
+The server checks the request body and the token limits before it looks up the
+cache, so an invalid request or a request over the token limits is refused even
+when its key is in the cache. The `409` and `422` refusals write an
+`ssh.external.sign` audit row with `status: failure`.
 
 ### `POST /api/v1/external/ssh/register-host-pubkey`
 Token op: `register-host-pubkey`. Confirms that the host can receive the encrypted KRL. No new
@@ -220,8 +256,9 @@ This endpoint has no token, so it never returns `401` or `403`.
 
 The two encryption failures write an `ssh.krl.distribute` audit row with `status: failure`.
 
-Retryability: sign/register are **idempotent with an `Idempotency-Key`** and safe
-to retry; without it a retry mints a new serial. `/krl` is always safe to retry.
+Retryability: `sign-host` and `sign-user` are **idempotent with an `Idempotency-Key`**
+(scoped to the fleet token, see above) and safe to retry; without it a retry mints a
+new serial. `register-host-pubkey` and `/krl` are always safe to retry.
 
 ## Public download endpoints (no auth)
 

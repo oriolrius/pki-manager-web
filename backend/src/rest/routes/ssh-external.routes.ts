@@ -10,7 +10,15 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { eq as eqcol, and as andcol, desc as desccol } from 'drizzle-orm';
-import { sshHosts, sshIdentities, sshIdempotency, sshCertificates, sshCas } from '../../db/schema.js';
+import { sshHosts, sshIdentities, sshCertificates, sshCas } from '../../db/schema.js';
+import {
+  beginIdempotent,
+  completeIdempotent,
+  releaseIdempotent,
+  readIdempotencyKey,
+  requestFingerprint,
+  type SshIdempotencyOp,
+} from '../../services/ssh-idempotency.service.js';
 import { isValidHostId, validateCidrList, isValidPrincipalName } from '../../services/ssh-config.js';
 import { getSshHostService, assertEcdsaHostKey } from '../../services/ssh-host.service.js';
 import { parseSshPublicKey } from '../../crypto/ssh/pubkey.js';
@@ -98,17 +106,34 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     return verified;
   }
 
-  /** Return a cached response for a repeated Idempotency-Key, else null. */
-  async function cached(req: any): Promise<any | null> {
-    const key = req.headers['idempotency-key'] as string | undefined;
-    if (!key) return null;
-    const row = (await db.select().from(sshIdempotency).where(eq(sshIdempotency.key, key)).limit(1))[0];
-    return row ? JSON.parse(row.response) : null;
-  }
-  async function remember(req: any, tokenId: string, certId: string, response: any): Promise<void> {
-    const key = req.headers['idempotency-key'] as string | undefined;
-    if (!key) return;
-    await db.insert(sshIdempotency).values({ key, tokenId, certId, response: JSON.stringify(response) } as any).onConflictDoNothing?.();
+  /**
+   * Idempotency-Key handling (issue #52): the cache is scoped to the fleet token
+   * and bound to the endpoint + request identity (services/ssh-idempotency).
+   * Returns the reservation to complete/release, or null when the handler must
+   * stop because a reply (replay or error) was already sent.
+   */
+  async function idempotency(
+    req: any,
+    reply: FastifyReply,
+    token: VerifiedToken,
+    op: SshIdempotencyOp,
+    fields: Record<string, unknown>
+  ): Promise<{ reservation: { tokenId: string; key: string } | null; replied: boolean }> {
+    const begin = await beginIdempotent(
+      { db, ipAddress: req.ip },
+      { tokenId: token.id, key: readIdempotencyKey(req.headers), op, fingerprint: requestFingerprint(op, fields) }
+    );
+    if (begin.kind === 'none') return { reservation: null, replied: false };
+    if (begin.kind === 'reserved') return { reservation: begin, replied: false };
+    if (begin.kind === 'replay') {
+      reply.send(begin.response);
+      return { reservation: null, replied: true };
+    }
+    if (begin.status !== 400) {
+      await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_token', entityId: token.id, status: 'failure', details: { tokenId: token.id, op, error: begin.code }, ipAddress: req.ip });
+    }
+    err(reply, begin.status, begin.code, begin.message);
+    return { reservation: null, replied: true };
   }
 
   // ---- POST /sign-host ----
@@ -122,13 +147,22 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   }, async (req, reply) => {
     const token = await authn(req, reply, 'sign-host');
     if (!token) return;
-    const prev = await cached(req);
-    if (prev) return prev;
 
     const parsed = signHostBody.safeParse(req.body);
     if (!parsed.success) return err(reply, 400, 'VALIDATION_ERROR', parsed.error.issues.map((i) => i.message).join('; '));
     const body = parsed.data;
     const ctx = { db, ipAddress: req.ip };
+
+    // Identity fields of a host request. `addresses` is left out on purpose: the
+    // role sends the node's live IPs, which change (a new bridge) under the same
+    // host+fingerprint key, and an existing host keeps its stored addresses.
+    const idem = await idempotency(req, reply, token, 'sign-host', {
+      fqdn: body.fqdn,
+      opensshHostPubkey: body.opensshHostPubkey.trim(),
+      validForSeconds: body.validForSeconds ?? null,
+      keyId: body.keyId ?? null,
+    });
+    if (idem.replied) return reply;
 
     try {
       // Upsert host by fqdn WITHIN THE TOKEN'S ZONE (decision-017 A2): the fleet
@@ -160,10 +194,11 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         sourceType: 'automation',
       });
       const response = { hostId: host.id, certOpenssh: issued.cert.certOpenssh, serial: issued.cert.serial, keyId: issued.cert.keyId, validBefore: issued.cert.validBefore };
-      await remember(req, token.id, issued.cert.id, response);
+      if (idem.reservation) await completeIdempotent(ctx, idem.reservation, issued.cert.id, response, new Date(issued.cert.validBefore));
       await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_certificate', entityId: issued.cert.id, status: 'success', details: { tokenId: token.id, fqdn: body.fqdn, op: 'sign-host' }, ipAddress: req.ip });
       return response;
     } catch (e: any) {
+      if (idem.reservation) await releaseIdempotent(ctx, idem.reservation);
       return err(reply, 400, 'SSH_ERROR', e?.message ?? 'sign-host failed');
     }
   });
@@ -179,8 +214,6 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   }, async (req, reply) => {
     const token = await authn(req, reply, 'sign-user');
     if (!token) return;
-    const prev = await cached(req);
-    if (prev) return prev;
 
     const parsed = signUserBody.safeParse(req.body);
     if (!parsed.success) return err(reply, 400, 'VALIDATION_ERROR', parsed.error.issues.map((i) => i.message).join('; '));
@@ -197,6 +230,19 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_token', entityId: token.id, status: 'failure', details: { tokenId: token.id, subject: body.subject, op: 'sign-user', principals: body.principals, validForSeconds: body.validForSeconds, error: e.message }, ipAddress: req.ip });
       return err(reply, 403, 'TOKEN_LIMIT', e.message);
     }
+
+    // Every field of a user request shapes the certificate, so all are identity.
+    const idem = await idempotency(req, reply, token, 'sign-user', {
+      subject: body.subject,
+      sshPublicKey: body.sshPublicKey.trim(),
+      principals: [...body.principals].sort(),
+      extensions: body.extensions ? [...body.extensions].sort() : null,
+      forceCommand: body.forceCommand ?? null,
+      sourceAddress: body.sourceAddress ?? null,
+      validForSeconds,
+      keyId: body.keyId ?? null,
+    });
+    if (idem.replied) return reply;
 
     try {
       // Upsert identity by subject WITHIN THE TOKEN'S ZONE (decision-017 A2).
@@ -222,10 +268,11 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         sourceType: 'automation',
       });
       const response = { identityId: ident.id, certOpenssh: issued.cert.certOpenssh, serial: issued.cert.serial, keyId: issued.cert.keyId, validBefore: issued.cert.validBefore };
-      await remember(req, token.id, issued.cert.id, response);
+      if (idem.reservation) await completeIdempotent(ctx, idem.reservation, issued.cert.id, response, new Date(issued.cert.validBefore));
       await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_certificate', entityId: issued.cert.id, status: 'success', details: { tokenId: token.id, subject: body.subject, op: 'sign-user' }, ipAddress: req.ip });
       return response;
     } catch (e: any) {
+      if (idem.reservation) await releaseIdempotent(ctx, idem.reservation);
       return err(reply, 400, 'SSH_ERROR', e?.message ?? 'sign-user failed');
     }
   });
