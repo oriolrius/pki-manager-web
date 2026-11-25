@@ -35,3 +35,6 @@ pki/
 
 # Local SCEP credentials (never commit enrollment challenges or API tokens)
 docker/scep-secrets/
+
+# CodeGraph index (local to each checkout)
+.codegraph/

@@ -25,6 +25,34 @@ about it: say what it does, how, and what it does not do.
 Read the guide of a subsystem before you work in it: it has verified commands, architecture and
 gotchas.
 
+## Related repositories
+
+The author keeps all the repositories of the project side by side in one group folder, so
+`../<name>` from this repository is the sibling checkout:
+
+| Folder | What it is |
+|---|---|
+| `pki-manager-web` | this repository: backend, frontend, Kubernetes issuer, SCEP gateway, website |
+| `../pki-manager-cli` | Python CLI (`pki`), generated from the REST OpenAPI spec ([oriolrius/pki-manager-cli](https://github.com/oriolrius/pki-manager-cli)) |
+| `../pki-manager-ansible` | Ansible collection `oriolrius.pki_manager` ([oriolrius/pki-manager-ansible](https://github.com/oriolrius/pki-manager-ansible)) |
+| `../skill-pki-manager` | Claude Code skill that drives the API; `../pki-manager-skill` is an older copy |
+| `../k5-stack-pki`, `../k5-stack-pki-site` | the author's private deploy stacks (the app and the website) |
+
+A change to the REST API or its Zod schemas can break the CLI and the Ansible collection. Check
+them when you change an endpoint. A sibling folder can be absent: then skip it.
+
+## Code navigation (CodeGraph)
+
+This repository and the CLI and Ansible siblings have a local CodeGraph index in `.codegraph/`
+(git-ignored, one per checkout). It covers TypeScript, the Go issuer and the Python files.
+
+- Use the `codegraph_*` tools for structure (definitions, callers, impact, flows). Use grep only
+  for literal text. For a sibling, pass its path as `projectPath`.
+- The MCP server updates the index when files change. After a branch switch, a pull or a merge,
+  run `just codegraph` (it syncs this repository and the indexed siblings).
+- A T3 worktree (`~/.t3/worktrees/...`) has no index. Run `codegraph init .` in it if you need
+  one, or use the native tools there.
+
 ## Documentation rules: one source of truth
 
 - One topic has one document. Search before you write. Change the document that exists and link to it.
@@ -105,6 +133,7 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 | `just stop` / `just down` | stop the processes / also the KMS and Keycloak containers |
 | `just test` / `typecheck` / `lint` / `build` | both workspaces (`pnpm -r`) |
 | `just site-build` | build the website and check its links |
+| `just codegraph` | sync the CodeGraph index of this checkout and of the indexed siblings (makes it when absent) |
 | `just demo up\|down\|shots` | demo stack for the screenshots and the API examples of the docs |
 
 **Never launch bare `mprocs`.** After `just dev`, the web UI is at http://localhost:52080 (login
