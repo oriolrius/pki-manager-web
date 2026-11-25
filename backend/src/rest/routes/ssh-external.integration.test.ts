@@ -102,6 +102,33 @@ describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
     expect(r1.json().certOpenssh).toBe(r2.json().certOpenssh);
   });
 
+  it('scopes the Idempotency-Key to the fleet token: two tokens, same key, own certs (issue #52)', async () => {
+    const other = await getSshFleetTokenService().mint(ctx, { name: 'fleet-2', userCaId: userCa.id, hostCaId: hostCa.id, opSet: ['sign-host', 'sign-user'] });
+    const key = { 'idempotency-key': 'shared-key-52' };
+    const a1 = await sign('sign-host', { fqdn: 'tenant-a.lab.local', opensshHostPubkey: hostPub }, key);
+    const b1 = await app.inject({ method: 'POST', url: '/api/v1/external/ssh/sign-host', headers: { authorization: `Bearer ${other.token}`, ...key }, payload: { fqdn: 'tenant-b.lab.local', opensshHostPubkey: hostPub } });
+    expect(a1.statusCode).toBe(200);
+    expect(b1.statusCode).toBe(200);
+    expect(b1.json().serial).not.toBe(a1.json().serial);
+    expect(b1.json().hostId).not.toBe(a1.json().hostId);
+    writeFileSync(join(work, 'b1.pub'), b1.json().certOpenssh);
+    expect(execFileSync('ssh-keygen', ['-L', '-f', join(work, 'b1.pub')], { encoding: 'utf8' })).toContain('tenant-b.lab.local');
+    // Each token replays its own entry.
+    const a2 = await sign('sign-host', { fqdn: 'tenant-a.lab.local', opensshHostPubkey: hostPub }, key);
+    const b2 = await app.inject({ method: 'POST', url: '/api/v1/external/ssh/sign-host', headers: { authorization: `Bearer ${other.token}`, ...key }, payload: { fqdn: 'tenant-b.lab.local', opensshHostPubkey: hostPub } });
+    expect(a2.json().serial).toBe(a1.json().serial);
+    expect(b2.json().serial).toBe(b1.json().serial);
+  });
+
+  it('refuses an Idempotency-Key reused on another endpoint (422)', async () => {
+    const key = { 'idempotency-key': 'cross-route-52' };
+    const h = await sign('sign-host', { fqdn: 'xroute.lab.local', opensshHostPubkey: hostPub }, key);
+    expect(h.statusCode).toBe(200);
+    const u = await sign('sign-user', { subject: 'ci@pipeline', sshPublicKey: userPub, principals: ['deployer'] }, key);
+    expect(u.statusCode).toBe(422);
+    expect(u.json().error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+  });
+
   it('enforces token scope (a host-only token cannot sign users)', async () => {
     const hostOnly = await getSshFleetTokenService().mint(ctx, { name: 'host-only', hostCaId: hostCa.id, opSet: ['sign-host'] });
     const r = await app.inject({ method: 'POST', url: '/api/v1/external/ssh/sign-user', headers: { authorization: `Bearer ${hostOnly.token}` }, payload: { subject: 'x', sshPublicKey: userPub, principals: ['admin'] } });

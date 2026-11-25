@@ -5,6 +5,7 @@ import {
   index,
   uniqueIndex,
   blob,
+  primaryKey,
   type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
@@ -626,14 +627,30 @@ export const sshFleetTokens = sqliteTable(
   })
 );
 
-// Idempotency cache for external signing (SSH-19).
-export const sshIdempotency = sqliteTable('ssh_idempotency', {
-  key: text('key').primaryKey(), // token-scoped Idempotency-Key
-  tokenId: text('token_id'),
-  certId: text('cert_id'),
-  response: text('response').notNull(), // cached JSON response
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
-});
+// Idempotency cache for external signing (SSH-19). Scoped to the fleet token:
+// the primary key is (token_id, key), so two tokens never share a cached
+// response (issue #52). A row with a NULL response is an in-flight reservation.
+// `op` + `request_hash` bind a key to one endpoint and one request identity.
+// `expires_at` is the cached certificate's validBefore (the reservation deadline
+// while in flight). Logic: services/ssh-idempotency.service.ts.
+export const sshIdempotency = sqliteTable(
+  'ssh_idempotency',
+  {
+    tokenId: text('token_id').notNull(),
+    key: text('key').notNull(),
+    op: text('op').notNull(), // sign-host | sign-user
+    requestHash: text('request_hash').notNull(), // sha256 of the request identity fields
+    certId: text('cert_id'),
+    response: text('response'), // cached JSON response; NULL while in flight
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.tokenId, table.key] }),
+    expiresIdx: index('idx_ssh_idempotency_expires').on(table.expiresAt),
+    certIdx: index('idx_ssh_idempotency_cert').on(table.certId),
+  })
+);
 
 // Type exports for use in application code
 export type CertificateAuthority = typeof certificateAuthorities.$inferSelect;
