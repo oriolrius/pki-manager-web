@@ -71,7 +71,7 @@ export function fingerprintToHash(fp: string): Buffer | null {
 }
 
 export class SshKrlService {
-  private async getCa(ctx: ServiceContext, caId: string): Promise<any> {
+  private async getCa(ctx: ServiceContext, caId: string) {
     const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
     if (!ca) throw new SshKrlError(`SSH CA ${caId} not found`);
     return ca;
@@ -93,7 +93,7 @@ export class SshKrlService {
       serial: cert.serial,
       reason: reason ?? null,
       revokedBy: ctx.ipAddress ?? null,
-    } as any);
+    });
     await this.invalidateHostLineages(ctx);
     return this.generate(ctx, cert.caId);
   }
@@ -109,7 +109,7 @@ export class SshKrlService {
       keyFingerprint: fingerprint,
       reason: reason ?? null,
       revokedBy: ctx.ipAddress ?? null,
-    } as any);
+    });
     await this.invalidateHostLineages(ctx);
     return this.generate(ctx, caId);
   }
@@ -125,7 +125,7 @@ export class SshKrlService {
       serial,
       reason: reason ?? null,
       revokedBy: ctx.ipAddress ?? null,
-    } as any);
+    });
     await this.invalidateHostLineages(ctx);
     return this.generate(ctx, caId);
   }
@@ -190,7 +190,7 @@ export class SshKrlService {
         serial: cert.serial,
         reason: opts.reason ? `purge(preserve): ${opts.reason}` : 'purge: preserved revocation of removed cert',
         revokedBy: ctx.ipAddress ?? null,
-      } as any);
+      });
       preservedSerial = true;
     } else if (revoked) {
       // expired-revoked (harmless) or explicit dropRevocation → serial leaves the KRL
@@ -267,9 +267,9 @@ export class SshKrlService {
     const directives = await ctx.db.select().from(sshRevocations).where(eq(sshRevocations.caId, caId));
 
     const serials = new Set<string>();
-    for (const c of revokedCerts as any[]) serials.add(c.serial);
+    for (const c of revokedCerts) serials.add(c.serial);
     const hashes: Buffer[] = [];
-    for (const d of directives as any[]) {
+    for (const d of directives) {
       if (d.targetType === 'serial' && d.serial) serials.add(d.serial);
       if (d.targetType === 'key_fingerprint' && d.keyFingerprint) {
         const h = fingerprintToHash(d.keyFingerprint);
@@ -314,7 +314,7 @@ export class SshKrlService {
       thisUpdate,
       nextUpdate,
       revokedCount,
-    } as any);
+    });
 
     await createAuditLog({
       db: ctx.db,
@@ -331,7 +331,7 @@ export class SshKrlService {
   }
 
   /** Latest KRL row for a CA (or null). Used by the public/authenticated serving endpoints. */
-  async getLatestRow(ctx: ServiceContext, caId: string): Promise<any | null> {
+  async getLatestRow(ctx: ServiceContext, caId: string): Promise<typeof sshKrls.$inferSelect | null> {
     return (
       (await ctx.db.select().from(sshKrls).where(eq(sshKrls.caId, caId)).orderBy(desc(sshKrls.krlNumber)).limit(1))[0] ?? null
     );
@@ -352,9 +352,9 @@ export class SshKrlService {
     };
   }
 
-  async listRevocations(ctx: ServiceContext, caId: string): Promise<any[]> {
+  async listRevocations(ctx: ServiceContext, caId: string) {
     const rows = await ctx.db.select().from(sshRevocations).where(eq(sshRevocations.caId, caId)).orderBy(desc(sshRevocations.revokedAt));
-    return (rows as any[]).map((r) => ({
+    return rows.map((r) => ({
       id: r.id,
       targetType: r.targetType,
       serial: r.serial,

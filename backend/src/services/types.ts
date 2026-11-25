@@ -1,3 +1,4 @@
+import type { db } from '../db/client.js';
 // Shared types for the service layer
 
 /**
@@ -5,6 +6,6 @@
  * Contains database connection and optional request metadata
  */
 export interface ServiceContext {
-  db: any;
+  db: typeof db;
   ipAddress?: string | null;
 }

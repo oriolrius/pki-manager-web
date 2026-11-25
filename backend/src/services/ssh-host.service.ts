@@ -98,7 +98,7 @@ export interface HostDeployBundle {
   prerequisites: string;
 }
 
-function hostDto(row: any): SshHostDto {
+function hostDto(row: typeof sshHosts.$inferSelect): SshHostDto {
   return {
     id: row.id,
     zoneId: row.zoneId,
@@ -142,7 +142,7 @@ export class SshHostService {
       opensshHostPubkey: parsed.blob ? params.opensshHostPubkey.trim() : null,
       hostKeyAlgorithm: parsed.algo,
       status: 'pending',
-    } as any);
+    });
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.host.register',
@@ -208,7 +208,7 @@ export class SshHostService {
     const rows = opts?.zoneId
       ? await ctx.db.select().from(sshHosts).where(eq(sshHosts.zoneId, opts.zoneId)).orderBy(desc(sshHosts.createdAt))
       : await ctx.db.select().from(sshHosts).orderBy(desc(sshHosts.createdAt));
-    return (rows as any[]).map(hostDto);
+    return rows.map(hostDto);
   }
 
   async get(ctx: ServiceContext, id: string): Promise<SshHostDto & { sshdConfig: string; currentCert: string | null }> {
@@ -410,7 +410,7 @@ export class SshHostService {
     const { getSshKrlService } = await import('./ssh-krl.service.js');
     const krl = getSshKrlService();
 
-    const certs = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.hostId, hostId))) as any[];
+    const certs = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.hostId, hostId)));
     for (const c of certs) {
       if (c.status === 'active') await krl.revokeByCert(ctx, c.id, reason);
     }
@@ -437,7 +437,7 @@ export class SshHostService {
     });
   }
 
-  private async resolveHostCa(ctx: ServiceContext, zoneId: string, caId?: string): Promise<any> {
+  private async resolveHostCa(ctx: ServiceContext, zoneId: string, caId?: string) {
     if (caId) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
       if (!ca) throw new SshHostError(`CA ${caId} not found`);

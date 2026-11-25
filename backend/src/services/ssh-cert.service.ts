@@ -156,7 +156,7 @@ export class SshCertService {
       kmsSigningKeyId: ca.kmsKeyId,
       status: 'active',
       sourceType: params.sourceType ?? 'manual',
-    } as any);
+    });
 
     await createAuditLog({
       db: ctx.db,
@@ -238,7 +238,7 @@ export class SshCertService {
     const blocks = (await ctx.db
       .select({ hostId: sshHostBlocks.hostId })
       .from(sshHostBlocks)
-      .where(and(eq(sshHostBlocks.identityId, identityId), eq(sshHostBlocks.status, 'active')))) as any[];
+      .where(and(eq(sshHostBlocks.identityId, identityId), eq(sshHostBlocks.status, 'active'))));
     if (!blocks.length) return requested;
     const blockedHostIds = new Set(blocks.map((b) => b.hostId));
 
@@ -246,12 +246,12 @@ export class SshCertService {
     // cert's STORED principals back through sign(), so `P@<fqdn>` inputs must
     // re-narrow (kept when the host is fine, dropped when it is blocked or
     // offboarded) rather than match nothing and refuse the renewal.
-    const hostByFqdn = new Map<string, any>(
-      ((await ctx.db.select().from(sshHosts)) as any[]).map((h) => [h.fqdn, h])
+    const hostByFqdn = new Map(
+      ((await ctx.db.select().from(sshHosts))).map((h) => [h.fqdn, h])
     );
     const bareNames = new Set<string>();
     const narrowed = new Set<string>();
-    const scopedInput: Array<{ form: string; bare: string; host: any }> = [];
+    const scopedInput: Array<{ form: string; bare: string; host: typeof sshHosts.$inferSelect }> = [];
     for (const r of requested) {
       const at = r.lastIndexOf('@');
       const maybeHost = at > 0 ? hostByFqdn.get(r.slice(at + 1)) : undefined;
@@ -268,7 +268,7 @@ export class SshCertService {
         .from(sshHostPrincipalMaps)
         .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
         .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id))
-        .where(and(inArray(sshPrincipals.name, [...bareNames]), ne(sshHosts.status, 'offboarded')))) as any[];
+        .where(and(inArray(sshPrincipals.name, [...bareNames]), ne(sshHosts.status, 'offboarded'))));
       for (const p of bareNames) {
         for (const m of maps) {
           if (m.name === p && !blockedHostIds.has(m.hostId)) narrowed.add(`${p}@${m.fqdn}`);

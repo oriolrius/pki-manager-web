@@ -12,6 +12,7 @@
  * lineage and keeps block rows (moot, retained for audit) — new blocks on an
  * offboarded host are rejected because they could never be enforced.
  */
+import { errorMessage } from '../lib/error-message.js';
 import { randomUUID } from 'crypto';
 import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';
 import { sshHosts, sshIdentities, sshCertificates, sshHostBlocks, sshHostKrls, sshPrincipals, sshUserPrincipals, sshHostPrincipalMaps, sshCas, sshRevocations } from '../db/schema.js';
@@ -111,7 +112,7 @@ export class SshBlockService {
         // the request IP is captured separately in audit_log. Null when the
         // caller is unauthenticated (OIDC disabled).
         createdBy: params.createdBy ?? null,
-      } as any);
+      });
 
       const krl = await this.regenerate(ctx, hostId);
       await createAuditLog({
@@ -125,14 +126,14 @@ export class SshBlockService {
       });
       const dto = await this.getDto(ctx, id);
       return { block: dto, krl, warnings };
-    } catch (e: any) {
+    } catch (e) {
       await createAuditLog({
         db: ctx.db,
         operation: 'ssh.host.block',
         entityType: 'ssh_host',
         entityId: hostId,
         status: 'failure',
-        details: { identityId, hostId, reason: params.reason ?? null, error: e?.message ?? String(e) },
+        details: { identityId, hostId, reason: params.reason ?? null, error: errorMessage(e) ?? String(e) },
         ipAddress: ctx.ipAddress ?? undefined,
       });
       throw e;
@@ -170,14 +171,14 @@ export class SshBlockService {
       });
       const dto = await this.getDto(ctx, row.id);
       return { block: dto, krl };
-    } catch (e: any) {
+    } catch (e) {
       await createAuditLog({
         db: ctx.db,
         operation: 'ssh.host.unblock',
         entityType: 'ssh_host',
         entityId: hostId,
         status: 'failure',
-        details: { identityId, hostId, error: e?.message ?? String(e) },
+        details: { identityId, hostId, error: errorMessage(e) ?? String(e) },
         ipAddress: ctx.ipAddress ?? undefined,
       });
       throw e;
@@ -191,7 +192,7 @@ export class SshBlockService {
       .innerJoin(sshIdentities, eq(sshHostBlocks.identityId, sshIdentities.id))
       .innerJoin(sshHosts, eq(sshHostBlocks.hostId, sshHosts.id))
       .where(eq(sshHostBlocks.hostId, hostId))
-      .orderBy(desc(sshHostBlocks.createdAt))) as any[];
+      .orderBy(desc(sshHostBlocks.createdAt)));
     return this.annotate(ctx, rows);
   }
 
@@ -202,7 +203,7 @@ export class SshBlockService {
       .innerJoin(sshIdentities, eq(sshHostBlocks.identityId, sshIdentities.id))
       .innerJoin(sshHosts, eq(sshHostBlocks.hostId, sshHosts.id))
       .where(eq(sshHostBlocks.identityId, identityId))
-      .orderBy(desc(sshHostBlocks.createdAt))) as any[];
+      .orderBy(desc(sshHostBlocks.createdAt)));
     return this.annotate(ctx, rows);
   }
 
@@ -212,12 +213,12 @@ export class SshBlockService {
     const own = (await ctx.db
       .selectDistinct({ fp: sshCertificates.subjectPubkeyFingerprint })
       .from(sshCertificates)
-      .where(and(eq(sshCertificates.identityId, identityId), eq(sshCertificates.certType, 'user')))) as any[];
+      .where(and(eq(sshCertificates.identityId, identityId), eq(sshCertificates.certType, 'user'))));
     const fps = own.map((r) => r.fp);
     if (!fps.length) return [];
-    const others = (await ctx.db
+    const others = await ctx.db
       .selectDistinct({
-        identityId: sshCertificates.identityId,
+        identityId: sshIdentities.id,
         subject: sshIdentities.subject,
         fingerprint: sshCertificates.subjectPubkeyFingerprint,
       })
@@ -229,19 +230,19 @@ export class SshBlockService {
           eq(sshCertificates.certType, 'user'),
           ne(sshCertificates.identityId, identityId)
         )
-      )) as any[];
+      );
     return others.map((r) => ({ identityId: r.identityId, subject: r.subject, fingerprint: r.fingerprint }));
   }
 
   // ---- BLK-08 read model (no N+1: fixed query count, grouped in JS) ----
 
   /** Batch per-host state derivation for a set of host rows. */
-  private async stateForHosts(ctx: ServiceContext, hosts: any[]): Promise<Map<string, HostKrlStateInfo>> {
+  private async stateForHosts(ctx: ServiceContext, hosts: (typeof sshHosts.$inferSelect)[]): Promise<Map<string, HostKrlStateInfo>> {
     const out = new Map<string, HostKrlStateInfo>();
     if (!hosts.length) return out;
     const hostIds = hosts.map((h) => h.id);
-    const krlRows = (await ctx.db.select().from(sshHostKrls).where(inArray(sshHostKrls.hostId, hostIds))) as any[];
-    const latestByHost = new Map<string, any>();
+    const krlRows = (await ctx.db.select().from(sshHostKrls).where(inArray(sshHostKrls.hostId, hostIds)));
+    const latestByHost = new Map<string, typeof sshHostKrls.$inferSelect>();
     for (const r of krlRows) {
       const cur = latestByHost.get(r.hostId);
       if (!cur || r.krlNumber > cur.krlNumber) latestByHost.set(r.hostId, r);
@@ -249,7 +250,7 @@ export class SshBlockService {
     const events = (await ctx.db
       .select({ hostId: sshHostBlocks.hostId, status: sshHostBlocks.status, createdAt: sshHostBlocks.createdAt, liftedAt: sshHostBlocks.liftedAt })
       .from(sshHostBlocks)
-      .where(inArray(sshHostBlocks.hostId, hostIds))) as any[];
+      .where(inArray(sshHostBlocks.hostId, hostIds)));
     const eventsByHost = new Map<string, BlockEvent[]>();
     for (const e of events) {
       if (!eventsByHost.has(e.hostId)) eventsByHost.set(e.hostId, []);
@@ -300,7 +301,7 @@ export class SshBlockService {
       .select({ role: sshPrincipals.name, localAccount: sshHostPrincipalMaps.localAccount })
       .from(sshHostPrincipalMaps)
       .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
-      .where(and(eq(sshHostPrincipalMaps.hostId, hostId), eq(sshPrincipals.zoneId, host.zoneId)))) as any[];
+      .where(and(eq(sshHostPrincipalMaps.hostId, hostId), eq(sshPrincipals.zoneId, host.zoneId))));
     const accountsByRole = new Map<string, Set<string>>();
     for (const m of maps) {
       if (!accountsByRole.has(m.role)) accountsByRole.set(m.role, new Set());
@@ -358,7 +359,7 @@ export class SshBlockService {
             eq(sshPrincipals.zoneId, host.zoneId),
             inArray(sshPrincipals.name, [...accountsByRole.keys()])
           )
-        )) as any[];
+        ));
       for (const row of granted) {
         const e = entryFor(row.identityId, row.subject, row.identityStatus);
         e.grant = true;
@@ -367,14 +368,14 @@ export class SshBlockService {
 
       // Source 2 — live user certificates whose principals hit a mapping here.
       const now = new Date();
-      const certs = (await ctx.db
+      const certs = await ctx.db
         .select({
           caId: sshCertificates.caId,
           serial: sshCertificates.serial,
           keyId: sshCertificates.keyId,
           fingerprint: sshCertificates.subjectPubkeyFingerprint,
           principals: sshCertificates.principals,
-          identityId: sshCertificates.identityId,
+          identityId: sshIdentities.id,
           subject: sshIdentities.subject,
           identityStatus: sshIdentities.status,
         })
@@ -389,13 +390,13 @@ export class SshBlockService {
             eq(sshIdentities.zoneId, host.zoneId),
             eq(sshCas.zoneId, host.zoneId)
           )
-        )) as any[];
+        );
       if (certs.length) {
         // Revocations that do not flip ssh_certificates.status (serial / key / key-id directives).
         const revs = (await ctx.db
           .select()
           .from(sshRevocations)
-          .where(inArray(sshRevocations.caId, [...new Set(certs.map((c) => c.caId))]))) as any[];
+          .where(inArray(sshRevocations.caId, [...new Set(certs.map((c) => c.caId))])));
         const revoked = new Set<string>();
         for (const r of revs) {
           if (r.targetType === 'serial' && r.serial) revoked.add(`s:${r.caId}:${r.serial}`);
@@ -436,7 +437,7 @@ export class SshBlockService {
     const unlisted = active.filter((b) => !entries.has(b.identityId)).map((b) => b.identityId);
     const statusById = new Map<string, string>();
     if (unlisted.length) {
-      const idents = (await ctx.db.select().from(sshIdentities).where(inArray(sshIdentities.id, unlisted))) as any[];
+      const idents = (await ctx.db.select().from(sshIdentities).where(inArray(sshIdentities.id, unlisted)));
       for (const i of idents) statusById.set(i.id, i.status);
     }
     for (const b of active) {
@@ -478,7 +479,7 @@ export class SshBlockService {
     const hosts = (await ctx.db
       .select()
       .from(sshHosts)
-      .where(inArray(sshHosts.id, [...new Set(blocks.map((b) => b.hostId))]))) as any[];
+      .where(inArray(sshHosts.id, [...new Set(blocks.map((b) => b.hostId))])));
     const states = await this.stateForHosts(ctx, hosts);
     return blocks.map((b) => ({ ...b, state: states.get(b.hostId)! }));
   }
@@ -498,16 +499,16 @@ export class SshBlockService {
       lastKrlFetchAt: string | null;
     }>
   > {
-    const hosts = (await ctx.db.select().from(sshHosts).where(ne(sshHosts.status, 'offboarded'))) as any[];
+    const hosts = (await ctx.db.select().from(sshHosts).where(ne(sshHosts.status, 'offboarded')));
     if (!hosts.length) return [];
     const states = await this.stateForHosts(ctx, hosts);
     const activeBlocks = (await ctx.db
       .select({ hostId: sshHostBlocks.hostId })
       .from(sshHostBlocks)
-      .where(eq(sshHostBlocks.status, 'active'))) as any[];
+      .where(eq(sshHostBlocks.status, 'active')));
     const blockCount = new Map<string, number>();
     for (const b of activeBlocks) blockCount.set(b.hostId, (blockCount.get(b.hostId) ?? 0) + 1);
-    const krlRows = (await ctx.db.select().from(sshHostKrls).where(inArray(sshHostKrls.hostId, hosts.map((h) => h.id)))) as any[];
+    const krlRows = (await ctx.db.select().from(sshHostKrls).where(inArray(sshHostKrls.hostId, hosts.map((h) => h.id))));
     const latestNumber = new Map<string, number>();
     for (const r of krlRows) {
       if ((latestNumber.get(r.hostId) ?? -1) < r.krlNumber) latestNumber.set(r.hostId, r.krlNumber);
@@ -550,21 +551,21 @@ export class SshBlockService {
       .from(sshHostBlocks)
       .innerJoin(sshIdentities, eq(sshHostBlocks.identityId, sshIdentities.id))
       .innerJoin(sshHosts, eq(sshHostBlocks.hostId, sshHosts.id))
-      .where(eq(sshHostBlocks.id, blockId))) as any[];
+      .where(eq(sshHostBlocks.id, blockId)));
     return (await this.annotate(ctx, rows))[0];
   }
 
   /** Attach the superseded-by-offboard annotation: identity disabled AND no
    * active unexpired cert left — the SSH-32c global revocation covers every
    * host, so the per-host block is moot (kept for audit). */
-  private async annotate(ctx: ServiceContext, rows: any[]): Promise<SshHostBlockDto[]> {
+  private async annotate(ctx: ServiceContext, rows: { block: typeof sshHostBlocks.$inferSelect; subject: string; fqdn: string }[]): Promise<SshHostBlockDto[]> {
     const identityIds = [...new Set(rows.map((r) => r.block.identityId))];
     const superseded = new Set<string>();
     if (identityIds.length) {
       const idents = (await ctx.db
         .select()
         .from(sshIdentities)
-        .where(inArray(sshIdentities.id, identityIds))) as any[];
+        .where(inArray(sshIdentities.id, identityIds)));
       const disabled = idents.filter((i) => i.status === 'disabled').map((i) => i.id);
       if (disabled.length) {
         const live = (await ctx.db
@@ -576,7 +577,7 @@ export class SshBlockService {
               eq(sshCertificates.status, 'active'),
               gt(sshCertificates.validBefore, new Date())
             )
-          )) as any[];
+          ));
         const stillLive = new Set(live.map((r) => r.identityId));
         for (const id of disabled) if (!stillLive.has(id)) superseded.add(id);
       }

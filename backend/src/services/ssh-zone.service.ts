@@ -67,7 +67,7 @@ export class SshZoneArchivedError extends Error {
   }
 }
 
-function toDto(row: any): SshZoneDto {
+function toDto(row: typeof zones.$inferSelect): SshZoneDto {
   return {
     id: row.id,
     name: row.name,
@@ -86,7 +86,7 @@ function toDto(row: any): SshZoneDto {
  *  - omitted + zero or several non-archived zones → SshZoneAmbiguousError
  * Returns the full zone row (callers commonly need `.id`).
  */
-export async function resolveZone(ctx: ServiceContext, explicit?: string | null): Promise<any> {
+export async function resolveZone(ctx: ServiceContext, explicit?: string | null) {
   if (explicit != null && explicit !== '') {
     const row = (
       await ctx.db
@@ -104,7 +104,7 @@ export async function resolveZone(ctx: ServiceContext, explicit?: string | null)
     if (!row) throw new SshZoneNotFoundError(explicit);
     return row;
   }
-  const active = (await ctx.db.select().from(zones).where(ne(zones.status, 'archived'))) as any[];
+  const active = (await ctx.db.select().from(zones).where(ne(zones.status, 'archived')));
   if (active.length === 1) return active[0];
   throw new SshZoneAmbiguousError(active.map((z) => z.name).sort());
 }
@@ -119,7 +119,7 @@ export async function resolveZoneId(ctx: ServiceContext, explicit?: string | nul
  * hosts, identities, principals and for issuance (amendment A3). Archiving keeps
  * serving existing trust material but blocks new entities.
  */
-export async function assertZoneUsable(ctx: ServiceContext, zoneId: string): Promise<any> {
+export async function assertZoneUsable(ctx: ServiceContext, zoneId: string) {
   const row = (await ctx.db.select().from(zones).where(eq(zones.id, zoneId)).limit(1))[0];
   if (!row) throw new SshZoneNotFoundError(zoneId);
   if (row.status === 'archived') throw new SshZoneArchivedError(row.name);
@@ -131,7 +131,7 @@ export class SshZoneService {
     const rows = opts?.includeArchived
       ? await ctx.db.select().from(zones)
       : await ctx.db.select().from(zones).where(ne(zones.status, 'archived'));
-    return (rows as any[]).map(toDto);
+    return rows.map(toDto);
   }
 
   async get(ctx: ServiceContext, ref: string): Promise<SshZoneDto> {
@@ -154,7 +154,7 @@ export class SshZoneService {
       displayName: params.displayName?.trim() || name,
       description: params.description ?? null,
       status: 'active',
-    } as any);
+    });
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.zone.create',

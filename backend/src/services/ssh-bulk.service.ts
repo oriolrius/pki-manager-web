@@ -4,6 +4,7 @@
  * link, SSH-11 semantics); bulk revoke marks a set revoked (feeding the next KRL).
  * Returns per-item results for progress feedback.
  */
+import { errorMessage } from '../lib/error-message.js';
 import { eq, and, lt, inArray } from 'drizzle-orm';
 import { sshCertificates } from '../db/schema.js';
 import { createAuditLog } from '../lib/audit.js';
@@ -23,13 +24,13 @@ export interface BulkItemResult {
 
 export class SshBulkService {
   /** List active certs expiring within `withinSeconds`. */
-  async expiring(ctx: ServiceContext, withinSeconds: number): Promise<any[]> {
+  async expiring(ctx: ServiceContext, withinSeconds: number) {
     const cutoff = new Date(Date.now() + withinSeconds * 1000);
     const rows = await ctx.db
       .select()
       .from(sshCertificates)
       .where(and(eq(sshCertificates.status, 'active'), lt(sshCertificates.validBefore, cutoff)));
-    return (rows as any[]).map((r) => ({
+    return rows.map((r) => ({
       id: r.id,
       certType: r.certType,
       keyId: r.keyId,
@@ -48,8 +49,8 @@ export class SshBulkService {
           .where(and(eq(sshCertificates.id, certId), eq(sshCertificates.status, 'active')))
           .returning({ id: sshCertificates.id });
         results.push({ certId, ok: updated.length > 0, error: updated.length ? undefined : 'not found or already revoked' });
-      } catch (e: any) {
-        results.push({ certId, ok: false, error: e?.message });
+      } catch (e) {
+        results.push({ certId, ok: false, error: errorMessage(e) });
       }
     }
     // BLK-05: these status flips feed composed per-host KRLs — one coalesced
@@ -74,7 +75,7 @@ export class SshBulkService {
     const results: BulkItemResult[] = [];
     const certSvc = getSshCertService();
     const rows = await ctx.db.select().from(sshCertificates).where(inArray(sshCertificates.id, certIds));
-    const byId = new Map((rows as any[]).map((r) => [r.id, r]));
+    const byId = new Map(rows.map((r) => [r.id, r]));
 
     for (const certId of certIds) {
       const cert = byId.get(certId);
@@ -98,8 +99,8 @@ export class SshBulkService {
           supersedesCertId: cert.id,
         });
         results.push({ certId, ok: true, newCertId: signed.id, serial: signed.serial });
-      } catch (e: any) {
-        results.push({ certId, ok: false, error: e?.message });
+      } catch (e) {
+        results.push({ certId, ok: false, error: errorMessage(e) });
       }
     }
     return { renewed: results.filter((r) => r.ok).length, results };

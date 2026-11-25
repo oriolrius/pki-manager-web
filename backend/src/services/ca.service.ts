@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { eq, and, sql, like, desc, asc } from 'drizzle-orm';
 import forge from 'node-forge';
@@ -5,7 +6,7 @@ import { certificateAuthorities, certificates, crls, auditLog } from '../db/sche
 import { getKMSService } from '../kms/service.js';
 import { getCRLService } from './crl.service.js';
 import { formatDN } from '../crypto/dn.js';
-import { parseCertificate } from '../crypto/x509.js';
+import { findForgeExtension, parseCertificate } from '../crypto/x509.js';
 import { logger } from '../lib/logger.js';
 import type { DistinguishedName } from '../crypto/types.js';
 import type { ServiceContext } from './types.js';
@@ -34,9 +35,9 @@ export interface CAListItem {
 
 export interface CADetails {
   id: string;
-  subject: Record<string, string | undefined>;
+  subject: DistinguishedName;
   subjectDn: string;
-  issuer: Record<string, string | undefined>;
+  issuer: DistinguishedName;
   issuerDn: string;
   serialNumber: string;
   keyAlgorithm: string;
@@ -138,7 +139,7 @@ export class CAService {
     const now = new Date();
 
     // Build WHERE conditions
-    const conditions: any[] = [];
+    const conditions: SQL[] = [];
 
     if (status) {
       if (status === 'expired') {
@@ -190,7 +191,7 @@ export class CAService {
 
     // Get certificate counts for each CA
     const casWithCounts = await Promise.all(
-      cas.map(async (ca: any) => {
+      cas.map(async (ca) => {
         const certCount = await ctx.db
           .select({ count: sql<number>`count(*)` })
           .from(certificates)
@@ -284,30 +285,30 @@ export class CAService {
     for (const ext of certMetadata.extensions) {
       if (ext.name === 'basicConstraints') {
         extensions.basicConstraints = {
-          cA: (ext as any).cA || false,
-          pathLenConstraint: (ext as any).pathLenConstraint,
+          cA: ext.cA || false,
+          pathLenConstraint: ext.pathLenConstraint,
         };
       } else if (ext.name === 'keyUsage') {
         extensions.keyUsage = {
-          digitalSignature: (ext as any).digitalSignature || false,
-          nonRepudiation: (ext as any).nonRepudiation || false,
-          keyEncipherment: (ext as any).keyEncipherment || false,
-          dataEncipherment: (ext as any).dataEncipherment || false,
-          keyAgreement: (ext as any).keyAgreement || false,
-          keyCertSign: (ext as any).keyCertSign || false,
-          cRLSign: (ext as any).cRLSign || false,
-          encipherOnly: (ext as any).encipherOnly || false,
-          decipherOnly: (ext as any).decipherOnly || false,
+          digitalSignature: ext.digitalSignature || false,
+          nonRepudiation: ext.nonRepudiation || false,
+          keyEncipherment: ext.keyEncipherment || false,
+          dataEncipherment: ext.dataEncipherment || false,
+          keyAgreement: ext.keyAgreement || false,
+          keyCertSign: ext.keyCertSign || false,
+          cRLSign: ext.cRLSign || false,
+          encipherOnly: ext.encipherOnly || false,
+          decipherOnly: ext.decipherOnly || false,
         };
       } else if (ext.name === 'subjectKeyIdentifier') {
-        const skiExt = cert.extensions.find((e: any) => e.name === 'subjectKeyIdentifier');
-        if (skiExt && (skiExt as any).subjectKeyIdentifier) {
-          extensions.subjectKeyIdentifier = (skiExt as any).subjectKeyIdentifier;
+        const skiExt = findForgeExtension(cert, 'subjectKeyIdentifier');
+        if (skiExt && skiExt.subjectKeyIdentifier) {
+          extensions.subjectKeyIdentifier = skiExt.subjectKeyIdentifier;
         }
       } else if (ext.name === 'authorityKeyIdentifier') {
-        const akiExt = cert.extensions.find((e: any) => e.name === 'authorityKeyIdentifier');
-        if (akiExt && (akiExt as any).keyIdentifier) {
-          extensions.authorityKeyIdentifier = (akiExt as any).keyIdentifier;
+        const akiExt = findForgeExtension(cert, 'authorityKeyIdentifier');
+        if (akiExt && akiExt.keyIdentifier) {
+          extensions.authorityKeyIdentifier = akiExt.keyIdentifier;
         }
       }
     }
@@ -445,7 +446,7 @@ subjectKeyIdentifier=hash
         status: 'active',
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      });
 
       // Create audit log entry
       await ctx.db.insert(auditLog).values({
@@ -463,7 +464,7 @@ subjectKeyIdentifier=hash
           kmsPublicKeyId: certInfo.publicKeyId,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       logger.info({ caId, subjectName }, 'CA created successfully');
 
@@ -503,7 +504,7 @@ subjectKeyIdentifier=hash
           }),
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CAOperationError('create', error);
     }
@@ -537,14 +538,14 @@ subjectKeyIdentifier=hash
       // Mark the CA revoked and cascade to its active certificates in ONE synchronous
       // better-sqlite3 transaction: either the CA and all its certificates are revoked, or
       // nothing changes (a failure half-way must not leave a revoked CA with active certs).
-      const revokedCertCount = ctx.db.transaction((tx: any) => {
+      const revokedCertCount = ctx.db.transaction((tx) => {
         tx.update(certificateAuthorities)
           .set({
             status: 'revoked',
             revocationDate: revocationDate,
             revocationReason: params.reason,
             updatedAt: new Date(),
-          } as any)
+          })
           .where(eq(certificateAuthorities.id, params.id))
           .run();
 
@@ -592,7 +593,7 @@ subjectKeyIdentifier=hash
           crlNumber: crl?.crlNumber ?? null,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       logger.info(
         { caId: params.id, reason: params.reason, cascadeRevoked: revokedCertCount },
@@ -623,7 +624,7 @@ subjectKeyIdentifier=hash
           reason: params.reason,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CAOperationError('revoke', error);
     }
@@ -684,7 +685,7 @@ subjectKeyIdentifier=hash
           wasExpired: isExpired,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       // Optional: Destroy KMS key
       let keyDestroyed = false;
@@ -743,7 +744,7 @@ subjectKeyIdentifier=hash
           error: error instanceof Error ? error.message : String(error),
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CAOperationError('delete', error);
     }

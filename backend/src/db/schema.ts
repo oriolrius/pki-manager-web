@@ -206,7 +206,7 @@ export const auditLog = sqliteTable(
     entityType: text('entity_type').notNull(),
     entityId: text('entity_id'),
     ipAddress: text('ip_address'),
-    status: text('status', { enum: ['success', 'failure'] })
+    status: text('status', { enum: ['success', 'failure', 'partial'] })
       .notNull()
       .default('success'),
     details: text('details'), // JSON blob

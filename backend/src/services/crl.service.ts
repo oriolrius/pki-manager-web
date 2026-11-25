@@ -199,7 +199,7 @@ export class CRLService {
       const nextCrlNumber = latestCrl.length > 0 ? latestCrl[0].crlNumber + 1 : 1;
 
       // Prepare CRL entries (one per revoked cert, with mapped RFC 5280 reason code)
-      const crlEntries: CRLEntry[] = revokedCerts.map((cert: any) => ({
+      const crlEntries: CRLEntry[] = revokedCerts.map((cert) => ({
         serialNumber: cert.serialNumber,
         revocationDate: cert.revocationDate || new Date(),
         reason: mapRevocationReason(cert.revocationReason),
@@ -249,7 +249,7 @@ export class CRLService {
         crlPem: crlPem,
         revokedCount: revokedCerts.length,
         createdAt: new Date(),
-      } as any);
+      });
 
       // Create audit log entry
       await createAuditLog({
@@ -403,7 +403,7 @@ export class CRLService {
             .replace(/-----END X509 CRL-----/g, '')
             .replace(/\s/g, '')
         : null,
-      revokedCertificates: revokedCerts.map((cert: any) => ({
+      revokedCertificates: revokedCerts.map((cert) => ({
         serialNumber: cert.serialNumber,
         revocationDate: cert.revocationDate?.toISOString() || null,
         revocationReason: cert.revocationReason || null,
@@ -447,7 +447,7 @@ export class CRLService {
 
     const now = new Date();
 
-    const formattedCrls = crlList.map((crl: any) => {
+    const formattedCrls = crlList.map((crl) => {
       const validityStatus: 'valid' | 'expired' = now > crl.nextUpdate ? 'expired' : 'valid';
 
       return {

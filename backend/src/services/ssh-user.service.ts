@@ -34,7 +34,7 @@ export interface SshIdentityDto {
   createdAt: string;
 }
 
-function identityDto(row: any): SshIdentityDto {
+function identityDto(row: typeof sshIdentities.$inferSelect): SshIdentityDto {
   return {
     id: row.id,
     zoneId: row.zoneId,
@@ -80,7 +80,7 @@ export class SshUserService {
       externalSubject: params.externalSubject ?? null,
       pubkeySource: 'per_request',
       status: 'active',
-    } as any);
+    });
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.identity.create',
@@ -101,7 +101,7 @@ export class SshUserService {
           .where(eq(sshIdentities.zoneId, opts.zoneId))
           .orderBy(desc(sshIdentities.createdAt))
       : await ctx.db.select().from(sshIdentities).orderBy(desc(sshIdentities.createdAt));
-    return (rows as any[]).map(identityDto);
+    return rows.map(identityDto);
   }
 
   /** Disable an identity (no new certs); revocation of existing certs is separate. */
@@ -131,7 +131,7 @@ export class SshUserService {
     const certs = (await ctx.db
       .select()
       .from(sshCertificates)
-      .where(and(eq(sshCertificates.identityId, id), eq(sshCertificates.status, 'active')))) as any[];
+      .where(and(eq(sshCertificates.identityId, id), eq(sshCertificates.status, 'active'))));
     for (const c of certs) await krl.revokeByCert(ctx, c.id, reason);
     await ctx.db.update(sshIdentities).set({ status: 'disabled', updatedAt: new Date() }).where(eq(sshIdentities.id, id));
     await createAuditLog({
@@ -200,7 +200,7 @@ export class SshUserService {
     };
   }
 
-  async listCertificates(ctx: ServiceContext, identityId?: string): Promise<any[]> {
+  async listCertificates(ctx: ServiceContext, identityId?: string) {
     const q = ctx.db.select().from(sshCertificates).where(eq(sshCertificates.certType, 'user'));
     const rows = identityId
       ? await ctx.db
@@ -208,7 +208,7 @@ export class SshUserService {
           .from(sshCertificates)
           .where(and(eq(sshCertificates.certType, 'user'), eq(sshCertificates.identityId, identityId)))
       : await q;
-    return rows.map((r: any) => ({
+    return rows.map((r) => ({
       id: r.id,
       serial: r.serial,
       keyId: r.keyId,
@@ -251,12 +251,12 @@ export class SshUserService {
       .from(sshUserPrincipals)
       .innerJoin(sshPrincipals, eq(sshUserPrincipals.principalId, sshPrincipals.id))
       .where(eq(sshUserPrincipals.identityId, identityId));
-    const allowed = new Set(rows.map((r: any) => r.name));
+    const allowed = new Set(rows.map((r) => r.name));
     const denied = principals.filter((p) => !allowed.has(p));
     if (denied.length) throw new SshUserError(`identity not entitled to principals: ${denied.join(', ')}`);
   }
 
-  private async resolveUserCa(ctx: ServiceContext, zoneId: string, caId?: string): Promise<any> {
+  private async resolveUserCa(ctx: ServiceContext, zoneId: string, caId?: string) {
     if (caId) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
       if (!ca) throw new SshUserError(`CA ${caId} not found`);
