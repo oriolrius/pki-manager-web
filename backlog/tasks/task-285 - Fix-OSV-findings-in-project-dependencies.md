@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-25T20:47:00Z'
-updated_date: '2026-11-25T21:08:00Z'
+updated_date: '2026-11-25T21:21:00Z'
 labels: []
 dependencies: []
 ordinal: 1000
@@ -34,9 +34,9 @@ Upgrade affected dependencies and verify the build and test results.
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-OSV-Scanner v2.7.1 found 163 unique advisory IDs before and zero after the upgrades. No ignores.
+OSV-Scanner v2.7.1 found 163 unique advisory IDs on main at effa6410 and zero in the rebased branch across nine manifests. No ignore rules.
 
-The frozen install, both workspace typechecks and lints, all 923 backend tests, all 152 frontend tests, both production builds, site links, Go vet and tests in all four modules, uv sync, and five Keycloak checks passed. The optional frontend tsc -b still reports the same 138 diagnostics as the base revision.
+The frozen install, strict backend and frontend typechecks, frontend build, and lint passed. Lint reported ten frontend warnings and zero errors. All 925 backend tests and 154 frontend tests passed. Go vet and tests passed in all four modules. The site link checker checked 183 pages.
 
-Replace numeric TRUST_PROXY values with IPs/CIDRs. Update issuer/KRL build environments to Go 1.26.11 and SCEP to 1.27.4 in the parallel workflow change.
+Replace numeric TRUST_PROXY values with proxy IPs or CIDRs before deployment. The merged builder pins match the Go requirements.
 <!-- SECTION:NOTES:END -->
