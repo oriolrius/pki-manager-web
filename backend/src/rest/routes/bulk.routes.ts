@@ -9,6 +9,7 @@ import { getKMSService } from '../../kms/service.js';
 import { formatDN } from '../../crypto/dn.js';
 import { parseCertificate } from '../../crypto/index.js';
 import {
+  isClientCertificateEmail,
   validateDomainName,
   validateServerSANs,
   validateCertificateValidity,
@@ -337,7 +338,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
               throw new Error(clientValidityCheck.error || 'Invalid validity period');
             }
 
-            const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commonName);
+            const isEmail = isClientCertificateEmail(commonName);
             const isUsername = /^[a-zA-Z0-9._-]+$/.test(commonName);
             const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(commonName);
             if (!isEmail && !isUsername && !isHostname) {

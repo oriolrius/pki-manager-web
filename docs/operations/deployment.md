@@ -140,6 +140,18 @@ server {
 }
 ```
 
+### Backend request limits
+
+Each backend process accepts 600 requests per client IP per minute by default.
+Set `API_IP_REQUESTS_PER_MINUTE` to change this limit. The check runs before
+authentication. Integration tokens and SSH fleet tokens also have a limit of
+120 requests per token per minute. Set `API_TOKEN_REQUESTS_PER_MINUTE` to
+change it. Both settings take positive integers. Excess requests receive HTTP
+429. The existing KRL limits also apply. Size the limits for devices that
+share a proxy, fleet token or issuer. Allow for peak certificate issuance.
+The Kubernetes issuer marks a CertificateRequest as failed on a signing error,
+including HTTP 429. Each replica keeps its own counters.
+
 ### Client IPs behind a reverse proxy (`TRUST_PROXY`)
 
 Behind a proxy, the backend sees the proxy as the client, so every audit row

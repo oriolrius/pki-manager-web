@@ -17,6 +17,12 @@ beforeAll(() => {
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
 describe("parseSshPublicKey", () => {
+  it("rejects oversized malformed key material promptly", () => {
+    const start = performance.now();
+    expect(() => parseSshPublicKey("ssh-ed25519 " + "AA".repeat(50_000) + "!")).toThrow(/base64/);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it("parses an ed25519 key and matches ssh-keygen's fingerprint", () => {
     const path = join(work, "ed");
     keygen(["-t", "ed25519", "-f", path, "-N", "", "-C", "alice@host", "-q"]);

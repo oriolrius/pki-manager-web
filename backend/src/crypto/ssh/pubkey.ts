@@ -39,10 +39,16 @@ export class SshPublicKeyError extends Error {
 
 const SUPPORTED: ReadonlySet<string> = new Set(["ssh-ed25519", "ecdsa-sha2-nistp256"]);
 
+function unpaddedBase64(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "=") end--;
+  return value.slice(0, end);
+}
+
 /** Compute the OpenSSH `SHA256:…` fingerprint of a key blob. */
 export function sshFingerprint(blob: Buffer): string {
   const digest = createHash("sha256").update(blob).digest("base64");
-  return `SHA256:${digest.replace(/=+$/, "")}`;
+  return `SHA256:${unpaddedBase64(digest)}`;
 }
 
 /**
@@ -74,7 +80,7 @@ export function parseSshPublicKey(line: string): ParsedSshPublicKey {
   let blob: Buffer;
   try {
     blob = Buffer.from(b64, "base64");
-    if (blob.length === 0 || blob.toString("base64").replace(/=+$/, "") !== b64.replace(/=+$/, "")) {
+    if (blob.length === 0 || unpaddedBase64(blob.toString("base64")) !== unpaddedBase64(b64)) {
       throw new Error("not valid base64");
     }
   } catch {

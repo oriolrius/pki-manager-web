@@ -184,3 +184,12 @@ export function validateCertificateValidity(
 
   return { valid: true };
 }
+
+/** Client certificates accept a local part and a domain with an interior dot. */
+export function isClientCertificateEmail(value: string): boolean {
+  if (/\s/.test(value)) return false;
+  const at = value.indexOf('@');
+  if (at < 1 || at !== value.lastIndexOf('@')) return false;
+  const dot = value.indexOf('.', at + 2);
+  return dot !== -1 && dot < value.length - 1;
+}

@@ -1,3 +1,4 @@
+import { registerRequestLimits } from './rest/middleware/request-limits.js';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
@@ -40,6 +41,8 @@ await server.register(cors, {
   origin: parseCorsOrigins(process.env.FRONTEND_URL),
   credentials: true,
 });
+
+await registerRequestLimits(server);
 
 // Register REST API with OpenAPI/Swagger documentation
 await registerRestApi(server);

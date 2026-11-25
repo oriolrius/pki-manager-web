@@ -1,3 +1,4 @@
+import { isClientCertificateEmail } from './validation.js';
 /**
  * Comprehensive tests for X.509 certificate generation utilities
  */
@@ -482,5 +483,18 @@ describe('X.509 Certificate Utilities', () => {
       expect(crl.revokedCount).toBe(0);
       expect(crl.pem).toContain('-----BEGIN X509 CRL-----');
     });
+  });
+});
+
+describe('client certificate email validation', () => {
+  it('checks long names and rejects malformed addresses promptly', () => {
+    const name = 'label.'.repeat(20_000);
+    const start = performance.now();
+    expect(isClientCertificateEmail(`person@${name}example`)).toBe(true);
+    expect(isClientCertificateEmail(`person@${name} example`)).toBe(false);
+    expect(performance.now() - start).toBeLessThan(1000);
+    for (const value of ['a@.b', 'a@b.', 'a@@b.c', '@b.c']) {
+      expect(isClientCertificateEmail(value)).toBe(false);
+    }
   });
 });

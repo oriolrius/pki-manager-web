@@ -6,6 +6,7 @@ import { getKMSService } from '../kms/service.js';
 import { formatDN } from '../crypto/dn.js';
 import { findForgeExtension, parseCertificate } from '../crypto/x509.js';
 import {
+  isClientCertificateEmail,
   validateDomainName,
   validateServerSANs,
   validateCertificateValidity,
@@ -648,7 +649,7 @@ export class CertificateService {
         }
 
         const cn = params.subject.commonName;
-        const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cn);
+        const isEmail = isClientCertificateEmail(cn);
         const isUsername = /^[a-zA-Z0-9_-]+$/.test(cn);
         const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(cn);
         if (!isEmail && !isUsername && !isHostname) {
@@ -657,7 +658,7 @@ export class CertificateService {
 
         if (params.sanEmail && params.sanEmail.length > 0) {
           for (const email of params.sanEmail) {
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            if (!isClientCertificateEmail(email)) {
               throw new CertificateValidationError(`Invalid email in SANs: ${email}`);
             }
           }

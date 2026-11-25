@@ -1,3 +1,4 @@
+import { tokenRequestsPerMinute } from '../middleware/request-limits.js';
 /**
  * SSH external/automation signing API (SSH-19). Fleet-token-authenticated
  * endpoints the Ansible role and CI call. Registered at top level (like /crl) so
@@ -103,7 +104,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       err(reply, 403, 'FORBIDDEN', `token is not scoped for ${op}`);
       return null;
     }
-    if (!rateLimitOk(`ssh-ext:${verified.id}`, 120, 60_000)) {
+    if (!rateLimitOk(`ssh-ext:${verified.id}`, tokenRequestsPerMinute, 60_000)) {
       err(reply, 429, 'RATE_LIMITED', 'too many requests for this token');
       return null;
     }
