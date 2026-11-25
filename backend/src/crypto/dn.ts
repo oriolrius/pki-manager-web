@@ -102,8 +102,24 @@ export function formatDN(dn: DistinguishedName): string {
 export function parseDN(dnString: string): DistinguishedName {
   const dn: DistinguishedName = {};
 
-  // Split by comma, but respect escaped commas
-  const parts = dnString.split(/(?<!\\),/);
+  // Split at each comma that is not escaped. A backslash escapes the character
+  // after it, so in `CN=a\\,O=x` the comma is a separator (the value is `a\`).
+  // A look-behind for one backslash reads that comma as part of the value.
+  const parts: string[] = [];
+  let current = '';
+  for (let i = 0; i < dnString.length; i++) {
+    const ch = dnString[i];
+    if (ch === '\\' && i + 1 < dnString.length) {
+      current += ch + dnString[i + 1];
+      i++;
+    } else if (ch === ',') {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
 
   for (const part of parts) {
     const trimmed = part.trim();
