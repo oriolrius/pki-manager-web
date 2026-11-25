@@ -52,7 +52,9 @@ export async function publicCrlRoutes(fastify: FastifyInstance): Promise<void> {
       // stale CRL if the KMS/signing is unavailable).
       // A CA that has no CRL yet (created before initial-CRL generation, or generation failed
       // at creation) gets its first, empty CRL generated now; numbering starts at 1.
-      if (latestCrl.length === 0 || new Date() > latestCrl[0].nextUpdate) {
+      // A newest row with an empty PEM (written by CA revocation before issue #48 was fixed)
+      // is also replaced by a signed CRL.
+      if (latestCrl.length === 0 || !latestCrl[0].crlPem || new Date() > latestCrl[0].nextUpdate) {
         const refreshed = await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, caId);
         if (refreshed) {
           latestCrl = await db

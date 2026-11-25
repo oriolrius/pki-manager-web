@@ -286,7 +286,7 @@ describe('ca.revoke', () => {
     expect(result.success).toBe(true);
     expect(result.reason).toContain('keyCompromise');
     expect(result.revocationDate).toBeDefined();
-    expect(result.crlGenerated).toBe(true);
+    expect(result.crlGenerated).toBe(false); // fake KMS ids: no signed CRL (issue #48)
   });
 
   it('should fail to revoke already revoked CA', async () => {
@@ -609,7 +609,11 @@ describe('ca.revoke - comprehensive tests', () => {
       await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).execute();
     });
 
-    it('should generate CRL record with correct number and dates', async () => {
+    // Issue #48: revocation used to store an UNSIGNED CRL row (empty PEM) and report
+    // crlGenerated=true. This CA has fake KMS ids, so the CRL cannot be signed: the revocation
+    // must still succeed, report crlGenerated=false with no crlId, and store no empty row.
+    // The signed path (real KMS) is in rest/routes/ca-revoke-crl.test.ts.
+    it('reports crlGenerated=false and stores no unsigned CRL row when the CRL cannot be signed', async () => {
       const context = await createContext({
         req: {} as FastifyRequest,
         res: {} as FastifyReply,
@@ -621,23 +625,15 @@ describe('ca.revoke - comprehensive tests', () => {
         reason: 'unspecified',
       });
 
-      expect(result.crlGenerated).toBe(true);
-      expect(result.crlId).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(result.crlGenerated).toBe(false);
+      expect(result.crlId).toBeUndefined();
 
-      // Verify CRL record in database
-      const crlResult = await db.select().from(crls).where(eq(crls.id, result.crlId));
-      expect(crlResult).toHaveLength(1);
+      const crlResult = await db.select().from(crls).where(eq(crls.caId, caId));
+      expect(crlResult).toHaveLength(0);
 
-      const crl = crlResult[0];
-      expect(crl.caId).toBe(caId);
-      expect(crl.crlNumber).toBeGreaterThanOrEqual(0);
-      expect(crl.thisUpdate).toBeDefined();
-      expect(crl.nextUpdate).toBeDefined();
-
-      // nextUpdate should be ~7 days from thisUpdate
-      const daysDiff = (crl.nextUpdate.getTime() - crl.thisUpdate.getTime()) / (1000 * 60 * 60 * 24);
-      expect(daysDiff).toBeGreaterThan(6);
-      expect(daysDiff).toBeLessThan(8);
+      const caResult = await db.select().from(certificateAuthorities).where(eq(certificateAuthorities.id, caId));
+      expect(caResult[0].status).toBe('revoked');
     });
   });
 
@@ -794,7 +790,9 @@ describe('ca.revoke - comprehensive tests', () => {
       const details = JSON.parse(audit.details!);
       expect(details.reason).toBe('keyCompromise');
       expect(details.cascadeRevoked).toBeDefined();
-      expect(details.crlGenerated).toBe(true);
+      // Fake KMS ids: the CRL cannot be signed, and the audit row says so.
+      expect(details.crlGenerated).toBe(false);
+      expect(details.crlId).toBeNull();
     });
   });
 
@@ -849,7 +847,7 @@ describe('ca.revoke - comprehensive tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.cascadeRevokedCount).toBe(0);
-      expect(result.crlGenerated).toBe(true);
+      expect(result.crlGenerated).toBe(false); // fake KMS ids: no signed CRL
     });
   });
 });
