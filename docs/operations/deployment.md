@@ -260,31 +260,79 @@ If you terminate on something other than this nginx (Traefik, Caddy, HAProxy, an
 ingress controller, a cloud LB), you **must replicate the same path routing** to
 the backend, or the `/ssh/*` trust-material routes will be shadowed by the SPA
 again. Route the nine path patterns in the table above to the backend service
-(`backend:3000`) and send everything else to the frontend. Sketches:
+(`backend:3000`) and send everything else to the frontend.
+
+The two configurations below were tested with **Caddy 2.11.9** and **Traefik v3.8.0** in front of
+a build of `main` at commit `298b92d5` (after release 3.17.0), over plain HTTP on `localhost`, with
+`"apiUrl": "/trpc"` in `config.json`. Each test checked that:
+
+- the paths of the table reach the backend, and `/`, `/cas`, `/cas/<id>`, `/ssh/cas`,
+  `/ssh/cas/<id>`, `/ssh/hosts`, `/ssh/hosts/<id>`, `/ssh/zones`, `/ssh/krl` and `/callback`
+  return the SPA;
+- an OIDC login with Keycloak works through the proxy, the UI pages and the API calls work, the
+  token renewal works (with the refresh token, and in the `silent-renew.html` iframe) and logout
+  works, with no CSP violation in the browser.
+
+TLS, certificates and `TRUST_PROXY` were not part of the test.
 
 **Caddy**
 
 ```caddyfile
 pki.example.com {
-    @backend {
-        path /api/* /trpc*
-        path /crl/* /krl/*
-        path_regexp cas ^/cas/[^/]+\.(pem|crt|cer|der)$
-        path /ssh/host-ca-keys /ssh/trusted-user-ca-keys /ssh/cert-authority
-        path_regexp sshzone ^/ssh/zones/[^/]+/(host-ca-keys|trusted-user-ca-keys|cert-authority)$
-        path_regexp sshpub ^/ssh/cas/[^/]+/ca\.pub$
-        path_regexp sshhost ^/ssh/hosts/[^/]+/(cert\.pub|sshd-config)$
-    }
+    @backend path /api/* /trpc* /crl/* /krl/* /ssh/host-ca-keys /ssh/trusted-user-ca-keys /ssh/cert-authority
+    @backend_re path_regexp ^/(cas/[^/]+\.(pem|crt|cer|der)|ssh/zones/[^/]+/(host-ca-keys|trusted-user-ca-keys|cert-authority)|ssh/cas/[^/]+/ca\.pub|ssh/hosts/[^/]+/(cert\.pub|sshd-config))$
     reverse_proxy @backend backend:3000
+    reverse_proxy @backend_re backend:3000
     reverse_proxy frontend:8080
 }
 ```
 
-**Traefik / ingress** — create a higher-priority router/rule matching those exact
-paths/regexes to the backend service, and a default (lower priority) router to the
-frontend. In Kubernetes, use `Exact`/`ImplementationSpecific` path types (or a
-regex-capable ingress) for the `/ssh/...`, `/krl/`, `/crl/`, `/cas/....pem`, `/api/`,
+Caddy needs two named matchers. Inside one named matcher, a `path` and a `path_regexp` must
+both match (they are not alternatives), and only one `path_regexp` is accepted: Caddy stops with
+`regular expression can only be used once per named matcher`.
+
+**Traefik** (v3 rule syntax, dynamic configuration of the file provider)
+
+```yaml
+http:
+  routers:
+    pki-backend:
+      entryPoints: [web]
+      priority: 100
+      service: pki-backend
+      rule: >-
+        PathPrefix(`/api/`) || PathPrefix(`/trpc`) || PathPrefix(`/crl/`) || PathPrefix(`/krl/`)
+        || PathRegexp(`^/cas/[^/]+\.(pem|crt|cer|der)$`)
+        || PathRegexp(`^/ssh/(host-ca-keys|trusted-user-ca-keys|cert-authority)$`)
+        || PathRegexp(`^/ssh/zones/[^/]+/(host-ca-keys|trusted-user-ca-keys|cert-authority)$`)
+        || PathRegexp(`^/ssh/cas/[^/]+/ca\.pub$`)
+        || PathRegexp(`^/ssh/hosts/[^/]+/(cert\.pub|sshd-config)$`)
+    pki-frontend:
+      entryPoints: [web]
+      priority: 1
+      service: pki-frontend
+      rule: PathPrefix(`/`)
+  services:
+    pki-backend:
+      loadBalancer:
+        servers:
+          - url: http://backend:3000
+    pki-frontend:
+      loadBalancer:
+        servers:
+          - url: http://frontend:8080
+```
+
+The test started Traefik with `--entrypoints.web.address=:8080` and
+`--providers.file.filename=/etc/traefik/dynamic.yml`. The backend router has the higher
+priority, so the frontend router gets only the paths that the backend rule does not match.
+
+**Kubernetes ingress** (not tested): use `Exact`/`ImplementationSpecific` path types (or a
+regex-capable ingress) for the `/ssh/...`, `/krl/`, `/crl/`, `/cas/....pem`, `/api/`
 and `/trpc` routes to the backend Service, with a catch-all `/` to the frontend.
+
+With an OIDC login, register the origin of the proxy in the identity provider (redirect URI
+`<origin>/callback` and `<origin>/silent-renew.html`, post-logout URI `<origin>/`, web origin).
 
 ## Security headers of the frontend container
 
@@ -316,6 +364,11 @@ frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'
   finds in `config.json` (`apiUrl`, `oidc.authority`). With no `apiUrl`, it allows the origin of
   the API URL built into the image (`VITE_API_URL` at build time). The startup log shows the
   result (`CSP connect-src/frame-src: ...`).
+- The entrypoint reads `config.json` only when the container starts. After a change of
+  `config.json`, run `docker compose restart frontend`. `docker compose up -d` does not start
+  the container again when only the content of the mounted file changed. With an old CSP, the
+  browser blocks the calls to the new origin (`Refused to connect ... violates the following
+  Content Security Policy directive: "connect-src ..."`), and a login does not start.
 - To allow more origins (for example an OIDC token endpoint on a host other than the authority),
   list them in `config.json`. The web UI ignores this key:
 
@@ -341,6 +394,12 @@ curl -sI http://localhost:8080/ | grep -iE 'content-security|x-frame|nosniff|ref
 `docker/check-security-headers.sh <image>` starts an image and checks the headers of `/`,
 `/silent-renew.html`, an asset, `/health` and the proxied paths. CI runs it on each frontend build
 (`docker-build.yml`).
+
+The CSP was also checked in a browser (headless Chromium) with a real OIDC login against
+Keycloak 26.0.5, on a build of `main` at commit `298b92d5`: login, the main pages, the Swagger UI
+page, the token renewal with the refresh token, the token renewal in the `silent-renew.html`
+iframe, and logout gave no CSP violation. `just demo check` runs this check on the demo stack
+(see [How the docs are organised](../development/documentation.md#demo-stack-screenshots-and-examples)).
 
 If an edge proxy in front of the container adds the same headers, the browser gets them twice.
 Two `Content-Security-Policy` headers apply together (the stricter result). Let one of them set

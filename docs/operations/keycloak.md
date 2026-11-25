@@ -216,6 +216,10 @@ services:
       - ./config.json:/usr/share/nginx/html/config.json:ro
 ```
 
+After a change of `config.json`, run `docker compose restart frontend`. The frontend container
+reads the CSP origins from the file when it starts
+([details](deployment.md#security-headers-of-the-frontend-container)).
+
 ### Docker Configuration
 
 Example `.env` for Docker deployment:
@@ -276,7 +280,11 @@ VITE_OIDC_CLIENT_ID=pki-web
 **Solution**:
 - Check Keycloak realm's token lifespan settings
 - Ensure `silent-renew.html` is accessible
-- Verify third-party cookies aren't blocked
+- The iframe is used only when the client gets no refresh token. Then the browser must send the
+  Keycloak session cookie in the iframe: check that third-party cookies are not blocked when
+  Keycloak is on another site
+- In Docker, restart the frontend container after a change of `config.json`
+  ([How the web UI renews the token](oidc.md#frontend-environment-variables))
 
 ### User Gets "Access Denied" After Login
 
