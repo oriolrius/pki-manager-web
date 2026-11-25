@@ -96,7 +96,8 @@ export interface RevokeCAResult {
   reason: string;
   cascadeRevokedCount: number;
   crlGenerated: boolean;
-  crlId: string;
+  /** Id of the signed CRL made after the revocation; absent when the CRL generation failed. */
+  crlId?: string;
 }
 
 export interface DeleteCAParams {
@@ -533,26 +534,21 @@ subjectKeyIdentifier=hash
     const revocationDate = new Date();
 
     try {
-      // Update CA status to revoked
-      await ctx.db
-        .update(certificateAuthorities)
-        .set({
-          status: 'revoked',
-          revocationDate: revocationDate,
-          revocationReason: params.reason,
-          updatedAt: new Date(),
-        } as any)
-        .where(eq(certificateAuthorities.id, params.id));
+      // Mark the CA revoked and cascade to its active certificates in ONE synchronous
+      // better-sqlite3 transaction: either the CA and all its certificates are revoked, or
+      // nothing changes (a failure half-way must not leave a revoked CA with active certs).
+      const revokedCertCount = ctx.db.transaction((tx: any) => {
+        tx.update(certificateAuthorities)
+          .set({
+            status: 'revoked',
+            revocationDate: revocationDate,
+            revocationReason: params.reason,
+            updatedAt: new Date(),
+          } as any)
+          .where(eq(certificateAuthorities.id, params.id))
+          .run();
 
-      // Cascade revocation to all active certificates
-      let revokedCertCount = 0;
-      const activeCerts = await ctx.db
-        .select()
-        .from(certificates)
-        .where(and(eq(certificates.caId, params.id), eq(certificates.status, 'active'))!);
-
-      for (const cert of activeCerts) {
-        await ctx.db
+        const cascade = tx
           .update(certificates)
           .set({
             status: 'revoked',
@@ -560,42 +556,25 @@ subjectKeyIdentifier=hash
             revocationReason: 'caCompromise',
             updatedAt: new Date(),
           })
-          .where(eq(certificates.id, cert.id));
+          .where(and(eq(certificates.caId, params.id), eq(certificates.status, 'active'))!)
+          .run();
+        return Number(cascade.changes);
+      }) as number;
 
-        revokedCertCount++;
+      // Publish a signed CRL that lists the cascaded certificates (issue #48). The CRL signer
+      // accepts a revoked CA. It is best-effort: the revocation stays in force when the KMS
+      // cannot sign now, the response says so (crlGenerated=false), and the public CRL
+      // endpoint generates the CRL on the next request.
+      let crl: { id: string; crlNumber: number } | null = null;
+      try {
+        const generated = await getCRLService().generate(ctx, { caId: params.id });
+        crl = { id: generated.id, crlNumber: generated.crlNumber };
+      } catch (crlError) {
+        logger.warn(
+          { caId: params.id, error: crlError instanceof Error ? crlError.message : String(crlError) },
+          'CRL generation after CA revocation failed (revocation kept)',
+        );
       }
-
-      // Get all revoked certificates for CRL
-      const revokedCerts = await ctx.db
-        .select()
-        .from(certificates)
-        .where(and(eq(certificates.caId, params.id), eq(certificates.status, 'revoked'))!);
-
-      // Get the latest CRL number for this CA
-      const latestCrl = await ctx.db
-        .select()
-        .from(crls)
-        .where(eq(crls.caId, params.id))
-        .orderBy(desc(crls.crlNumber))
-        .limit(1);
-
-      const nextCrlNumber = latestCrl.length > 0 ? latestCrl[0].crlNumber + 1 : 1;
-
-      // Create CRL record
-      const crlId = randomUUID();
-      const thisUpdate = new Date();
-      const nextUpdate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-      await ctx.db.insert(crls).values({
-        id: crlId,
-        caId: params.id,
-        crlNumber: nextCrlNumber,
-        thisUpdate: thisUpdate,
-        nextUpdate: nextUpdate,
-        crlPem: '', // TODO: Generate actual CRL PEM with KMS signing
-        revokedCount: revokedCerts.length,
-        createdAt: new Date(),
-      } as any);
 
       // Create audit log entry
       await ctx.db.insert(auditLog).values({
@@ -608,9 +587,9 @@ subjectKeyIdentifier=hash
           reason: params.reason,
           details: params.details,
           cascadeRevoked: revokedCertCount,
-          crlGenerated: true,
-          crlId: crlId,
-          crlNumber: nextCrlNumber,
+          crlGenerated: crl !== null,
+          crlId: crl?.id ?? null,
+          crlNumber: crl?.crlNumber ?? null,
         }),
         ipAddress: ctx.ipAddress,
       } as any);
@@ -626,8 +605,8 @@ subjectKeyIdentifier=hash
         revocationDate: revocationDate.toISOString(),
         reason: params.reason,
         cascadeRevokedCount: revokedCertCount,
-        crlGenerated: true,
-        crlId: crlId,
+        crlGenerated: crl !== null,
+        ...(crl ? { crlId: crl.id } : {}),
       };
     } catch (error) {
       logger.error({ error, caId: params.id }, 'Failed to revoke CA');

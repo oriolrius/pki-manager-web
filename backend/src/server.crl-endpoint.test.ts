@@ -12,7 +12,7 @@
  * KMS-backed regeneration cannot run).
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import forge from 'node-forge';
@@ -22,6 +22,7 @@ import { certificateAuthorities, crls } from './db/schema.js';
 import { publicCrlRoutes } from './rest/routes/public-crl.routes.js';
 import { generateCRL } from './crypto/crl.js';
 import { CRLReason } from './crypto/types.js';
+import { getCRLService } from './services/crl.service.js';
 
 /** Build a self-signed CA cert + key for signing a test CRL. */
 function makeCa() {
@@ -173,5 +174,86 @@ describe('Public CRL HTTP endpoint (real handler)', () => {
     const res = await server.inject({ method: 'GET', url: `/crl/${expiredCaId}.crl` });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('-----BEGIN X509 CRL-----');
+  });
+});
+
+// Issue #48: CA revocation used to store a newest CRL row with an EMPTY PEM. The endpoint must
+// not keep answering 503 for such a row until nextUpdate passes: it regenerates a signed CRL.
+describe('Public CRL endpoint heals an empty-PEM CRL row (issue #48)', () => {
+  let server: FastifyInstance;
+  const healCaId = randomUUID();
+  const failCaId = randomUUID();
+  let ca: { certPem: string; keyPem: string };
+
+  const emptyRow = (caId: string) => ({
+    id: randomUUID(),
+    caId,
+    crlNumber: 1,
+    thisUpdate: new Date(),
+    nextUpdate: new Date(Date.now() + 7 * 864e5), // not expired: only the empty PEM triggers regen
+    crlPem: '',
+    revokedCount: 0,
+    createdAt: new Date(),
+  });
+
+  beforeAll(async () => {
+    ca = makeCa();
+    const caRow = (id: string) => ({
+      id,
+      kmsCertificateId: `fake-cert-${id}`,
+      kmsKeyId: `fake-key-${id}`,
+      subjectDn: 'CN=Endpoint Test CA,O=Test,C=US',
+      serialNumber: randomUUID(),
+      keyAlgorithm: 'RSA-2048',
+      notBefore: new Date(),
+      notAfter: new Date(Date.now() + 3650 * 864e5),
+      status: 'revoked' as const,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await db.insert(certificateAuthorities).values([caRow(healCaId), caRow(failCaId)] as any);
+    await db.insert(crls).values([emptyRow(healCaId), emptyRow(failCaId)] as any);
+
+    server = Fastify({ logger: false });
+    await server.register(publicCrlRoutes);
+    await server.ready();
+  });
+
+  afterAll(async () => {
+    vi.restoreAllMocks();
+    await server.close();
+    for (const id of [healCaId, failCaId]) {
+      await db.delete(crls).where(eq(crls.caId, id)).execute().catch(() => {});
+      await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, id)).execute().catch(() => {});
+    }
+  });
+
+  it('regenerates and serves a signed CRL when the newest row has an empty PEM', async () => {
+    // Stand in for the KMS-backed signer: write a real signed CRL #2 (as CRLService.generate does).
+    const spy = vi.spyOn(getCRLService(), 'regenerateForCa').mockImplementation(async (_ctx, id) => {
+      const pem = generateCRL({
+        issuer: { CN: 'Endpoint Test CA', O: 'Test', C: 'US' },
+        crlNumber: 2,
+        thisUpdate: new Date(),
+        nextUpdate: new Date(Date.now() + 7 * 864e5),
+        revokedCertificates: [],
+        signingKey: ca.keyPem,
+        signatureAlgorithm: 'SHA256-RSA',
+        issuerCertificate: ca.certPem,
+      }).pem;
+      await db.insert(crls).values({ ...emptyRow(id), crlNumber: 2, crlPem: pem } as any);
+      return true;
+    });
+    const res = await server.inject({ method: 'GET', url: `/crl/${healCaId}.crl` });
+    expect(spy).toHaveBeenCalledWith(expect.anything(), healCaId);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('-----BEGIN X509 CRL-----');
+    spy.mockRestore();
+  });
+
+  it('still answers 503 (fail closed) when the empty row cannot be replaced', async () => {
+    // Real signer with fake KMS ids: regeneration fails, and no unsigned CRL is served.
+    const res = await server.inject({ method: 'GET', url: `/crl/${failCaId}.crl` });
+    expect(res.statusCode).toBe(503);
   });
 });

@@ -23,6 +23,10 @@ links:
 - When the server has `CRL_DISTRIBUTION_URL`, each certificate carries the address of its CRL. A
   client that checks revocation finds the list by itself.
 - A new CA has an empty CRL from the start.
+- Revoke a CA. All its active certificates become revoked with the reason `caCompromise`, in one
+  database transaction. Then PKI Manager signs a new CRL of that CA that lists them. The response
+  field `crlGenerated` tells if the CRL was signed. When the KMS cannot sign at that moment, the
+  CA stays revoked, and the next request for its CRL signs the list.
 
 ## How it works
 
