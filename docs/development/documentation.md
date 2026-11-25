@@ -109,8 +109,9 @@ The build does these steps (`site/package.json`):
 3. `scripts/openapi.mjs` writes the OpenAPI document from the backend source.
 4. `astro build` makes the pages. `scripts/check-links.mjs` stops the build on a broken internal link.
 
-The workflow `.github/workflows/docs.yml` runs the same build on each pull request and deploys
-the site to GitHub Pages from `main`.
+The workflow `.github/workflows/docs.yml` runs the same build on each pull request. From `main`, it
+publishes the site image, and <https://pki-manager.oriolrius.cat> shows the change about 10 minutes
+later: see [Website deploy](ci.md#website-deploy).
 
 ### Versions on the site
 
