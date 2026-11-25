@@ -12,9 +12,9 @@ just typecheck    # type-check both
 just lint         # lint both
 ```
 
-`just lint` fails on lint errors. Warnings do not fail it. For example, the existing uses of `any` are
-warnings (`@typescript-eslint/no-explicit-any`) until they get types. Do not add new ones. The
-CI job **Lint** in `test.yml` runs the same command.
+`just lint` fails on lint errors. Warnings do not fail it. An explicit `any` is an error
+(`@typescript-eslint/no-explicit-any`) in both workspaces: give the value a real type, or `unknown`
+and narrow it. The CI job **Lint** in `test.yml` runs the same command.
 
 Run one workspace with `pnpm test` (or `pnpm test:watch`) inside `backend/` or `frontend/`.
 Run each workspace's `typecheck`, not only `build`: the frontend Docker build is relaxed, so a
@@ -25,8 +25,8 @@ The Go components have their own tests. Run `go test ./...` in `k8s/issuer/`, `s
 ## End-to-end tests
 
 The end-to-end tests check role-based access control (RBAC) through the web UI, with Playwright.
-They run against a local Docker environment or against a deployed instance. No CI workflow runs
-them: run them by hand before a release that changes login or roles.
+They run against a local Docker environment or against a deployed instance. The workflow
+`e2e.yml` runs them on pull requests (see [E2E in CI](#e2e-in-ci)).
 
 ### E2E Architecture
 
