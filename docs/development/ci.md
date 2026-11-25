@@ -155,6 +155,22 @@ Handle a Dependabot pull request like any other:
 3. Merge when the checks are green. If an update breaks a build, close the pull request or fix
    the code on its branch; `@dependabot ignore this major version` stops the proposal.
 
+### Branch protection
+
+`main` is protected:
+
+- A change goes in through a pull request. Force pushes and branch deletion are off.
+- These checks must pass, because they run on every pull request: **Secret scan (gitleaks)**,
+  **Analyze (javascript-typescript)**, **Analyze (go)**, **Analyze (actions)** and
+  **Dependency review**. The other workflows run only when their paths change; check them on the
+  pull request before the merge.
+- A pull request needs one approving review, and open review conversations must be resolved.
+
+The project has one maintainer, and GitHub does not count the approval of the author. So the
+maintainer merges as administrator (`gh pr merge N --merge --admin`) after the checks are green,
+and pushes the `cz bump` commit and tag of a release directly. The protection still applies to
+everybody else. A pull request from another person gets a real review from the maintainer.
+
 ### Signed artifacts
 
 | Artifact | Proof | Made by |
