@@ -72,20 +72,16 @@ The E2E environment includes pre-configured test users in Keycloak:
 
 ### Tests against a deployed instance
 
-`E2E_TARGET=production` uses the URLs that are written in `tests/e2e-rbac.spec.ts` (`TARGETS.production`).
-For any other instance, set `E2E_FRONTEND_URL` and the users, as in the second example:
+`E2E_TARGET=production` runs the same tests against a deployed instance. It has no default URL:
+set the frontend URL, the Keycloak URL and, when they are not the defaults, the users.
 
 ```bash
-E2E_TARGET=production pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
-```
-
-Or with custom URLs:
-
-```bash
+E2E_TARGET=production \
 E2E_FRONTEND_URL=https://pki.example.com \
+E2E_KEYCLOAK_URL=https://iam.example.com \
 E2E_ADMIN_USER=testadmin \
 E2E_ADMIN_PASSWORD=Test123! \
-pnpm playwright test tests/e2e-rbac.spec.ts
+pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
 ```
 
 ### E2E Environment Variables
@@ -93,7 +89,8 @@ pnpm playwright test tests/e2e-rbac.spec.ts
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `E2E_TARGET` | `local` | Target environment: `local` or `production` |
-| `E2E_FRONTEND_URL` | (from target) | Override frontend URL |
+| `E2E_FRONTEND_URL` | (from target) | Frontend URL. Required for `production` |
+| `E2E_KEYCLOAK_URL` | (none) | Keycloak URL. Required for `production` |
 | `E2E_ADMIN_USER` | `testadmin` | Admin test user |
 | `E2E_ADMIN_PASSWORD` | `Test123!` | Admin password |
 | `E2E_TEST_USER` | `testuser` | Regular test user |
@@ -171,7 +168,7 @@ docker compose -f docker/docker-compose.e2e.yml ps
 
 ## Other Playwright specs
 
-`tests/` also has `auth.spec.ts`, `auth-m2m.spec.ts` and `e2e-production.spec.ts`. The base URL of
+`tests/` also has `auth.spec.ts`, `auth-m2m.spec.ts` and `e2e-production.spec.ts` (OIDC login on a deployed instance; it runs only when `PROD_FRONTEND_URL` and `PROD_KEYCLOAK_URL` are set). The base URL of
 `playwright.config.ts` is `http://localhost:52082`; set `PLAYWRIGHT_BASE_URL` for another address
 (the dev stack serves the web UI on `http://localhost:52080`).
 
