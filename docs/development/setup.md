@@ -8,7 +8,8 @@ run `just` to list the recipes.
 - Node.js >= 20 and pnpm >= 9
 - Docker (for the Cosmian KMS and Keycloak containers)
 - [just](https://just.systems), [tmux](https://github.com/tmux/tmux) and [mprocs](https://github.com/pvolok/mprocs) for the dev stack
-- Optional: the [Backlog.md](https://backlog.md) CLI (`npm install -g backlog.md`) for the task board
+- Optional: the [Backlog.md](https://backlog.md) CLI (`npm install -g backlog.md`) and
+  [socat](http://www.dest-unreach.org/socat/) for the task board
 
 ## First run
 
@@ -38,18 +39,20 @@ over HTTPS.
 | Backend (Fastify) | http://localhost:52081 (Swagger at `/api/docs`) | `backend/.env` `PORT`/`HOST` |
 | Cosmian KMS | http://localhost:42998 | `kms/docker-compose.yml` |
 | Keycloak | http://localhost:42997 (admin/admin) | `keycloak/docker-compose.yml` |
-| Backlog.md web UI | http://localhost:6430 | `backlog/config.yml` `default_port` |
+| Backlog.md web UI | http://localhost:6430, on all interfaces | `scripts/dev-session.sh` (`BACKLOG_PORT`; Backlog itself on `127.0.0.1:46430`) |
 
 `just urls` prints this list for your checkout.
 
 ## The dev stack
 
-`just dev` runs **`scripts/dev-session.sh`**, which keeps **mprocs** (see `mprocs.yaml`: three
-processes, `backend`, `frontend`, `backlog`) inside a **tmux session named `dev-pki-manager`**.
+`just dev` runs **`scripts/dev-session.sh`**, which keeps **mprocs** (see `mprocs.yaml`: two
+processes, `backend` and `frontend`) inside a **tmux session named `dev-pki-manager`**, and the
+Backlog.md web UI in a second tmux session, `backlog-pki-manager`.
 
 | Command | Does |
 |---|---|
 | `just dev` | **Restarts** the stack: stops this repository's old processes, starts KMS and Keycloak if needed, starts mprocs, and opens it when there is a terminal |
+| `just backlog` | **Restarts** only the Backlog.md web UI, on `0.0.0.0:6430` (see below) |
 | `just attach` | Opens the running stack. Does not restart it |
 | `just status` | Is it running, who holds our ports, the current mprocs screen |
 | `just logs [backend\|frontend\|backlog] [lines]` | Last lines of the process logs (`.dev-logs/<name>.log`) |
@@ -69,6 +72,13 @@ agent can run `just dev` without a TTY: it prints the URLs and the mprocs screen
 mprocs, node and vite. A process is ours only when its working directory is inside this
 repository or one of its git worktrees. When another project holds one of our ports, `just dev`
 stops and names the process; it does not kill it.
+
+**The task board on all interfaces.** `backlog browser` listens on `127.0.0.1` only and has
+no option to change it. So the script starts it on `127.0.0.1:46430` and a `socat` relay
+publishes it on `0.0.0.0:6430`: open it from Windows, from the LAN or from a tablet with
+`http://<host>:6430`. Backlog is restarted when it exits, and it has a 1 GB memory cap
+(it leaks memory on a busy repository). `just backlog` stops only this repository's board
+(the same ownership rule), never the board of another project.
 
 Worktrees of this repository share one stack (same session, same ports). The KMS and Keycloak
 containers always run from the main checkout, so the dev KMS data stays in one place.
@@ -187,7 +197,7 @@ Work is tracked with the Backlog.md CLI in `backlog/`:
 | `backlog/decisions/` | Decision records: why something is built the way it is |
 | `backlog/docs/` | Specifications: the plan of a large piece of work |
 
-The task board is the third process of the dev stack (http://localhost:6430). The rules for
+The task board starts with the dev stack, or alone with `just backlog` (http://localhost:6430). The rules for
 tasks (always through the CLI, never by editing the files) are in [`AGENTS.md`](../../AGENTS.md).
 Decisions and specifications are published on the site, under **Project**, from these folders.
 
@@ -195,7 +205,7 @@ Decisions and specifications are published on the site, under **Project**, from 
 
 | Issue | Solution |
 |-------|----------|
-| **`just dev` says a port belongs to another project** | Another program listens on 52080, 52081 or 6430. `just status` names it. Stop it, or change this project's ports |
+| **`just dev` says a port belongs to another project** | Another program listens on 52080, 52081, 6430 or 46430. `just status` names it. Stop it, or change this project's ports |
 | **Vite fails with "Port 52080 is already in use"** | Intentional (`strictPort`). Run `just dev`: it stops this repository's old stack first |
 | **`Stdin is not a tty`** | You ran `mprocs` directly. Use `just dev`: it runs mprocs inside tmux and works without a terminal |
 | **Frontend can't connect** | Check `VITE_API_URL` in `frontend/.env` |

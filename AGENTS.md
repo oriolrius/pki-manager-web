@@ -99,7 +99,8 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 | Command | Action |
 |---|---|
 | `just setup` | install dependencies, create the `.env` files, migrate the dev database |
-| `just dev` | **restart** the dev stack: stop this repository's old processes, start KMS and Keycloak, then **mprocs** (`backend` + `frontend` + `backlog`) in the tmux session `dev-pki-manager`. It works without a TTY |
+| `just dev` | **restart** the dev stack: stop this repository's old processes, start KMS and Keycloak, then **mprocs** (`backend` + `frontend`) in the tmux session `dev-pki-manager`, and the Backlog.md web UI in `backlog-pki-manager`. It works without a TTY |
+| `just backlog` | **restart** only the Backlog.md web UI, on `0.0.0.0:6430` (Backlog on `127.0.0.1:46430` + a socat relay); never touches another project's board |
 | `just status` / `just logs [proc]` | session, ports and screen / last lines of a process log |
 | `just stop` / `just down` | stop the processes / also the KMS and Keycloak containers |
 | `just test` / `typecheck` / `lint` / `build` | both workspaces (`pnpm -r`) |

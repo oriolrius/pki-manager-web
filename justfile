@@ -1,8 +1,9 @@
 # pki-manager tasks. `just` lists them. Guide: docs/development/setup.md
 #
-# The dev stack is mprocs (backend + frontend + backlog, mprocs.yaml) inside the tmux
-# session `dev-pki-manager`, with KMS and Keycloak in docker. `just dev` always RESTARTS
-# it, so you never talk to an old process. Only this repository's processes are stopped.
+# The dev stack is mprocs (backend + frontend, mprocs.yaml) in the tmux session
+# `dev-pki-manager`, the Backlog.md web UI in the tmux session `backlog-pki-manager`, and
+# KMS and Keycloak in docker. `just dev` and `just backlog` always RESTART, so you never
+# talk to an old process. Only this repository's processes are stopped.
 set shell := ["bash", "-uc"]
 
 # List the recipes
@@ -21,6 +22,10 @@ setup:
 # Restart the dev stack (stops this repo's old one first) and open it
 dev:
     @bash scripts/dev-session.sh restart
+
+# Restart only the Backlog.md web UI, on all interfaces (0.0.0.0:6430)
+backlog:
+    @bash scripts/dev-session.sh backlog
 
 # Open the running dev stack without restarting it
 attach:

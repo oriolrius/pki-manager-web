@@ -4,11 +4,13 @@
 #
 # Use it through `just` (see the justfile); this script is the implementation.
 #
-# The stack is mprocs (backend + frontend + backlog, see mprocs.yaml) inside a tmux
-# session named after the repository. The terminal that starts it does not own it:
-# the session survives a closed terminal, and an agent can start it without a TTY.
+# The stack is mprocs (backend + frontend, see mprocs.yaml) inside a tmux session named
+# after the repository, plus the Backlog.md web UI in a second tmux session. The terminal
+# that starts it does not own it: the sessions survive a closed terminal, and an agent can
+# start them without a TTY.
 #
 #   restart  stop this repository's stack, then start it again        (just dev)
+#   backlog  restart only the Backlog.md web UI, on 0.0.0.0           (just backlog)
 #   attach   open the running stack; does not restart it              (just attach)
 #   status   session, ports and OIDC mode                             (just status)
 #   urls     where to open each service                               (just urls)
@@ -31,6 +33,7 @@ COMMON="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/de
 MAIN="$REPO"
 [ -n "$COMMON" ] && MAIN="$(dirname "$COMMON")"
 SESSION="dev-$(basename "$MAIN")"
+BL_SESSION="backlog-$(basename "$MAIN")"
 
 # Value of KEY in backend/.env, or empty (also when the file is missing or the line is commented out).
 env_value() { sed -n "s/^$1=\(.*\)/\1/p" "$REPO/backend/.env" 2>/dev/null | head -1 || true; }
@@ -39,8 +42,12 @@ env_value() { sed -n "s/^$1=\(.*\)/\1/p" "$REPO/backend/.env" 2>/dev/null | head
 BACKEND_PORT="$(env_value PORT | grep -oE '^[0-9]+' || true)"
 BACKEND_PORT="${BACKEND_PORT:-52081}"
 FRONTEND_PORT=52080
+# `backlog browser` binds 127.0.0.1 only. It listens on BACKLOG_INNER, and a socat relay
+# publishes it on 0.0.0.0:BACKLOG_PORT (all interfaces: Windows, LAN, iPad).
 BACKLOG_PORT=6430
-PORTS=("$FRONTEND_PORT" "$BACKEND_PORT" "$BACKLOG_PORT")
+BACKLOG_INNER=46430
+BL_PORTS=("$BACKLOG_PORT" "$BACKLOG_INNER")
+PORTS=("$FRONTEND_PORT" "$BACKEND_PORT" "${BL_PORTS[@]}")
 
 # OIDC issuer from backend/.env (empty when the line is commented out = login off).
 OIDC_ISSUER="$(env_value OIDC_ISSUER)"
@@ -95,10 +102,12 @@ pid_cmd()  { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-100; }
 pid_pgid() { ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '; }
 
 # Classify whatever listens on our ports. Sets OURS (port:pid) and THEIRS (port:pid:cwd).
+# Ports to scan: the arguments, or all of PORTS.
 scan_ports() {
   OURS=(); THEIRS=()
-  local p pid cwd
-  for p in "${PORTS[@]}"; do
+  local p pid cwd list=("$@")
+  ((${#list[@]})) || list=("${PORTS[@]}")
+  for p in "${list[@]}"; do
     pid="$(port_pid "$p")"
     [ -n "$pid" ] || continue
     cwd="$(pid_cwd "$pid")"
@@ -106,16 +115,34 @@ scan_ports() {
   done
 }
 
-# Stop the session and every leftover of this repository on our ports. Idempotent.
+# Stop the sessions and every leftover of this repository on our ports. Idempotent.
 stop_stack() {
-  if has_session; then
-    tmux kill-session -t "=$SESSION"
-    echo "stopped tmux session '$SESSION'"
+  local s
+  for s in "$SESSION" "$BL_SESSION"; do
+    if tmux has-session -t "=$s" 2>/dev/null; then
+      tmux kill-session -t "=$s"
+      echo "stopped tmux session '$s'"
+    fi
+  done
+  free_ports "${PORTS[@]}"
+}
+
+# Stop only the Backlog.md web UI of this repository. Idempotent.
+stop_backlog() {
+  if tmux has-session -t "=$BL_SESSION" 2>/dev/null; then
+    tmux kill-session -t "=$BL_SESSION"
+    echo "stopped tmux session '$BL_SESSION'"
   fi
+  free_ports "${BL_PORTS[@]}"
+}
+
+# Kill what this repository still has on the given ports (TERM, then KILL). A port
+# held by another project is left alone.
+free_ports() {
   local own try e pid pgid sig
   own="$(pid_pgid $$)"
   for try in 1 2 3 4 5 6 7 8 9 10; do
-    scan_ports
+    scan_ports "$@"
     ((${#OURS[@]})) || return 0
     sig=TERM
     ((try > 5)) && sig=KILL
@@ -130,10 +157,42 @@ stop_stack() {
     done
     sleep 1
   done
-  scan_ports
+  scan_ports "$@"
   if ((${#OURS[@]})); then
     echo "error: could not free port(s): ${OURS[*]%%:*}" >&2
     exit 1
+  fi
+}
+
+# Stop when another project holds one of the given ports. Run after our own leftovers are gone.
+refuse_foreign() {
+  scan_ports "$@"
+  ((${#THEIRS[@]})) || return 0
+  local e p pid cwd
+  echo "Not starting — these ports belong to another project:" >&2
+  for e in "${THEIRS[@]}"; do
+    IFS=: read -r p pid cwd <<<"$e"
+    echo "  port $p  pid $pid  cwd=$cwd  $(pid_cmd "$pid")" >&2
+  done
+  echo "Stop that process or change this project's ports, then try again." >&2
+  exit 1
+}
+
+# Start the Backlog.md web UI in its own tmux session (see `backlog-serve`).
+start_backlog() {
+  need backlog; need socat
+  mkdir -p "$REPO/.dev-logs"
+  tmux new-session -d -s "$BL_SESSION" -c "$REPO" -x 160 -y 40 \
+    "bash scripts/dev-session.sh backlog-serve 2>&1 | tee .dev-logs/backlog.log"
+  local i
+  for i in $(seq 1 30); do
+    [ -n "$(port_pid "$BACKLOG_INNER")" ] && [ -n "$(port_pid "$BACKLOG_PORT")" ] && break
+    sleep 0.5
+  done
+  if [ -n "$(port_pid "$BACKLOG_INNER")" ]; then
+    echo "Backlog web UI on 0.0.0.0:$BACKLOG_PORT (tmux session '$BL_SESSION', log .dev-logs/backlog.log)"
+  else
+    echo "warning: Backlog did not start in 15 s — see 'just logs backlog'" >&2
   fi
 }
 
@@ -169,7 +228,7 @@ print_urls() {
   echo "Dev stack — open with http://localhost (OIDC login needs a secure context):"
   echo "  Web UI    http://localhost:$FRONTEND_PORT"
   echo "  API       http://localhost:$BACKEND_PORT/api/docs"
-  echo "  Backlog   http://localhost:$BACKLOG_PORT"
+  echo "  Backlog   http://localhost:$BACKLOG_PORT  (all interfaces: http://<this host>:$BACKLOG_PORT)"
   echo "  KMS       http://localhost:42998"
   if [ -n "$OIDC_ISSUER" ]; then
     echo "  OIDC      $OIDC_ISSUER"
@@ -203,16 +262,7 @@ restart)
   stop_stack
 
   # Our own processes are gone. Whatever still holds a port belongs to someone else.
-  scan_ports
-  if ((${#THEIRS[@]})); then
-    echo "Not starting — these ports belong to another project:" >&2
-    for e in "${THEIRS[@]}"; do
-      IFS=: read -r p pid cwd <<<"$e"
-      echo "  port $p  pid $pid  cwd=$cwd  $(pid_cmd "$pid")" >&2
-    done
-    echo "Stop that process or change this project's ports, then run 'just dev' again." >&2
-    exit 1
-  fi
+  refuse_foreign "${PORTS[@]}"
 
   ensure_infra
 
@@ -223,10 +273,37 @@ restart)
   tmux new-session -d -s "$SESSION" -c "$REPO" -x 200 -y 50 \
     "mprocs --log-dir .dev-logs --log-mode truncate; printf '\n[dev stack stopped] press Enter to close this tmux session...'; read -r _"
   tmux set-environment -t "=$SESSION" DEV_REPO "$REPO"
+  start_backlog
 
   print_urls
   sleep 3
   attach_or_show
+  ;;
+
+backlog)
+  need tmux
+  stop_backlog
+  refuse_foreign "${BL_PORTS[@]}"
+  start_backlog
+  echo "  http://localhost:$BACKLOG_PORT"
+  ;;
+
+backlog-serve)
+  # Runs inside the tmux session. Backlog on 127.0.0.1:BACKLOG_INNER, restarted when it
+  # exits; capped at 1G RAM and no swap, because `backlog browser` leaks heap on a busy
+  # repository (it reached 16G once): the kernel kills only it. socat publishes it on
+  # 0.0.0.0:BACKLOG_PORT. Killing the tmux session stops both.
+  cd "$REPO"
+  (
+    while :; do
+      systemd-run --user --scope -q -p MemoryMax=1G -p MemorySwapMax=0 \
+        backlog browser --no-open --port "$BACKLOG_INNER" || true
+      echo "[backlog exited, restart in 2 s]"
+      sleep 2
+    done
+  ) &
+  trap 'trap - EXIT INT TERM HUP; kill 0' EXIT INT TERM HUP
+  socat "TCP4-LISTEN:$BACKLOG_PORT,bind=0.0.0.0,reuseaddr,fork" "TCP4:127.0.0.1:$BACKLOG_INNER"
   ;;
 
 attach)
@@ -241,6 +318,11 @@ status)
     show_screen
   else
     echo "tmux session '$SESSION': not running"
+  fi
+  if tmux has-session -t "=$BL_SESSION" 2>/dev/null; then
+    echo "tmux session '$BL_SESSION': RUNNING (Backlog web UI on 0.0.0.0:$BACKLOG_PORT)"
+  else
+    echo "tmux session '$BL_SESSION': not running (start it with: just backlog)"
   fi
   echo "OIDC login: ${OIDC_ISSUER:-off (backend/.env has no OIDC_ISSUER)}"
   echo
@@ -288,13 +370,6 @@ stop)
 
 down)
   stop_stack
-  # The backlog IPv4 relay, when someone started one by hand.
-  relay="$(pgrep -f 'socat TCP4-LISTEN:52091' || true)"
-  if [ -n "$relay" ]; then
-    # shellcheck disable=SC2086
-    kill $relay 2>/dev/null || true
-    echo "  stopped backlog socat relay (52091)"
-  fi
   # `stop`, not `down`: containers and data are kept, and a stopped container with
   # `restart: unless-stopped` stays stopped until the next `just dev`.
   if command -v docker >/dev/null 2>&1; then
