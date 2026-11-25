@@ -4,7 +4,8 @@
 #
 # Drives the real tRPC API (same code paths the UI uses), so every SSH CA,
 # host, identity, principal and certificate is genuinely signed. Generates
-# throwaway ed25519 keypairs for host registration and user-cert issuance.
+# throwaway keypairs: ecdsa P-256 host keys (the backend accepts only
+# ecdsa-sha2-nistp256 host keys) and ed25519 user keys.
 #
 # Requires: the backend dev server running (default http://localhost:52081)
 # with ALLOW_UNAUTHENTICATED_SSH_CA=true (local dev, OIDC off).
@@ -76,21 +77,25 @@ echo "  ${#IDENT[@]} identities present"
 # --- Hosts -------------------------------------------------------------------
 say "Hosts"
 declare -A HOST   # fqdn -> id
-gen_hostkey() { ssh-keygen -t ed25519 -N '' -C "$1" -f "$TMP/$1" -q; cat "$TMP/$1.pub"; }
+# Host keys must be ecdsa-sha2-nistp256: one key serves the host certificate and
+# the encrypted KRL distribution (ECIES).
+gen_hostkey() { ssh-keygen -t ecdsa -b 256 -N '' -C "$1" -f "$TMP/$1" -q; cat "$TMP/$1.pub"; }
+# Reuse the hosts that exist already (register has no CONFLICT for a known fqdn).
+HJSON="$(getq ssh.host.list)"
+while IFS=$'\t' read -r f i; do [ -n "$i" ] && HOST["$f"]="$i"; done < <(echo "$HJSON" | jq -r '.result.data[] | "\(.fqdn)\t\(.id)"')
 idx=1
 for row in "web-01.corp.example:10.0.1.11" "web-02.corp.example:10.0.1.12" \
            "db-01.corp.example:10.0.2.21" "bastion-01.corp.example:10.0.0.5" \
            "monitor-01.corp.example:10.0.3.31"; do
   fqdn="${row%%:*}"; addr="${row#*:}"
+  [ -n "${HOST[$fqdn]:-}" ] && continue
   pub="$(gen_hostkey "host$idx")"; idx=$((idx+1))
   resp="$(post ssh.host.register "$(jq -nc --arg f "$fqdn" --arg a "$addr" --arg p "$pub" \
         '{fqdn:$f,displayName:$f,addresses:[$a],opensshHostPubkey:$p}')")"
   id="$(echo "$resp" | new_id)"
-  HOST["$fqdn"]="$id"
+  if [ -n "$id" ]; then HOST["$fqdn"]="$id"
+  else warn "$fqdn register failed: $(echo "$resp" | jq -r '.error.message // .' | head -c 160)"; fi
 done
-# Resolve any that already existed.
-HJSON="$(getq ssh.host.list)"
-while IFS=$'\t' read -r f i; do [ -n "$i" ] && HOST["$f"]="$i"; done < <(echo "$HJSON" | jq -r '.result.data[] | "\(.fqdn)\t\(.id)"')
 echo "  ${#HOST[@]} hosts present"
 
 # --- Grant principals to identities & map principals to hosts ----------------
