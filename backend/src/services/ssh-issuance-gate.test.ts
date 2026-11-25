@@ -75,24 +75,24 @@ describe('BLK-13 issuance gate', () => {
     await db.insert(sshCas).values({
       id: ids.caUser, caType: 'user', kmsKeyId: 'k-u', kmsPublicKeyId: 'kp-u',
       opensshPublicKey: readFileSync(join(work, 'caU.pub'), 'utf8').trim(), fingerprintSha256: 'SHA256:u', status: 'active',
-    } as any);
+    });
     await db.insert(sshHosts).values([
       { id: ids.hostY, fqdn: 'y.lab', status: 'active' },
       { id: ids.hostZ, fqdn: 'z.lab', status: 'active' },
       { id: ids.hostOff, fqdn: 'off.lab', status: 'offboarded' },
-    ] as any);
-    await db.insert(sshIdentities).values({ id: ids.alice, subject: 'alice@lab' } as any);
+    ]);
+    await db.insert(sshIdentities).values({ id: ids.alice, subject: 'alice@lab' });
     await db.insert(sshPrincipals).values([
       { id: ids.roleAdmin, name: 'admin' },
       { id: ids.roleDev, name: 'dev' },
-    ] as any);
+    ]);
     // admin maps on Y, Z and the offboarded host; dev maps ONLY on Y.
     await db.insert(sshHostPrincipalMaps).values([
       { id: randomUUID(), hostId: ids.hostY, principalId: ids.roleAdmin, localAccount: 'root' },
       { id: randomUUID(), hostId: ids.hostZ, principalId: ids.roleAdmin, localAccount: 'root' },
       { id: randomUUID(), hostId: ids.hostOff, principalId: ids.roleAdmin, localAccount: 'root' },
       { id: randomUUID(), hostId: ids.hostY, principalId: ids.roleDev, localAccount: 'deploy' },
-    ] as any);
+    ]);
   });
 
   beforeEach(() => {
@@ -106,9 +106,9 @@ describe('BLK-13 issuance gate', () => {
   });
 
   it('flag OFF: zero behavior change even with an active block', async () => {
-    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.hostY, identityId: ids.alice, reason: 'gate-test' } as any);
+    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.hostY, identityId: ids.alice, reason: 'gate-test' });
     const signed = await signAlice(['admin', 'dev']);
-    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, signed.id)))[0] as any;
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, signed.id)))[0];
     expect(JSON.parse(row.principals)).toEqual(['admin', 'dev']); // untouched bare forms
   });
 
@@ -116,25 +116,25 @@ describe('BLK-13 issuance gate', () => {
     await db.delete(sshHostBlocks);
     process.env.SSH_BLOCK_ISSUANCE_GATE = 'true';
     const signed = await signAlice(['admin']);
-    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, signed.id)))[0] as any;
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, signed.id)))[0];
     expect(JSON.parse(row.principals)).toEqual(['admin']);
   });
 
   it('flag ON + block on Y: cert is born with scoped principals that exclude Y (and offboarded hosts)', async () => {
-    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.hostY, identityId: ids.alice, reason: 'gate' } as any);
+    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.hostY, identityId: ids.alice, reason: 'gate' });
     process.env.SSH_BLOCK_ISSUANCE_GATE = 'true';
     const signed = await signAlice(['admin', 'dev']);
-    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, signed.id)))[0] as any;
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, signed.id)))[0];
     // admin resolves to Z only (Y blocked, off.lab offboarded); dev maps only on Y → dropped.
     expect(JSON.parse(row.principals)).toEqual(['admin@z.lab']);
     // Surfaced in the UI listing (users page principals column).
     const listed = await getSshUserService().listCertificates(ctx, ids.alice);
-    expect(listed.find((c: any) => c.id === signed.id)!.principals).toEqual(['admin@z.lab']);
+    expect(listed.find((c) => c.id === signed.id)!.principals).toEqual(['admin@z.lab']);
   });
 
   it('flag ON: renew() flows through the same narrowing (bulkRenew/external share the choke point)', async () => {
     process.env.SSH_BLOCK_ISSUANCE_GATE = 'true';
-    const prior = (await db.select().from(sshCertificates).where(eq(sshCertificates.identityId, ids.alice)))[0] as any;
+    const prior = (await db.select().from(sshCertificates).where(eq(sshCertificates.identityId, ids.alice)))[0];
     const renewed = await getSshCertService().renew(ctx, {
       caId: ids.caUser,
       sshPublicKey: alicePub,
@@ -145,7 +145,7 @@ describe('BLK-13 issuance gate', () => {
       identityId: ids.alice,
       supersedesCertId: prior.id,
     });
-    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, renewed.id)))[0] as any;
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, renewed.id)))[0];
     expect(JSON.parse(row.principals)).toEqual(['admin@z.lab']);
   });
 
@@ -158,12 +158,12 @@ describe('BLK-13 issuance gate', () => {
     process.env.SSH_BLOCK_ISSUANCE_GATE = 'true';
     // Steady-state renewal: the stored principals of a previously-narrowed cert.
     const renewed = await signAlice(['admin@z.lab']);
-    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, renewed.id)))[0] as any;
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, renewed.id)))[0];
     expect(JSON.parse(row.principals)).toEqual(['admin@z.lab']); // kept — host not blocked
 
     // A scoped form pointing at the BLOCKED host is dropped on renewal.
     const mixed = await signAlice(['admin@z.lab', 'admin@y.lab']);
-    const mixedRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, mixed.id)))[0] as any;
+    const mixedRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, mixed.id)))[0];
     expect(JSON.parse(mixedRow.principals)).toEqual(['admin@z.lab']);
 
     // Only-blocked scoped forms → refuse, same as the bare all-blocked case.

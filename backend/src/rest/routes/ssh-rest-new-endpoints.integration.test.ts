@@ -46,15 +46,15 @@ describe('TASK-216 — new SSH REST endpoints', () => {
     await wipe();
     hostId = randomUUID();
     identityId = randomUUID();
-    await db.insert(sshHosts).values({ id: hostId, fqdn: `${TAG}host.lab.local`, status: 'active' } as any);
-    await db.insert(sshIdentities).values({ id: identityId, subject: `${TAG}subject` } as any);
+    await db.insert(sshHosts).values({ id: hostId, fqdn: `${TAG}host.lab.local`, status: 'active' });
+    await db.insert(sshIdentities).values({ id: identityId, subject: `${TAG}subject` });
   });
 
   describe('reads that were tRPC-only', () => {
     it('GET /identities lists identities (so a client can check UNIQUE subject before creating)', async () => {
       const res = await app.inject({ method: 'GET', url: P('/identities') });
       expect(res.statusCode).toBe(200);
-      expect(res.json().some((i: any) => i.id === identityId)).toBe(true);
+      expect(res.json<{ id: string; revoked?: boolean }[]>().some((i) => i.id === identityId)).toBe(true);
     });
 
     it('GET /hosts/:id returns one host', async () => {
@@ -107,7 +107,7 @@ describe('TASK-216 — new SSH REST endpoints', () => {
     it('POST /identities/:id/disable flips the identity to disabled', async () => {
       const res = await app.inject({ method: 'POST', url: P(`/identities/${identityId}/disable`) });
       expect(res.statusCode).toBe(200);
-      const row = (await db.select().from(sshIdentities).where(eq(sshIdentities.id, identityId)))[0] as any;
+      const row = (await db.select().from(sshIdentities).where(eq(sshIdentities.id, identityId)))[0];
       expect(row.status).toBe('disabled');
     });
 
@@ -118,7 +118,7 @@ describe('TASK-216 — new SSH REST endpoints', () => {
         payload: { reason: 'left the company' },
       });
       expect(res.statusCode).toBe(200);
-      const row = (await db.select().from(sshIdentities).where(eq(sshIdentities.id, identityId)))[0] as any;
+      const row = (await db.select().from(sshIdentities).where(eq(sshIdentities.id, identityId)))[0];
       expect(row.status).toBe('disabled');
     });
 
@@ -159,7 +159,7 @@ describe('TASK-216 — new SSH REST endpoints', () => {
 
   describe('404 contract on an unknown id', () => {
     const unknown = randomUUID();
-    const cases: Array<[string, string, unknown?]> = [
+    const cases: Array<['GET' | 'POST' | 'DELETE', string, Record<string, unknown>?]> = [
       ['GET', `/cas/${unknown}`],
       ['POST', `/cas/${unknown}/revoke`, {}],
       ['GET', `/hosts/${unknown}`],
@@ -173,7 +173,7 @@ describe('TASK-216 — new SSH REST endpoints', () => {
     ];
 
     it.each(cases)('%s %s returns 404, not 500', async (method, path, payload) => {
-      const res = await app.inject({ method: method as any, url: P(path), payload: payload as any });
+      const res = await app.inject({ method: method, url: P(path), payload: payload });
       expect(res.statusCode, `${method} ${path} -> ${res.body}`).toBe(404);
       expect(res.json().error.message).toMatch(/not found/i);
     });

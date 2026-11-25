@@ -21,7 +21,7 @@ describe('CA creation: keyAlgorithm and initial CRL (KMS)', () => {
   let kms = false;
   let server: FastifyInstance;
   let caId: string;
-  let createBody: any;
+  let createBody: { id: string; keyAlgorithm: string };
 
   beforeAll(async () => {
     kms = await isKmsAvailable();
@@ -56,15 +56,15 @@ describe('CA creation: keyAlgorithm and initial CRL (KMS)', () => {
     expect(createBody.keyAlgorithm).toBe('RSA-2048');
     const list = await server.inject({ method: 'GET', url: '/api/v1/cas/?limit=100&sortBy=issuedDate&sortOrder=desc' });
     expect(list.statusCode).toBe(200);
-    const item = list.json().items.find((c: any) => c.id === caId);
-    expect(item.keyAlgorithm).toBe(createBody.keyAlgorithm);
+    const item = list.json<{ items: { id: string; keyAlgorithm: string }[] }>().items.find((c) => c.id === caId);
+    expect(item!.keyAlgorithm).toBe(createBody.keyAlgorithm);
   });
 
   it('serves a signed empty CRL #1 immediately after creation (issue #22)', async (ctx) => {
     if (!kms) return ctx.skip();
     const res = await server.inject({ method: 'GET', url: `/crl/${caId}.crl` });
     expect(res.statusCode).toBe(200);
-    const parsed: any = parseCRL(res.body, 'PEM');
+    const parsed = parseCRL(res.body, 'PEM');
     expect(parsed.revokedCertificates).toHaveLength(0);
     const first = await db.select().from(crls).where(eq(crls.caId, caId));
     expect(first).toHaveLength(1);

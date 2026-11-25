@@ -6,7 +6,7 @@
  * loops; a new user cert for a blocked identity regenerates asynchronously;
  * block resolution provably ignores the caller-settable keyId.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { assert, describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -65,7 +65,7 @@ describe('BLK-05 issuance + revocation triggers', () => {
   let alicePub: string;
   let malloryPub: string;
 
-  const certRow = (o: { identityId: string; serial: string; keyId: string; fp?: string }) => ({
+  const certRow = (o: { identityId: string; serial: string; keyId: string; fp?: string }): typeof sshCertificates.$inferInsert => ({
     id: randomUUID(),
     caId: ids.caUser,
     certType: 'user',
@@ -94,16 +94,16 @@ describe('BLK-05 issuance + revocation triggers', () => {
     await db.insert(sshCas).values([
       { id: ids.caUser, caType: 'user', kmsKeyId: 'k-u', kmsPublicKeyId: 'kp-u', opensshPublicKey: caPub('caU'), fingerprintSha256: 'SHA256:u', status: 'active' },
       { id: ids.caHost, caType: 'host', kmsKeyId: 'k-h', kmsPublicKeyId: 'kp-h', opensshPublicKey: caPub('caH'), fingerprintSha256: 'SHA256:h', status: 'active' },
-    ] as any);
+    ]);
     await db.insert(sshHosts).values([
       { id: ids.hostBlocked, fqdn: 'blocked.lab.local', status: 'active' },
       { id: ids.hostPlain, fqdn: 'plain.lab.local', status: 'active' },
-    ] as any);
+    ]);
     await db.insert(sshIdentities).values([
       { id: ids.alice, subject: 'alice@lab' },
       { id: ids.mallory, subject: 'mallory@lab' },
-    ] as any);
-    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.hostBlocked, identityId: ids.alice, reason: 'blk05' } as any);
+    ]);
+    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.hostBlocked, identityId: ids.alice, reason: 'blk05' });
 
     // Baseline per-host rows for both hosts (fresh nextUpdate).
     await getSshHostKrlService().generate(ctx, ids.hostBlocked);
@@ -130,11 +130,13 @@ describe('BLK-05 issuance + revocation triggers', () => {
     expect(await hostKrlCount(ids.hostBlocked)).toBe(blockedCountBefore + 1); // eager regen
     expect(await hostKrlCount(ids.hostPlain)).toBe(plainCountBefore); // NOT regenerated (lazy backstop)
     const plainLatest = await getSshHostKrlService().getLatestRow(ctx, ids.hostPlain);
+    assert.isNotNull(plainLatest);
     expect(new Date(plainLatest.nextUpdate).getTime()).toBeLessThanOrEqual(Date.now()); // clamped
 
     // The eager row already carries the new revocation (latency bounded by the
     // pull interval, not the 1h nextUpdate backstop).
     const blockedLatest = await getSshHostKrlService().getLatestRow(ctx, ids.hostBlocked);
+    assert.isNotNull(blockedLatest);
     const decoded = decodeKrl(Buffer.from(blockedLatest.krlBlob));
     const caUBlobHex = parseSshPublicKey((await db.select().from(sshCas).where(eq(sshCas.id, ids.caUser)))[0].opensshPublicKey).blob.toString('hex');
     expect(decoded.serialsByCaHex.get(caUBlobHex)).toContain(9001n);
@@ -144,7 +146,7 @@ describe('BLK-05 issuance + revocation triggers', () => {
     const entryPoints: Array<() => Promise<unknown>> = [
       async () => {
         const c = certRow({ identityId: ids.mallory, serial: '7101', keyId: 'ep1' });
-        await db.insert(sshCertificates).values(c as any);
+        await db.insert(sshCertificates).values(c);
         return getSshKrlService().revokeByCert(ctx, c.id, 'ep');
       },
       async () =>
@@ -155,12 +157,12 @@ describe('BLK-05 issuance + revocation triggers', () => {
         ),
       async () => {
         const c = certRow({ identityId: ids.mallory, serial: '7103', keyId: 'ep3' });
-        await db.insert(sshCertificates).values(c as any);
+        await db.insert(sshCertificates).values(c);
         return getSshUserService().revoke(ctx, c.id, 'ep');
       },
       async () => {
         const c = certRow({ identityId: ids.mallory, serial: '7104', keyId: 'ep4' });
-        await db.insert(sshCertificates).values(c as any);
+        await db.insert(sshCertificates).values(c);
         const { getSshBulkService } = await import('./ssh-bulk.service.js');
         return getSshBulkService().bulkRevoke(ctx, [c.id], 'ep');
       },
@@ -168,13 +170,13 @@ describe('BLK-05 issuance + revocation triggers', () => {
         // host.revokeCurrent: give the plain host a current HOST cert to revoke.
         const c = {
           ...certRow({ identityId: ids.mallory, serial: '7105', keyId: 'ep5' }),
-          certType: 'host',
+          certType: 'host' as const,
           identityId: null,
           hostId: ids.hostPlain,
           caId: ids.caHost,
         };
-        await db.insert(sshCertificates).values(c as any);
-        await db.update(sshHosts).set({ currentCertId: c.id } as any).where(eq(sshHosts.id, ids.hostPlain));
+        await db.insert(sshCertificates).values(c);
+        await db.update(sshHosts).set({ currentCertId: c.id }).where(eq(sshHosts.id, ids.hostPlain));
         const { getSshHostService } = await import('./ssh-host.service.js');
         return getSshHostService().revokeCurrent(ctx, ids.hostPlain, 'ep');
       },
@@ -183,9 +185,11 @@ describe('BLK-05 issuance + revocation triggers', () => {
       // Refresh the plain host's lineage so there IS something fresh to clamp.
       await getSshHostKrlService().generate(ctx, ids.hostPlain);
       const fresh = await getSshHostKrlService().getLatestRow(ctx, ids.hostPlain);
+      assert.isNotNull(fresh);
       expect(new Date(fresh.nextUpdate).getTime()).toBeGreaterThan(Date.now());
       await fire();
       const after = await getSshHostKrlService().getLatestRow(ctx, ids.hostPlain);
+      assert.isNotNull(after);
       expect(new Date(after.nextUpdate).getTime()).toBeLessThanOrEqual(Date.now());
       await getSshHostKrlService().flushEagerRegen();
     }
@@ -194,7 +198,7 @@ describe('BLK-05 issuance + revocation triggers', () => {
   it('identity offboard coalesces invalidation (no O(certs × hosts) regen storm)', async () => {
     // Give alice several active certs, then offboard: the loop revokes each.
     const serials = ['8201', '8202', '8203', '8204', '8205'];
-    await db.insert(sshCertificates).values(serials.map((s) => certRow({ identityId: ids.alice, serial: s, keyId: `off-${s}` })) as any);
+    await db.insert(sshCertificates).values(serials.map((s) => certRow({ identityId: ids.alice, serial: s, keyId: `off-${s}` })));
     const before = await hostKrlCount(ids.hostBlocked);
 
     await getSshUserService().offboard(ctx, ids.alice, 'blk05-offboard');
@@ -205,6 +209,7 @@ describe('BLK-05 issuance + revocation triggers', () => {
     expect(after - before).toBeLessThanOrEqual(2); // coalesced, NOT 5
     // All five serials landed in the composed KRL regardless.
     const latest = await getSshHostKrlService().getLatestRow(ctx, ids.hostBlocked);
+    assert.isNotNull(latest);
     const caUBlobHex = parseSshPublicKey((await db.select().from(sshCas).where(eq(sshCas.id, ids.caUser)))[0].opensshPublicKey).blob.toString('hex');
     const got = decodeKrl(Buffer.from(latest.krlBlob)).serialsByCaHex.get(caUBlobHex) ?? [];
     for (const s of serials) expect(got).toContain(BigInt(s));
@@ -227,6 +232,7 @@ describe('BLK-05 issuance + revocation triggers', () => {
       expect(await hostKrlCount(ids.hostBlocked)).toBe(before + 1);
     }, { timeout: 3000 });
     const latest = await getSshHostKrlService().getLatestRow(ctx, ids.hostBlocked);
+    assert.isNotNull(latest);
     const caUBlobHex = parseSshPublicKey((await db.select().from(sshCas).where(eq(sshCas.id, ids.caUser)))[0].opensshPublicKey).blob.toString('hex');
     expect(decodeKrl(Buffer.from(latest.krlBlob)).serialsByCaHex.get(caUBlobHex)).toContain(BigInt(signed.serial));
   });
@@ -268,11 +274,12 @@ describe('BLK-05 issuance + revocation triggers', () => {
     // claims to be someone else. Only identity_id decides.
     const forged = certRow({ identityId: ids.mallory, serial: '9501', keyId: 'alice@lab' });
     const disguised = certRow({ identityId: ids.alice, serial: '9502', keyId: 'not-alice' });
-    await db.insert(sshCertificates).values([forged, disguised] as any);
+    await db.insert(sshCertificates).values([forged, disguised]);
 
     const dto = await getSshHostKrlService().generate(ctx, ids.hostBlocked);
     expect(dto.blockCount).toBe(1);
     const latest = await getSshHostKrlService().getLatestRow(ctx, ids.hostBlocked);
+    assert.isNotNull(latest);
     const caUBlobHex = parseSshPublicKey((await db.select().from(sshCas).where(eq(sshCas.id, ids.caUser)))[0].opensshPublicKey).blob.toString('hex');
     const serials = decodeKrl(Buffer.from(latest.krlBlob)).serialsByCaHex.get(caUBlobHex) ?? [];
     expect(serials).toContain(9502n); // alice's cert denied despite disguised keyId

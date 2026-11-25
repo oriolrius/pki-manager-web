@@ -5,7 +5,7 @@
  * interactions (disabled identity blockable, identity offboard supersedes,
  * host offboard retires the lineage but keeps rows). KMS signRaw mocked.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { assert, describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,7 +43,7 @@ async function auditRows(op: 'ssh.host.block' | 'ssh.host.unblock', status: 'suc
   return (await db
     .select()
     .from(auditLog)
-    .where(and(eq(auditLog.operation, op), eq(auditLog.status, status)))) as any[];
+    .where(and(eq(auditLog.operation, op), eq(auditLog.status, status))));
 }
 
 describe('BLK-04 SshBlockService', () => {
@@ -75,20 +75,20 @@ describe('BLK-04 SshBlockService', () => {
     await db.insert(sshCas).values([
       { id: ids.caUser, caType: 'user', kmsKeyId: 'k-u', kmsPublicKeyId: 'kp-u', opensshPublicKey: caPub('caU'), fingerprintSha256: 'SHA256:u', status: 'active' },
       { id: ids.caHost, caType: 'host', kmsKeyId: 'k-h', kmsPublicKeyId: 'kp-h', opensshPublicKey: caPub('caH'), fingerprintSha256: 'SHA256:h', status: 'active' },
-    ] as any);
+    ]);
     await db.insert(sshHosts).values([
       { id: ids.hostY, fqdn: 'y.lab.local', status: 'active' },
       { id: ids.hostZ, fqdn: 'z.lab.local', status: 'active' },
-    ] as any);
+    ]);
     await db.insert(sshIdentities).values([
       { id: ids.alice, subject: 'alice@lab' },
       { id: ids.bob, subject: 'bob@lab', status: 'disabled' },
       { id: ids.carol, subject: 'carol@lab' },
-    ] as any);
+    ]);
 
     // alice and carol share a public key (over-block scenario); alice also has
     // an unexpired active cert so offboard-supersession stays false until revoked.
-    const cert = (identityId: string, serial: string, fp: string) => ({
+    const cert = (identityId: string, serial: string, fp: string): typeof sshCertificates.$inferInsert => ({
       id: randomUUID(),
       caId: ids.caUser,
       certType: 'user',
@@ -107,7 +107,7 @@ describe('BLK-04 SshBlockService', () => {
       cert(ids.alice, '1', sharedFp),
       cert(ids.carol, '2', sharedFp),
       cert(ids.alice, '3', 'SHA256:' + createHash('sha256').update('alice-other').digest('base64').replace(/=+$/, '')),
-    ] as any);
+    ]);
   });
 
   afterAll(async () => {
@@ -148,7 +148,7 @@ describe('BLK-04 SshBlockService', () => {
     await expect(svc.unblock(ctx, { hostId: ids.hostY, identityId: ids.carol })).rejects.toThrow(SshBlockError);
     const fails = await auditRows('ssh.host.unblock', 'failure');
     expect(fails.length).toBeGreaterThanOrEqual(1);
-    const d = JSON.parse(fails[fails.length - 1].details);
+    const d = JSON.parse(fails[fails.length - 1].details!);
     expect(d).toMatchObject({ identityId: ids.carol, hostId: ids.hostY });
   });
 
@@ -177,6 +177,7 @@ describe('BLK-04 SshBlockService', () => {
     // Fresh baseline row, then break generation (no CAs at all).
     await getSshHostKrlService().generate(ctx, ids.hostZ);
     const before = await getSshHostKrlService().getLatestRow(ctx, ids.hostZ);
+    assert.isNotNull(before);
     expect(new Date(before.nextUpdate).getTime()).toBeGreaterThan(Date.now());
 
     const cas = await db.select().from(sshCas);
@@ -185,10 +186,11 @@ describe('BLK-04 SshBlockService', () => {
       const res = await svc.block(ctx, { hostId: ids.hostZ, identityId: ids.carol, reason: 'regen-fail' });
       expect(res.krl).toBeNull(); // sync regen failed, block row persisted
       const after = await getSshHostKrlService().getLatestRow(ctx, ids.hostZ);
+      assert.isNotNull(after);
       expect(after.id).toBe(before.id); // no new row ...
       expect(new Date(after.nextUpdate).getTime()).toBeLessThanOrEqual(Date.now()); // ... but clamped
     } finally {
-      await db.insert(sshCas).values(cas as any);
+      await db.insert(sshCas).values(cas);
       await svc.unblock(ctx, { hostId: ids.hostZ, identityId: ids.carol });
     }
   });

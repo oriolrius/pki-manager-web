@@ -30,7 +30,7 @@ async function wipe() {
 
 async function host(fqdn: string): Promise<string> {
   const id = randomUUID();
-  await db.insert(sshHosts).values({ id, fqdn, status: 'active' } as any);
+  await db.insert(sshHosts).values({ id, fqdn, status: 'active' });
   return id;
 }
 
@@ -82,7 +82,7 @@ describe('TASK-246 — stale tracks principal-file changes only', () => {
     const h = await host(FQDN_A);
     const p = await principal('db');
     // Push stamped in the future: a naive "now" change stamp would sort BEFORE it.
-    await db.update(sshHosts).set({ lastPrincipalPushAt: new Date(Date.now() + 5_000) } as any).where(eq(sshHosts.id, h));
+    await db.update(sshHosts).set({ lastPrincipalPushAt: new Date(Date.now() + 5_000) }).where(eq(sshHosts.id, h));
     await svc.mapToHost(ctx, { hostId: h, principalId: p, localAccount: 'postgres' });
     expect((await svc.render(ctx, h)).stale).toBe(true);
   });

@@ -22,13 +22,13 @@ let app: FastifyInstance;
 async function host(fqdn: string, zoneId: string) {
   const id = randomUUID();
   hostIds.push(id);
-  await db.insert(sshHosts).values({ id, fqdn, zoneId, status: 'active' } as any);
+  await db.insert(sshHosts).values({ id, fqdn, zoneId, status: 'active' });
   return id;
 }
 
 beforeAll(async () => {
   stagingId = randomUUID();
-  await db.insert(zones).values({ id: stagingId, name: SLUG, displayName: 'Staging' } as any);
+  await db.insert(zones).values({ id: stagingId, name: SLUG, displayName: 'Staging' });
   const prodOps = await svc.createPrincipal(ctx, { name: 'zops', zone: 'default' });
   const stgOps = await svc.createPrincipal(ctx, { name: 'zops', zone: stagingId });
   await svc.mapToHost(ctx, { hostId: await host('web.prod.lab', 'default'), principalId: prodOps.id, localAccount: 'root' });

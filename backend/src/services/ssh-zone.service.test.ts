@@ -92,7 +92,7 @@ describe('SshZoneService + resolveZone (ZONE-02)', () => {
     const z = await getSshZoneService().create(ctx, { name: 'audited', displayName: 'A' });
     await getSshZoneService().update(ctx, z.id, { description: 'x' });
     await getSshZoneService().archive(ctx, z.id);
-    const rows = (await db.select().from(auditLog).where(eq(auditLog.entityType, 'zone'))) as any[];
+    const rows = (await db.select().from(auditLog).where(eq(auditLog.entityType, 'zone')));
     expect(rows.length).toBe(before + 3);
     expect(rows.map((r) => r.operation)).toEqual(
       expect.arrayContaining(['ssh.zone.create', 'ssh.zone.update', 'ssh.zone.archive'])

@@ -38,14 +38,14 @@ const identities: Record<string, string> = {};
 const certIds: string[] = [];
 let serial = 1;
 
-async function identity(subject: string, zoneId = 'default', status = 'active') {
+async function identity(subject: string, zoneId = 'default', status: (typeof sshIdentities.$inferSelect)['status'] = 'active') {
   const id = randomUUID();
   identities[subject] = id;
-  await db.insert(sshIdentities).values({ id, subject, zoneId, status } as any);
+  await db.insert(sshIdentities).values({ id, subject, zoneId, status });
   return id;
 }
 
-async function cert(identityId: string, principals: string[], over: Record<string, unknown> = {}) {
+async function cert(identityId: string, principals: string[], over: Partial<typeof sshCertificates.$inferInsert> = {}) {
   const id = randomUUID();
   certIds.push(id);
   await db.insert(sshCertificates).values({
@@ -63,13 +63,13 @@ async function cert(identityId: string, principals: string[], over: Record<strin
     kmsSigningKeyId: 'k',
     status: 'active',
     ...over,
-  } as any);
+  });
   return id;
 }
 
 beforeAll(async () => {
-  await db.insert(zones).values({ id: ids.zone, name: `acc-${ids.zone.slice(0, 6)}`, displayName: 'Other' } as any);
-  const ca = (id: string, zoneId: string) => ({
+  await db.insert(zones).values({ id: ids.zone, name: `acc-${ids.zone.slice(0, 6)}`, displayName: 'Other' });
+  const ca = (id: string, zoneId: string): typeof sshCas.$inferInsert => ({
     id,
     zoneId,
     caType: 'user',
@@ -79,33 +79,33 @@ beforeAll(async () => {
     fingerprintSha256: `SHA256:${id}`,
     status: 'retired',
   });
-  await db.insert(sshCas).values([ca(ids.ca, 'default'), ca(ids.otherCa, ids.zone)] as any);
-  await db.insert(sshHosts).values({ id: ids.host, fqdn: FQDN, status: 'active' } as any);
+  await db.insert(sshCas).values([ca(ids.ca, 'default'), ca(ids.otherCa, ids.zone)]);
+  await db.insert(sshHosts).values({ id: ids.host, fqdn: FQDN, status: 'active' });
   await db.insert(sshPrincipals).values([
     { id: ids.ops, name: 'acc-ops' },
     { id: ids.web, name: 'acc-web' },
     { id: ids.otherOps, name: 'acc-ops', zoneId: ids.zone },
-  ] as any);
+  ]);
   await db.insert(sshHostPrincipalMaps).values([
     { id: randomUUID(), hostId: ids.host, principalId: ids.ops, localAccount: 'root' },
     { id: randomUUID(), hostId: ids.host, principalId: ids.web, localAccount: 'deploy' },
-  ] as any);
+  ]);
 
   // alice: certificate only (bare principal).
   await cert(await identity('acc-alice@lab'), ['acc-ops']);
   // bob: host-scoped principal for THIS host + a grant on web -> both.
   const bob = await identity('acc-bob@lab');
   await cert(bob, [`acc-web@${FQDN}`]);
-  await db.insert(sshUserPrincipals).values({ id: randomUUID(), identityId: bob, principalId: ids.ops } as any);
+  await db.insert(sshUserPrincipals).values({ id: randomUUID(), identityId: bob, principalId: ids.ops });
   // carol: grant only.
   const carol = await identity('acc-carol@lab');
-  await db.insert(sshUserPrincipals).values({ id: randomUUID(), identityId: carol, principalId: ids.web } as any);
+  await db.insert(sshUserPrincipals).values({ id: randomUUID(), identityId: carol, principalId: ids.web });
   // Must NOT appear:
   await cert(await identity('acc-expired@lab'), ['acc-ops'], { validBefore: new Date(Date.now() - 1000) });
   await cert(await identity('acc-revoked@lab'), ['acc-ops'], { status: 'revoked' });
   const bySerial = await identity('acc-serial@lab');
   await cert(bySerial, ['acc-ops'], { serial: '9999' });
-  await db.insert(sshRevocations).values({ id: randomUUID(), caId: ids.ca, targetType: 'serial', serial: '9999' } as any);
+  await db.insert(sshRevocations).values({ id: randomUUID(), caId: ids.ca, targetType: 'serial', serial: '9999' });
   await cert(await identity('acc-otherhost@lab'), ['acc-ops@elsewhere.lab.local']);
   await cert(await identity('acc-unmapped@lab'), ['acc-db']);
   // Same principal name, other zone (identity + CA in that zone).
@@ -145,7 +145,7 @@ describe('TASK-248 — host access sources', () => {
       identityId: identities['acc-alice@lab'],
       status: 'active',
       reason: 'test',
-    } as any);
+    });
     try {
       const access = await getSshBlockService().hostAccess(ctx, ids.host);
       const alice = access.entries.find((e) => e.subject === 'acc-alice@lab')!;

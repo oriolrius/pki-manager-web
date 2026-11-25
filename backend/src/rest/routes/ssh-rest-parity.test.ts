@@ -114,9 +114,9 @@ describe('TASK-216 — every SSH tRPC procedure has a REST twin', () => {
     await registerOpenAPI(app);
     await app.register(sshRoutes, { prefix: '/ssh' });
     await app.ready();
-    const spec = app.swagger() as any;
+    const spec = app.swagger();
     restOps = new Set(
-      Object.entries<any>(spec.paths).flatMap(([path, item]) =>
+      Object.entries(spec.paths!).flatMap(([path, item]) =>
         Object.keys(item).map((method) => `${method.toUpperCase()} ${path}`)
       )
     );
@@ -126,7 +126,7 @@ describe('TASK-216 — every SSH tRPC procedure has a REST twin', () => {
     await app?.close();
   });
 
-  const procedures = Object.keys((sshRouter as any)._def.procedures).sort();
+  const procedures = Object.keys(sshRouter._def.procedures).sort();
 
   it('the tRPC router still exposes the procedures this map was built against', () => {
     expect(procedures.length).toBeGreaterThan(0);

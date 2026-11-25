@@ -2,6 +2,7 @@
  * SSH-10..14 service integration — full dual-CA → host/user issuance → RBAC flow
  * against the live KMS, validated by ssh-keygen -L. Gated on KMS_AVAILABLE.
  */
+import type { SshCaDto } from './ssh-ca.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
@@ -31,7 +32,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) {
+  for (const c of cas) {
     try {
       await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId);
     } catch {
@@ -52,8 +53,8 @@ const inspect = (line: string, work: string): string => {
 
 describe.skipIf(!KMS)('SSH services integration (SSH-10..14)', () => {
   let work: string;
-  let userCa: any;
-  let hostCa: any;
+  let userCa: SshCaDto;
+  let hostCa: SshCaDto;
 
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'ssh-svc-'));

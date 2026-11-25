@@ -27,7 +27,7 @@ describe('CA revocation publishes a signed CRL (issue #48, KMS)', () => {
   let caId: string;
   let certId: string;
   let certSerial: string;
-  let revokeBody: any;
+  let revokeBody: { cascadeRevokedCount: number; crlGenerated: boolean; crlId: string };
 
   beforeAll(async () => {
     kms = await isKmsAvailable();

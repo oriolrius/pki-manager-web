@@ -5,7 +5,8 @@
  * guards, and — the security core — that a host's composed KRL never carries a
  * foreign zone's revocations. Gated on KMS_AVAILABLE.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { SshZoneDto } from './ssh-zone.service.js';
+import { assert, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -42,7 +43,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) {
+  for (const c of cas) {
     try {
       await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId);
     } catch {
@@ -61,8 +62,8 @@ const keygen = (args: string[]) => execFileSync('ssh-keygen', args, { stdio: 'pi
 
 describe.skipIf(!KMS)('SSH zones — multi-zone trust boundary (ZONE-02..05)', () => {
   let work: string;
-  let prod: any;
-  let staging: any;
+  let prod: SshZoneDto;
+  let staging: SshZoneDto;
 
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'ssh-zones-'));
@@ -162,6 +163,7 @@ describe.skipIf(!KMS)('SSH zones — multi-zone trust boundary (ZONE-02..05)', (
     // host's KRL must mark the prod cert REVOKED and the staging cert NOT revoked,
     // proving the trust boundary at the wire level, not just via a count.
     const row = await getSshHostKrlService().getLatestRow(ctx, host.id);
+    assert.isNotNull(row);
     const krlPath = join(work, 'composed.krl');
     writeFileSync(krlPath, row.krlBlob as Buffer);
     const stagingCertPath = join(work, 'staging-cert.pub');
@@ -171,9 +173,9 @@ describe.skipIf(!KMS)('SSH zones — multi-zone trust boundary (ZONE-02..05)', (
     const query = (certPath: string) => {
       try {
         return execFileSync('ssh-keygen', ['-Q', '-f', krlPath, certPath], { encoding: 'utf8' });
-      } catch (e: any) {
+      } catch (e) {
         // ssh-keygen exits non-zero when a key is revoked; the status is on stdout.
-        return String(e.stdout ?? '');
+        return String(e instanceof Error && 'stdout' in e ? e.stdout : '');
       }
     };
     expect(query(prodCertPath)).toMatch(/REVOKED/i);

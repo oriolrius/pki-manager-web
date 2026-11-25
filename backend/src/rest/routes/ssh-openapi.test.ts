@@ -21,28 +21,31 @@ import {
 } from '../schemas/ssh-openapi-schemas.js';
 import { createSshCaSchema, createIdentitySchema } from '../../trpc/ssh-schemas.js';
 
-type AnyRec = Record<string, any>;
+type Schema = import('openapi-types').OpenAPIV3.SchemaObject;
+type Content = { content?: Record<string, { schema: Schema }> };
+type PathItem = Record<string, { requestBody?: Content; responses?: Record<string, Content> }>;
+type Spec = { paths: Record<string, PathItem> };
 
 /** Resolve a swagger path item by exact key or by suffix (routes may carry a baked-in prefix). */
-function pathItem(spec: AnyRec, suffix: string): AnyRec | undefined {
-  const paths = spec.paths as AnyRec;
+function pathItem(spec: Spec, suffix: string): PathItem | undefined {
+  const paths = spec.paths;
   const key = Object.keys(paths).find((k) => k === suffix || k.endsWith(suffix));
   return key ? paths[key] : undefined;
 }
 
-function requestBodySchema(spec: AnyRec, suffix: string, method = 'post'): AnyRec | undefined {
+function requestBodySchema(spec: Spec, suffix: string, method = 'post'): Schema | undefined {
   const op = pathItem(spec, suffix)?.[method];
   return op?.requestBody?.content?.['application/json']?.schema;
 }
 
-function responseSchema(spec: AnyRec, suffix: string, method: string, status = '200'): AnyRec | undefined {
+function responseSchema(spec: Spec, suffix: string, method: string, status = '200'): Schema | undefined {
   const op = pathItem(spec, suffix)?.[method];
   return op?.responses?.[status]?.content?.['application/json']?.schema;
 }
 
 describe('TASK-207 — SSH & external OpenAPI schemas', () => {
   let app: FastifyInstance;
-  let spec: AnyRec;
+  let spec: Spec;
 
   beforeAll(async () => {
     app = Fastify();
@@ -66,7 +69,7 @@ describe('TASK-207 — SSH & external OpenAPI schemas', () => {
       async (req) => req.body);
 
     await app.ready();
-    spec = app.swagger() as AnyRec;
+    spec = app.swagger() as Spec;
   });
 
   afterAll(async () => {

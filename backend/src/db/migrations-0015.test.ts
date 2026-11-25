@@ -23,8 +23,8 @@ describe('migration 0015 (token-scoped ssh_idempotency)', () => {
     const pre = join(work, 'pre');
     cpSync(MIGRATIONS, pre, { recursive: true });
     const journalPath = join(pre, 'meta', '_journal.json');
-    const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
-    journal.entries = journal.entries.filter((e: any) => e.idx <= 14);
+    const journal: { entries: { idx: number }[] } = JSON.parse(readFileSync(journalPath, 'utf8'));
+    journal.entries = journal.entries.filter((e) => e.idx <= 14);
     writeFileSync(journalPath, JSON.stringify(journal));
 
     const sqlite = new Database(join(work, 'db.sqlite'));
@@ -34,7 +34,7 @@ describe('migration 0015 (token-scoped ssh_idempotency)', () => {
 
       migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS });
 
-      const pk = (sqlite.prepare(`PRAGMA table_info(ssh_idempotency)`).all() as any[])
+      const pk = sqlite.prepare<[], { name: string; pk: number }>(`PRAGMA table_info(ssh_idempotency)`).all()
         .filter((c) => c.pk > 0)
         .sort((a, b) => a.pk - b.pk)
         .map((c) => c.name);

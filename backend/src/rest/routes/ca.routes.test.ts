@@ -9,6 +9,7 @@
  * 5. OpenAPI schemas are documented correctly
  * 6. Error handling works as expected
  */
+import type { CAListItem } from '../../services/ca.service.js';
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify from 'fastify';
@@ -232,7 +233,7 @@ describe('CA REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((ca: any) => {
+      body.items.forEach((ca: CAListItem) => {
         expect(ca.status).toBe('active');
       });
     });
@@ -263,7 +264,7 @@ describe('CA REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      expect(body.items.some((ca: any) => ca.subject.includes('Searchable'))).toBe(true);
+      expect(body.items.some((ca: CAListItem) => ca.subject.includes('Searchable'))).toBe(true);
     });
 
     it('should have proper pagination response structure', async () => {
@@ -616,7 +617,7 @@ describe('CA REST Endpoints', () => {
 
       // Check that the Certificate Authorities tag exists
       expect(spec.tags).toBeDefined();
-      const tagNames = spec.tags.map((t: any) => t.name);
+      const tagNames = spec.tags.map((t: { name: string }) => t.name);
       expect(tagNames).toContain('Certificate Authorities');
     });
   });

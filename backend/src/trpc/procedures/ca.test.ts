@@ -7,6 +7,7 @@
  * 3. CA revocation with validation
  * 4. CA deletion with safety checks
  */
+import { TRPCError } from '@trpc/server';
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'crypto';
@@ -650,7 +651,7 @@ describe('ca.revoke - comprehensive tests', () => {
         'cessationOfOperation',
         'certificateHold',
         'privilegeWithdrawn',
-      ];
+      ] as const;
 
       for (const reason of reasons) {
         const caId = randomUUID();
@@ -706,10 +707,10 @@ describe('ca.revoke - comprehensive tests', () => {
         'cessationOfOperation',
         'certificateHold',
         'privilegeWithdrawn',
-      ];
+      ] as const;
 
       for (let i = 0; i < reasons.length; i++) {
-        const reason = reasons[i] as any;
+        const reason = reasons[i];
         const caId = testCAs[i];
 
         const result = await caller.ca.revoke({
@@ -1346,8 +1347,8 @@ describe('ca.delete - comprehensive tests', () => {
         await caller.ca.getById({ id: orphanedCaId });
         // If we get here, the KMS mock might be returning data - verify the error path
         expect.fail('Expected CONFLICT error but call succeeded');
-      } catch (error: any) {
-        // tRPC wraps errors - check for CONFLICT code
+      } catch (error) {
+        if (!(error instanceof TRPCError)) throw error;
         expect(error.code).toBe('CONFLICT');
         expect(error.message).toContain('not found in KMS');
       }

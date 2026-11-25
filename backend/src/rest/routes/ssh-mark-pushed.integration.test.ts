@@ -57,7 +57,7 @@ describe('TASK-215 — POST /api/v1/ssh/hosts/:id/auth-principals/pushed', () =>
     hostId = randomUUID();
     // Principal files changed and never pushed => Stale (TASK-246: the signal
     // is principals_changed_at, no longer updatedAt).
-    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active', principalsChangedAt: new Date() } as any);
+    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active', principalsChangedAt: new Date() });
   });
 
   it('clears the Stale flag using REST alone (no tRPC call)', async () => {
@@ -96,7 +96,7 @@ describe('TASK-215 — POST /api/v1/ssh/hosts/:id/auth-principals/pushed', () =>
     const viaRest = (await app.inject({ method: 'POST', url: PUSHED_PATH(hostId) })).json();
 
     // Re-stale the host, then drive the SAME service method tRPC uses.
-    await db.update(sshHosts).set({ lastPrincipalPushAt: null } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ lastPrincipalPushAt: null }).where(eq(sshHosts.id, hostId));
     expect((await getSshPrincipalService().render({ db, ipAddress: null }, hostId)).stale).toBe(true);
     const viaService = await getSshPrincipalService().markPushed({ db, ipAddress: null }, hostId);
 
@@ -106,7 +106,7 @@ describe('TASK-215 — POST /api/v1/ssh/hosts/:id/auth-principals/pushed', () =>
     // One audit row per call, same operation/entity/status.
     const rows = await markPushedAudits(hostId);
     expect(rows).toHaveLength(2);
-    expect(new Set(rows.map((r: any) => r.status))).toEqual(new Set(['success']));
-    expect(new Set(rows.map((r: any) => r.entityType))).toEqual(new Set(['ssh_host']));
+    expect(new Set(rows.map((r) => r.status))).toEqual(new Set(['success']));
+    expect(new Set(rows.map((r) => r.entityType))).toEqual(new Set(['ssh_host']));
   });
 });

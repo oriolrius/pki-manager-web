@@ -37,7 +37,7 @@ const { integrationAuthPreHandler } = await import('../rest/middleware/integrati
 const { authMiddlewareHandler } = await import('../trpc/middleware/auth.js');
 
 let sqlite: Database.Database;
-let db: ReturnType<typeof drizzle>;
+let db: ReturnType<typeof drizzle<typeof schema>>;
 let app: FastifyInstance;
 
 const lastRow = () => db.select().from(schema.auditLog).orderBy(desc(schema.auditLog.timestamp)).limit(1).all()[0];
@@ -60,9 +60,9 @@ beforeEach(async () => {
     await audit();
     return { ok: true };
   });
-  app.get('/trpc-like', async (req) => {
+  app.get('/trpc-like', async (req, res) => {
     await authMiddlewareHandler({
-      ctx: { req, headers: req.headers } as any,
+      ctx: { req, res, db, user: undefined },
       next: async () => {
         await audit();
         return {};

@@ -9,6 +9,7 @@
  * 5. OpenAPI schemas are documented correctly
  * 6. Error handling works as expected
  */
+import type { CertificateListItem } from '../../services/certificate.service.js';
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import Fastify from 'fastify';
@@ -218,7 +219,7 @@ describe('Certificate REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((cert: any) => {
+      body.items.forEach((cert: CertificateListItem) => {
         expect(cert.status).toBe('active');
       });
     });
@@ -235,7 +236,7 @@ describe('Certificate REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((cert: any) => {
+      body.items.forEach((cert: CertificateListItem) => {
         expect(cert.certificateType).toBe('server');
       });
     });
@@ -251,7 +252,7 @@ describe('Certificate REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((cert: any) => {
+      body.items.forEach((cert: CertificateListItem) => {
         expect(cert.caId).toBe(testCaId);
       });
     });
@@ -286,7 +287,7 @@ describe('Certificate REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      expect(body.items.some((cert: any) => cert.subjectDn.includes('searchable'))).toBe(true);
+      expect(body.items.some((cert: CertificateListItem) => cert.subjectDn.includes('searchable'))).toBe(true);
     });
 
     it('should have proper pagination response structure', async () => {
@@ -760,7 +761,7 @@ describe('Certificate REST Endpoints', () => {
 
       // Check that the Certificates tag exists
       expect(spec.tags).toBeDefined();
-      const tagNames = spec.tags.map((t: any) => t.name);
+      const tagNames = spec.tags.map((t: { name: string }) => t.name);
       expect(tagNames).toContain('Certificates');
     });
   });

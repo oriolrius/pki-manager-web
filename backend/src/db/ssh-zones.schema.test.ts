@@ -57,7 +57,7 @@ describe('ZONE-01 schema (0009 SSH Zones migration)', () => {
   });
 
   it('seeds exactly one default zone named "default"', () => {
-    const rows = db.prepare(`SELECT id, name, status FROM zones`).all() as any[];
+    const rows = db.prepare(`SELECT id, name, status FROM zones`).all();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: 'default', name: 'default', status: 'active' });
   });
@@ -71,7 +71,7 @@ describe('ZONE-01 schema (0009 SSH Zones migration)', () => {
       makeCa(db, staging, 'user');
       makeCa(db, staging, 'host');
     }).not.toThrow();
-    expect((db.prepare(`SELECT count(*) c FROM ssh_cas`).get() as any).c).toBe(4);
+    expect((db.prepare<[], { c: number }>(`SELECT count(*) c FROM ssh_cas`).get()!).c).toBe(4);
   });
 
   it('AC#2 — a second active CA of the same type within one zone is rejected', () => {
@@ -118,7 +118,7 @@ describe('ZONE-01 schema (0009 SSH Zones migration)', () => {
     // it explicitly, so this default is never reached by real code once >1 zone.
     const id = uid();
     db.prepare(`INSERT INTO ssh_principals (id, name) VALUES (?,?)`).run(id, 'x');
-    const row = db.prepare(`SELECT zone_id FROM ssh_principals WHERE id = ?`).get(id) as any;
+    const row = db.prepare<[string], { zone_id: string }>(`SELECT zone_id FROM ssh_principals WHERE id = ?`).get(id)!;
     expect(row.zone_id).toBe('default');
   });
 

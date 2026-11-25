@@ -22,7 +22,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -53,7 +53,7 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', join(work, 'u'), '-N', '', '-q']);
     const ident = await getSshUserService().createIdentity(ctx, { subject: 'rot-user' });
     const cert = await getSshUserService().issue(ctx, { identityId: ident.id, sshPublicKey: readFileSync(join(work, 'u.pub'), 'utf8'), principals: ['admin'] });
-    const certRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, cert.cert.id)).limit(1))[0] as any;
+    const certRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, cert.cert.id)).limit(1))[0];
     expect(certRow.caId).toBe(successor.id);
 
     // Retire the predecessor.
@@ -71,7 +71,7 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     await expect(getSshCaService().rotate(ctx, ca.id)).rejects.toThrow(/archived/i);
 
     // Predecessor untouched (still active) and no successor was created.
-    const casInZone = (await db.select().from(sshCas).where(eq(sshCas.zoneId, zone.id))) as any[];
+    const casInZone = (await db.select().from(sshCas).where(eq(sshCas.zoneId, zone.id)));
     expect(casInZone).toHaveLength(1);
     expect(casInZone[0].id).toBe(ca.id);
     expect(casInZone[0].status).toBe('active');
@@ -117,9 +117,9 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     const issued = await getSshHostService().issue(ctx, { hostId: host.id });
 
     await getSshHostService().offboard(ctx, host.id);
-    const row = (await db.select().from(sshHosts).where(eq(sshHosts.id, host.id)).limit(1))[0] as any;
+    const row = (await db.select().from(sshHosts).where(eq(sshHosts.id, host.id)).limit(1))[0];
     expect(row.status).toBe('offboarded');
-    const cert = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, issued.cert.id)).limit(1))[0] as any;
+    const cert = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, issued.cert.id)).limit(1))[0];
     expect(cert.status).toBe('revoked');
     // a KRL was produced for the host CA
     const krls = await db.select().from(sshKrls);
@@ -133,7 +133,7 @@ describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
     const ident = await getSshUserService().createIdentity(ctx, { subject: 'leaver' });
     const cert = await getSshUserService().issue(ctx, { identityId: ident.id, sshPublicKey: readFileSync(join(work, 'u2.pub'), 'utf8'), principals: ['admin'] });
     await getSshUserService().offboard(ctx, ident.id);
-    const certRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, cert.cert.id)).limit(1))[0] as any;
+    const certRow = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, cert.cert.id)).limit(1))[0];
     expect(certRow.status).toBe('revoked');
     await expect(getSshUserService().issue(ctx, { identityId: ident.id, sshPublicKey: readFileSync(join(work, 'u2.pub'), 'utf8'), principals: ['admin'] })).rejects.toThrow(/disabled/i);
   });
