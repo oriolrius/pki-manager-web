@@ -68,7 +68,7 @@ cd backend && pnpm typecheck
 | Workflow | File | Runs on | What it does |
 |---|---|---|---|
 | Test | `test.yml` | push and pull request to `main` that touch `backend/` or `frontend/` | Backend tests, type check of backend and frontend |
-| Docker Build and Publish | `docker-build.yml` | push to `main`, tags `v*.*.*`, pull requests | Builds the backend and frontend images (`linux/amd64`), publishes them to `ghcr.io`, attests the build, scans with Trivy |
+| Docker Build and Publish | `docker-build.yml` | push to `main`, tags `v*.*.*`, pull requests | Builds the backend and frontend images (`linux/amd64`), checks the security headers of the frontend image (`docker/check-security-headers.sh`), publishes the images to `ghcr.io`, attests the build, scans with Trivy |
 | SCEP | `scep.yml` | changes under `scep/`, tags `v*.*.*` | Tests the SCEP gateway and publishes its image |
 | k8s-issuer | `k8s-issuer.yml` | changes under `k8s/issuer/`, tags `v*.*.*` | Tests the issuer, publishes its image, signs it with cosign, makes an SBOM |
 | krl-client | `krl-client.yml` | changes under `krl-client/`, tags `v*.*.*` | Tests the KRL client; on a tag, attaches the signed binary and its SBOM to the release |
