@@ -1,6 +1,6 @@
 ---
 id: decision-013
-title: SSH KRL Distribution
+title: 013 - SSH KRL Distribution
 date: '2026-06-29 15:48'
 status: Accepted
 ---

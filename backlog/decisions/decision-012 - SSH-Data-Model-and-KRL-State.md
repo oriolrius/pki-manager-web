@@ -1,6 +1,6 @@
 ---
 id: decision-012
-title: SSH Data Model and KRL State
+title: 012 - SSH Data Model and KRL State
 date: '2026-06-29 15:48'
 status: Accepted
 ---
