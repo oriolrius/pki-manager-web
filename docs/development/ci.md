@@ -72,6 +72,7 @@ cd backend && pnpm typecheck
 | SCEP | `scep.yml` | changes under `scep/`, tags `v*.*.*` | Tests the SCEP gateway and publishes its image |
 | k8s-issuer | `k8s-issuer.yml` | changes under `k8s/issuer/`, tags `v*.*.*` | Tests the issuer, publishes its image, signs it with cosign, makes an SBOM |
 | krl-client | `krl-client.yml` | changes under `krl-client/`, tags `v*.*.*` | Tests the KRL client; on a tag, attaches the signed binary and its SBOM to the release |
+| E2E | `e2e.yml` | pull requests to `main` that touch the backend, frontend, `docker/` or `tests/`; manual | Builds the images, starts `docker/docker-compose.e2e.yml`, runs the Playwright RBAC tests (see [E2E in CI](testing.md#e2e-in-ci)) |
 | Ansible e2e | `ansible-e2e.yml` | changes to `ansible/`, the SSH routes and services, `krl-client/` | End-to-end test of the SSH host role in Docker |
 | Security | `security.yml` | push and pull request to `main` | Secret scan (gitleaks) |
 | Docs site | `docs.yml` | changes to the documentation, the site or the backend source | Builds the site, runs the API examples against the demo stack; from `main`, publishes the site image (see [Website deploy](#website-deploy)) |
