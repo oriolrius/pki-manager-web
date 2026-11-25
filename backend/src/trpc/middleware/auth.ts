@@ -100,12 +100,17 @@ export function createAuthMiddleware<T extends { middleware: (fn: any) => any }>
  * @param requiredRoles - Roles required to access the procedure (any match)
  * @returns Middleware function that checks for required roles
  */
-export function createRoleMiddleware<T extends { middleware: Function }>(
+type RoleMiddlewareFn = (opts: {
+  ctx: AuthenticatedContext;
+  next: () => Promise<unknown>;
+}) => Promise<unknown>;
+
+export function createRoleMiddleware<T extends { middleware: (fn: RoleMiddlewareFn) => unknown }>(
   t: T,
   requiredRoles: string[]
 ) {
   return t.middleware(
-    async ({ ctx, next }: { ctx: AuthenticatedContext; next: Function }) => {
+    async ({ ctx, next }: Parameters<RoleMiddlewareFn>[0]) => {
       const userRoles = ctx.user.roles;
 
       // Check if user has any of the required roles

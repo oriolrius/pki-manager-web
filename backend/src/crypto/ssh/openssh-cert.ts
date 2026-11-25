@@ -81,6 +81,8 @@ function validateGuards(params: SshCertParams): void {
     );
   }
   for (const p of params.principals) {
+    // The control characters are the point of this check.
+    // eslint-disable-next-line no-control-regex
     if (p.length === 0 || /[\x00-\x1f\x7f]/.test(p)) {
       throw new SshCertEncodeError(`invalid principal '${p}' (empty or contains control characters)`);
     }

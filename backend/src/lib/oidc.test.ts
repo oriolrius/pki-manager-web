@@ -117,7 +117,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
     let config;
     try {
       config = await initializeOIDC();
-    } catch (error) {
+    } catch {
       // Skip test if Keycloak is not available
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
@@ -137,7 +137,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
     let config;
     try {
       config = await initializeOIDC();
-    } catch (error) {
+    } catch {
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
     }
@@ -155,7 +155,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
     let config;
     try {
       config = await initializeOIDC();
-    } catch (error) {
+    } catch {
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
     }
@@ -169,7 +169,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
 
     try {
       await initializeOIDC();
-    } catch (error) {
+    } catch {
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
     }
@@ -185,7 +185,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
 
     try {
       await initializeOIDC();
-    } catch (error) {
+    } catch {
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
     }
@@ -208,7 +208,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
 
     try {
       await initializeOIDC();
-    } catch (error) {
+    } catch {
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
     }
@@ -229,7 +229,7 @@ describe('OIDC Integration Tests (requires Keycloak)', () => {
 
     try {
       await initializeOIDC();
-    } catch (error) {
+    } catch {
       console.log('Skipping Keycloak integration test - Keycloak not available');
       return;
     }

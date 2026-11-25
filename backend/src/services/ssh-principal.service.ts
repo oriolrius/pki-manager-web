@@ -191,7 +191,7 @@ export class SshPrincipalService {
     // FK ON DELETE restrict prevents deleting an in-use principal.
     try {
       await ctx.db.delete(sshPrincipals).where(eq(sshPrincipals.id, id));
-    } catch (e) {
+    } catch {
       throw new SshPrincipalError('principal is in use (entitlements or host maps reference it)');
     }
     await createAuditLog({

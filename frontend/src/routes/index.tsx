@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { AlertCircle, Lock, Server, Home, Zap, Shield } from 'lucide-react';
+import { AlertCircle, Lock, Server, Zap, Shield } from 'lucide-react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faShield, faShieldHalved, faCertificate, faFileContract, faServer, faUserShield, faClock } from '@fortawesome/free-solid-svg-icons';
 

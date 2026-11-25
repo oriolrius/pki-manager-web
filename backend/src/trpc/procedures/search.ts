@@ -81,7 +81,9 @@ export const searchRouter = router({
                   }
                 });
               }
-            } catch {}
+            } catch {
+              // Malformed sanDns JSON: skip the SAN matches of this row.
+            }
           }
         }
 

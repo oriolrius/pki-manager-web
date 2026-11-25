@@ -12,6 +12,10 @@ just typecheck    # type-check both
 just lint         # lint both
 ```
 
+`just lint` fails on lint errors. Warnings do not fail it. For example, the existing uses of `any` are
+warnings (`@typescript-eslint/no-explicit-any`) until they get types. Do not add new ones. The
+CI job **Lint** in `test.yml` runs the same command.
+
 Run one workspace with `pnpm test` (or `pnpm test:watch`) inside `backend/` or `frontend/`.
 Run each workspace's `typecheck`, not only `build`: the frontend Docker build is relaxed, so a
 green image build is not a clean type check.

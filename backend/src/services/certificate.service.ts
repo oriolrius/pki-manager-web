@@ -623,7 +623,7 @@ export class CertificateService {
   async issue(ctx: ServiceContext, params: IssueCertificateParams): Promise<IssueCertificateResult> {
     // Type-specific validation
     switch (params.certificateType) {
-      case 'server':
+      case 'server': {
         const serverValidityCheck = validateCertificateValidity(params.validityDays, 825);
         if (!serverValidityCheck.valid) {
           throw new CertificateValidationError(serverValidityCheck.error || 'Invalid validity period');
@@ -639,8 +639,9 @@ export class CertificateService {
           throw new CertificateValidationError(`Invalid SANs: ${sansValidation.errors.join(', ')}`);
         }
         break;
+      }
 
-      case 'client':
+      case 'client': {
         const clientValidityCheck = validateCertificateValidity(params.validityDays, 730);
         if (!clientValidityCheck.valid) {
           throw new CertificateValidationError(clientValidityCheck.error || 'Invalid validity period');
@@ -662,8 +663,9 @@ export class CertificateService {
           }
         }
         break;
+      }
 
-      case 'dual':
+      case 'dual': {
         // Dual certificates combine server and client auth - use server validation rules
         const dualValidityCheck = validateCertificateValidity(params.validityDays, 825);
         if (!dualValidityCheck.valid) {
@@ -680,8 +682,9 @@ export class CertificateService {
           throw new CertificateValidationError(`Invalid SANs: ${dualSansValidation.errors.join(', ')}`);
         }
         break;
+      }
 
-      case 'code_signing':
+      case 'code_signing': {
         if (!params.subject.organization) {
           throw new CertificateValidationError('Organization is required for code signing certificates');
         }
@@ -695,8 +698,9 @@ export class CertificateService {
           throw new CertificateValidationError('Code signing certificates require RSA-3072, RSA-4096, or ECDSA-P256 minimum');
         }
         break;
+      }
 
-      case 'email':
+      case 'email': {
         const emailAddresses = params.sanEmail || [];
         if (emailAddresses.length === 0) {
           throw new CertificateValidationError('Email protection certificates require at least one email address in SANs');
@@ -713,6 +717,7 @@ export class CertificateService {
           throw new CertificateValidationError(emailValidityCheck.error || 'Invalid validity period');
         }
         break;
+      }
 
       default:
         throw new CertificateValidationError(`Unsupported certificate type: ${params.certificateType}`);
@@ -964,11 +969,11 @@ export class CertificateService {
       }
 
       // Determine SANs
-      let sanDns = params.updateInfo && params.sanDns !== undefined ? params.sanDns :
+      const sanDns = params.updateInfo && params.sanDns !== undefined ? params.sanDns :
                    (originalCert.sanDns ? JSON.parse(originalCert.sanDns) : null);
-      let sanIp = params.updateInfo && params.sanIp !== undefined ? params.sanIp :
+      const sanIp = params.updateInfo && params.sanIp !== undefined ? params.sanIp :
                   (originalCert.sanIp ? JSON.parse(originalCert.sanIp) : null);
-      let sanEmail = params.updateInfo && params.sanEmail !== undefined ? params.sanEmail :
+      const sanEmail = params.updateInfo && params.sanEmail !== undefined ? params.sanEmail :
                      (originalCert.sanEmail ? JSON.parse(originalCert.sanEmail) : null);
 
       // Determine validity days

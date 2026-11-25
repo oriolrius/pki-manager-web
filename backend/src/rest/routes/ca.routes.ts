@@ -942,7 +942,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           break;
 
         case 'der':
-        case 'cer':
+        case 'cer': {
           mimeType = 'application/x-x509-ca-cert';
           filename = `${commonName}.${format}`;
           // Convert PEM to DER
@@ -952,6 +952,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
             .replace(/\s/g, '');
           data = base64Content;
           break;
+        }
 
         case 'p12-truststore': {
           // PKCS#12 truststore: CA certificate only (no private key)

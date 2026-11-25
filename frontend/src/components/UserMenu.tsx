@@ -26,6 +26,9 @@ export function UserMenu() {
   // (i.e. OIDC disabled). Guard so the rest of the component is safe.
   let auth: ReturnType<typeof useAuth> | undefined;
   try {
+    // The call is unconditional (same hook order on every render); the try
+    // only catches the throw when no provider exists. The rule cannot see that.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     auth = useAuth();
   } catch {
     auth = undefined;

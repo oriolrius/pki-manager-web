@@ -638,7 +638,7 @@ describe('ca.revoke - comprehensive tests', () => {
   });
 
   describe('revocation reasons', () => {
-    let testCAs: string[] = [];
+    const testCAs: string[] = [];
 
     beforeAll(async () => {
       const reasons = [

@@ -844,7 +844,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           data = Buffer.from(cert.certificatePem).toString('base64');
           break;
 
-        case 'der':
+        case 'der': {
           mimeType = 'application/x-x509-ca-cert';
           filename = `${baseName}.cer`;
           // Convert PEM to DER
@@ -855,6 +855,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             .replace(/\s/g, '');
           data = base64Content;
           break;
+        }
 
         case 'chain-pem':
           mimeType = 'application/x-pem-file';
@@ -875,7 +876,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pem-file';
             filename = `${baseName}.key`;
             data = Buffer.from(privateKeyPem).toString('base64');
-          } catch (kmsError) {
+          } catch {
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;
@@ -897,7 +898,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/pkcs8';
             filename = `${baseName}.key`;
             data = keyBase64;
-          } catch (kmsError) {
+          } catch {
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;
@@ -915,7 +916,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_encrypted.key`;
             data = Buffer.from(encryptedPem).toString('base64');
-          } catch (kmsError) {
+          } catch {
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve or encrypt private key');
           }
           break;
@@ -941,7 +942,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pkcs12';
             filename = `${baseName}.p12`;
             data = p12Buffer.toString('base64');
-          } catch (kmsError) {
+          } catch {
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to create P12 bundle');
           }
           break;
@@ -1052,7 +1053,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_full.pem`;
             data = Buffer.from(fullPem).toString('base64');
-          } catch (kmsError) {
+          } catch {
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;

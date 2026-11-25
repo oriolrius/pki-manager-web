@@ -150,7 +150,7 @@ export async function generateJKSKeystore(input: JKSKeystoreInput): Promise<JKSR
           '-destkeystore', jksPath, '-deststoretype', 'JKS', '-deststorepass:env', 'KEYTOOL_DEST_PASS', '-noprompt'],
         { KEYTOOL_SRC_PASS: srcPassword, KEYTOOL_DEST_PASS: jksPassword },
       );
-    } catch (keytoolError: any) {
+    } catch {
       throw new JKSKeytoolError('keystore');
     }
 
@@ -207,7 +207,7 @@ export async function generateJKSTruststore(input: JKSTruststoreInput): Promise<
           '-storepass:env', 'KEYTOOL_STORE_PASS', '-noprompt'],
         { KEYTOOL_STORE_PASS: jksPassword },
       );
-    } catch (keytoolError: any) {
+    } catch {
       throw new JKSKeytoolError('truststore');
     }
 
