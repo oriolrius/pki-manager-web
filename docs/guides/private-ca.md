@@ -6,7 +6,7 @@ its own CA, so that browsers and tools inside the company trust these services w
 public CA. This guide builds that CA and issues, renews and revokes certificates. Every step
 shows the UI and then checks the result with `openssl`, `keytool` or `curl`.
 
-Every step was run on a demo stack with release **3.15.0** (see [Install PKI Manager and log in](get-started.md)
+Every step was run on a demo stack with release **3.15.0** (see [Install PKI Manager and log in](../get-started/install.md)
 to install one). You log in as an `admin` user. The `user` role can issue and download, but it
 cannot create CAs or revoke.
 
@@ -596,4 +596,4 @@ Choose `Revoked` in the status list to see the revoked certificates only:
 | 8 Bulk | 4 issued, 1 rejected with a clear error |
 | 9 Expiry | dashboard and list filters show the 14-day certificate |
 
-Source of the screenshots and the screencast: `docs/site/demo/shots/02-private-ca.spec.ts`.
+Source of the screenshots and the screencast: `site/demo/shots/02-private-ca.spec.ts`.

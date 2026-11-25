@@ -1,70 +1,217 @@
 #!/usr/bin/env bash
 #
-# dev-session.sh — attach-or-create for the pki-manager dev stack.
+# dev-session.sh — the pki-manager dev stack.
 #
-# The dev stack (mprocs: backend + frontend + backlog) lives in a tmux session
-# named after this repo. Running this script is ALWAYS safe and idempotent:
+# Use it through `just` (see the justfile); this script is the implementation.
 #
-#   - session already running  -> reattach to it (never a second stack)
-#   - session gone, ports free -> create it
-#   - session gone, ports held -> report who holds them; only offer to kill
-#                                 processes whose cwd is inside THIS repo
+# The stack is mprocs (backend + frontend, see mprocs.yaml) inside a tmux session named
+# after the repository, plus the Backlog.md web UI in a second tmux session. The terminal
+# that starts it does not own it: the sessions survive a closed terminal, and an agent can
+# start them without a TTY.
 #
-# This exists because the Orca terminal pane is not the owner of the process:
-# an Orca update kills the pane but not the stack, and a plain `mprocs` relaunch
-# would silently start a second one on shifted ports.
+#   restart  stop this repository's stack, then start it again        (just dev)
+#   backlog  restart only the Backlog.md web UI, on 0.0.0.0           (just backlog)
+#   attach   open the running stack; does not restart it              (just attach)
+#   status   session, ports and OIDC mode                             (just status)
+#   urls     where to open each service                               (just urls)
+#   logs     last lines of the process logs: logs [name] [lines]      (just logs)
+#   stop     stop the processes; KMS and Keycloak keep running        (just stop)
+#   down     stop + the docker dependencies (KMS, Keycloak)           (just down)
 #
-# Other projects run their own mprocs — this script never matches by process
-# name, only by this repo's session name and by cwd of the port holder.
+# Two rules that keep other projects safe:
+#   - a process is never matched by name (every project runs its own mprocs, node, vite);
+#   - a process is ours only when its working directory is inside this repository
+#     or one of its git worktrees. A port held from anywhere else stops the start.
 #
-# Usage:
-#   scripts/dev-session.sh [up|status|stop|down] [--force]
-#
-#   stop  processes only (tmux session + leftovers); KMS/Keycloak keep running (fast restart)
-#   down  stop + the docker deps (KMS, Keycloak) + the backlog socat relay: nothing left running
+# Worktrees of this repository share ONE stack: same session name, same ports, and the
+# docker dependencies always run from the main checkout, so the KMS data stays in one place.
 #
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-SESSION="dev-$(basename "$REPO")"
+COMMON="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+MAIN="$REPO"
+[ -n "$COMMON" ] && MAIN="$(dirname "$COMMON")"
+SESSION="dev-$(basename "$MAIN")"
+BL_SESSION="backlog-$(basename "$MAIN")"
 
-# Ports this stack owns. Backend reads its own PORT from backend/.env.
-BACKEND_PORT="$(sed -n 's/^PORT=\([0-9]\+\).*/\1/p' "$REPO/backend/.env" 2>/dev/null | head -1)"
-PORTS=(52080 "${BACKEND_PORT:-52081}" 6430)
+# Value of KEY in backend/.env, or empty (also when the file is missing or the line is commented out).
+env_value() { sed -n "s/^$1=\(.*\)/\1/p" "$REPO/backend/.env" 2>/dev/null | head -1 || true; }
 
+# Ports this stack owns. The backend reads its own PORT from backend/.env.
+BACKEND_PORT="$(env_value PORT | grep -oE '^[0-9]+' || true)"
+BACKEND_PORT="${BACKEND_PORT:-52081}"
+FRONTEND_PORT=52080
+# `backlog browser` binds 127.0.0.1 only. It listens on BACKLOG_INNER, and a socat relay
+# publishes it on 0.0.0.0:BACKLOG_PORT (all interfaces: Windows, LAN, iPad).
+BACKLOG_PORT=6430
+BACKLOG_INNER=46430
+BL_PORTS=("$BACKLOG_PORT" "$BACKLOG_INNER")
+PORTS=("$FRONTEND_PORT" "$BACKEND_PORT" "${BL_PORTS[@]}")
+
+# OIDC issuer from backend/.env (empty when the line is commented out = login off).
+OIDC_ISSUER="$(env_value OIDC_ISSUER)"
+
+usage() { grep -E '^#   [a-z]+ ' "${BASH_SOURCE[0]}" | sed 's/^#   //' >&2; exit 2; }
+
+CMD="${1:-}"
+[ -n "$CMD" ] || usage
+shift
 FORCE=0
-CMD="up"
+ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    up|status|stop|down) CMD="$arg" ;;
-    --force|-f)     FORCE=1 ;;
-    *) echo "usage: $(basename "$0") [up|status|stop|down] [--force]" >&2; exit 2 ;;
+    --force|-f) FORCE=1 ;;
+    *) ARGS+=("$arg") ;;
   esac
 done
 
 has_session() { tmux has-session -t "=$SESSION" 2>/dev/null; }
 
-# OIDC issuer from backend/.env (empty when the line is commented out = auth off).
-OIDC_ISSUER="$(sed -n 's/^OIDC_ISSUER=\(.*\)/\1/p' "$REPO/backend/.env" 2>/dev/null | head -1)"
+# The checkout that started the running session (a worktree can start it).
+session_repo() {
+  local d
+  d="$(tmux show-environment -t "=$SESSION" DEV_REPO 2>/dev/null | sed -n 's/^DEV_REPO=//p')"
+  echo "${d:-$REPO}"
+}
 
-# Bring up the docker dependencies the stack needs before mprocs starts: the KMS
-# always, and the dev Keycloak when OIDC is on (login is the default dev posture).
-# Idempotent: `docker compose up -d` is a no-op for running containers.
+# Every checkout of this repository: the main one and its worktrees.
+checkouts() {
+  git -C "$REPO" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p'
+  echo "$REPO"
+}
+
+is_ours() {
+  local cwd="$1" w
+  [ -n "$cwd" ] || return 1
+  while IFS= read -r w; do
+    [ -n "$w" ] || continue
+    if [[ "$cwd" == "$w" || "$cwd" == "$w"/* ]]; then return 0; fi
+  done < <(checkouts)
+  return 1
+}
+
+# PID listening on $1, or empty. The trailing `|| true` matters: without it the
+# no-match grep exits 1 and, under `set -e -o pipefail`, ends the script on the
+# most common path of all — every port free.
+port_pid() {
+  ss -ltnp 2>/dev/null | grep -E "[:.]$1[[:space:]]" | grep -oP 'pid=\K[0-9]+' | head -1 || true
+}
+pid_cwd()  { readlink -f "/proc/$1/cwd" 2>/dev/null || true; }
+pid_cmd()  { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-100; }
+pid_pgid() { ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '; }
+
+# Classify whatever listens on our ports. Sets OURS (port:pid) and THEIRS (port:pid:cwd).
+# Ports to scan: the arguments, or all of PORTS.
+scan_ports() {
+  OURS=(); THEIRS=()
+  local p pid cwd list=("$@")
+  ((${#list[@]})) || list=("${PORTS[@]}")
+  for p in "${list[@]}"; do
+    pid="$(port_pid "$p")"
+    [ -n "$pid" ] || continue
+    cwd="$(pid_cwd "$pid")"
+    if is_ours "$cwd"; then OURS+=("$p:$pid"); else THEIRS+=("$p:$pid:${cwd:-?}"); fi
+  done
+}
+
+# Stop the sessions and every leftover of this repository on our ports. Idempotent.
+stop_stack() {
+  local s
+  for s in "$SESSION" "$BL_SESSION"; do
+    if tmux has-session -t "=$s" 2>/dev/null; then
+      tmux kill-session -t "=$s"
+      echo "stopped tmux session '$s'"
+    fi
+  done
+  free_ports "${PORTS[@]}"
+}
+
+# Stop only the Backlog.md web UI of this repository. Idempotent.
+stop_backlog() {
+  if tmux has-session -t "=$BL_SESSION" 2>/dev/null; then
+    tmux kill-session -t "=$BL_SESSION"
+    echo "stopped tmux session '$BL_SESSION'"
+  fi
+  free_ports "${BL_PORTS[@]}"
+}
+
+# Kill what this repository still has on the given ports (TERM, then KILL). A port
+# held by another project is left alone.
+free_ports() {
+  local own try e pid pgid sig
+  own="$(pid_pgid $$)"
+  for try in 1 2 3 4 5 6 7 8 9 10; do
+    scan_ports "$@"
+    ((${#OURS[@]})) || return 0
+    sig=TERM
+    ((try > 5)) && sig=KILL
+    for e in "${OURS[@]}"; do
+      pid="${e##*:}"; pgid="$(pid_pgid "$pid")"
+      ((try == 1)) && echo "  stopping leftover on port ${e%%:*} (pid $pid: $(pid_cmd "$pid"))"
+      if [ -n "$pgid" ] && [ "$pgid" != "$own" ]; then
+        kill "-$sig" -- "-$pgid" 2>/dev/null || true
+      else
+        kill "-$sig" "$pid" 2>/dev/null || true
+      fi
+    done
+    sleep 1
+  done
+  scan_ports "$@"
+  if ((${#OURS[@]})); then
+    echo "error: could not free port(s): ${OURS[*]%%:*}" >&2
+    exit 1
+  fi
+}
+
+# Stop when another project holds one of the given ports. Run after our own leftovers are gone.
+refuse_foreign() {
+  scan_ports "$@"
+  ((${#THEIRS[@]})) || return 0
+  local e p pid cwd
+  echo "Not starting — these ports belong to another project:" >&2
+  for e in "${THEIRS[@]}"; do
+    IFS=: read -r p pid cwd <<<"$e"
+    echo "  port $p  pid $pid  cwd=$cwd  $(pid_cmd "$pid")" >&2
+  done
+  echo "Stop that process or change this project's ports, then try again." >&2
+  exit 1
+}
+
+# Start the Backlog.md web UI in its own tmux session (see `backlog-serve`).
+start_backlog() {
+  need backlog; need socat
+  mkdir -p "$REPO/.dev-logs"
+  tmux new-session -d -s "$BL_SESSION" -c "$REPO" -x 160 -y 40 \
+    "bash scripts/dev-session.sh backlog-serve 2>&1 | tee .dev-logs/backlog.log"
+  local i
+  for i in $(seq 1 30); do
+    [ -n "$(port_pid "$BACKLOG_INNER")" ] && [ -n "$(port_pid "$BACKLOG_PORT")" ] && break
+    sleep 0.5
+  done
+  if [ -n "$(port_pid "$BACKLOG_INNER")" ]; then
+    echo "Backlog web UI on 0.0.0.0:$BACKLOG_PORT (tmux session '$BL_SESSION', log .dev-logs/backlog.log)"
+  else
+    echo "warning: Backlog did not start in 15 s — see 'just logs backlog'" >&2
+  fi
+}
+
+# Start the docker dependencies before mprocs: the KMS always, and the dev Keycloak
+# when OIDC login is on (the default dev posture). They run from the MAIN checkout.
+# Idempotent: `docker compose up -d` does nothing for a running container.
 ensure_infra() {
   if ! command -v docker >/dev/null 2>&1; then
     echo "warning: docker not found — start kms/ (and keycloak/) yourself" >&2
     return 0
   fi
-  local dirs=(kms)
+  local dirs=(kms) d i
   [[ "$OIDC_ISSUER" == http://localhost:42997/* ]] && dirs+=(keycloak)
-  local d
   for d in "${dirs[@]}"; do
-    docker compose --project-directory "$REPO/$d" -f "$REPO/$d/docker-compose.yml" up -d --quiet-pull 2>&1 \
+    docker compose --project-directory "$MAIN/$d" -f "$MAIN/$d/docker-compose.yml" up -d --quiet-pull 2>&1 \
       | grep -vE '^\s*(Container .* (Running|Started)|$)' || true
   done
   if [[ " ${dirs[*]} " == *" keycloak "* ]]; then
     printf 'waiting for Keycloak (%s) ' "$OIDC_ISSUER"
-    local i
     for i in $(seq 1 60); do
       if curl -sf -o /dev/null "$OIDC_ISSUER/.well-known/openid-configuration"; then
         echo "ready"
@@ -73,45 +220,109 @@ ensure_infra() {
       printf '.'
       sleep 2
     done
-    echo " not ready after 120s — the backend will fail OIDC init; check 'docker logs pki-manager-keycloak'" >&2
+    echo " not ready after 120 s — the backend will fail OIDC init; see 'docker logs pki-manager-keycloak'" >&2
   fi
 }
 
-# PID listening on $1, or empty. The trailing `|| true` matters: without it the
-# no-match grep exits 1 and, under `set -e -o pipefail`, kills the whole script
-# on the most common path of all — every port free.
-port_pid() {
-  ss -ltnp 2>/dev/null | grep -E "[:.]$1[[:space:]]" | grep -oP 'pid=\K[0-9]+' | head -1 || true
+print_urls() {
+  echo "Dev stack — open with http://localhost (OIDC login needs a secure context):"
+  echo "  Web UI    http://localhost:$FRONTEND_PORT"
+  echo "  API       http://localhost:$BACKEND_PORT/api/docs"
+  echo "  Backlog   http://localhost:$BACKLOG_PORT  (all interfaces: http://<this host>:$BACKLOG_PORT)"
+  echo "  KMS       http://localhost:42998"
+  if [ -n "$OIDC_ISSUER" ]; then
+    echo "  OIDC      $OIDC_ISSUER"
+  else
+    echo "  OIDC      off (backend/.env has no OIDC_ISSUER): no login"
+  fi
 }
 
-pid_cwd()  { readlink -f "/proc/$1/cwd" 2>/dev/null || true; }
-pid_cmd()  { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | cut -c1-100; }
-pid_pgid() { ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '; }
+# The mprocs screen, cut to a readable size (the session is 200 columns wide).
+show_screen() { tmux capture-pane -p -t "=$SESSION:" 2>/dev/null | cut -c1-118 | sed -e 's/[[:space:]]*$//' -e 's/^/  | /' | head -"${1:-16}"; }
 
-# Classify whatever is sitting on our ports. Sets OURS / THEIRS.
-scan_ports() {
-  OURS=(); THEIRS=()
-  local p pid cwd
-  for p in "${PORTS[@]}"; do
-    pid="$(port_pid "$p")"
-    [ -n "$pid" ] || continue
-    cwd="$(pid_cwd "$pid")"
-    if [[ "$cwd" == "$REPO" || "$cwd" == "$REPO"/* ]]; then
-      OURS+=("$p:$pid")
-    else
-      THEIRS+=("$p:$pid:${cwd:-?}")
-    fi
-  done
+attach_or_show() {
+  if [ -t 0 ] && [ -t 1 ]; then
+    exec tmux attach-session -t "=$SESSION"
+  fi
+  echo "tmux session '$SESSION' (no TTY here, not attaching). Open it with: just attach"
+  show_screen
 }
+
+need() { command -v "$1" >/dev/null 2>&1 || { echo "error: '$1' is not installed" >&2; exit 1; }; }
 
 case "$CMD" in
 
+restart)
+  need tmux; need mprocs
+  for f in backend/.env frontend/.env; do
+    [ -f "$REPO/$f" ] || { echo "error: $f is missing — run 'just setup'" >&2; exit 1; }
+  done
+  [ -d "$REPO/node_modules" ] || { echo "error: dependencies are not installed — run 'just setup'" >&2; exit 1; }
+
+  stop_stack
+
+  # Our own processes are gone. Whatever still holds a port belongs to someone else.
+  refuse_foreign "${PORTS[@]}"
+
+  ensure_infra
+
+  # Created detached, so it works with or without a TTY. mprocs gets a real PTY from
+  # tmux, so it never fails with "Stdin is not a tty". Each process also writes
+  # .dev-logs/<name>.log (just logs).
+  mkdir -p "$REPO/.dev-logs"
+  tmux new-session -d -s "$SESSION" -c "$REPO" -x 200 -y 50 \
+    "mprocs --log-dir .dev-logs --log-mode truncate; printf '\n[dev stack stopped] press Enter to close this tmux session...'; read -r _"
+  tmux set-environment -t "=$SESSION" DEV_REPO "$REPO"
+  start_backlog
+
+  print_urls
+  sleep 3
+  attach_or_show
+  ;;
+
+backlog)
+  need tmux
+  stop_backlog
+  refuse_foreign "${BL_PORTS[@]}"
+  start_backlog
+  echo "  http://localhost:$BACKLOG_PORT"
+  ;;
+
+backlog-serve)
+  # Runs inside the tmux session. Backlog on 127.0.0.1:BACKLOG_INNER, restarted when it
+  # exits; capped at 1G RAM and no swap, because `backlog browser` leaks heap on a busy
+  # repository (it reached 16G once): the kernel kills only it. socat publishes it on
+  # 0.0.0.0:BACKLOG_PORT. Killing the tmux session stops both.
+  cd "$REPO"
+  (
+    while :; do
+      systemd-run --user --scope -q -p MemoryMax=1G -p MemorySwapMax=0 \
+        backlog browser --no-open --port "$BACKLOG_INNER" || true
+      echo "[backlog exited, restart in 2 s]"
+      sleep 2
+    done
+  ) &
+  trap 'trap - EXIT INT TERM HUP; kill 0' EXIT INT TERM HUP
+  socat "TCP4-LISTEN:$BACKLOG_PORT,bind=0.0.0.0,reuseaddr,fork" "TCP4:127.0.0.1:$BACKLOG_INNER"
+  ;;
+
+attach)
+  need tmux
+  has_session || { echo "The dev stack is not running. Start it with: just dev" >&2; exit 1; }
+  attach_or_show
+  ;;
+
 status)
   if has_session; then
-    echo "tmux session '$SESSION': RUNNING"
-    tmux capture-pane -p -t "$SESSION" 2>/dev/null | sed 's/^/  | /'
+    echo "tmux session '$SESSION': RUNNING (started from $(session_repo))"
+    show_screen
   else
     echo "tmux session '$SESSION': not running"
+  fi
+  if tmux has-session -t "=$BL_SESSION" 2>/dev/null; then
+    echo "tmux session '$BL_SESSION': RUNNING (Backlog web UI on 0.0.0.0:$BACKLOG_PORT)"
+  else
+    echo "tmux session '$BL_SESSION': not running (start it with: just backlog)"
   fi
   echo "OIDC login: ${OIDC_ISSUER:-off (backend/.env has no OIDC_ISSUER)}"
   echo
@@ -129,103 +340,48 @@ status)
   done
   ;;
 
-stop|down)
-  if has_session; then
-    tmux kill-session -t "=$SESSION"
-    echo "killed tmux session '$SESSION'"
-    sleep 1
-  fi
-  scan_ports
-  for e in ${OURS[@]+"${OURS[@]}"}; do
-    pid="${e##*:}"; pgid="$(pid_pgid "$pid")"
-    [ -n "$pgid" ] && kill -TERM -"$pgid" 2>/dev/null || true
-    echo "  signalled leftover on port ${e%%:*} (pid $pid, pgid $pgid)"
-  done
-  for e in ${THEIRS[@]+"${THEIRS[@]}"}; do
-    echo "  left port ${e%%:*} alone — belongs to another project"
-  done
-  if [ "$CMD" = stop ]; then
-    echo "dev stack stopped (KMS/Keycloak still running — use 'pnpm dev:down' to stop everything)."
-    exit 0
-  fi
+urls)
+  print_urls
+  ;;
 
-  # down: also the backlog IPv4 relay (DEVELOPMENT.md) and the docker deps.
-  # `stop`, not `down`: containers and data are kept, and a stopped container with
-  # `restart: unless-stopped` stays stopped across WSL restarts until the next `pnpm dev`.
-  relay="$(pgrep -f 'socat TCP4-LISTEN:52091' || true)"
-  if [ -n "$relay" ]; then
-    kill $relay 2>/dev/null || true
-    echo "  stopped backlog socat relay (52091)"
+logs)
+  dir="$(session_repo)/.dev-logs"
+  [ -d "$dir" ] || { echo "No logs yet — start the stack with: just dev" >&2; exit 1; }
+  name="${ARGS[0]:-}"; lines="${ARGS[1]:-80}"
+  if [ -n "$name" ]; then
+    [ -f "$dir/$name.log" ] || { echo "No log for '$name'. Logs: $(cd "$dir" && ls *.log 2>/dev/null | sed 's/\.log$//' | tr '\n' ' ')" >&2; exit 1; }
+    files=("$dir/$name.log")
+  else
+    files=("$dir"/*.log)
   fi
+  # Follow only on a terminal: an agent gets the last lines and the command ends.
+  if [ -t 1 ]; then exec tail -n "$lines" -f "${files[@]}"; fi
+  tail -n "$lines" "${files[@]}"
+  ;;
+
+stop)
+  stop_stack
+  scan_ports
+  for e in ${THEIRS[@]+"${THEIRS[@]}"}; do
+    echo "  left port ${e%%:*} alone — it belongs to another project"
+  done
+  echo "dev stack stopped (KMS and Keycloak still running — 'just down' stops them too)."
+  ;;
+
+down)
+  stop_stack
+  # `stop`, not `down`: containers and data are kept, and a stopped container with
+  # `restart: unless-stopped` stays stopped until the next `just dev`.
   if command -v docker >/dev/null 2>&1; then
     for d in keycloak kms; do
-      docker compose --project-directory "$REPO/$d" -f "$REPO/$d/docker-compose.yml" stop 2>&1 \
+      docker compose --project-directory "$MAIN/$d" -f "$MAIN/$d/docker-compose.yml" stop 2>&1 \
         | grep -E 'Stopped' | sed 's/^ */  /' || true
     done
   fi
   echo "dev stack down: processes, KMS and Keycloak stopped."
   ;;
 
-up)
-  # Fast path: the stack is already up. Reattach, never duplicate.
-  if has_session; then
-    if [ -t 0 ] && [ -t 1 ]; then
-      exec tmux attach-session -t "=$SESSION"
-    fi
-    echo "dev stack already running in tmux session '$SESSION' (not a TTY, not attaching)."
-    echo "Attach with:  tmux attach -t $SESSION"
-    echo
-    tmux capture-pane -p -t "$SESSION" 2>/dev/null | sed 's/^/  | /'
-    exit 0
-  fi
-
-  # No session: make sure nobody is squatting on our ports before we start.
-  scan_ports
-  if ((${#THEIRS[@]})); then
-    echo "Refusing to start — these ports belong to another project:" >&2
-    for e in "${THEIRS[@]}"; do
-      IFS=: read -r p pid cwd <<<"$e"
-      echo "  port $p  pid $pid  cwd=$cwd" >&2
-    done
-    echo "Free them or change this project's ports, then retry." >&2
-    exit 1
-  fi
-  if ((${#OURS[@]})); then
-    echo "Orphaned processes from THIS repo are holding our ports:"
-    for e in "${OURS[@]}"; do
-      pid="${e##*:}"
-      echo "  port ${e%%:*}  pid $pid  $(pid_cmd "$pid")"
-    done
-    if ((FORCE)); then
-      reply=y
-    elif [ -t 0 ]; then
-      read -rp "Kill them and start clean? [y/N] " reply
-    else
-      echo "Non-interactive: rerun with --force to kill them." >&2
-      exit 1
-    fi
-    [[ "${reply:-n}" =~ ^[yY]$ ]] || { echo "Aborted."; exit 1; }
-    for e in "${OURS[@]}"; do
-      pid="${e##*:}"; pgid="$(pid_pgid "$pid")"
-      [ -n "$pgid" ] && kill -TERM -"$pgid" 2>/dev/null || true
-    done
-    sleep 2
-  fi
-
-  ensure_infra
-
-  # Create detached first so this works with or without a TTY, then attach if we
-  # have one. `mprocs` itself always gets a real PTY from tmux, so it never hits
-  # "Stdin is not a tty" — even when launched by an agent.
-  tmux new-session -d -s "$SESSION" -c "$REPO" -x 200 -y 50 \
-    "mprocs; printf '\n[dev stack stopped] press Enter to close this tmux session...'; read -r _"
-
-  if [ -t 0 ] && [ -t 1 ]; then
-    exec tmux attach-session -t "=$SESSION"
-  fi
-  echo "dev stack started detached in tmux session '$SESSION'."
-  echo "Attach with:  tmux attach -t $SESSION"
-  sleep 3
-  tmux capture-pane -p -t "$SESSION" 2>/dev/null | sed 's/^/  | /'
+*)
+  usage
   ;;
 esac

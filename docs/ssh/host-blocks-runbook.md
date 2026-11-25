@@ -5,8 +5,7 @@
 > never carries a foreign zone's identity. Blocking across zones is refused.
 
 
-Implements [decision-016 — Per-Host User Access Blocks](../../backlog/decisions/decision-016%20-%20Per-Host-User-Access-Blocks-SSH.md)
-(milestone doc: [doc-008](../../backlog/docs/doc-008%20-%20SSH-Host-Access-Blocks-Milestone.md)).
+Implements [decision-016 — Per-Host User Access Blocks](../../backlog/decisions/decision-016%20-%20Per-Host-User-Access-Blocks-SSH.md).
 "Block **this user** on **this host**" is one reversible, audited click; the
 mechanism is a **composed per-host KRL**:
 
@@ -37,7 +36,7 @@ KMS, then any block/unblock or the hourly lazy regen produces a signed row.
 
 ## Cutover runbook (existing fleet → per-host KRLs)
 
-Preconditions (pinned by [doc-008 baseline](../../backlog/docs/doc-008%20-%20SSH-Host-Access-Blocks-Milestone.md)):
+Preconditions:
 every `krl-client` host runs a **post-TASK-175 build** (anti-rollback = strict
 monotonic check on the signed KRL header number).
 

@@ -3,11 +3,12 @@ id: decision-008
 title: 008 - OpenAPI Specification Design for PKI Manager REST API
 type: other
 created_date: '2025-11-27 15:34'
+status: accepted
 ---
 # OpenAPI Specification Design for PKI Manager REST API
 
 ## Status
-**Proposed** | Date: 2025-11-27
+**Accepted** | Date: 2025-11-27 (built as the `/api/v1` REST API)
 
 ## Context
 

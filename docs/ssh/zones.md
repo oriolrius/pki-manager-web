@@ -118,4 +118,4 @@ These are **deferred**, not forgotten — none is implemented by this milestone:
   later without touching existing rows.
 
 → Back to [how it works](concept.md) · Upgrading a live install:
-[Zones migration runbook](zones-migration-runbook.md)
+[Zones migration runbook](../operations/migration-0009.md)

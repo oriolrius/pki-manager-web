@@ -4,8 +4,8 @@ title: Create RBAC e2e tests for admin role
 status: Done
 assignee:
   - '@myself'
-created_date: '2026-02-13 07:49'
-updated_date: '2026-07-08 12:29'
+created_date: 2026-02-13 07:49
+updated_date: '2026-11-25T12:35:00Z'
 labels:
   - testing
   - e2e
@@ -28,7 +28,7 @@ Create comprehensive Playwright e2e tests that verify admin users can perform al
 - Access bulk operations
 - Generate CRLs
 
-Tests should run against production (pki.nexiona.io) using testadmin user.
+Tests should run against a deployed instance (E2E_TARGET=production) using testadmin user.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

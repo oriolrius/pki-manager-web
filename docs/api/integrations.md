@@ -64,6 +64,9 @@ when management OIDC is disabled. A token is scoped to its integration and bound
 and must be 1–825 (other values return `400`). `certificateType` is a display hint (`server`, `client`,
 `dual`), not a substitute for the CSR's key usage/EKU. Subject and SANs come from
 the signed CSR; compatibility body fields `sanDns`/`sanIp` are ignored.
+`csrPem` is at most 65536 characters and `requestUid` at most 256. The optional `k8sNamespace`
+and `k8sResource` name the Kubernetes object that asked; they are stored only for an
+integration of kind `kubernetes`.
 
 The signing response contains `idempotent`, `id`, `serialNumber`, `certificatePem`,
 `chainPem`, `notBefore`, and `notAfter`. Reusing an ID whose certificate is revoked

@@ -1,13 +1,15 @@
 name: Docs site
 
-# Builds the documentation site (docs/site, Astro Starlight) on every change to the docs.
+# Builds the website (site/: product pages and docs, Astro + Starlight) on every change to its sources.
+# The sources are the Markdown of the whole repository (docs/, backlog/decisions, backlog/docs, component
+# READMEs, CHANGELOG.md): site/docs.config.mjs is the inventory, and the build fails on a file without a home.
 # Pull requests: build + internal link check only. Push to main: build and deploy to GitHub Pages.
 on:
   push:
     branches: [main]
-    paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/**', 'backend/src/**', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', '**/*.md', '!backlog/tasks/**', '!backlog/archive/**', '!backlog/milestones/**', 'backend/src/**', 'package.json', '.github/workflows/docs.yml']
   pull_request:
-    paths: ['docs/**', '*.md', 'ansible/README.md', 'k8s/issuer/**', 'backend/src/**', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', '**/*.md', '!backlog/tasks/**', '!backlog/archive/**', '!backlog/milestones/**', 'backend/src/**', 'package.json', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -22,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: docs/site
+        working-directory: site
     steps:
       # Full history and tags: each page shows the release that has its last change (scripts/version.mjs)
       - uses: actions/checkout@v4
@@ -30,9 +32,9 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version-file: docs/site/.nvmrc
+          node-version-file: site/.nvmrc
           cache: npm
-          cache-dependency-path: docs/site/package-lock.json
+          cache-dependency-path: site/package-lock.json
       - uses: pnpm/action-setup@v3
         with:
           version: 9
@@ -46,7 +48,7 @@ jobs:
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/site/dist
+          path: site/dist
 
   # Every runnable example of the API how-to must work against a real stack (published images).
   examples:
@@ -54,12 +56,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Start the demo stack
-        run: docs/site/demo/demo.sh up
+        run: site/demo/demo.sh up
       - name: Run the API how-to examples
-        run: docs/site/demo/doc-examples.sh docs/api/how-to.md
+        run: site/demo/doc-examples.sh docs/api/how-to.md
       - name: Stop the demo stack
         if: always()
-        run: docs/site/demo/demo.sh down
+        run: site/demo/demo.sh down
 
   deploy:
     # Push to main, or by hand (Actions → Docs site → Run workflow)

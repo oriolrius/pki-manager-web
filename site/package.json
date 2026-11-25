@@ -1,0 +1,16 @@
+{
+  "name": "pki-manager-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-content": "node scripts/sync-docs.mjs && node scripts/plantuml.mjs && node scripts/openapi.mjs",
+    "dev": "npm run prepare-content && astro dev --host 0.0.0.0 --port 52085",
+    "build": "npm run prepare-content && astro build && node scripts/check-links.mjs",
+    "preview": "astro preview --host 0.0.0.0 --port 52086"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.10",
+    "astro": "7.4.7",
+    "starlight-openapi": "0.27.1"
+  }
+}

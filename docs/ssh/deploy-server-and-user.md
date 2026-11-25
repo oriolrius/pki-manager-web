@@ -494,4 +494,4 @@ Relative to `docs/ssh/`:
 - [host-blocks-runbook.md](host-blocks-runbook.md) — per-host access-block cutover / rollback runbook (revocation after the fleet is deployed).
 - **[`oriolrius.pki_manager` collection](https://github.com/oriolrius/pki-manager-ansible)** ([Galaxy](https://galaxy.ansible.com/ui/repo/published/oriolrius/pki_manager/)) — the `pki_manager` module (every SSH action) + the `ssh_host_cert` role + the complete [`examples/ssh_deploy_server_and_user.yml`](https://github.com/oriolrius/pki-manager-ansible/blob/main/examples/ssh_deploy_server_and_user.yml) this guide is built on.
 - [../../ansible/tests/e2e/README.md](../../ansible/tests/e2e/README.md) — the dockerized containers-as-hosts e2e that proves the same end-to-end deploy (converge + idempotence + real ssh login + revocation).
-- [../ssh-api-contract.md](../ssh-api-contract.md) — the REST endpoints the module calls, and the honest KRL trust model + env gates.
+- [../ssh-api-contract.md](api-contract.md) — the REST endpoints the module calls, and the honest KRL trust model + env gates.

@@ -1,98 +1,54 @@
-# Cosmian KMS - PKI Manager Development Environment
+# Cosmian KMS for development
 
-This directory contains the configuration needed to run Cosmian KMS (Key Management System) for the PKI Manager application using Docker Compose.
+A Cosmian KMS container for local development of PKI Manager. `just dev` starts it. The backend
+finds it with `KMS_URL=http://localhost:42998` in `backend/.env`.
 
-## File Structure
+## Files
 
 ```
 kms/
-├── docker-compose.yml    # Docker Compose configuration
-├── kms.toml             # KMS server configuration
-├── .env                 # Environment variables
-└── README.md            # This documentation
+├── docker-compose.yml    # Cosmian KMS, pinned version
+├── kms.toml              # KMS server configuration
+└── data/                 # the KMS database: your development keys (gitignored)
 ```
-
-## Prerequisites
-
-- Docker (version 20.10 or higher)
-- Docker Compose (version 2.0 or higher)
 
 ## Configuration
 
-### Port Configuration
+The host port is **42998**; the KMS listens on 9998 inside the container.
 
-The KMS server uses a custom port mapping to avoid conflicts:
-- **External port**: 42998 (accessible from host)
-- **Internal port**: 9998 (inside container)
+`kms.toml` is the configuration (Cosmian KMS 5.28 schema, matching the pinned image). The
+container loads it through `COSMIAN_KMS_CONF`:
 
-This keeps all services in the 42000-43000 range as per project requirements.
-
-### kms.toml
-
-Main KMS configuration file (Cosmian KMS 5.28 schema, matching the pinned image), loaded via `COSMIAN_KMS_CONF`:
-- `[http]` — host and port
-- `[db]` — SQLite database at `/cosmian-kms/sqlite-data` (the mounted `./data`)
-- `[workspace]` — working directories
-- `[logging] rust_log` — log level (env vars like `RUST_LOG` are ignored in config-file mode)
+- `[http]`: host and port
+- `[db]`: SQLite database at `/cosmian-kms/sqlite-data` (the mounted `./data`)
+- `[workspace]`: working directories
+- `[logging] rust_log`: log level. In this mode the `RUST_LOG` environment variable is ignored:
+  change the level here.
 
 The KMS **silently ignores unknown keys**. An older version of this file used
 `[server]`/`[database] type/path`, so the database lived only in the container's
 writable layer and recreating the container lost every key. After changing the
 file, check that `./data/kms.db` grows when you create a key.
 
-### .env
-
-Environment variables to customize KMS behavior:
-- `RUST_LOG`: Logging level (trace, debug, info, warn, error)
-
 ## Usage
 
-### Start the service
-
 ```bash
-docker-compose up -d
+docker compose up -d       # start (just dev does this for you)
+docker compose logs -f kms
+docker compose restart kms # after a change to kms.toml
+docker compose down        # stop and remove the container; the keys stay in ./data
 ```
 
-### View logs
-
-```bash
-docker-compose logs -f kms
-```
-
-### Stop the service
-
-```bash
-docker-compose down
-```
-
-### Stop and remove data
-
-```bash
-docker-compose down -v
-```
-
-## Accessing the KMS
-
-The KMS server will be available at:
-
-```
-http://localhost:42998
-```
-
-### Health Check
-
-To verify the service is running:
+Check that it answers:
 
 ```bash
 curl http://localhost:42998/health
+curl http://localhost:42998/version
 ```
 
-## Persistent Data
-
-KMS data (keys, configurations, etc.) is stored in the local `./data` directory. This ensures:
-- Data persists between container restarts
-- Easy inspection and backup of the database
-- Version control friendly (database is gitignored)
+`./data` holds every development key. `docker compose down -v` does not delete it, because it is
+a folder on the host and not a Docker volume. Delete the folder content only when you want to lose
+all development CAs.
 
 ### Rescuing a database left inside the container
 
@@ -111,68 +67,24 @@ cp rescued/kms.db* ./data/         # then: docker compose up -d
 `docker export` also works when `docker cp` fails because a bind-mount source
 no longer exists.
 
-## Development
+## How PKI Manager uses it
 
-### Modify configuration
-
-1. Edit the `kms.toml` file as needed
-2. Restart the service:
-   ```bash
-   docker-compose restart kms
-   ```
-
-### Change logging level
-
-Edit the `.env` file and change the `RUST_LOG` value:
-
-```bash
-RUST_LOG=debug
-```
-
-Then restart the service.
-
-## Integration with PKI Manager
-
-The backend application connects to KMS through the KMS client/service modules (`backend/src/kms/` — `client.ts` + `service.ts`). Configuration:
-
-1. Set `KMS_URL=http://localhost:42998` in backend `.env`
-2. The KMS client handles all cryptographic operations:
-   - Key pair generation
-   - Data signing
-   - Public key retrieval
-   - Key destruction
-
-## Official Documentation
-
-- [Cosmian KMS Documentation](https://docs.cosmian.com/)
-- [Cosmian GitHub](https://github.com/Cosmian/kms)
+The backend talks to the KMS through `backend/src/kms/` (`client.ts` and `service.ts`): key pair
+generation, certificate signing, signing for SSH, public key retrieval and key destruction.
+[How it works](../docs/how-it-works.md) says where each key lives.
 
 ## Troubleshooting
 
-### Container won't start
-
-1. Verify port 42998 is not in use:
-   ```bash
-   netstat -tuln | grep 42998
-   ```
-
-2. Check logs:
-   ```bash
-   docker-compose logs kms
-   ```
-
-### Permission issues
-
-If you have permission issues with volumes, ensure Docker has permissions to create and write to the necessary directories.
+- **The container does not start**: check that port 42998 is free (`ss -ltn | grep 42998`) and read
+  `docker compose logs kms`.
+- **The KMS rejects its arguments**: the Compose file must set `COSMIAN_KMS_CONF`. Without it,
+  current images find the configuration file and also add default arguments, and then stop.
 
 ## Security
 
-**IMPORTANT**: This configuration is for development. For production environments:
+This setup is for development: no authentication and plain HTTP on a host port. The production
+Compose file keeps the KMS on an internal network. See
+[Docker deployment](../docs/operations/deployment.md).
 
-1. Enable JWT authentication or other mechanisms
-2. Configure TLS with valid certificates
-3. Use a more robust database (PostgreSQL, MySQL)
-4. Review and configure CORS appropriately
-5. Consider network isolation and firewall rules
-6. Implement key rotation policies
-7. Enable audit logging
+- [Cosmian KMS documentation](https://docs.cosmian.com/)
+- [Cosmian KMS on GitHub](https://github.com/Cosmian/kms)

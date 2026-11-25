@@ -14,9 +14,9 @@ import { test, expect, type Page } from '@playwright/test';
  *   4. Cleanup:
  *      docker compose -f docker/docker-compose.e2e.yml down -v
  *
- * Production Testing (optional):
- *   Set E2E_TARGET=production to test against production environment:
- *   E2E_TARGET=production pnpm playwright test tests/e2e-rbac.spec.ts
+ * Deployed instance (optional):
+ *   E2E_TARGET=production E2E_FRONTEND_URL=https://pki.example.com \
+ *   E2E_KEYCLOAK_URL=https://iam.example.com pnpm playwright test tests/e2e-rbac.spec.ts
  *
  * Test Users (pre-configured in Keycloak):
  *   - testadmin / Test123! (has 'admin' role)
@@ -24,7 +24,8 @@ import { test, expect, type Page } from '@playwright/test';
  *
  * Environment Variables:
  *   E2E_TARGET - 'local' (default) or 'production'
- *   E2E_FRONTEND_URL - Frontend URL (overrides default for target)
+ *   E2E_FRONTEND_URL - Frontend URL (overrides default for target; required for 'production')
+ *   E2E_KEYCLOAK_URL - Keycloak URL (required for 'production')
  *   E2E_ADMIN_USER - Admin username (default: testadmin)
  *   E2E_ADMIN_PASSWORD - Admin password (default: Test123!)
  *   E2E_TEST_USER - Regular user username (default: testuser)
@@ -42,10 +43,17 @@ const TARGETS = {
     keycloakPattern: /.*localhost:58180.*realms.*/,
   },
   production: {
-    frontendUrl: 'https://pki.nexiona.io',
-    keycloakPattern: /.*iam\.nexiona\.io.*realms.*/,
+    // No default: a deployed instance is given with E2E_FRONTEND_URL and E2E_KEYCLOAK_URL.
+    frontendUrl: '',
+    keycloakPattern: new RegExp(
+      `${(process.env.E2E_KEYCLOAK_URL ? new URL(process.env.E2E_KEYCLOAK_URL).host : 'keycloak.invalid').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*realms`,
+    ),
   },
 };
+
+if (E2E_TARGET === 'production' && (!process.env.E2E_FRONTEND_URL || !process.env.E2E_KEYCLOAK_URL)) {
+  throw new Error('E2E_TARGET=production needs E2E_FRONTEND_URL and E2E_KEYCLOAK_URL');
+}
 
 const targetConfig = TARGETS[E2E_TARGET as keyof typeof TARGETS] || TARGETS.local;
 
@@ -98,7 +106,8 @@ async function keycloakLogin(page: Page, username: string, password: string) {
 async function waitForDashboard(page: Page) {
   // Wait for navigation back to app
   await page.waitForFunction(
-    () => !window.location.href.includes('iam.nexiona.io'),
+    (pattern) => !new RegExp(pattern).test(window.location.href),
+    KEYCLOAK_PATTERN.source,
     { timeout: 30000 }
   );
 

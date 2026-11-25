@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.astro/
+test-results/
+# generated at build time by scripts/ (the repository docs are the single source)
+src/content/docs/
+src/content/product/
+src/openapi/
+src/version.json
+public/img/
+public/fonts/
+public/ssh/
+public/diagrams/

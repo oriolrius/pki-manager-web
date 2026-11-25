@@ -79,5 +79,5 @@ running** on every server and client.
 [Host & client setup](setup.md) ·
 [Principals guide](principals-guide.md) ·
 [Per-host access blocks](host-blocks-runbook.md) ·
-[SSH Zones](zones.md) · [Zones migration runbook](zones-migration-runbook.md) ·
-[Automation API contract](../ssh-api-contract.md)
+[SSH Zones](zones.md) · [Zones migration runbook](../operations/migration-0009.md) ·
+[Automation API contract](api-contract.md)

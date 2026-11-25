@@ -1,0 +1,43 @@
+---
+import { render } from 'astro:content';
+import Product from '../../layouts/Product.astro';
+import Shot from '../../components/product/Shot.astro';
+import { features, pathOf, url } from '../../lib/product';
+
+export async function getStaticPaths() {
+  const all = await features();
+  return all.map((feature, i) => ({
+    params: { slug: pathOf(feature).replace(/^features\//, '') },
+    props: { feature, previous: all[i - 1], next: all[i + 1] },
+  }));
+}
+const { feature, previous, next } = Astro.props;
+const { Content } = await render(feature);
+---
+<Product title={feature.data.title} description={feature.data.summary} current="features">
+  <header class="page-head">
+    <div class="narrow">
+      <p class="crumb"><a href={url('features')}>Features</a></p>
+      <h1>{feature.data.title}</h1>
+      <p class="lead">{feature.data.summary}</p>
+    </div>
+  </header>
+  {feature.data.image && (
+    <div class="wrap page-shot">
+      <Shot image={feature.data.image} alt={feature.data.imageAlt ?? ''} tall eager />
+    </div>
+  )}
+  <div class="narrow page-body">
+    <div class="prose"><Content /></div>
+    {feature.data.links && (
+      <section class="more">
+        <h2>Read more</h2>
+        <ul>{feature.data.links.map((l) => <li><a href={l.href}>{l.label}</a></li>)}</ul>
+      </section>
+    )}
+    <nav class="pager" aria-label="Features">
+      {previous && <a href={url(pathOf(previous))}><small>Previous</small><span>{previous.data.title}</span></a>}
+      {next && <a class="next" href={url(pathOf(next))}><small>Next</small><span>{next.data.title}</span></a>}
+    </nav>
+  </div>
+</Product>

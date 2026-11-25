@@ -4,27 +4,32 @@ import { test, expect, type Page } from '@playwright/test';
  * E2E Tests for PKI Manager Production Deployment
  *
  * Tests the complete OIDC authentication flow with runtime config.json
- * on the production deployment at pki.nexiona.io.
+ * on a deployed instance. The tests are skipped when the two URLs are not set.
  *
  * Prerequisites:
- * - PKI Manager deployed at pki.nexiona.io
- * - Backend deployed at api.pki.nexiona.io
- * - Keycloak running at iam.nexiona.io with pki-manager realm
+ * - PKI Manager deployed with OIDC login (runtime config.json)
+ * - Keycloak with the client pki-web
  * - Test user created: testuser / Test123!
  *
  * Environment variables:
- *   PROD_FRONTEND_URL - Frontend URL (default: https://pki.nexiona.io)
- *   PROD_KEYCLOAK_URL - Keycloak URL (default: https://iam.nexiona.io)
+ *   PROD_FRONTEND_URL - Frontend URL (required), for example https://pki.example.com
+ *   PROD_KEYCLOAK_URL - Keycloak URL (required), for example https://iam.example.com
  *   PROD_TEST_USER - Test username (default: testuser)
  *   PROD_TEST_PASSWORD - Test password (default: Test123!)
  *
  * Usage:
- *   pnpm playwright test tests/e2e-production.spec.ts
+ *   PROD_FRONTEND_URL=https://pki.example.com PROD_KEYCLOAK_URL=https://iam.example.com \
+ *     pnpm playwright test tests/e2e-production.spec.ts
  */
 
 // Configuration from environment
-const FRONTEND_URL = process.env.PROD_FRONTEND_URL || 'https://pki.nexiona.io';
-const KEYCLOAK_URL = process.env.PROD_KEYCLOAK_URL || 'https://iam.nexiona.io';
+const FRONTEND_URL = process.env.PROD_FRONTEND_URL ?? '';
+const KEYCLOAK_URL = process.env.PROD_KEYCLOAK_URL ?? '';
+const CONFIGURED = FRONTEND_URL !== '' && KEYCLOAK_URL !== '';
+const KEYCLOAK_HOST = CONFIGURED ? new URL(KEYCLOAK_URL).host : 'keycloak.invalid';
+const KEYCLOAK_PATTERN = new RegExp(`${KEYCLOAK_HOST.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*realms`);
+
+test.skip(!CONFIGURED, 'Set PROD_FRONTEND_URL and PROD_KEYCLOAK_URL to test a deployed instance');
 const TEST_USER = process.env.PROD_TEST_USER || 'testuser';
 const TEST_PASSWORD = process.env.PROD_TEST_PASSWORD || 'Test123!';
 
@@ -66,7 +71,8 @@ async function keycloakLogin(page: Page, username: string, password: string) {
 async function waitForDashboard(page: Page) {
   // Wait for navigation back to app
   await page.waitForFunction(
-    () => !window.location.href.includes('iam.nexiona.io'),
+    (host) => !window.location.href.includes(host),
+    KEYCLOAK_HOST,
     { timeout: 30000 }
   );
 
@@ -90,7 +96,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
 
     const config = await response.json();
     expect(config.oidc).toBeDefined();
-    expect(config.oidc.authority).toContain('iam.nexiona.io');
+    expect(config.oidc.authority).toContain(KEYCLOAK_HOST);
     expect(config.oidc.clientId).toBe('pki-web');
   });
 
@@ -98,7 +104,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
     await page.goto(FRONTEND_URL);
 
     // Should redirect to Keycloak
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, {
+    await page.waitForURL(KEYCLOAK_PATTERN, {
       timeout: 20000,
     });
 
@@ -111,7 +117,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
     await page.goto(FRONTEND_URL);
 
     // Wait for Keycloak redirect
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, {
+    await page.waitForURL(KEYCLOAK_PATTERN, {
       timeout: 20000,
     });
 
@@ -130,7 +136,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
   test('API calls work with authenticated session', async ({ page }) => {
     // Login first
     await page.goto(FRONTEND_URL);
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+    await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
     await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
     await waitForDashboard(page);
 
@@ -150,23 +156,23 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
   test('tokens are stored with runtime config storage key', async ({ page }) => {
     // Login
     await page.goto(FRONTEND_URL);
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+    await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
     await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
     await waitForDashboard(page);
 
     // Check localStorage for tokens with correct storage key
-    const tokenData = await page.evaluate(() => {
+    const tokenData = await page.evaluate((host) => {
       const keys = Object.keys(localStorage);
       // Should be stored with runtime config authority and clientId
       const oidcKey = keys.find((key) =>
         key.includes('oidc.user:') &&
-        key.includes('iam.nexiona.io') &&
+        key.includes(host) &&
         key.includes('pki-web')
       );
       if (!oidcKey) return null;
       const data = localStorage.getItem(oidcKey);
       return data ? JSON.parse(data) : null;
-    });
+    }, KEYCLOAK_HOST);
 
     expect(tokenData).not.toBeNull();
     expect(tokenData.access_token).toBeDefined();
@@ -177,7 +183,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
   test('page reload maintains authentication', async ({ page }) => {
     // Login
     await page.goto(FRONTEND_URL);
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+    await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
     await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
     await waitForDashboard(page);
 
@@ -190,7 +196,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
 
     // Should still be logged in (no redirect to Keycloak)
     const url = page.url();
-    expect(url).not.toContain('iam.nexiona.io');
+    expect(url).not.toContain(KEYCLOAK_HOST);
     await expect(page.getByRole('button', { name: /test user/i })).toBeVisible({
       timeout: 10000,
     });
@@ -199,7 +205,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
   test('navigation works when authenticated', async ({ page }) => {
     // Login
     await page.goto(FRONTEND_URL);
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+    await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
     await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
     await waitForDashboard(page);
 
@@ -223,7 +229,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
   test('logout works correctly', async ({ page }) => {
     // Login
     await page.goto(FRONTEND_URL);
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+    await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
     await keycloakLogin(page, TEST_USER, TEST_PASSWORD);
     await waitForDashboard(page);
 
@@ -243,7 +249,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
     }
 
     // Should redirect back to login
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, {
+    await page.waitForURL(KEYCLOAK_PATTERN, {
       timeout: 15000,
     });
   });
@@ -252,7 +258,7 @@ test.describe('Production E2E Tests - Runtime OIDC Config', () => {
 test.describe('Production E2E - Error Handling', () => {
   test('shows error for invalid credentials', async ({ page }) => {
     await page.goto(FRONTEND_URL);
-    await page.waitForURL(/.*iam\.nexiona\.io.*realms.*/, { timeout: 20000 });
+    await page.waitForURL(KEYCLOAK_PATTERN, { timeout: 20000 });
 
     // Try login with invalid credentials
     await page.getByRole('textbox', { name: /username or email/i }).fill('invaliduser');
@@ -265,6 +271,6 @@ test.describe('Production E2E - Error Handling', () => {
     });
 
     // Should still be on Keycloak
-    expect(page.url()).toContain('iam.nexiona.io');
+    expect(page.url()).toContain(KEYCLOAK_HOST);
   });
 });

@@ -1,0 +1,37 @@
+---
+import { Image } from 'astro:assets';
+import Product from '../../layouts/Product.astro';
+import { page, featureGroups, pathOf, url } from '../../lib/product';
+
+const index = await page('docs/features/index.md');
+const groups = await featureGroups();
+---
+<Product title={index.data.title} description={index.data.summary} current="features">
+  <header class="page-head">
+    <div class="wrap">
+      <h1>{index.data.title}</h1>
+      <p class="lead">{index.data.summary}</p>
+    </div>
+  </header>
+  <div class="wrap page-body">
+    {groups.map((g) => (
+      <section class="feature-group">
+        <h2>{g.title}</h2>
+        <p>{g.summary}</p>
+        {g.features.map((f) => (
+          <div class:list={['feature-row', { 'no-image': !f.data.image }]}>
+            {f.data.image && (
+              <a class="thumb" href={url(pathOf(f))} tabindex="-1" aria-hidden="true">
+                <Image src={f.data.image} alt="" widths={[480, 720, 960]} sizes="(min-width: 46rem) 30rem, 100vw" loading="lazy" />
+              </a>
+            )}
+            <div>
+              <h3><a href={url(pathOf(f))}>{f.data.title}</a></h3>
+              <p>{f.data.summary}</p>
+            </div>
+          </div>
+        ))}
+      </section>
+    ))}
+  </div>
+</Product>

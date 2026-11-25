@@ -1,3 +1,4 @@
+# Dev stack processes (the Backlog.md web UI runs apart: `just backlog`). Start it with `just dev` (tmux session, restart, port checks), never with a bare `mprocs`.
 procs:
   backend:
     shell: pnpm dev
@@ -5,9 +6,3 @@ procs:
   frontend:
     shell: pnpm dev
     cwd: <CONFIG_DIR>/frontend
-  backlog:
-    # capped at 1G RAM / no swap: backlog browser leaks heap on a churning repo (hit 16G);
-    # the kernel kills only it, autorestart brings it back.
-    shell: systemd-run --user --scope -q -p MemoryMax=1G -p MemorySwapMax=0 backlog browser --no-open
-    cwd: <CONFIG_DIR>
-    autorestart: true

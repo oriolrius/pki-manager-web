@@ -69,7 +69,7 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
 `assertZoneUsable` gates new entities/issuance in an archived zone. **Migration gotcha**: the
 0009 rebuild DROPs FK-referenced parents, so `migrate.ts` toggles `foreign_keys=OFF` around
 `migrate()` (the `PRAGMA` inside the `.sql` is a no-op in drizzle's transaction) and asserts
-`foreign_key_check` after. Runbook: [docs/ssh/zones-migration-runbook.md](../docs/ssh/zones-migration-runbook.md).
+`foreign_key_check` after. Runbook: [docs/operations/migration-0009.md](../docs/operations/migration-0009.md).
 
 ## Gotchas
 

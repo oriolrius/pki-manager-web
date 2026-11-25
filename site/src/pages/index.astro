@@ -1,0 +1,84 @@
+---
+import { render } from 'astro:content';
+import Product from '../layouts/Product.astro';
+import ProjectCard from '../components/product/ProjectCard.astro';
+import Shot from '../components/product/Shot.astro';
+import { page, featureGroups, pathOf, url, base } from '../lib/product';
+
+const home = await page('docs/index.md');
+const how = await page('docs/how-it-works.md');
+const index = await page('docs/features/index.md');
+const groups = await featureGroups();
+const { Content } = await render(home);
+---
+<Product title="PKI Manager" description={home.data.summary}>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <h1>{home.data.title}</h1>
+        <p class="lead">{home.data.summary}</p>
+        <div class="actions">
+          <a class="button primary" href={url('features')}>See what it does</a>
+          <a class="button plain" href={url('get-started')}>Read the docs</a>
+        </div>
+        <p class="stance"><strong>A personal project, not a product.</strong> I built it for my own use, and nothing is for sale.{' '}<a href={url('about')}>About this project</a></p>
+      </div>
+      <ProjectCard />
+    </div>
+  </section>
+
+  {home.data.image && (
+    <div class="wrap hero-shot">
+      <Shot image={home.data.image} alt={home.data.imageAlt ?? ''} eager />
+    </div>
+  )}
+
+  <section class="section tinted">
+    <div class="wrap"><div class="prose measure"><Content /></div></div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>{index.data.title}</h2>
+      <p class="section-lead">{index.data.summary}</p>
+      {groups.map((g) => {
+        const shot = g.features.find((f) => f.data.image);
+        return (
+          <div class:list={['group', { 'no-image': !shot }]}>
+            <div>
+              <h3>{g.title}</h3>
+              <p>{g.summary}</p>
+              <ul class="feature-list">
+                {g.features.map((f) => (
+                  <li><a href={url(pathOf(f))}>{f.data.title}</a><p>{f.data.summary}</p></li>
+                ))}
+              </ul>
+              {g.link && <p class="group-link"><a href={g.link.href}>{g.link.label}</a></p>}
+            </div>
+            {shot?.data.image && <Shot image={shot.data.image} alt={shot.data.imageAlt ?? ''} tall />}
+          </div>
+        );
+      })}
+    </div>
+  </section>
+
+  <section class="section tinted">
+    <div class="wrap how">
+      <figure class="diagram">
+        <img src={`${base}/diagrams/01-architecture.svg`} alt="The web UI and automation call the backend. The backend keeps private keys in Cosmian KMS and metadata in SQLite. Login uses an optional OIDC provider" loading="lazy" width="557" height="503" />
+      </figure>
+      <div>
+        <h2>{how.data.title}</h2>
+        <p class="section-lead">{how.data.summary}</p>
+        <ul class="facts-list">
+          <li>The KMS makes the private keys and signs the certificates.</li>
+          <li>The database has certificates and key ids. It has no private keys.</li>
+          <li>You run three containers with Docker Compose. All data is in two folders.</li>
+        </ul>
+        <div class="actions">
+          <a class="button plain" href={url('how-it-works')}>Read how it works</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</Product>

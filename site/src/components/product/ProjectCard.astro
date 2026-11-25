@@ -1,0 +1,19 @@
+---
+// Who makes PKI Manager and on what terms, laid out like the detail view of a certificate.
+// The rows come from docs/about.md; the release comes from the repository (src/version.json).
+import version from '../../version.json';
+import { page } from '../../lib/product';
+
+const about = await page('docs/about.md');
+const rows = [...(about.data.facts ?? []), ...(version.date ? [{ label: 'Released', value: version.date }] : [])];
+---
+<aside class="project-card" aria-label="About this project">
+  <header><span>PKI Manager</span><span>{version.version}</span></header>
+  <dl>
+    {rows.map((r) => (<div class="row"><dt>{r.label}</dt><dd>{r.value}</dd></div>))}
+  </dl>
+  <footer>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6z"/><path d="M9 12l2.2 2.2L15.2 10"/></svg>
+    <span>Self-signed by its author. Trust it as you see fit.</span>
+  </footer>
+</aside>

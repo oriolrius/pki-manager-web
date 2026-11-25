@@ -19,7 +19,10 @@ pki/
 
 # Claude Code local files
 .claude/scripts/
-.claude/settings.local.json.bak
+.claude/settings.local.json*
+
+# Dev stack process logs (just logs)
+.dev-logs/
 
 # Playwright MCP
 .playwright-mcp/

@@ -1,0 +1,74 @@
+---
+// The SSH CA companion page (docs/ssh/explainer/index.html) is the single source.
+// Here we take its <main> content, swap local MP4 players for the public YouTube
+// videos (English subtitles on), and point diagrams at the SVGs rendered at build time.
+import { readFileSync } from 'node:fs';
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+
+const root = new URL('../../../../docs/ssh/explainer/', import.meta.url);
+const html = readFileSync(new URL('index.html', root), 'utf8');
+const yt = JSON.parse(readFileSync(new URL('youtube.json', root), 'utf8'));
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+let body = html.slice(html.indexOf('<main>') + 6, html.indexOf('</main>'));
+body = body
+  .replace(/src="diagrams\/svg\//g, `loading="lazy" src="${base}/ssh/diagrams/`)
+  .replace(/<div class="video" data-ep="(\d\d)"><\/div>/g, (_, ep) => {
+    const id = yt.videos[ep];
+    if (!id) throw new Error(`no YouTube id for episode ${ep}`);
+    return `<div class="yt"><iframe src="https://www.youtube-nocookie.com/embed/${id}?cc_load_policy=1&amp;cc_lang_pref=en&amp;rel=0" title="Episode ${ep}" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>`;
+  });
+if (/class="video"/.test(body)) throw new Error('unconverted video placeholder');
+
+const headings = [...body.matchAll(/<section class="ep" id="([^"]+)">\s*(?:<!--.*?-->\s*)?(?:<div class="num">[^<]*<\/div>\s*)?<h2>(.*?)<\/h2>/gs)]
+  .map(([, slug, text]) => ({ depth: 2, slug, text: text.replace(/<[^>]+>/g, '') }));
+const playlist = `https://www.youtube.com/playlist?list=${yt.playlist}`;
+---
+<StarlightPage frontmatter={{ title: 'SSH certificates: video series and reference', description: 'Nineteen short videos and a reference page for Linux sysadmins: how an SSH certificate authority works and how to run it with PKI Manager.', editUrl: 'https://github.com/oriolrius/pki-manager-web/edit/main/docs/ssh/explainer/index.html' }} headings={headings}>
+  <p class="explainer-intro">Two short video series for Linux sysadmins who use SSH every day but have never used SSH certificates.
+    Watch an episode, then use its section as the cheat sheet. Subtitles are in English.
+    All videos are also in the <a href={playlist}>YouTube playlist</a>.</p>
+  <div class="explainer not-content" set:html={body} />
+  <p class="explainer-foot">Videos, diagrams and this page are built from
+    <a href="https://github.com/oriolrius/pki-manager-web/tree/main/docs/ssh/explainer"><code>docs/ssh/explainer/</code></a>.
+    Narration: synthetic female English voice, generated locally.</p>
+</StarlightPage>
+
+<style is:global>
+  .explainer { --x-orange: #FF6600; --x-orange-ink: #C95000; --x-green: #0C8760; --x-red: #C62828;
+    --x-orange-soft: #FFF4EC; --x-green-soft: #E7F6F0; --x-red-soft: #FDECEC; --x-line: var(--sl-color-gray-5);
+    --navy: var(--sl-color-white); --ink: var(--sl-color-white); --muted: var(--sl-color-gray-3); --mist: var(--sl-color-gray-6);
+    --orange: var(--x-orange); --green: var(--x-green); color: var(--sl-color-gray-2); line-height: 1.65; }
+  :root:not([data-theme='light']) .explainer { --x-orange-soft: #2A1E2E; --x-green-soft: #12313A; --x-red-soft: #3A1A2A; }
+  .explainer h2 { font-size: var(--sl-text-h2); color: var(--sl-color-white); margin: 0 0 .3rem; }
+  .explainer h3 { font-size: var(--sl-text-h4); color: var(--sl-color-white); margin: 1.6rem 0 .5rem; }
+  .explainer p, .explainer ul, .explainer ol, .explainer pre, .explainer table { margin: .8rem 0; }
+  .explainer a { color: var(--sl-color-text-accent); }
+  .explainer code { background: var(--sl-color-gray-6); padding: 1px 6px; border-radius: 5px; font-size: .92em; }
+  .explainer pre { background: #10112E; color: #E8E9F3; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: .9em; }
+  .explainer pre code { background: none; padding: 0; color: inherit; }
+  .explainer nav.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 1rem 0; }
+  .explainer nav.toc a { display: block; padding: 10px 12px; border: 1.5px solid var(--x-line); border-radius: 12px; text-decoration: none; color: var(--sl-color-white); }
+  .explainer nav.toc a b { color: var(--x-orange); margin-right: 6px; }
+  .explainer nav.toc a:hover { border-color: var(--x-orange); }
+  .explainer section.ep { border-top: 2px solid var(--x-line); padding-top: 2rem; margin-top: 2.5rem; scroll-margin-top: 5rem; }
+  .explainer .num { color: var(--x-orange); font-weight: 700; letter-spacing: .06em; font-size: .85rem; }
+  .explainer .lead { font-size: 1.1rem; color: var(--sl-color-white); }
+  .explainer .yt { position: relative; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #000; }
+  .explainer .yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .explainer figure { margin: 1.3rem 0; background: #fff; border: 1px solid var(--x-line); border-radius: 14px; padding: 12px; overflow-x: auto; }
+  .explainer figure img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+  .explainer figcaption { font-size: .85rem; color: #7A7A7A; text-align: center; margin-top: 6px; }
+  .explainer .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .explainer .card { border: 1.5px solid var(--x-line); border-radius: 14px; padding: 14px 16px; }
+  .explainer .card.user { border-color: var(--x-orange); background: var(--x-orange-soft); }
+  .explainer .card.host { border-color: var(--x-green); background: var(--x-green-soft); }
+  .explainer .card.bad { border-color: var(--x-red); background: var(--x-red-soft); }
+  .explainer .card h4 { margin: 0 0 6px; color: var(--sl-color-white); font-size: 1rem; }
+  .explainer .card p { margin: 0; }
+  .explainer table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: .92rem; }
+  .explainer th, .explainer td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--x-line); vertical-align: top; }
+  .explainer th { color: var(--sl-color-white); background: var(--sl-color-gray-6); }
+  .explainer .rule { border-left: 5px solid var(--x-orange); background: var(--x-orange-soft); padding: 10px 14px; border-radius: 0 12px 12px 0; color: var(--sl-color-white); }
+  .explainer-foot { color: var(--sl-color-gray-3); font-size: .85rem; margin-top: 3rem; }
+</style>

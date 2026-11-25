@@ -1,0 +1,21 @@
+---
+import { render } from 'astro:content';
+import Product from '../layouts/Product.astro';
+import ProjectCard from '../components/product/ProjectCard.astro';
+import { page } from '../lib/product';
+
+const about = await page('docs/about.md');
+const { Content } = await render(about);
+---
+<Product title={about.data.title} description={about.data.summary} current="about">
+  <header class="page-head">
+    <div class="wrap">
+      <h1>{about.data.title}</h1>
+      <p class="lead">{about.data.summary}</p>
+    </div>
+  </header>
+  <div class="wrap page-body about-grid">
+    <div class="prose"><Content /></div>
+    <ProjectCard />
+  </div>
+</Product>

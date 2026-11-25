@@ -172,7 +172,7 @@ endpoints keep serving it (with a `Deprecation` header), and the Ansible role,
 **fail-closed**: implicit while one zone exists, an explicit error once several
 do — so an un-scoped caller never silently signs with the wrong trust domain's
 CA. Upgrade steps, including backup and rollback, are in
-[docs/ssh/zones-migration-runbook.md](docs/ssh/zones-migration-runbook.md);
+[docs/ssh/zones-migration-runbook.md](docs/operations/migration-0009.md);
 concepts in [docs/ssh/zones.md](docs/ssh/zones.md).
 
 Highlights: migration `0009` (rebuild-and-copy, seeds `default`); zone-scoped CA/
