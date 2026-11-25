@@ -199,7 +199,7 @@ for (const srcRel of [...markdown].sort()) {
 // One index page per kind of record: what it is, and the list.
 for (const rec of RECORDS) {
   const rows = records.get(rec.to).sort((a, b) => Number(a.num) - Number(b.num));
-  const table = ['| No. | Title | Written | Status |', '|---|---|---|---|',
+  const table = rows.length === 0 ? (rec.empty ?? 'There is no record now.') : ['| No. | Title | Written | Status |', '|---|---|---|---|',
     ...rows.map((r) => `| ${r.num} | [${r.title.replace(/\|/g, '\\|')}](${siteUrl(r.slug)}) | ${r.date} | ${r.status} |`)].join('\n');
   const dest = join(OUT_DOCS, rec.to, 'index.md');
   mkdirSync(dirname(dest), { recursive: true });

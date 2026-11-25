@@ -194,8 +194,9 @@ Work is tracked with the Backlog.md CLI in `backlog/`:
 | Folder | Content |
 |---|---|
 | `backlog/tasks/` | Tasks, with acceptance criteria and notes |
-| `backlog/decisions/` | Decision records: why something is built the way it is |
-| `backlog/docs/` | Specifications: the plan of a large piece of work |
+| `backlog/decisions/` | Decision records in force: why something is built the way it is |
+| `backlog/docs/` | Specifications: the plan of a large piece of work that is open now |
+| `backlog/archive/` | Finished tasks, replaced decisions and the plans of finished work |
 
 The task board starts with the dev stack, or alone with `just backlog` (http://localhost:6430). The rules for
 tasks (always through the CLI, never by editing the files) are in [`AGENTS.md`](../../AGENTS.md).

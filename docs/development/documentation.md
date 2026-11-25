@@ -11,8 +11,9 @@ is built from them, and the rules that keep one source of truth.
 | How to install, use and operate it | `docs/get-started/`, `docs/guides/`, `docs/ssh/`, `docs/operations/`, `docs/api/` | the same path on the site |
 | How to develop it | `docs/development/` | `/development/` |
 | A component with its own folder | the `README.md` next to its code (`scep/`, `krl-client/`, `ansible/`) | the path set in `site/docs.config.mjs` |
-| Why it is built this way | `backlog/decisions/` (decision records) | `/project/decisions/` |
-| The plan of a large piece of work | `backlog/docs/` (specifications) | `/project/specs/` |
+| Why it is built this way | `backlog/decisions/` (decision records in force) | `/project/decisions/` |
+| The plan of a large piece of work that is open now | `backlog/docs/` (specifications) | `/project/specs/` |
+| Replaced decisions and plans of finished work | `backlog/archive/decisions/`, `backlog/archive/docs/` | not published |
 | What changed in each release | `CHANGELOG.md` | `/operations/releases/` |
 | The API reference | generated from the backend source when the site is built | `/api/reference/` |
 | Work to do | `backlog/tasks/` and GitHub issues | not published |
@@ -27,8 +28,17 @@ is built from them, and the rules that keep one source of truth.
 3. **The site has no text of its own.** `site/` holds layout and code. Its content folders are made
    at build time from this repository and are not committed.
 4. **The README is a front page.** It says what the project is and links to the site. It repeats nothing.
-5. **Records are history.** A decision record or a specification is not updated when the product
-   changes. The site shows each one with a note that says so. The guides describe the current behaviour.
+5. **Records are history, and only live records are published.** A decision record or a
+   specification is not updated when the product changes. The site shows each one with a note that
+   says so. The guides describe the current behaviour. Archive a record with the Backlog.md CLI
+   (`backlog decision archive <id>`, `backlog doc archive <id>`) when:
+   - a decision is replaced by a new one, or was never built;
+   - a record is not a decision (a guide, an inventory of one branch);
+   - the work of a specification is done. What lasts goes first to a decision record (why) or to
+     a guide (how).
+
+   An archived record stays in the repository and in git, but not on the site. Do not link to it
+   from a document.
 6. **Every Markdown file has a declared home.** The site build stops when a Markdown file is not
    under `docs/`, is not a record, and is not listed in `site/docs.config.mjs`. That file lists the
    component documents that are published and the files that stay in the repository only, each with

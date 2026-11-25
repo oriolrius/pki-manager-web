@@ -80,14 +80,15 @@ export const RECORDS = [
     to: 'project/decisions',
     kind: 'Decision record',
     title: 'Decision records',
-    intro: 'A decision record explains why PKI Manager is built the way it is: the context at that time, the options, and the choice. Records are history. They are not updated when the product changes, so read the guides for the current behaviour.',
+    intro: 'A decision record explains why PKI Manager is built the way it is: the context at that time, the options, and the choice. Only the decisions that are still in force are here. A record is not updated when the product changes, so read the guides for the current behaviour. A decision that was replaced, or never built, goes to the archive (`backlog/archive/decisions/`).',
   },
   {
     dir: 'backlog/docs',
     to: 'project/specs',
     kind: 'Specification',
     title: 'Specifications',
-    intro: 'A specification is the plan that was written before a large piece of work: the goal, the findings, the tasks and the risks. Specifications are history. They are not updated when the product changes, so read the guides for the current behaviour.',
+    intro: 'A specification is the plan of a large piece of work that is open now: the goal, the findings, the tasks and the risks. When the work is done, the specification goes to the archive (`backlog/archive/docs/`): the reasons stay in the decision records and the current behaviour is in the guides.',
+    empty: 'There is no open specification now.',
   },
 ];
 
