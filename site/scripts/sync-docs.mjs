@@ -135,7 +135,8 @@ function takeTitle(body) {
 function writePage(slug, title, body, srcRel, extra = {}) {
   const [label, order] = PAGES[slug] ?? [];
   const sidebar = { label: extra.label ?? label ?? title, ...(extra.order ?? order ? { order: extra.order ?? order } : {}) };
-  const tested = body.match(/<!--\s*tested-with:\s*(\d+\.\d+\.\d+)\s*-->/)?.[1];
+  // The marker is the line after the title. An example of it lower in a page is not a marker.
+  const tested = body.split('\n').slice(0, 4).join('\n').match(/<!--\s*tested-with:\s*(\d+\.\d+\.\d+)\s*-->/)?.[1];
   const fm = ['---', `title: ${JSON.stringify(title)}`,
     'sidebar:', `  label: ${JSON.stringify(sidebar.label)}`, ...(sidebar.order ? [`  order: ${sidebar.order}`] : []),
     `editUrl: ${JSON.stringify(`${GH}/edit/main/${encodeURI(srcRel)}`)}`,
