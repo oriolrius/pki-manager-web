@@ -1,6 +1,6 @@
 ---
 id: decision-018
-title: Replace Cosmian KMS with a KeyStore abstraction backed by OpenBao Transit
+title: 018 - Replace Cosmian KMS with a KeyStore abstraction backed by OpenBao Transit
 date: '2026-11-24T17:09:00Z'
 status: Proposed
 ---

@@ -1,7 +1,10 @@
-# Decision 010 — CRL Signing Approach: Export CA Key vs KMIP Sign
+---
+id: decision-010
+title: '010 - CRL Signing Approach: Export CA Key vs KMIP Sign'
+date: '2026-06-29'
+status: Accepted
+---
 
-- **Status:** Accepted
-- **Date:** 2026-06-29
 - **Task:** TASK-110 (milestone: CRL Signing & Distribution)
 - **Deciders:** Backend / PKI
 

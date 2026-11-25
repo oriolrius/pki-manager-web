@@ -6,8 +6,8 @@ title: >-
 status: Done
 assignee:
   - '@myself'
-created_date: '2026-06-29 15:38'
-updated_date: '2026-06-29 17:22'
+created_date: 2026-06-29 15:38
+updated_date: '2026-11-25T15:46:00Z'
 labels:
   - ssh-cert-manager
   - crypto
@@ -16,7 +16,7 @@ labels:
   - security
 milestone: SSH Certificate Manager
 dependencies:
-  - TASK-116
+  - TASK-282
 priority: high
 ---
 

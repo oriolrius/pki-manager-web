@@ -6,15 +6,15 @@ title: >-
 status: Done
 assignee:
   - '@myself'
-created_date: '2026-06-29 15:40'
-updated_date: '2026-06-29 17:55'
+created_date: 2026-06-29 15:40
+updated_date: '2026-11-25T15:46:00Z'
 labels:
   - ssh-cert-manager
   - database
   - backend
 milestone: SSH Certificate Manager
 dependencies:
-  - TASK-116
+  - TASK-282
 priority: high
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: decision-016
-title: Per-Host User Access Blocks (SSH)
+title: 016 - Per-Host User Access Blocks (SSH)
 date: '2026-07-03 04:06'
 status: Accepted
 ---

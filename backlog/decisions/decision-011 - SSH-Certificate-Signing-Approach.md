@@ -1,6 +1,6 @@
 ---
 id: decision-011
-title: SSH Certificate Signing Approach
+title: 011 - SSH Certificate Signing Approach
 date: '2026-06-29 15:48'
 status: Accepted
 ---
