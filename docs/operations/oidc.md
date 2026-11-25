@@ -251,6 +251,7 @@ Set `OIDC_ISSUER` and `OIDC_AUDIENCE` together to turn login on. With both unset
 | `VITE_OIDC_SCOPE` | No | OAuth scopes (default: `openid profile email`) |
 
 The redirect URI is `<origin>/callback`, the post-logout URI is `<origin>/` and silent renewal uses `<origin>/silent-renew.html`.
+That page is part of the frontend build: its script comes from the application, not from a CDN, so silent renewal also works without Internet access.
 
 The `VITE_*` values are read when the frontend is built (development with Vite, or your own image).
 In Docker, set the same values in `docker/config.json` instead (`oidc.authority`, `oidc.clientId`,

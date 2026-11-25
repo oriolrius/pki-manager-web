@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Silent Token Renewal</title>
+  </head>
+  <body>
+    <!--
+      OIDC silent renewal page (decision-009). oidc-client-ts loads it in a hidden iframe
+      when it cannot renew with a refresh token. The script is a Vite build entry
+      (vite.config.ts build.rollupOptions.input): it comes from the application bundle,
+      never from a third-party origin, and it needs no inline script (CSP script-src 'self').
+    -->
+    <script type="module" src="/src/silent-renew.ts"></script>
+  </body>
+</html>
