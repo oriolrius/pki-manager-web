@@ -108,3 +108,17 @@ func TestTransientRevocationKeepsJournalAndRAIsProtected(t *testing.T) {
 		t.Fatal("RA revocation admitted")
 	}
 }
+
+// Found by FuzzSharedSubjectConfig: the key check was a substring match, so a key
+// such as "O|OU" passed and its value was never enforced on the CSR subject.
+func TestSharedSubjectConfigRejectsKeysThatAreNotOneField(t *testing.T) {
+	for _, raw := range []string{`{"O|OU":"Example"}`, `{"OU|C":"x"}`, `{"|":"x"}`, `{"":"x"}`, `{"o":"x"}`, `{"CN":"x"}`} {
+		if _, err := sharedSubjectConfig(raw); err == nil {
+			t.Fatalf("accepted %s", raw)
+		}
+	}
+	fields, err := sharedSubjectConfig(`{"O":"Example","OU":"Devices","C":"ES","ST":"Catalonia","L":"Barcelona"}`)
+	if err != nil || len(fields) != 5 {
+		t.Fatalf("rejected a valid subject: %v", err)
+	}
+}

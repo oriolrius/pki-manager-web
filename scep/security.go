@@ -21,7 +21,13 @@ func sharedSubjectConfig(raw string) (map[string]string, error) {
 		return nil, errors.New("SCEP_SHARED_SUBJECT must be a JSON string map")
 	}
 	for key, value := range fields {
-		if !strings.Contains("|O|OU|C|ST|L|", "|"+key+"|") || value == "" {
+		// Exact match only: a key such as "O|OU" names no subject field, so
+		// validSharedSubject would never enforce its value.
+		allowed := false
+		for _, name := range subjectOIDs {
+			allowed = allowed || key == name
+		}
+		if !allowed || value == "" {
 			return nil, errors.New("SCEP_SHARED_SUBJECT allows nonempty O, OU, C, ST, L only")
 		}
 	}
