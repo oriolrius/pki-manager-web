@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
+import { cleanSanList } from '@/lib/san-input';
 import { ArrowLeft, Shuffle } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/components/ui';
@@ -69,7 +70,7 @@ function NewCertificate() {
       const result = await issueMutation.mutateAsync({
         caId: formData.caId,
         subject: {
-          commonName: formData.commonName,
+          commonName: formData.commonName.trim(),
           organization: formData.organization,
           organizationalUnit: formData.organizationalUnit || undefined,
           country: formData.country,
@@ -79,9 +80,9 @@ function NewCertificate() {
         certificateType: formData.certificateType,
         keyAlgorithm: formData.keyAlgorithm,
         validityDays: formData.validityDays,
-        sanDns: formData.sanDns.filter(s => s.trim()).length > 0 ? formData.sanDns.filter(s => s.trim()) : undefined,
-        sanIp: formData.sanIp.filter(s => s.trim()).length > 0 ? formData.sanIp.filter(s => s.trim()) : undefined,
-        sanEmail: formData.sanEmail.filter(s => s.trim()).length > 0 ? formData.sanEmail.filter(s => s.trim()) : undefined,
+        sanDns: cleanSanList(formData.sanDns),
+        sanIp: cleanSanList(formData.sanIp),
+        sanEmail: cleanSanList(formData.sanEmail),
       });
 
       utils.certificate.list.invalidate();
