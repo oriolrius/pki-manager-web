@@ -18,6 +18,9 @@ on:
       - '.github/workflows/krl-client.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -27,11 +30,11 @@ jobs:
       run:
         working-directory: krl-client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache: true
           cache-dependency-path: krl-client/go.sum
 
@@ -40,7 +43,7 @@ jobs:
       - run: go test ./... -race -covermode=atomic -coverprofile=coverage.out -count=1
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: krl-client-coverage
           path: krl-client/coverage.out
@@ -53,15 +56,17 @@ jobs:
     permissions:
       contents: write   # create the GitHub Release + upload assets
       id-token: write    # keyless cosign OIDC (Fulcio/Rekor)
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     defaults:
       run:
         working-directory: krl-client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache: true
           cache-dependency-path: krl-client/go.sum
 
@@ -71,12 +76,15 @@ jobs:
         run: make build-static VERSION="${GITHUB_REF_NAME}"
 
       - name: Generate SHA-256 checksums
+        id: hash
         run: |
           cd dist
           sha256sum krl-client-linux-amd64 | tee checksums.txt
+          # Subject of the SLSA provenance (job `provenance` below).
+          echo "hashes=$(base64 -w0 < checksums.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
 
       - name: Sign binary (keyless)
         env:
@@ -88,7 +96,7 @@ jobs:
             dist/krl-client-linux-amd64
 
       - name: Generate SBOM (SPDX) with syft
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
         with:
           file: krl-client/dist/krl-client-linux-amd64
           format: spdx-json
@@ -100,7 +108,7 @@ jobs:
       # (which would otherwise clobber/duplicate them); softprops updates the
       # existing release, adding only these asset files.
       - name: Attach krl-client binary to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           fail_on_unmatched_files: true
           files: |
@@ -109,3 +117,20 @@ jobs:
             krl-client/dist/krl-client-linux-amd64.sig
             krl-client/dist/krl-client-linux-amd64.pem
             krl-client/dist/krl-client-linux-amd64.spdx.json
+
+  # SLSA build provenance (level 3) of the release binary: an in-toto statement signed with the
+  # identity of the generator workflow, attached to the same release as
+  # krl-client-linux-amd64.intoto.jsonl. The generator is a reusable workflow and must be
+  # referenced by tag, not by commit SHA: slsa-verifier checks the tag of the builder
+  # (https://github.com/slsa-framework/slsa-github-generator#referencing-slsa-builders-and-generators).
+  provenance:
+    needs: release
+    permissions:
+      actions: read     # read the workflow run that built the binary
+      id-token: write   # sign the provenance (Sigstore keyless)
+      contents: write   # attach the provenance to the release
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.release.outputs.hashes }}
+      provenance-name: krl-client-linux-amd64.intoto.jsonl
+      upload-assets: true

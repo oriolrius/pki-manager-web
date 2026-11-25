@@ -124,9 +124,10 @@ ok "converge run 1"
 # TASK-250: the role acknowledged the principal install (principals-pushed), so
 # neither host may be Stale in PKI Manager any more.
 principals_stale() { # fqdn -> prints true|false
-  curl -fsS -H "Authorization: Bearer ${TOKEN}" \
-    "${BASE}/api/v1/external/ssh/hosts/${1}/auth-principals" \
-    | python3 -c 'import json,sys;print(str(json.load(sys.stdin).get("stale")).lower())'
+  local body
+  body=$(curl -fsS -H "Authorization: Bearer ${TOKEN}" \
+    "${BASE}/api/v1/external/ssh/hosts/${1}/auth-principals") || return 1
+  python3 -c 'import json,sys;print(str(json.loads(sys.argv[1]).get("stale")).lower())' "$body"
 }
 echo "==> VERIFY: principals acknowledged (host not Stale, TASK-250)"
 [ "$(principals_stale "$FQDN_PUBLIC")" = "false" ] || fail "host_public still Stale after converge (principals-pushed not called)"
