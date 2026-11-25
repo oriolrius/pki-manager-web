@@ -87,7 +87,7 @@ describe('Public CRL HTTP endpoint (real handler)', () => {
       updatedAt: new Date(),
     });
 
-    await db.insert(certificateAuthorities).values([caRow(caId), caRow(expiredCaId), caRow(noCrlCaId)] as any);
+    await db.insert(certificateAuthorities).values([caRow(caId), caRow(expiredCaId), caRow(noCrlCaId)]);
 
     await db.insert(crls).values({
       id: randomUUID(),
@@ -98,7 +98,7 @@ describe('Public CRL HTTP endpoint (real handler)', () => {
       crlPem,
       revokedCount: 1,
       createdAt: new Date(),
-    } as any);
+    });
 
     // An already-expired CRL: the lazy-regen branch will try (and best-effort fail, fake KMS ids)
     // and must then serve this stale CRL rather than erroring.
@@ -111,7 +111,7 @@ describe('Public CRL HTTP endpoint (real handler)', () => {
       crlPem,
       revokedCount: 1,
       createdAt: new Date(Date.now() - 14 * 864e5),
-    } as any);
+    });
 
     server = Fastify({ logger: false });
     await server.register(publicCrlRoutes);
@@ -211,8 +211,8 @@ describe('Public CRL endpoint heals an empty-PEM CRL row (issue #48)', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    await db.insert(certificateAuthorities).values([caRow(healCaId), caRow(failCaId)] as any);
-    await db.insert(crls).values([emptyRow(healCaId), emptyRow(failCaId)] as any);
+    await db.insert(certificateAuthorities).values([caRow(healCaId), caRow(failCaId)]);
+    await db.insert(crls).values([emptyRow(healCaId), emptyRow(failCaId)]);
 
     server = Fastify({ logger: false });
     await server.register(publicCrlRoutes);
@@ -241,7 +241,7 @@ describe('Public CRL endpoint heals an empty-PEM CRL row (issue #48)', () => {
         signatureAlgorithm: 'SHA256-RSA',
         issuerCertificate: ca.certPem,
       }).pem;
-      await db.insert(crls).values({ ...emptyRow(id), crlNumber: 2, crlPem: pem } as any);
+      await db.insert(crls).values({ ...emptyRow(id), crlNumber: 2, crlPem: pem });
       return true;
     });
     const res = await server.inject({ method: 'GET', url: `/crl/${healCaId}.crl` });

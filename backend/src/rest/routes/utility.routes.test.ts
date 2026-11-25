@@ -351,7 +351,7 @@ describe('Utility REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      expect(body.items.some((d: any) => d.domain.includes('unique-domain'))).toBe(true);
+      expect(body.items.some((d: { domain: string }) => d.domain.includes('unique-domain'))).toBe(true);
     });
 
     it('should support caId parameter to filter by CA', async () => {
@@ -368,7 +368,7 @@ describe('Utility REST Endpoints', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       // Results should only contain domains from testCaId
-      const hasOtherCaDomain = body.items.some((d: any) => d.domain.includes('ca2-domain'));
+      const hasOtherCaDomain = body.items.some((d: { domain: string }) => d.domain.includes('ca2-domain'));
       expect(hasOtherCaDomain).toBe(false);
     });
 
@@ -567,7 +567,7 @@ describe('Utility REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((item: any) => {
+      body.items.forEach((item: Pick<typeof auditLog.$inferSelect, 'operation' | 'entityType' | 'status'>) => {
         expect(item.operation).toBe('ca.create');
       });
     });
@@ -582,7 +582,7 @@ describe('Utility REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((item: any) => {
+      body.items.forEach((item: Pick<typeof auditLog.$inferSelect, 'operation' | 'entityType' | 'status'>) => {
         expect(item.entityType).toBe('certificate');
       });
     });
@@ -597,7 +597,7 @@ describe('Utility REST Endpoints', () => {
 
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
-      body.items.forEach((item: any) => {
+      body.items.forEach((item: Pick<typeof auditLog.$inferSelect, 'operation' | 'entityType' | 'status'>) => {
         expect(item.status).toBe('failure');
       });
     });
@@ -821,7 +821,7 @@ describe('Utility REST Endpoints', () => {
       expect(response.statusCode).toBe(200);
       const spec = JSON.parse(response.body);
 
-      const tagNames = spec.tags.map((t: any) => t.name);
+      const tagNames = spec.tags.map((t: { name: string }) => t.name);
       expect(tagNames).toContain('Search');
       expect(tagNames).toContain('Domains');
       expect(tagNames).toContain('Dashboard');

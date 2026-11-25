@@ -7,7 +7,7 @@
  * SSH_HOST_KRL_PUBLIC gates the public per-host endpoints (default OFF).
  * KMS signRaw mocked; ECIES encryption is local (no KMS).
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { assert, describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { execFileSync } from 'node:child_process';
 import { createPrivateKey } from 'node:crypto';
@@ -22,6 +22,7 @@ import { db } from '../../db/client.js';
 import { auditLog, sshCas, sshCertificates, sshRevocations, sshHosts, sshIdentities, sshHostBlocks, sshHostKrls, sshKrls } from '../../db/schema.js';
 import { eciesDecryptV1 } from '../../crypto/ssh/ecies.js';
 import { decodeKrl } from '../../test/krl-decode.js';
+import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
 import { getSshKrlService } from '../../services/ssh-krl.service.js';
 
 const { signRawMock } = vi.hoisted(() => ({
@@ -78,7 +79,7 @@ describe('BLK-06 serving cutover', () => {
       opensshPublicKey: readFileSync(join(work, 'caH.pub'), 'utf8').trim(),
       fingerprintSha256: 'SHA256:h',
       status: 'active',
-    } as any);
+    });
     hostId = randomUUID();
     await db.insert(sshHosts).values({
       id: hostId,
@@ -86,14 +87,14 @@ describe('BLK-06 serving cutover', () => {
       opensshHostPubkey: readFileSync(join(work, 'h.pub'), 'utf8').trim(),
       hostKeyAlgorithm: 'ecdsa-sha2-nistp256',
       status: 'active',
-    } as any);
+    });
     await db.insert(sshHosts).values({
       id: randomUUID(),
       fqdn: 'ed.lab.local',
       opensshHostPubkey: readFileSync(join(work, 'ed.pub'), 'utf8').trim(),
       hostKeyAlgorithm: 'ssh-ed25519',
       status: 'active',
-    } as any);
+    });
   });
 
   afterAll(async () => {
@@ -129,11 +130,11 @@ describe('BLK-06 serving cutover', () => {
   it('304 + telemetry stamping semantics unchanged on the per-host path', async () => {
     const first = await fetchKrl();
     const version = first.headers['x-krl-version'] as string;
-    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(Date.now() - 3 * 3600_000) } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(Date.now() - 3 * 3600_000) }).where(eq(sshHosts.id, hostId));
     const second = await fetchKrl({ 'if-none-match': version });
     expect(second.statusCode).toBe(304);
-    const h = (await db.select().from(sshHosts).where(eq(sshHosts.id, hostId)))[0] as any;
-    expect(new Date(h.lastKrlFetchAt).getTime()).toBeGreaterThan(Date.now() - 10_000);
+    const h = (await db.select().from(sshHosts).where(eq(sshHosts.id, hostId)))[0];
+    expect(new Date(h.lastKrlFetchAt!).getTime()).toBeGreaterThan(Date.now() - 10_000);
     expect(h.lastKrlVersion).toBe(version); // stamped by the earlier 200
   });
 
@@ -149,7 +150,23 @@ describe('BLK-06 serving cutover', () => {
       const payload = decrypt(Buffer.from(res.rawPayload));
       expect(payload.host_id).toBe(FQDN);
     } finally {
-      await db.insert(sshCas).values(cas as any);
+      await db.insert(sshCas).values(cas);
+    }
+  });
+
+  it('serves the last signed row when the refreshed row disappears before lookup', async () => {
+    const service = getSshHostKrlService();
+    const last = await service.getLatestRow({ db }, hostId);
+    assert.isNotNull(last);
+    const lookup = vi.spyOn(service, 'getLatestRow')
+      .mockResolvedValueOnce({ ...last, nextUpdate: new Date(0) })
+      .mockResolvedValueOnce(null);
+    try {
+      const res = await fetchKrl();
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['x-krl-version']).toBe(last.versionHash);
+    } finally {
+      lookup.mockRestore();
     }
   });
 
@@ -162,7 +179,7 @@ describe('BLK-06 serving cutover', () => {
       expect(res.statusCode).toBe(503);
       expect(JSON.parse(res.body).error.code).toBe('NO_KRL');
     } finally {
-      await db.insert(sshCas).values(cas as any);
+      await db.insert(sshCas).values(cas);
     }
   });
 
@@ -173,6 +190,7 @@ describe('BLK-06 serving cutover', () => {
       // regenerate one so the legacy branch has something fresh to serve.
       await getSshKrlService().generate({ db, ipAddress: null }, caHostId);
       const perCaRow = await getSshKrlService().getLatestRow({ db, ipAddress: null }, caHostId);
+      assert.isNotNull(perCaRow);
       const res = await fetchKrl();
       expect(res.statusCode).toBe(200);
       expect(res.headers['x-krl-version']).toBe(perCaRow.versionHash);
@@ -182,13 +200,13 @@ describe('BLK-06 serving cutover', () => {
   });
 
   it('offboarded hosts get 404 — no frozen last-good serving with fresh valid_until', async () => {
-    await db.update(sshHosts).set({ status: 'offboarded' } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ status: 'offboarded' }).where(eq(sshHosts.id, hostId));
     try {
       const res = await fetchKrl();
       expect(res.statusCode).toBe(404);
       expect(JSON.parse(res.body).error.message).toMatch(/offboarded/);
     } finally {
-      await db.update(sshHosts).set({ status: 'active' } as any).where(eq(sshHosts.id, hostId));
+      await db.update(sshHosts).set({ status: 'active' }).where(eq(sshHosts.id, hostId));
     }
   });
 

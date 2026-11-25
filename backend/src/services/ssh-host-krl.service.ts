@@ -21,6 +21,7 @@
  * row persists with ca_signature null (krl-client fail-stales on last-good
  * until a signed row lands, unless run with `--allow-unsigned`).
  */
+import { errorMessage } from '../lib/error-message.js';
 import { randomUUID } from 'crypto';
 import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshRevocations, sshHosts, sshHostBlocks, sshHostKrls } from '../db/schema.js';
@@ -59,14 +60,14 @@ export class SshHostKrlService {
   async generate(ctx: ServiceContext, hostId: string): Promise<SshHostKrlDto> {
     try {
       return await this.generateInner(ctx, hostId);
-    } catch (e: any) {
+    } catch (e) {
       await createAuditLog({
         db: ctx.db,
         operation: 'ssh.host_krl.generate',
         entityType: 'ssh_host_krl',
         entityId: hostId,
         status: 'failure',
-        details: { hostId, error: e?.message ?? String(e) },
+        details: { hostId, error: errorMessage(e) ?? String(e) },
         ipAddress: ctx.ipAddress ?? undefined,
       });
       throw e;
@@ -80,8 +81,8 @@ export class SshHostKrlService {
     // its block rows stay for audit but no new artifacts are produced.
     if (host.status === 'offboarded') throw new SshHostKrlError(`host ${hostId} is offboarded — per-host KRL lineage retired`);
 
-    const allCas = (await ctx.db.select().from(sshCas)) as any[];
-    const caById = new Map<string, any>(allCas.map((c) => [c.id, c]));
+    const allCas = (await ctx.db.select().from(sshCas));
+    const caById = new Map(allCas.map((c) => [c.id, c]));
     const caBlobCache = new Map<string, Buffer>();
     const caBlob = (caId: string): Buffer | null => {
       if (!caBlobCache.has(caId)) {
@@ -117,12 +118,12 @@ export class SshHostKrlService {
       const revokedCerts = (await ctx.db
         .select({ caId: sshCertificates.caId, serial: sshCertificates.serial })
         .from(sshCertificates)
-        .where(and(inArray(sshCertificates.caId, unionCaIds), eq(sshCertificates.status, 'revoked')))) as any[];
+        .where(and(inArray(sshCertificates.caId, unionCaIds), eq(sshCertificates.status, 'revoked'))));
       for (const c of revokedCerts) addSerial(c.caId, c.serial);
       const directives = (await ctx.db
         .select()
         .from(sshRevocations)
-        .where(inArray(sshRevocations.caId, unionCaIds))) as any[];
+        .where(inArray(sshRevocations.caId, unionCaIds)));
       for (const d of directives) {
         if (d.targetType === 'serial' && d.serial) addSerial(d.caId, d.serial);
         if (d.targetType === 'key_fingerprint' && d.keyFingerprint) addHash(fingerprintToHash(d.keyFingerprint));
@@ -134,14 +135,14 @@ export class SshHostKrlService {
     const blocks = (await ctx.db
       .select()
       .from(sshHostBlocks)
-      .where(and(eq(sshHostBlocks.hostId, hostId), eq(sshHostBlocks.status, 'active')))) as any[];
+      .where(and(eq(sshHostBlocks.hostId, hostId), eq(sshHostBlocks.status, 'active'))));
     const now = Date.now();
     if (blocks.length) {
       const identityIds = [...new Set(blocks.map((b) => b.identityId))];
       const certs = (await ctx.db
         .select()
         .from(sshCertificates)
-        .where(and(inArray(sshCertificates.identityId, identityIds), eq(sshCertificates.certType, 'user')))) as any[];
+        .where(and(inArray(sshCertificates.identityId, identityIds), eq(sshCertificates.certType, 'user'))));
       for (const cert of certs) {
         // (a) serials of not-yet-expired certs, grouped by the ISSUING CA — even a
         //     retired one (the host may still trust it; fingerprints alone are
@@ -185,8 +186,8 @@ export class SshHostKrlService {
     let signError: string | null = null;
     try {
       signature = await getKMSService().signRaw(signingCa.kmsKeyId, blob, { entityId: signingCa.id });
-    } catch (e: any) {
-      signError = e?.message ?? String(e);
+    } catch (e) {
+      signError = errorMessage(e) ?? String(e);
       logger.warn({ hostId, caId: signingCa.id, error: signError }, 'per-host KRL signing failed; persisting unsigned row');
     }
 
@@ -206,7 +207,7 @@ export class SshHostKrlService {
       nextUpdate,
       revokedCount,
       blockCount,
-    } as any);
+    });
 
     await createAuditLog({
       db: ctx.db,
@@ -244,7 +245,7 @@ export class SshHostKrlService {
   }
 
   /** The Host CA whose key signs this host's composed KRL. */
-  private async resolveHostCa(ctx: ServiceContext, host: any, caById: Map<string, any>): Promise<any> {
+  private async resolveHostCa(ctx: ServiceContext, host: typeof sshHosts.$inferSelect, caById: Map<string, typeof sshCas.$inferSelect>) {
     if (host.currentCertId) {
       const cert = (await ctx.db.select().from(sshCertificates).where(eq(sshCertificates.id, host.currentCertId)).limit(1))[0];
       const ca = cert ? caById.get(cert.caId) : undefined;
@@ -304,7 +305,7 @@ export class SshHostKrlService {
         .selectDistinct({ hostId: sshHostBlocks.hostId })
         .from(sshHostBlocks)
         .innerJoin(sshHosts, eq(sshHostBlocks.hostId, sshHosts.id))
-        .where(and(eq(sshHostBlocks.status, 'active'), ne(sshHosts.status, 'offboarded')))) as any[];
+        .where(and(eq(sshHostBlocks.status, 'active'), ne(sshHosts.status, 'offboarded'))));
       this.scheduleEagerRegen(ctx, rows.map((r) => r.hostId));
     } catch (e) {
       logger.warn({ error: String(e) }, 'per-host KRL invalidation after revocation failed (lazy backstop still applies at next_update)');
@@ -328,7 +329,7 @@ export class SshHostKrlService {
             eq(sshHostBlocks.status, 'active'),
             ne(sshHosts.status, 'offboarded')
           )
-        )) as any[];
+        ));
       if (rows.length) this.scheduleEagerRegen(ctx, rows.map((r) => r.hostId));
     } catch (e) {
       logger.warn({ identityId, error: String(e) }, 'failed to schedule post-issuance per-host KRL regeneration');
@@ -368,7 +369,7 @@ export class SshHostKrlService {
   }
 
   /** Latest per-host KRL row (or null). Used by the serving endpoints and state derivation. */
-  async getLatestRow(ctx: ServiceContext, hostId: string): Promise<any | null> {
+  async getLatestRow(ctx: ServiceContext, hostId: string): Promise<typeof sshHostKrls.$inferSelect | null> {
     return (
       (await ctx.db
         .select()

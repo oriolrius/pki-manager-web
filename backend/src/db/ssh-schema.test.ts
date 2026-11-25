@@ -44,9 +44,9 @@ describe("SSH schema (0004 migration)", () => {
 
   it("creates all 9 ssh_* tables", () => {
     const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ssh_%'")
+      .prepare<[], { name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ssh_%'")
       .all()
-      .map((r: any) => r.name);
+      .map((r) => r.name);
     expect(tables).toHaveLength(9);
   });
 
@@ -86,7 +86,7 @@ describe("SSH schema (0004 migration)", () => {
 
     // deleting the identity cascades its user_principals
     d.prepare(`DELETE FROM ssh_identities WHERE id=?`).run(identId);
-    const remaining = d.prepare(`SELECT COUNT(*) c FROM ssh_user_principals`).get() as any;
+    const remaining = d.prepare<[], { c: number }>(`SELECT COUNT(*) c FROM ssh_user_principals`).get()!;
     expect(remaining.c).toBe(0);
   });
 
@@ -99,14 +99,14 @@ describe("SSH schema (0004 migration)", () => {
       `INSERT INTO ssh_krls (id, ca_id, krl_number, version_hash, krl_blob, ca_signature, this_update, next_update, revoked_count)
        VALUES (?,?,?,?,?,?,?,?,?)`
     ).run(uuid(), caId, 1, "sha256:abc", blob, sig, 1, 2, 3);
-    const row = d.prepare(`SELECT krl_blob, ca_signature FROM ssh_krls`).get() as any;
+    const row = d.prepare<[], { krl_blob: Buffer; ca_signature: Buffer }>(`SELECT krl_blob, ca_signature FROM ssh_krls`).get()!;
     expect(Buffer.from(row.krl_blob)).toEqual(blob);
     expect(Buffer.from(row.ca_signature)).toEqual(sig);
 
     // JSON columns are plain text we parse in the service layer.
     const hostId = uuid();
     d.prepare(`INSERT INTO ssh_hosts (id, fqdn, addresses) VALUES (?,?,?)`).run(hostId, "h.lab", JSON.stringify(["h.lab", "10.0.0.1"]));
-    const h = d.prepare(`SELECT addresses FROM ssh_hosts WHERE id=?`).get(hostId) as any;
+    const h = d.prepare<[string], { addresses: string }>(`SELECT addresses FROM ssh_hosts WHERE id=?`).get(hostId)!;
     expect(JSON.parse(h.addresses)).toEqual(["h.lab", "10.0.0.1"]);
   });
 });

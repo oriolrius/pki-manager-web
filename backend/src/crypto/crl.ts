@@ -6,6 +6,7 @@
  * which signs reliably for both RSA (PKCS#1 v1.5) and ECDSA (DER signature) keys — unlike
  * node-forge, whose EC signing is unreliable.
  */
+import { findForgeExtension } from './x509.js';
 
 import * as nodeCrypto from 'node:crypto';
 import forge from 'node-forge';
@@ -124,7 +125,7 @@ function authorityKeyIdentifierExtension(issuerCertificatePem?: string): forge.a
   if (!issuerCertificatePem) return null;
   try {
     const cert = forge.pki.certificateFromPem(issuerCertificatePem);
-    const ski = cert.extensions.find((e: any) => e.name === 'subjectKeyIdentifier') as any;
+    const ski = findForgeExtension(cert, 'subjectKeyIdentifier');
     const skiHex: string | undefined = ski?.subjectKeyIdentifier;
     if (!skiHex) return null;
     // AuthorityKeyIdentifier ::= SEQUENCE { keyIdentifier [0] OCTET STRING OPTIONAL }
@@ -302,7 +303,7 @@ export function parseCRL(data: string, format: CertificateFormat = 'PEM'): Parse
     const sigAlg = tbsFields[idx];
     const sigOid = asn1.derToOid((sigAlg.value as forge.asn1.Asn1[])[0].value as string);
     const issuerAsn1 = tbsFields[idx + 1];
-    const issuer = (forge.pki as any).RDNAttributesAsArray(issuerAsn1) as forge.pki.CertificateField[];
+    const issuer = (forge.pki as typeof forge.pki & { RDNAttributesAsArray(value: forge.asn1.Asn1): forge.pki.CertificateField[] }).RDNAttributesAsArray(issuerAsn1) as forge.pki.CertificateField[];
     const thisUpdate = asn1ToDate(tbsFields[idx + 2]);
 
     let cursor = idx + 3;
@@ -407,7 +408,7 @@ export function verifyCRL(crlData: string, issuerPublicKeyPem: string, format: C
     // BIT STRING value begins with the unused-bits octet (0x00); strip it. forge may
     // recursively decompose the bit-string contents when they happen to be valid DER (an
     // ECDSA signature is a DER SEQUENCE), so read the raw bytes from `bitStringContents`.
-    const sigBits = ((fields[2] as any).bitStringContents ?? fields[2].value) as string;
+    const sigBits = ((fields[2] as forge.asn1.Asn1 & { bitStringContents?: string }).bitStringContents ?? fields[2].value) as string;
     const signature = Buffer.from(sigBits.slice(1), 'binary');
 
     // Accept either a CA certificate PEM (extract its public key) or a bare public key PEM.

@@ -5,7 +5,8 @@
  * force-command, expiry, KRL revocation. Runs sshd non-root on a high port as the
  * current user. Gated on KMS_AVAILABLE + ssh-keygen + sshd; skips cleanly otherwise.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
+import { assert, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
@@ -29,7 +30,7 @@ const USER = userInfo().username;
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -37,7 +38,7 @@ async function wipe() {
 
 describe.skipIf(!RUN)('SSH-33 end-to-end against real sshd', () => {
   let work: string;
-  let userCa: any;
+  let userCa: SshCaDto;
   let sshdPid: string;
 
   /** Issue a user cert for a fresh key; write key + cert; return the key path. */
@@ -168,10 +169,11 @@ describe.skipIf(!RUN)('SSH-33 end-to-end against real sshd', () => {
     expect(ssh(revKey, 'echo pre').code).toBe(0); // works before revocation
 
     // Find the issued cert id and revoke it -> build KRL -> install as RevokedKeys.
-    const allCerts = (await db.select().from(sshCertificates)) as any[];
-    const target = allCerts.find((c) => c.keyId === 'revoke-me@e2e');
+    const allCerts = (await db.select().from(sshCertificates));
+    const target = allCerts.find((c) => c.keyId === 'revoke-me@e2e')!;
     const krl = await getSshKrlService().revokeByCert(ctx, target.id, 'compromised');
     const latest = await getSshKrlService().getLatestRow(ctx, target.caId);
+    assert.isNotNull(latest);
     writeFileSync(join(work, 'revoked_keys'), Buffer.from(latest.krlBlob)); // sshd re-reads per auth
     expect(krl.revokedCount).toBeGreaterThanOrEqual(1);
 

@@ -81,7 +81,7 @@ describe('ECDSA leaf certificates - KMS integration', () => {
 
     const x = new X509Certificate(cert.certificatePem);
     expect(x.publicKey.asymmetricKeyType).toBe('ec');
-    expect((x.publicKey as any).asymmetricKeyDetails?.namedCurve).toBe(curve);
+    expect(x.publicKey.asymmetricKeyDetails?.namedCurve).toBe(curve);
     expect(x.verify(caPubKey)).toBe(true); // signed by the RSA CA
     if (opensslAvailable) expect(opensslText(cert.certificatePem)).toMatch(/Public Key Algorithm: id-ecPublicKey/);
   }

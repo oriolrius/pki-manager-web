@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { db as database } from '../db/client.js';
 import { auditLog } from '../db/schema.js';
 import { logger } from './logger.js';
 import { getAuditActor, type AuditActor } from './audit-actor.js';
@@ -86,12 +86,12 @@ export type AuditEntityType =
   | 'zone';
 
 export interface AuditLogOptions {
-  db: BetterSQLite3Database<any>;
+  db: Pick<typeof database, 'insert'>;
   operation: AuditOperation;
   entityType: AuditEntityType;
   entityId?: string;
   status: 'success' | 'failure';
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   ipAddress?: string;
   kmsOperationId?: string;
   /** Overrides the actor taken from the current request context. */
@@ -130,7 +130,7 @@ export async function createAuditLog(options: AuditLogOptions): Promise<string> 
       actorType: actor?.type ?? null,
       actorId: actor?.id ?? null,
       actorName: actor?.name ?? null,
-    } as any);
+    });
 
     logger.debug(
       {
@@ -163,11 +163,11 @@ export async function createAuditLog(options: AuditLogOptions): Promise<string> 
  * Helper function to create audit log for successful operations
  */
 export async function auditSuccess(
-  db: BetterSQLite3Database<any>,
+  db: Pick<typeof database, 'insert'>,
   operation: AuditOperation,
   entityType: AuditEntityType,
   entityId: string,
-  details?: Record<string, any>,
+  details?: Record<string, unknown>,
   ipAddress?: string,
   kmsOperationId?: string
 ): Promise<string> {
@@ -187,12 +187,12 @@ export async function auditSuccess(
  * Helper function to create audit log for failed operations
  */
 export async function auditFailure(
-  db: BetterSQLite3Database<any>,
+  db: Pick<typeof database, 'insert'>,
   operation: AuditOperation,
   entityType: AuditEntityType,
   entityId: string | undefined,
   error: Error | string,
-  details?: Record<string, any>,
+  details?: Record<string, unknown>,
   ipAddress?: string
 ): Promise<string> {
   const errorMessage = error instanceof Error ? error.message : String(error);

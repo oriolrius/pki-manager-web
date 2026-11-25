@@ -4,7 +4,7 @@ import forge from 'node-forge';
 import { certificates, certificateAuthorities, auditLog } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
 import { formatDN } from '../crypto/dn.js';
-import { parseCertificate } from '../crypto/x509.js';
+import { findForgeExtension, parseCertificate } from '../crypto/x509.js';
 import {
   validateDomainName,
   validateServerSANs,
@@ -390,7 +390,7 @@ export class CertificateService {
     const now = new Date();
     const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    const formattedResults = results.map((cert: any) => {
+    const formattedResults = results.map((cert) => {
       let computedExpiryStatus: 'active' | 'expired' | 'expiring_soon';
       if (cert.notAfter < now) {
         computedExpiryStatus = 'expired';
@@ -420,7 +420,7 @@ export class CertificateService {
   /**
    * Get certificate by ID with full details
    */
-  async getById(ctx: ServiceContext, id: string): Promise<any> {
+  async getById(ctx: ServiceContext, id: string) {
     // Query certificate with CA join
     const result = await ctx.db
       .select({
@@ -445,8 +445,8 @@ export class CertificateService {
     // Fetch certificate. Prefer cached PEM (offline-signed k8s certs); fall back to KMS.
     const kmsService = getKMSService();
     let certificatePem: string;
-    if ((certificate as any).certificatePem) {
-      certificatePem = (certificate as any).certificatePem;
+    if (certificate.certificatePem) {
+      certificatePem = certificate.certificatePem;
     } else try {
       certificatePem = await kmsService.getCertificate(
         certificate.kmsCertificateId,
@@ -490,8 +490,8 @@ export class CertificateService {
     }
 
     // Parse Key Usage extension
-    let keyUsage: any = null;
-    const keyUsageExt = forgeCert?.extensions.find((ext: any) => ext.name === 'keyUsage');
+    let keyUsage = null;
+    const keyUsageExt = findForgeExtension(forgeCert, 'keyUsage');
     if (keyUsageExt) {
       keyUsage = {
         digitalSignature: keyUsageExt.digitalSignature || undefined,
@@ -508,7 +508,7 @@ export class CertificateService {
 
     // Parse Extended Key Usage extension
     let extendedKeyUsage: string[] | null = null;
-    const ekuExt = forgeCert?.extensions.find((ext: any) => ext.name === 'extKeyUsage');
+    const ekuExt = findForgeExtension(forgeCert, 'extKeyUsage');
     if (ekuExt) {
       extendedKeyUsage = [];
       if (ekuExt.serverAuth) extendedKeyUsage.push('serverAuth');
@@ -519,8 +519,8 @@ export class CertificateService {
     }
 
     // Parse Basic Constraints extension
-    let basicConstraints: any = null;
-    const bcExt = forgeCert?.extensions.find((ext: any) => ext.name === 'basicConstraints');
+    let basicConstraints = null;
+    const bcExt = findForgeExtension(forgeCert, 'basicConstraints');
     if (bcExt) {
       basicConstraints = {
         cA: bcExt.cA || false,
@@ -843,7 +843,7 @@ export class CertificateService {
           sanEmail: params.sanEmail,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       logger.info({ certId, subjectName, caId: params.caId }, 'Certificate issued successfully');
 
@@ -880,7 +880,7 @@ export class CertificateService {
           }),
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CertificateOperationError('issue', error);
     }
@@ -1085,7 +1085,7 @@ export class CertificateService {
             via: 'certificate.renew',
           }),
           ipAddress: ctx.ipAddress,
-        } as any);
+        });
 
         // Keep the CA CRL current so the superseded serial appears (best-effort).
         await getCRLService().regenerateForCa(ctx, originalCert.caId);
@@ -1114,7 +1114,7 @@ export class CertificateService {
           sanEmail: sanEmail,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       logger.info({ newCertId, originalCertId: params.id }, 'Certificate renewed successfully');
 
@@ -1145,7 +1145,7 @@ export class CertificateService {
           certificateType: originalCert.certificateType,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CertificateOperationError('renew', error);
     }
@@ -1227,7 +1227,7 @@ export class CertificateService {
           generateCrl: params.generateCrl,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       // Keep the CA CRL current so the revoked serial appears promptly (best-effort:
       // never fails the revocation if the KMS/CRL signing is unavailable).
@@ -1258,7 +1258,7 @@ export class CertificateService {
           reason: params.reason,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CertificateOperationError('revoke', error);
     }
@@ -1311,7 +1311,7 @@ export class CertificateService {
           revocationReason: cert.revocationReason,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       // Optional: Destroy KMS key if requested
       let keyDestroyed = false;
@@ -1378,7 +1378,7 @@ export class CertificateService {
           serialNumber: cert.serialNumber,
         }),
         ipAddress: ctx.ipAddress,
-      } as any);
+      });
 
       throw new CertificateOperationError('delete', error);
     }

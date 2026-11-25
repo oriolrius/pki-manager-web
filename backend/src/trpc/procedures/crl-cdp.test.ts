@@ -5,6 +5,7 @@
  * embed a crlDistributionPoints extension pointing at the issuing CA's CRL endpoint, as
  * shown by `openssl x509 -ext crlDistributionPoints`. SKIPPED when KMS/openssl unavailable.
  */
+import { processOutput } from '../../lib/process-output.js';
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -26,8 +27,8 @@ function cdpFromCert(certPem: string): string {
   writeFileSync(p, certPem);
   try {
     return execFileSync('openssl', ['x509', '-in', p, '-noout', '-ext', 'crlDistributionPoints'], { encoding: 'utf-8' });
-  } catch (e: any) {
-    return `${e.stdout || ''}${e.stderr || ''}`;
+  } catch (e) {
+    return processOutput(e);
   }
 }
 

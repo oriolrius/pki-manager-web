@@ -81,7 +81,7 @@ export class SshCaNotFoundError extends Error {
   }
 }
 
-function toDto(row: any): SshCaDto {
+function toDto(row: typeof sshCas.$inferSelect): SshCaDto {
   return {
     id: row.id,
     zoneId: row.zoneId,
@@ -132,7 +132,7 @@ export class SshCaService {
         fingerprintSha256: parsed.fingerprintSha256,
         keyAlgorithm: 'ECDSA-P256',
         status: 'active',
-      } as any);
+      });
 
       await createAuditLog({
         db: ctx.db,
@@ -199,7 +199,7 @@ export class SshCaService {
       fingerprintSha256: parsed.fingerprintSha256,
       keyAlgorithm: 'ECDSA-P256',
       status: 'active',
-    } as any);
+    });
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.ca.import',
@@ -216,7 +216,7 @@ export class SshCaService {
     const rows = opts?.zoneId
       ? await ctx.db.select().from(sshCas).where(eq(sshCas.zoneId, opts.zoneId))
       : await ctx.db.select().from(sshCas);
-    return (rows as any[]).map(toDto);
+    return rows.map(toDto);
   }
 
   async get(ctx: ServiceContext, id: string): Promise<SshCaDto> {
@@ -234,10 +234,10 @@ export class SshCaService {
   async getTrustAnchors(ctx: ServiceContext, zone?: string): Promise<TrustAnchors> {
     const z = await resolveZone(ctx, zone);
     const cas = await ctx.db.select().from(sshCas).where(eq(sshCas.zoneId, z.id));
-    const usable = cas.filter((c: any) => c.status === 'active' || c.status === 'rotating');
+    const usable = cas.filter((c) => c.status === 'active' || c.status === 'rotating');
     return {
-      userCaKeys: usable.filter((c: any) => c.caType === 'user').map((c: any) => c.opensshPublicKey),
-      hostCaKeys: usable.filter((c: any) => c.caType === 'host').map((c: any) => c.opensshPublicKey),
+      userCaKeys: usable.filter((c) => c.caType === 'user').map((c) => c.opensshPublicKey),
+      hostCaKeys: usable.filter((c) => c.caType === 'host').map((c) => c.opensshPublicKey),
     };
   }
 
@@ -275,7 +275,7 @@ export class SshCaService {
       // before the insert because uq_ssh_cas_active_type forbids two 'active'
       // CAs per (zone, ca_type); wrapping both in one transaction makes the
       // physical order invisible to any other reader.
-      ctx.db.transaction((tx: any) => {
+      ctx.db.transaction((tx) => {
         tx.update(sshCas)
           .set({ status: 'rotating', retireAfter: new Date(Date.now() + overlapSeconds * 1000), updatedAt: new Date() })
           .where(eq(sshCas.id, id))
@@ -293,7 +293,7 @@ export class SshCaService {
             keyAlgorithm: 'ECDSA-P256',
             status: 'active',
             predecessorCaId: id,
-          } as any)
+          })
           .run();
       });
     } catch (error) {
@@ -376,7 +376,7 @@ export class SshCaService {
           isNull(sshCertificates.supersededBy),
           gt(sshCertificates.validBefore, now)
         )
-      )) as any[];
+      ));
 
     const reissuedUnderSuccessor = successor
       ? (
@@ -390,14 +390,14 @@ export class SshCaService {
                 isNull(sshCertificates.supersededBy),
                 gt(sshCertificates.validBefore, now)
               )
-            )) as any[]
+            ))
         ).length
       : 0;
 
     // Resolve host fqdns for the blocking certs (user certs carry identityId instead).
     const hostIds = [...new Set(liveUnderOld.map((c) => c.hostId).filter(Boolean) as string[])];
     const hosts = hostIds.length
-      ? ((await ctx.db.select().from(sshHosts).where(inArray(sshHosts.id, hostIds))) as any[])
+      ? ((await ctx.db.select().from(sshHosts).where(inArray(sshHosts.id, hostIds))))
       : [];
     const fqdnById = new Map(hosts.map((h) => [h.id, h.fqdn as string]));
 

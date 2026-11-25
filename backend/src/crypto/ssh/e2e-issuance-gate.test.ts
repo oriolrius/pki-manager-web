@@ -6,6 +6,9 @@
  * non-blocked host accepts the same cert. Uses render()'s dual-form
  * auth_principals lines. Gated on KMS_AVAILABLE + sshd.
  */
+import type { SshHostDto } from '../../services/ssh-host.service.js';
+import type { SshIdentityDto } from '../../services/ssh-user.service.js';
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
@@ -32,7 +35,7 @@ const PORT_Z = PORT_Y + 41;
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -40,11 +43,11 @@ async function wipe() {
 
 describe.skipIf(!RUN)('BLK-13 issuance gate vs real sshd (never-pulling blocked host)', () => {
   let work: string;
-  let userCa: any;
-  let hostCa: any;
-  let hostY: any;
-  let hostZ: any;
-  let alice: any;
+  let userCa: SshCaDto;
+  let hostCa: SshCaDto;
+  let hostY: SshHostDto;
+  let hostZ: SshHostDto;
+  let alice: SshIdentityDto;
   const pids: string[] = [];
 
   function ssh(port: number, keyPath: string, cmd: string): number | null {
@@ -61,7 +64,7 @@ describe.skipIf(!RUN)('BLK-13 issuance gate vs real sshd (never-pulling blocked 
 
   /** Register host + map the role, then start sshd with render()'s dual-form
    * auth_principals and an EMPTY RevokedKeys that is never refreshed. */
-  async function startSshd(name: string, port: number, principalId: string): Promise<any> {
+  async function startSshd(name: string, port: number, principalId: string) {
     const dir = join(work, name);
     mkdirSync(dir, { recursive: true });
     execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(dir, 'hostkey'), '-N', '', '-q']);
@@ -141,7 +144,7 @@ describe.skipIf(!RUN)('BLK-13 issuance gate vs real sshd (never-pulling blocked 
 
     // The cert was BORN narrowed: scoped to the allowed host only.
     const certs = await getSshUserService().listCertificates(ctx, alice.id);
-    const principals = certs.find((c: any) => c.id === res.cert.id)!.principals;
+    const principals = certs.find((c) => c.id === res.cert.id)!.principals;
     expect(principals).toEqual([`admin@${hostZ.fqdn}`]);
 
     // Blocked host Y: RevokedKeys is STILL the empty KRL (never pulled) — the

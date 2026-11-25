@@ -25,9 +25,7 @@ export default [
           ignoreRestSiblings: true,
         },
       ],
-      // Existing debt (about 700 uses), reported as warnings until it is typed
-      // (issue #73). New code must not add `any`.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
     },
   },
 ]

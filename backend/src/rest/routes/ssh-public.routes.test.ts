@@ -37,7 +37,7 @@ describe('BLK-10 Host-CA trust anchor endpoint', () => {
     await db.insert(sshCas).values([
       { id: randomUUID(), caType: 'user', kmsKeyId: 'k-u', kmsPublicKeyId: 'kp-u', opensshPublicKey: userCaKey, fingerprintSha256: 'SHA256:u', status: 'active' },
       { id: randomUUID(), caType: 'host', kmsKeyId: 'k-h', kmsPublicKeyId: 'kp-h', opensshPublicKey: hostCaKey, fingerprintSha256: 'SHA256:h', status: 'active' },
-    ] as any);
+    ]);
     app = Fastify();
     registerSshPublicRoutes(app);
     await app.ready();

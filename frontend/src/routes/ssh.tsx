@@ -38,9 +38,11 @@ const SSH_NAV_GROUPS = [
   },
 ] as const;
 
+type SshNavItem = typeof SSH_NAV_GROUPS[number]['items'][number];
+const sectionItems = SSH_NAV_GROUPS.flatMap<SshNavItem>((group) => group.items);
 const SSH_NAV_ITEMS = [
   { to: '/ssh', label: 'Overview', icon: LayoutDashboard },
-  ...SSH_NAV_GROUPS.flatMap((group) => group.items),
+  ...sectionItems,
 ] as const;
 
 function SshSection() {
@@ -58,7 +60,7 @@ function SshSectionInner() {
   const activeItem = SSH_NAV_ITEMS.find(({ to }) => matchRoute({ to, fuzzy: true })) ?? SSH_NAV_ITEMS[0];
 
   const navigateTo = (to: typeof SSH_NAV_ITEMS[number]['to']) => {
-    navigate({ to, search: (prev) => prev });
+    navigate({ to, search: true });
   };
 
   return (
@@ -84,7 +86,7 @@ function SshSectionInner() {
         <div className="hidden min-h-12 items-stretch md:flex">
           <Link
             to="/ssh"
-            search={(prev) => prev}
+            search={true}
             className="flex items-center gap-2 border-r px-4 text-sm font-medium text-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
             activeProps={{ className: 'flex items-center gap-2 border-r bg-primary/10 px-4 text-sm font-medium text-primary' }}
             activeOptions={{ exact: true }}
@@ -119,7 +121,7 @@ function SshSectionInner() {
                     <Link
                       key={to}
                       to={to}
-                      search={(prev) => prev}
+                      search={true}
                       className="flex items-center gap-2 rounded-sm px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent/50 hover:text-foreground"
                       activeProps={{ className: 'flex items-center gap-2 rounded-sm bg-primary/10 px-3 py-2 text-sm text-primary' }}
                       onClick={(event) => event.currentTarget.closest('details')?.removeAttribute('open')}
@@ -277,11 +279,11 @@ function SshLanding() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {SSH_NAV_GROUPS.flatMap((group) => group.items).map(({ to, label, icon: Icon }) => (
+        {sectionItems.map(({ to, label, icon: Icon }) => (
           <Link
             key={to}
             to={to}
-            search={(prev) => prev}
+            search={true}
             className="rounded-lg border bg-card p-5 hover:bg-muted/50 transition-colors flex items-center gap-3"
           >
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">

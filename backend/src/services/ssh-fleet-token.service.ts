@@ -73,7 +73,7 @@ export interface VerifiedToken extends SshTokenLimits {
   opSet: SshTokenOp[];
 }
 
-const limitsOf = (row: any): SshTokenLimits => ({
+const limitsOf = (row: typeof sshFleetTokens.$inferSelect): SshTokenLimits => ({
   allowedPrincipals: row.allowedPrincipals ? JSON.parse(row.allowedPrincipals) : null,
   maxValidForSeconds: row.maxValidForSeconds ?? null,
 });
@@ -110,7 +110,7 @@ export function applySignUserLimits(
 const PREFIX = 'pkimg_';
 const hashToken = (plain: string) => createHash('sha256').update(plain).digest('hex');
 
-function dto(row: any): FleetTokenDto {
+function dto(row: typeof sshFleetTokens.$inferSelect): FleetTokenDto {
   return {
     id: row.id,
     zoneId: row.zoneId,
@@ -133,7 +133,7 @@ export class SshFleetTokenService {
     if (params.opSet.includes('sign-user') && !params.userCaId) throw new SshTokenError('sign-user requires a userCaId');
     if ((params.opSet.includes('sign-host') || params.opSet.includes('register-host-pubkey')) && !params.hostCaId)
       throw new SshTokenError('sign-host/register-host-pubkey require a hostCaId');
-    const providedCas: any[] = [];
+    const providedCas: (typeof sshCas.$inferSelect)[] = [];
     for (const caId of [params.userCaId, params.hostCaId].filter(Boolean) as string[]) {
       const ca = (await ctx.db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
       if (!ca) throw new SshTokenError(`CA ${caId} not found`);
@@ -164,7 +164,7 @@ export class SshFleetTokenService {
       const found = (await ctx.db
         .select({ name: sshPrincipals.name })
         .from(sshPrincipals)
-        .where(and(eq(sshPrincipals.zoneId, zone.id), inArray(sshPrincipals.name, allowedPrincipals)))) as any[];
+        .where(and(eq(sshPrincipals.zoneId, zone.id), inArray(sshPrincipals.name, allowedPrincipals))));
       const known = new Set(found.map((r) => r.name));
       const unknown = allowedPrincipals.filter((p) => !known.has(p));
       if (unknown.length)
@@ -188,7 +188,7 @@ export class SshFleetTokenService {
       allowedPrincipals: allowedPrincipals ? JSON.stringify(allowedPrincipals) : null,
       maxValidForSeconds,
       revoked: false,
-    } as any);
+    });
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.token.mint',

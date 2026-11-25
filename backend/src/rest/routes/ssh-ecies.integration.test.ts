@@ -28,7 +28,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -94,7 +94,7 @@ describe.skipIf(!KMS)('KRLC-02 local-decrypt per-host KRL distribution', () => {
     expect(q.status !== 0 && /REVOKED/i.test(q.stdout + q.stderr)).toBe(true);
 
     // The detached CA signature verifies (CA signing still via KMS — separate from ECIES).
-    const caRow = (await db.select().from(sshCas).where(eq(sshCas.caType, 'host')).limit(1))[0] as any;
+    const caRow = (await db.select().from(sshCas).where(eq(sshCas.caType, 'host')).limit(1))[0];
     const ok = await getKMSService().signatureVerify(caRow.kmsPublicKeyId, krlBytes, Buffer.from(payload.ca_signature, 'base64'));
     expect(ok).toBe(true);
   });

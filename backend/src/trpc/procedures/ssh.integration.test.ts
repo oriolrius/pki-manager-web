@@ -3,6 +3,7 @@
  * caller against the live KMS, and asserts the fail-closed guard refuses CA
  * management when OIDC is disabled without the explicit opt-in.
  */
+import { testContext } from '../../test/context.js';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
@@ -26,13 +27,12 @@ import { getKMSService } from '../../kms/service.js';
 const KMS = process.env.KMS_AVAILABLE === 'true';
 
 // A context shaped like the real tRPC context (no OIDC user -> unauthenticated).
-const makeCtx = () => ({ req: { ip: '127.0.0.1' }, res: {}, db, user: undefined });
-const caller = () => appRouter.createCaller(makeCtx() as any);
+const caller = () => appRouter.createCaller(testContext({ ip: '127.0.0.1' }));
 
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) {
+  for (const c of cas) {
     try {
       await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId);
     } catch {

@@ -47,13 +47,13 @@ function toTRPCError(error: JWTValidationError): TRPCError {
  * 3. Verifies issuer and audience claims
  * 4. Extracts user info and roles to context
  */
-export async function authMiddlewareHandler({
+export async function authMiddlewareHandler<Result>({
   ctx,
   next,
 }: {
   ctx: Context;
-  next: (opts?: { ctx: AuthenticatedContext }) => Promise<any>;
-}): Promise<any> {
+  next: (opts?: { ctx: AuthenticatedContext }) => Promise<Result>;
+}) {
   // Skip auth if OIDC is not enabled
   if (!isOIDCEnabled()) {
     logger.debug('OIDC disabled, skipping tRPC authentication');
@@ -80,18 +80,6 @@ export async function authMiddlewareHandler({
     }
     throw error;
   }
-}
-
-/**
- * Creates the authentication middleware for tRPC
- *
- * @param t - The tRPC instance
- * @returns Middleware that can be used with .use()
- */
-export function createAuthMiddleware<T extends { middleware: (fn: any) => any }>(
-  t: T
-) {
-  return t.middleware(authMiddlewareHandler);
 }
 
 /**

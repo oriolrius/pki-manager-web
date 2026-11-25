@@ -2,6 +2,7 @@
  * SSH-19 fleet-token external signing — auth, scope, idempotency, automation
  * issuance, validated against the live KMS + ssh-keygen. Gated on KMS_AVAILABLE.
  */
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { execFileSync } from 'node:child_process';
@@ -23,7 +24,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -32,8 +33,8 @@ async function wipe() {
 describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
   let app: FastifyInstance;
   let work: string;
-  let userCa: any;
-  let hostCa: any;
+  let userCa: SshCaDto;
+  let hostCa: SshCaDto;
   let token: string;
   let hostPub: string;
   let userPub: string;
@@ -63,7 +64,7 @@ describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
     if (work) rmSync(work, { recursive: true, force: true });
   });
 
-  const sign = (path: string, payload: any, headers: Record<string, string> = {}) =>
+  const sign = (path: string, payload: Record<string, unknown>, headers: Record<string, string> = {}) =>
     app.inject({ method: 'POST', url: `/api/v1/external/ssh/${path}`, headers: { authorization: `Bearer ${token}`, ...headers }, payload });
 
   it('rejects missing/invalid tokens with 401', async () => {
@@ -149,7 +150,7 @@ describe.skipIf(!KMS)('SSH-19 fleet-token external signing', () => {
   it('serves a host its own rendered auth_principals, byte-matching the admin render (ANS-01)', async () => {
     // Register the host + map a principal to a local account.
     await sign('sign-host', { fqdn: 'ap.lab.local', addresses: ['10.0.0.9'], opensshHostPubkey: hostPub });
-    const host = (await db.select().from(sshHosts).where(eq(sshHosts.fqdn, 'ap.lab.local')).limit(1))[0] as any;
+    const host = (await db.select().from(sshHosts).where(eq(sshHosts.fqdn, 'ap.lab.local')).limit(1))[0];
     const p = await getSshPrincipalService().createPrincipal(ctx, { name: 'deployer' });
     await getSshPrincipalService().mapToHost(ctx, { hostId: host.id, principalId: p.id, localAccount: 'deploy' });
 

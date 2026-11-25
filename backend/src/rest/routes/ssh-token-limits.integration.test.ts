@@ -6,6 +6,7 @@
  * request is refused before any signing). The signing path that applies
  * min(default, max) runs against the live KMS and is skipped without it.
  */
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { execFileSync } from 'node:child_process';
@@ -62,11 +63,11 @@ describe('TASK-247 — mint with limits and refusals (no KMS)', () => {
   let api: FastifyInstance;
   const caId = randomUUID();
   const otherZone = randomUUID();
-  let limited: { token: string; record: any };
+  let limited: Awaited<ReturnType<typeof tokens.mint>>;
 
   beforeAll(async () => {
     process.env.ALLOW_UNAUTHENTICATED_SSH_CA = 'true';
-    await db.insert(zones).values({ id: otherZone, name: `tl-${otherZone.slice(0, 6)}`, displayName: 'Other' } as any);
+    await db.insert(zones).values({ id: otherZone, name: `tl-${otherZone.slice(0, 6)}`, displayName: 'Other' });
     await db.insert(sshCas).values({
       id: caId,
       caType: 'user',
@@ -75,7 +76,7 @@ describe('TASK-247 — mint with limits and refusals (no KMS)', () => {
       opensshPublicKey: 'ecdsa-sha2-nistp256 AAAA',
       fingerprintSha256: `SHA256:${caId}`,
       status: 'retired',
-    } as any);
+    });
     await getSshPrincipalService().createPrincipal(ctx, { name: 'tl-deploy', zone: 'default' });
     await getSshPrincipalService().createPrincipal(ctx, { name: 'tl-foreign', zone: otherZone });
     limited = await tokens.mint(ctx, {
@@ -129,7 +130,7 @@ describe('TASK-247 — mint with limits and refusals (no KMS)', () => {
     ).rejects.toThrow(/apply only to a token with sign-user/);
   });
 
-  const signUser = (payload: any) =>
+  const signUser = (payload: { principals: string[]; validForSeconds?: number }) =>
     ext.inject({
       method: 'POST',
       url: '/api/v1/external/ssh/sign-user',
@@ -146,7 +147,7 @@ describe('TASK-247 — mint with limits and refusals (no KMS)', () => {
       .select()
       .from(auditLog)
       .where(and(eq(auditLog.operation, 'ssh.external.sign'), eq(auditLog.entityId, limited.record.id)));
-    expect(rows.map((r: any) => r.status)).toEqual(['failure']);
+    expect(rows.map((r) => r.status)).toEqual(['failure']);
     expect(await db.select().from(sshIdentities).where(eq(sshIdentities.subject, 'tl-ci@pipeline'))).toHaveLength(0);
   });
 
@@ -159,10 +160,11 @@ describe('TASK-247 — mint with limits and refusals (no KMS)', () => {
 
 describe.skipIf(!KMS)('TASK-247 — limited token signs with min(default, max) (KMS)', () => {
   let ext: FastifyInstance;
-  let userCa: any;
+  let userCa: Pick<SshCaDto, 'id'>;
+  let createdCa: boolean;
   let work: string;
   let userPub: string;
-  let minted: { token: string; record: any };
+  let minted: Awaited<ReturnType<typeof tokens.mint>>;
 
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'ssh-tl-'));
@@ -170,7 +172,7 @@ describe.skipIf(!KMS)('TASK-247 — limited token signs with min(default, max) (
     userPub = readFileSync(join(work, 'u.pub'), 'utf8');
     const existing = (await db.select().from(sshCas).where(and(eq(sshCas.caType, 'user'), eq(sshCas.status, 'active'), eq(sshCas.zoneId, 'default'))))[0];
     userCa = existing ?? (await getSshCaService().create(ctx, { caType: 'user' }));
-    (userCa as any).__created = !existing;
+    createdCa = !existing;
     await getSshPrincipalService().createPrincipal(ctx, { name: 'tl-kms-deploy' });
     minted = await tokens.mint(ctx, { name: 'ci-kms', userCaId: userCa.id, opSet: ['sign-user'], allowedPrincipals: ['tl-kms-deploy'], maxValidForSeconds: 900 });
     ext = Fastify();
@@ -182,13 +184,14 @@ describe.skipIf(!KMS)('TASK-247 — limited token signs with min(default, max) (
     await ext?.close();
     const idents = await db.select().from(sshIdentities).where(eq(sshIdentities.subject, 'tl-kms@pipeline'));
     if (idents.length) {
-      await db.delete(sshCertificates).where(inArray(sshCertificates.identityId, idents.map((i: any) => i.id)));
+      await db.delete(sshCertificates).where(inArray(sshCertificates.identityId, idents.map((i) => i.id)));
       await db.delete(sshIdentities).where(eq(sshIdentities.subject, 'tl-kms@pipeline'));
     }
     await db.delete(sshFleetTokens).where(eq(sshFleetTokens.id, minted.record.id));
     await db.delete(sshPrincipals).where(eq(sshPrincipals.name, 'tl-kms-deploy'));
-    if ((userCa as any).__created) {
-      try { await getKMSService().destroyKeyPair(userCa.kmsKeyId, userCa.kmsPublicKeyId); } catch { /* */ }
+    if (createdCa) {
+      const [row] = await db.select().from(sshCas).where(eq(sshCas.id, userCa.id));
+      try { await getKMSService().destroyKeyPair(row.kmsKeyId, row.kmsPublicKeyId); } catch { /* */ }
       await db.delete(sshCas).where(eq(sshCas.id, userCa.id));
     }
     if (work) rmSync(work, { recursive: true, force: true });

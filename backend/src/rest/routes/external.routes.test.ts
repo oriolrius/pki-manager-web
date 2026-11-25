@@ -120,7 +120,7 @@ describe('External /sign wiring (KMS certify)', () => {
       status: 'active',
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    });
 
     app = Fastify();
     await app.register(externalRoutes, { prefix: '/api/v1/external' });
@@ -371,7 +371,7 @@ describe('External /sign wiring (KMS certify)', () => {
       k8sClusterId: clusterId,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    });
 
     const res = await app.inject({
       method: 'POST',

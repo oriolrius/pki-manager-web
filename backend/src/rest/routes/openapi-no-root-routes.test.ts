@@ -40,7 +40,7 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../../db
 
 describe('TASK-208 — root-mounted public routes are hidden from the /api/v1 OpenAPI doc', () => {
   let app: FastifyInstance;
-  let spec: Record<string, any>;
+  let spec: Record<string, unknown>;
   let paths: Record<string, unknown>;
   let keys: string[];
 
@@ -84,7 +84,7 @@ describe('TASK-208 — root-mounted public routes are hidden from the /api/v1 Op
     );
 
     await app.ready();
-    spec = app.swagger() as Record<string, any>;
+    spec = app.swagger() as Record<string, unknown>;
     paths = spec.paths as Record<string, unknown>;
     keys = Object.keys(paths);
   });

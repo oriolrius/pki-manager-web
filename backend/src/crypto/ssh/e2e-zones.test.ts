@@ -5,7 +5,9 @@
  * signature verifies only against its own zone's Host CA, and the same FQDN in
  * two zones yields two independently-certified hosts. Gated on KMS + sshd.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { SshHostDto } from '../../services/ssh-host.service.js';
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
+import { assert, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
@@ -35,7 +37,7 @@ const USER = userInfo().username;
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -45,8 +47,8 @@ async function wipe() {
 describe.skipIf(!RUN)('ZONE-12 two-zone isolation against real sshd', () => {
   let work: string;
   let sshdPid: string;
-  let prodUserCa: any, prodHostCa: any, stagingHostCa: any;
-  let prodHost: any;
+  let prodUserCa: SshCaDto, prodHostCa: SshCaDto, stagingHostCa: SshCaDto;
+  let prodHost: SshHostDto;
 
   async function issueUser(zone: string, name: string, principals: string[]): Promise<string> {
     const keyPath = join(work, `${zone}-${name}`);
@@ -140,13 +142,14 @@ describe.skipIf(!RUN)('ZONE-12 two-zone isolation against real sshd', () => {
   it('AC#4: the composed host KRL signature verifies ONLY against its own zone Host CA', async () => {
     await getSshHostKrlService().generate(ctx, prodHost.id);
     const row = await getSshHostKrlService().getLatestRow(ctx, prodHost.id);
+    assert.isNotNull(row);
     expect(row?.caSignature).toBeTruthy();
     const kms = getKMSService();
     const blob = Buffer.from(row.krlBlob);
-    const sig = Buffer.from(row.caSignature);
+    const sig = Buffer.from(row.caSignature!);
     // SshCaDto omits KMS key ids — fetch the rows for kmsPublicKeyId.
-    const prodCaRow = (await db.select().from(sshCas).where(eq(sshCas.id, prodHostCa.id)).limit(1))[0] as any;
-    const stagingCaRow = (await db.select().from(sshCas).where(eq(sshCas.id, stagingHostCa.id)).limit(1))[0] as any;
+    const prodCaRow = (await db.select().from(sshCas).where(eq(sshCas.id, prodHostCa.id)).limit(1))[0];
+    const stagingCaRow = (await db.select().from(sshCas).where(eq(sshCas.id, stagingHostCa.id)).limit(1))[0];
     expect(await kms.signatureVerify(prodCaRow.kmsPublicKeyId, blob, sig)).toBe(true);
     // Verifying prod's signature against staging's Host CA key must NOT succeed.
     // The KMS may return false OR reject the mismatched request — both mean "does

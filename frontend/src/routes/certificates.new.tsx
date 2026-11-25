@@ -86,8 +86,8 @@ function NewCertificate() {
 
       utils.certificate.list.invalidate();
       navigate({ to: `/certificates/${result.id}` });
-    } catch (error: any) {
-      toast.error(`Failed to issue certificate: ${error.message}`);
+    } catch (error) {
+      toast.error(`Failed to issue certificate: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -181,7 +181,7 @@ function NewCertificate() {
             </label>
             <select
               value={formData.certificateType}
-              onChange={(e) => setFormData(prev => ({ ...prev, certificateType: e.target.value as any }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, certificateType: e.target.value as typeof prev.certificateType }))}
               className="w-full px-3 py-2 border rounded-md bg-background"
             >
               <option value="server">Server (TLS/SSL Web Server)</option>
@@ -311,7 +311,7 @@ function NewCertificate() {
                 </label>
                 <select
                   value={formData.keyAlgorithm}
-                  onChange={(e) => setFormData(prev => ({ ...prev, keyAlgorithm: e.target.value as any }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, keyAlgorithm: e.target.value as typeof prev.keyAlgorithm }))}
                   className="w-full px-3 py-2 border rounded-md bg-background"
                 >
                   <option value="RSA-2048">RSA 2048 (Standard)</option>

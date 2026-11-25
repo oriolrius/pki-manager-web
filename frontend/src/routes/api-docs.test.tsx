@@ -20,6 +20,7 @@ vi.mock('../lib/config', () => ({
 const renderApiDocsPage = async () => {
   const { Route } = await import('./api-docs');
   const ApiDocsPage = Route.options.component;
+  if (!ApiDocsPage) throw new Error('Missing API docs route component');
   return render(<ApiDocsPage />);
 };
 
@@ -40,7 +41,7 @@ describe('ApiDocsPage', () => {
 
   it('shows loading state initially', async () => {
     // Create a promise that never resolves to keep loading state
-    global.fetch = vi.fn(() => new Promise(() => {}));
+    global.fetch = vi.fn(() => new Promise<Response>(() => {}));
 
     await renderApiDocsPage();
 

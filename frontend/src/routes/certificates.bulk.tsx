@@ -78,8 +78,8 @@ function BulkCertificates() {
 
       setResults(result);
       utils.certificate.list.invalidate();
-    } catch (error: any) {
-      toast.error(`Failed to issue certificates: ${error.message}`);
+    } catch (error) {
+      toast.error(`Failed to issue certificates: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

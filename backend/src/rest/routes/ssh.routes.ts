@@ -4,6 +4,7 @@
  * schemas as tRPC (single source of truth) so REST and tRPC produce identical
  * records. Honours the SSH-34 fail-closed posture.
  */
+import type { FastifyRequest } from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
@@ -71,7 +72,7 @@ const bulkRenewSchema = z.object({ certIds: z.array(z.string().min(1)).min(1) })
 const bulkRevokeSchema = z.object({ certIds: z.array(z.string().min(1)).min(1), reason: z.string().max(256).optional() });
 
 export async function sshRoutes(api: FastifyInstance): Promise<void> {
-  const ctx = (req: any) => ({ db, ipAddress: req.ip ?? null });
+  const ctx = (req: FastifyRequest) => ({ db, ipAddress: req.ip ?? null });
   const tag = ['SSH Certificate Manager'];
 
   // Schema builders (TASK-207): document requestBody + response so @fastify/swagger emits
@@ -103,7 +104,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
    * `{}` before validation so the field stays documented but stays optional.
    */
   const optionalBody = {
-    preValidation: (req: any, _reply: unknown, done: (e?: Error) => void) => {
+    preValidation: (req: FastifyRequest, _reply: unknown, done: (e?: Error) => void) => {
       if (req.body === undefined || req.body === null) req.body = {};
       done();
     },
@@ -115,14 +116,14 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshCaService().create(ctx(req), { caType: input.caType, label: input.label, zone: input.zone });
   });
 
-  api.get('/cas', listSchema('List SSH CAs (optionally filter by ?zoneId=)'), async (req) => {
+  api.get<{ Querystring: { zoneId?: string } }>('/cas', listSchema('List SSH CAs (optionally filter by ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    return getSshCaService().list(ctx(req), { zoneId: (req.query as any)?.zoneId });
+    return getSshCaService().list(ctx(req), { zoneId: req.query?.zoneId });
   });
 
-  api.get('/trust-anchors', objectSchema('SSH trust anchors (TrustedUserCAKeys / @cert-authority; ?zoneId= for one zone)'), async (req) => {
+  api.get<{ Querystring: { zoneId?: string } }>('/trust-anchors', objectSchema('SSH trust anchors (TrustedUserCAKeys / @cert-authority; ?zoneId= for one zone)'), async (req) => {
     ensureSshAllowed();
-    return getSshCaService().getTrustAnchors(ctx(req), (req.query as any)?.zoneId);
+    return getSshCaService().getTrustAnchors(ctx(req), req.query?.zoneId);
   });
 
   // TASK-216 — CA lifecycle after create was tRPC-only, so a REST client could
@@ -188,10 +189,10 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     });
   });
 
-  api.get('/hosts', listSchema('List hosts (optionally filter by ?fqdn= and/or ?zoneId=)'), async (req) => {
+  api.get<{ Querystring: { zoneId?: string; fqdn?: string } }>('/hosts', listSchema('List hosts (optionally filter by ?fqdn= and/or ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    const hosts = await getSshHostService().list(ctx(req), { zoneId: (req.query as any)?.zoneId });
-    const fqdn = (req.query as any)?.fqdn as string | undefined;
+    const hosts = await getSshHostService().list(ctx(req), { zoneId: req.query?.zoneId });
+    const fqdn = req.query?.fqdn as string | undefined;
     return fqdn ? hosts.filter((h) => h.fqdn === fqdn) : hosts;
   });
 
@@ -274,9 +275,9 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   // TASK-216 — identity twins. Listing identities was tRPC-only, which is why a
   // REST client could not check whether a subject already existed before
   // creating one (ssh_identities.subject is UNIQUE).
-  api.get('/identities', listSchema('List user identities (optionally filter by ?zoneId=)'), async (req) => {
+  api.get<{ Querystring: { zoneId?: string } }>('/identities', listSchema('List user identities (optionally filter by ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    return getSshUserService().listIdentities(ctx(req), { zoneId: (req.query as any)?.zoneId });
+    return getSshUserService().listIdentities(ctx(req), { zoneId: req.query?.zoneId });
   });
 
   api.post('/identities/:id/disable', postSchema('Disable an identity (blocks further issuance)'), async (req) => {
@@ -294,16 +295,16 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  api.get('/users/certificates', listSchema('List user certificates (optionally filter by ?identityId=)'), async (req) => {
+  api.get<{ Querystring: { identityId?: string } }>('/users/certificates', listSchema('List user certificates (optionally filter by ?identityId=)'), async (req) => {
     ensureSshAllowed();
-    const identityId = (req.query as any)?.identityId as string | undefined;
+    const identityId = req.query?.identityId as string | undefined;
     return getSshUserService().listCertificates(ctx(req), identityId);
   });
 
   // --- Principals: RBAC catalog + per-host account mapping (renders AuthorizedPrincipalsFile) ---
-  api.get('/principals', listSchema('List SSH principals (roles; optionally filter by ?zoneId=)'), async (req) => {
+  api.get<{ Querystring: { zoneId?: string } }>('/principals', listSchema('List SSH principals (roles; optionally filter by ?zoneId=)'), async (req) => {
     ensureSshAllowed();
-    return getSshPrincipalService().listPrincipals(ctx(req), { zoneId: (req.query as any)?.zoneId });
+    return getSshPrincipalService().listPrincipals(ctx(req), { zoneId: req.query?.zoneId });
   });
 
   api.post('/principals', postSchema('Create an SSH principal (role)', createPrincipalSchema), async (req) => {
@@ -364,9 +365,9 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   // TASK-216 — principal twins. `/principals/mappings` and `/principals/stale-hosts`
   // are declared before `DELETE /principals/:id` only for readability; the
   // methods differ, so ordering is not load-bearing here.
-  api.get('/principals/mappings', objectSchema('List principal -> (host, local account) mappings (?zone=<id|slug> for one zone; all zones without it)'), async (req) => {
+  api.get<{ Querystring: { zone?: string } }>('/principals/mappings', objectSchema('List principal -> (host, local account) mappings (?zone=<id|slug> for one zone; all zones without it)'), async (req) => {
     ensureSshAllowed();
-    return getSshPrincipalService().mappingsByPrincipal(ctx(req), { zone: (req.query as any)?.zone });
+    return getSshPrincipalService().mappingsByPrincipal(ctx(req), { zone: req.query?.zone });
   });
 
   api.get('/principals/stale-hosts', listSchema('Hosts whose principal maps changed after the last push'), async (req) => {
@@ -528,9 +529,9 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // --- Bulk lifecycle (the whole bulk router was tRPC-only) ---
-  api.get('/bulk/expiring', listSchema('Certificates expiring within ?withinSeconds='), async (req) => {
+  api.get<{ Querystring: { withinSeconds?: string } }>('/bulk/expiring', listSchema('Certificates expiring within ?withinSeconds='), async (req) => {
     ensureSshAllowed();
-    const raw = (req.query as any)?.withinSeconds;
+    const raw = req.query?.withinSeconds;
     const { withinSeconds } = parse(z.object({ withinSeconds: z.coerce.number().int().positive() }), { withinSeconds: raw });
     return getSshBulkService().expiring(ctx(req), withinSeconds);
   });
@@ -575,7 +576,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   // ── Per-host user access blocks (BLK-08, decision-016) — tRPC twins ───────
   // Actor attribution parity with tRPC: the OIDC subject (when present) is the
   // audit-visible createdBy/liftedBy, not the caller IP.
-  const actorOf = (req: any): string | undefined =>
+  const actorOf = (req: FastifyRequest): string | undefined =>
     req.user?.preferredUsername ?? req.user?.email ?? req.user?.sub ?? undefined;
 
   api.post('/blocks', postSchema('Block an identity on a host (per-host KRL deny; certs stay valid elsewhere)', blockHostSchema), async (req) => {
@@ -628,15 +629,15 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     return getSshBlockService().fleetDistribution(ctx(req));
   });
 
-  api.get('/metrics', objectSchema('SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts; ?zoneId= to scope)'), async (req) => {
+  api.get<{ Querystring: { zoneId?: string } }>('/metrics', objectSchema('SSH cert/KRL health metrics (expiring, stale KRLs, non-pulling hosts; ?zoneId= to scope)'), async (req) => {
     ensureSshAllowed();
-    return getSshMonService().metrics(ctx(req), { zoneId: (req.query as any)?.zoneId });
+    return getSshMonService().metrics(ctx(req), { zoneId: req.query?.zoneId });
   });
 
   // ---- Zones (decision-017 §7). CRUD over the trust-boundary grouping. ----
-  api.get('/zones', listSchema('List zones (?includeArchived=true to include archived)'), async (req) => {
+  api.get<{ Querystring: { includeArchived?: string | boolean } }>('/zones', listSchema('List zones (?includeArchived=true to include archived)'), async (req) => {
     ensureSshAllowed();
-    const includeArchived = (req.query as any)?.includeArchived === 'true' || (req.query as any)?.includeArchived === true;
+    const includeArchived = req.query?.includeArchived === 'true' || req.query?.includeArchived === true;
     return getSshZoneService().list(ctx(req), { includeArchived });
   });
 
@@ -672,7 +673,7 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
   });
 
   // Translate our HttpError into the standard {error:{code,message}} shape.
-  api.setErrorHandler((error: any, _req, reply) => {
+  api.setErrorHandler<Error>((error, _req, reply) => {
     if (error instanceof HttpError) {
       return reply.status(error.statusCode).send({ error: { code: error.code, message: error.message } });
     }

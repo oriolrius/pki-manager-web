@@ -475,7 +475,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             bulkRow: rowNumber,
           }),
           ipAddress: request.ip,
-        } as any);
+        });
 
         logger.info({ certId, subjectName, caId, row: rowNumber }, 'Certificate issued successfully (bulk REST)');
 
@@ -516,7 +516,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         defaultValidityDays: defaultValidityDays,
       }),
       ipAddress: request.ip,
-    } as any);
+    });
 
     logger.info(
       { caId, totalRows: lines.length, successful, failed },
@@ -654,7 +654,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             generateCrl: generateCrl,
           }),
           ipAddress: request.ip,
-        } as any);
+        });
 
         results.push({
           certificateId: certId,
@@ -691,7 +691,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         generateCrl: generateCrl,
       }),
       ipAddress: request.ip,
-    } as any);
+    });
 
     // Regenerate the CRL once per affected CA so revoked serials appear (best-effort).
     for (const caId of affectedCaIds) {
@@ -975,7 +975,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             revokeOriginal: revokeOriginal,
           }),
           ipAddress: request.ip,
-        } as any);
+        });
 
         logger.info({ newCertId, originalCertId: certId }, 'Certificate renewed successfully (bulk REST)');
 
@@ -1014,7 +1014,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         revokeOriginal: revokeOriginal,
       }),
       ipAddress: request.ip,
-    } as any);
+    });
 
     // Regenerate the CRL once per CA whose original cert was revoked on renewal (best-effort).
     for (const caId of affectedCaIds) {
@@ -1142,7 +1142,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             removeFromCrl: removeFromCrl,
           }),
           ipAddress: request.ip,
-        } as any);
+        });
 
         // Optional: Destroy KMS key if requested
         if (destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(db, cert.kmsKeyId, cert.id))) {
@@ -1203,7 +1203,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         destroyKey: destroyKey,
       }),
       ipAddress: request.ip,
-    } as any);
+    });
 
     logger.info(
       { totalCertificates: certificateIds.length, successful, failed },
@@ -1318,8 +1318,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
       // node-forge can't read EC certs; build lazily (null for EC) and use Node/openssl for
       // EC-capable formats (DER, PKCS#12). PKCS#7 stays forge-only.
-      let forgeCert: any = null;
-      let forgeCaCert: any = null;
+      let forgeCert = null;
+      let forgeCaCert = null;
       try {
         forgeCert = forge.pki.certificateFromPem(certificatePem);
         forgeCaCert = forge.pki.certificateFromPem(caCertificatePem);
@@ -1644,7 +1644,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         encryptPrivateKey,
       }),
       ipAddress: request.ip,
-    } as any);
+    });
 
     return {
       data: zipBuffer.toString('base64'),

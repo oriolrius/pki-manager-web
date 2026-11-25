@@ -39,11 +39,11 @@ describe('SshMonService.metrics', () => {
     const db = freshDb();
     const ctx = { db, ipAddress: null };
     db.insert(schema.sshCas)
-      .values({ id: 'ca1', caType: 'host', kmsKeyId: 'k', kmsPublicKeyId: 'k_pk', opensshPublicKey: 'ecdsa-sha2-nistp256 AAAA', fingerprintSha256: 'SHA256:x', status: 'active' } as any)
+      .values({ id: 'ca1', caType: 'host', kmsKeyId: 'k', kmsPublicKeyId: 'k_pk', opensshPublicKey: 'ecdsa-sha2-nistp256 AAAA', fingerprintSha256: 'SHA256:x', status: 'active' })
       .run();
     // an active cert expiring in 1 day (within the default 1w window)
     db.insert(schema.sshCertificates)
-      .values({ id: 'c1', caId: 'ca1', certType: 'host', serial: '1', keyId: 'h', principals: '["h"]', validAfter: new Date(), validBefore: new Date(Date.now() + 24 * 3600 * 1000), certOpenssh: 'cert', subjectPubkeyFingerprint: 'SHA256:y', kmsSigningKeyId: 'k', status: 'active' } as any)
+      .values({ id: 'c1', caId: 'ca1', certType: 'host', serial: '1', keyId: 'h', principals: '["h"]', validAfter: new Date(), validBefore: new Date(Date.now() + 24 * 3600 * 1000), certOpenssh: 'cert', subjectPubkeyFingerprint: 'SHA256:y', kmsSigningKeyId: 'k', status: 'active' })
       .run();
 
     const m = await getSshMonService().metrics(ctx);
@@ -58,17 +58,17 @@ describe('SshMonService.metrics', () => {
     const db = freshDb();
     const ctx = { db, ipAddress: null };
     const host = (id: string) =>
-      db.insert(schema.sshHosts).values({ id, fqdn: `${id}.lab`, status: 'active' } as any).run();
+      db.insert(schema.sshHosts).values({ id, fqdn: `${id}.lab`, status: 'active' }).run();
     host('h-none'); // no per-host row -> hostsWithoutHostKrl
     host('h-stale'); // latest row past nextUpdate -> hostKrlsPastNextUpdate
     host('h-fresh'); // fresh row -> neither
-    db.insert(schema.sshHosts).values({ id: 'h-off', fqdn: 'off.lab', status: 'offboarded' } as any).run(); // ignored
+    db.insert(schema.sshHosts).values({ id: 'h-off', fqdn: 'off.lab', status: 'offboarded' }).run(); // ignored
 
     const krl = (id: string, hostId: string, n: number, nextUpdate: Date) =>
       db.insert(schema.sshHostKrls).values({
         id, hostId, krlNumber: n, versionHash: `sha256:${id}`, krlBlob: Buffer.from('krl'),
         thisUpdate: new Date(Date.now() - 3600_000), nextUpdate,
-      } as any).run();
+      }).run();
     krl('k1', 'h-stale', 1, new Date(Date.now() - 60_000));
     krl('k2', 'h-fresh', 2, new Date(Date.now() + 3600_000));
     // Superseded stale row on the fresh host must NOT count — only the latest matters.

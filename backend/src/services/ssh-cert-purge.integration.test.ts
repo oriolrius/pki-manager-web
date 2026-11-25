@@ -60,7 +60,7 @@ describe('TASK-234 — SshKrlService.purgeCert', () => {
       opensshPublicKey: caPub,
       fingerprintSha256: fp,
       status: 'active',
-    } as any);
+    });
     return id;
   }
 
@@ -84,7 +84,7 @@ describe('TASK-234 — SshKrlService.purgeCert', () => {
       kmsSigningKeyId: 'kms-ca',
       status: opts.status ?? 'active',
       revocationDate: opts.status === 'revoked' ? new Date() : null,
-    } as any);
+    });
     return { id, serial };
   }
 
@@ -133,7 +133,7 @@ describe('TASK-234 — SshKrlService.purgeCert', () => {
     const caId = await seedCa();
     const { id, serial } = await seedCert(caId, { status: 'revoked' });
     // mimic revokeByCert having written a targetType='cert' directive for this cert
-    await db.insert(sshRevocations).values({ id: randomUUID(), caId, targetType: 'cert', certId: id, serial } as any);
+    await db.insert(sshRevocations).values({ id: randomUUID(), caId, targetType: 'cert', certId: id, serial });
 
     const res = await svc.purgeCert(ctx, id, { force: true, dropRevocation: true });
 

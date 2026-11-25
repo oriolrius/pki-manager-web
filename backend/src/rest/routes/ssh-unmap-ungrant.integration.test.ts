@@ -53,8 +53,8 @@ describe('TASK-245 — unmap and revoke grant', () => {
     await wipe();
     hostId = randomUUID();
     identityId = randomUUID();
-    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active' } as any);
-    await db.insert(sshIdentities).values({ id: identityId, subject: SUBJECT, status: 'active' } as any);
+    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active' });
+    await db.insert(sshIdentities).values({ id: identityId, subject: SUBJECT, status: 'active' });
     ops = (await svc.createPrincipal(ctx, { name: 'ops' })).id;
     web = (await svc.createPrincipal(ctx, { name: 'web' })).id;
     await svc.mapToHost(ctx, { hostId, principalId: ops, localAccount: 'root' });
@@ -67,7 +67,7 @@ describe('TASK-245 — unmap and revoke grant', () => {
   it('lists host mapping rows', async () => {
     const res = await app.inject({ method: 'GET', url: P(`/hosts/${hostId}/principal-maps`) });
     expect(res.statusCode).toBe(200);
-    expect(res.json().map((m: any) => `${m.name}->${m.localAccount}`)).toEqual(['web->deploy', 'ops->root']);
+    expect(res.json().map((m: { name: string; localAccount: string }) => `${m.name}->${m.localAccount}`)).toEqual(['web->deploy', 'ops->root']);
   });
 
   it('POST /principals/unmap removes one mapping, makes the host Stale, and is audited', async () => {
@@ -82,7 +82,7 @@ describe('TASK-245 — unmap and revoke grant', () => {
     const r = await svc.render(ctx, hostId);
     expect(Object.keys(r.files)).toEqual(['deploy']);
     expect(r.stale).toBe(true);
-    expect((await audits('ssh.principal.unmap', hostId)).map((a: any) => a.status)).toEqual(['success']);
+    expect((await audits('ssh.principal.unmap', hostId)).map((a) => a.status)).toEqual(['success']);
   });
 
   it('unmapping a row that does not exist is a 404 with a failure audit (no silent no-op)', async () => {
@@ -94,7 +94,7 @@ describe('TASK-245 — unmap and revoke grant', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().error.message).toMatch(/not found/i);
     expect((await svc.render(ctx, hostId)).stale).toBe(false);
-    expect((await audits('ssh.principal.unmap', hostId)).map((a: any) => a.status)).toEqual(['failure']);
+    expect((await audits('ssh.principal.unmap', hostId)).map((a) => a.status)).toEqual(['failure']);
   });
 
   it('a principal becomes deletable once its mappings and grants are removed', async () => {
@@ -105,12 +105,12 @@ describe('TASK-245 — unmap and revoke grant', () => {
 
   it('GET grants + POST /principals/revoke-grant removes one grant and is audited', async () => {
     const list = await app.inject({ method: 'GET', url: P(`/identities/${identityId}/grants`) });
-    expect(list.json().map((g: any) => g.name)).toEqual(['ops', 'web']);
+    expect(list.json<{ name: string }[]>().map((g) => g.name)).toEqual(['ops', 'web']);
 
     const res = await app.inject({ method: 'POST', url: P('/principals/revoke-grant'), payload: { identityId, principalId: ops } });
     expect(res.statusCode).toBe(200);
     expect((await svc.listGrants(ctx, identityId)).map((g) => g.name)).toEqual(['web']);
-    expect((await audits('ssh.principal.revoke_grant', identityId)).map((a: any) => a.status)).toEqual(['success']);
+    expect((await audits('ssh.principal.revoke_grant', identityId)).map((a) => a.status)).toEqual(['success']);
   });
 
   it('revoking a grant that does not exist is a 404 with a failure audit', async () => {
@@ -118,7 +118,7 @@ describe('TASK-245 — unmap and revoke grant', () => {
     const res = await app.inject({ method: 'POST', url: P('/principals/revoke-grant'), payload: { identityId, principalId: ops } });
     expect(res.statusCode).toBe(404);
     const rows = await audits('ssh.principal.revoke_grant', identityId);
-    expect(rows.map((a: any) => a.status)).toEqual(['success', 'failure']);
+    expect(rows.map((a) => a.status)).toEqual(['success', 'failure']);
   });
 
   it('listing grants of an unknown identity is a 404', async () => {

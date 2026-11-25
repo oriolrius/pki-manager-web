@@ -41,7 +41,7 @@ describe('SSH external Idempotency-Key is scoped to the fleet token (issue #52)'
     await db.insert(sshCas).values({
       id: hostCaId, caType: 'host', kmsKeyId: 'k', kmsPublicKeyId: 'kp',
       opensshPublicKey: 'ecdsa-sha2-nistp256 AAAA', fingerprintSha256: 'SHA256:idem', status: 'active',
-    } as any);
+    });
     const a = await getSshFleetTokenService().mint(ctx, { name: 'tenant-a', hostCaId, opSet: ['sign-host'] });
     const b = await getSshFleetTokenService().mint(ctx, { name: 'tenant-b', hostCaId, opSet: ['sign-host'] });
     tokenA = { token: a.token, id: a.record.id };
@@ -64,8 +64,8 @@ describe('SSH external Idempotency-Key is scoped to the fleet token (issue #52)'
     await wipe();
   });
 
-  const signHost = (token: string, payload: unknown, key = KEY) =>
-    app.inject({ method: 'POST', url: '/api/v1/external/ssh/sign-host', headers: { authorization: `Bearer ${token}`, 'idempotency-key': key }, payload: payload as any });
+  const signHost = (token: string, payload: Record<string, unknown>, key = KEY) =>
+    app.inject({ method: 'POST', url: '/api/v1/external/ssh/sign-host', headers: { authorization: `Bearer ${token}`, 'idempotency-key': key }, payload: payload });
 
   it('token B with the same key does not receive token A\'s cached certificate', async () => {
     const r = await signHost(tokenB.token, body);

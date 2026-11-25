@@ -927,7 +927,8 @@ export class KMSClient {
 
     // The Certificate is a structure containing CertificateType and CertificateValue
     const certificate = this.findElement(getResponse.value, "Certificate");
-    const certificateValue = this.findElement((certificate as any).value, "CertificateValue");
+    if (!Array.isArray(certificate?.value)) throw new Error("Expected KMIP Certificate structure");
+    const certificateValue = this.findElement(certificate.value, "CertificateValue");
 
     const result: CertificateInfo = {
       certificateId: certId,
@@ -938,8 +939,8 @@ export class KMSClient {
     // These might be in the Get response as links
     try {
       const attributes = this.findElement(getResponse.value, "Attributes");
-      if (attributes && Array.isArray((attributes as any).value)) {
-        for (const attr of (attributes as any).value) {
+      if (attributes && Array.isArray(attributes.value)) {
+        for (const attr of attributes.value) {
           if (attr.tag === "Link") {
             const linkType = this.findElement(attr.value, "LinkType");
             const linkId = this.findElement(attr.value, "LinkedObjectIdentifier");
@@ -971,10 +972,10 @@ export class KMSClient {
     };
     const response = await this.sendKMIPRequest(request);
     const attributes = this.findElement(response.value, "Attributes");
-    if (!attributes || !Array.isArray((attributes as any).value)) {
+    if (!attributes || !Array.isArray(attributes.value)) {
       throw new Error(`No attributes returned for private key ${privateKeyId}`);
     }
-    for (const attr of (attributes as any).value as KMIPElement[]) {
+    for (const attr of attributes.value as KMIPElement[]) {
       if (attr.tag === "Link" && Array.isArray(attr.value)) {
         const linkType = this.findElement(attr.value as KMIPElement[], "LinkType");
         if (linkType && this.getStringValue(linkType) === "PublicKeyLink") {
@@ -1006,11 +1007,11 @@ export class KMSClient {
 
     const response = await this.sendKMIPRequest(request);
     const attributes = this.findElement(response.value, "Attributes");
-    if (!attributes || !Array.isArray((attributes as any).value)) {
+    if (!attributes || !Array.isArray(attributes.value)) {
       throw new Error(`No attributes returned for certificate ${certificateId}`);
     }
 
-    for (const attr of (attributes as any).value as KMIPElement[]) {
+    for (const attr of attributes.value as KMIPElement[]) {
       if (attr.tag === "Link" && Array.isArray(attr.value)) {
         const linkType = this.findElement(attr.value as KMIPElement[], "LinkType");
         if (linkType && this.getStringValue(linkType) === "PrivateKeyLink") {
@@ -1042,7 +1043,8 @@ export class KMSClient {
 
     // Extract certificate from response
     const certificate = this.findElement(getResponse.value, "Certificate");
-    const certificateValue = this.findElement((certificate as any).value, "CertificateValue");
+    if (!Array.isArray(certificate?.value)) throw new Error("Expected KMIP Certificate structure");
+    const certificateValue = this.findElement(certificate.value, "CertificateValue");
     const certDataHex = this.getByteStringValue(certificateValue);
 
     // Convert hex to PEM

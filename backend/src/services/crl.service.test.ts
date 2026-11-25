@@ -69,7 +69,7 @@ describe('CRLService (DB-only behaviours)', () => {
       caRow(activeCaId, 'active'),
       caRow(expiredCaId, 'expired'),
       caRow(emptyCaId, 'active'),
-    ] as any);
+    ]);
 
     // Three CRLs for the active CA: numbers 1,2,3 (3 is newest); #3 is expired (past nextUpdate).
     const future = new Date(Date.now() + 7 * 864e5);
@@ -88,7 +88,7 @@ describe('CRLService (DB-only behaviours)', () => {
       revokedCount: 0,
       createdAt: new Date(Date.now() - (4 - r.n) * 3600e3),
     }));
-    await db.insert(crls).values(rows as any);
+    await db.insert(crls).values(rows);
   });
 
   afterAll(async () => {

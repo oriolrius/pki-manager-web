@@ -6,7 +6,10 @@
  * Extends the SSH-33 harness; gated on KMS_AVAILABLE + sshd (+ go for the
  * client part) with clean skips.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import type { SshHostDto } from '../../services/ssh-host.service.js';
+import type { SshIdentityDto } from '../../services/ssh-user.service.js';
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
+import { assert, describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, rmSync } from 'node:fs';
@@ -39,7 +42,7 @@ const PORT_Z = PORT_Y + 41;
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -47,15 +50,15 @@ async function wipe() {
 
 describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
   let work: string;
-  let userCa: any;
-  let hostCa: any;
-  let hostY: any;
-  let hostZ: any;
-  let alice: any;
+  let userCa: SshCaDto;
+  let hostCa: SshCaDto;
+  let hostY: SshHostDto & { dir: string };
+  let hostZ: SshHostDto & { dir: string };
+  let alice: SshIdentityDto;
   let aliceKey: string;
   const pids: string[] = [];
 
-  async function issueFor(identityId: string, keyPath: string): Promise<any> {
+  async function issueFor(identityId: string, keyPath: string) {
     const res = await getSshUserService().issue(ctx, {
       identityId,
       caId: userCa.id,
@@ -80,13 +83,14 @@ describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
   }
 
   /** Install a host's freshest composed KRL as its sshd RevokedKeys. */
-  async function installComposed(host: any, dir: string): Promise<any> {
+  async function installComposed(host: SshHostDto, dir: string) {
     const row = await getSshHostKrlService().getLatestRow(ctx, host.id);
+    assert.isNotNull(row);
     writeFileSync(join(dir, 'revoked_keys'), Buffer.from(row.krlBlob));
     return row;
   }
 
-  async function startSshd(name: string, port: number, opts: { authorizedKeys?: string } = {}): Promise<{ dir: string; host: any }> {
+  async function startSshd(name: string, port: number, opts: { authorizedKeys?: string } = {}): Promise<{ dir: string; host: SshHostDto }> {
     const dir = join(work, name);
     mkdirSync(dir, { recursive: true });
     execFileSync('ssh-keygen', ['-t', 'ecdsa', '-b', '256', '-f', join(dir, 'hostkey'), '-N', '', '-q']);
@@ -219,6 +223,7 @@ describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
     const userCaHex = parseSshPublicKey(userCa.opensshPublicKey).blob.toString('hex');
     await vi.waitFor(async () => {
       const row = await getSshHostKrlService().getLatestRow(ctx, hostY.id);
+      assert.isNotNull(row);
       const decoded = decodeKrl(Buffer.from(row.krlBlob));
       expect(decoded.serialsByCaHex.get(userCaHex)).toContain(BigInt(fresh.cert.serial));
     }, { timeout: 15_000, interval: 200 });
@@ -240,7 +245,7 @@ describe.skipIf(!(KMS && GO))('BLK-11 lineage-switch anti-rollback vs the REAL k
   let work: string;
   let app: FastifyInstance;
   let baseUrl: string;
-  let hostCa: any;
+  let hostCa: SshCaDto;
   let binPath: string;
   let keyPath: string;
   let caPubPath: string;
@@ -316,7 +321,7 @@ describe.skipIf(!(KMS && GO))('BLK-11 lineage-switch anti-rollback vs the REAL k
     // its signed header number exceeds N and the client accepts it.
     delete process.env.SSH_HOST_KRL_SERVE;
     const ident = await getSshUserService().createIdentity(ctx, { subject: 'blocked@x' });
-    const host = (await db.select().from(sshHosts).where(eq(sshHosts.fqdn, FQDN)))[0] as any;
+    const host = (await db.select().from(sshHosts).where(eq(sshHosts.fqdn, FQDN)))[0];
     const blocked = await getSshBlockService().block(ctx, { hostId: host.id, identityId: ident.id, reason: 'lineage-switch' });
     expect(blocked.krl!.krlNumber).toBeGreaterThan(perCa.krlNumber);
     r = await runClient();
@@ -344,6 +349,7 @@ describe.skipIf(!(KMS && GO))('BLK-11 lineage-switch anti-rollback vs the REAL k
     delete process.env.SSH_HOST_KRL_SERVE;
     await getSshBlockService().unblock(ctx, { hostId: host.id, identityId: ident.id }); // forces a NEW per-host row
     const latest = await getSshHostKrlService().getLatestRow(ctx, host.id);
+    assert.isNotNull(latest);
     expect(latest.krlNumber).toBeGreaterThan(perCa2.krlNumber);
     await db.update(sshHostKrls).set({ caSignature: null }).where(eq(sshHostKrls.id, latest.id));
     r = await runClient();

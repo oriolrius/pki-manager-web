@@ -3,6 +3,8 @@ import type { AppRouter } from '../../../backend/src/trpc/router';
 import { getApiUrl } from './config';
 import { getAccessToken } from './auth';
 
+export type { RouterInputs } from '../../../backend/src/trpc/router';
+
 export const trpc = createTRPCReact<AppRouter>();
 
 /**

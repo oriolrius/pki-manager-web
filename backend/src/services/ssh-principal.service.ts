@@ -84,11 +84,11 @@ function isStale(host: { principalsChangedAt?: Date | null; lastPrincipalPushAt?
  * that lands in the same millisecond as a push still reads as Stale.
  */
 export async function markHostPrincipalsChanged(ctx: ServiceContext, hostId: string): Promise<void> {
-  const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+  const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
   if (!host) return;
   const pushed = host.lastPrincipalPushAt ? new Date(host.lastPrincipalPushAt).getTime() : 0;
   const at = new Date(Math.max(Date.now(), pushed + 1));
-  await ctx.db.update(sshHosts).set({ principalsChangedAt: at } as any).where(eq(sshHosts.id, hostId));
+  await ctx.db.update(sshHosts).set({ principalsChangedAt: at }).where(eq(sshHosts.id, hostId));
 }
 
 export interface PrincipalDto {
@@ -135,7 +135,7 @@ export class SshPrincipalService {
     const id = randomUUID();
     await ctx.db
       .insert(sshPrincipals)
-      .values({ id, zoneId: zone.id, name: params.name, description: params.description ?? null } as any);
+      .values({ id, zoneId: zone.id, name: params.name, description: params.description ?? null });
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.principal.create',
@@ -152,7 +152,7 @@ export class SshPrincipalService {
     const rows = opts?.zoneId
       ? await ctx.db.select().from(sshPrincipals).where(eq(sshPrincipals.zoneId, opts.zoneId))
       : await ctx.db.select().from(sshPrincipals);
-    return (rows as any[]).map((r: any) => ({ id: r.id, zoneId: r.zoneId, name: r.name, description: r.description ?? null }));
+    return rows.map((r) => ({ id: r.id, zoneId: r.zoneId, name: r.name, description: r.description ?? null }));
   }
 
   /**
@@ -177,7 +177,7 @@ export class SshPrincipalService {
       .innerJoin(sshHosts, eq(sshHostPrincipalMaps.hostId, sshHosts.id));
     const rows = zoneId ? await q.where(and(eq(sshHosts.zoneId, zoneId), eq(sshPrincipals.zoneId, zoneId))) : await q;
     const out: Record<string, Array<{ fqdn: string; localAccount: string }>> = {};
-    for (const r of rows as any[]) {
+    for (const r of rows) {
       (out[r.name] ??= []).push({ fqdn: r.fqdn, localAccount: r.localAccount });
     }
     return out;
@@ -220,7 +220,7 @@ export class SshPrincipalService {
     }
     await ctx.db
       .insert(sshUserPrincipals)
-      .values({ id: randomUUID(), identityId: params.identityId, principalId: params.principalId } as any)
+      .values({ id: randomUUID(), identityId: params.identityId, principalId: params.principalId })
       .onConflictDoNothing?.();
     await createAuditLog({
       db: ctx.db,
@@ -245,7 +245,7 @@ export class SshPrincipalService {
       .from(sshHostPrincipalMaps)
       .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
       .where(eq(sshHostPrincipalMaps.hostId, hostId));
-    return (rows as any[])
+    return rows
       .map((r) => ({ hostId, principalId: r.principalId, name: r.name, localAccount: r.localAccount }))
       .sort((a, b) => a.localAccount.localeCompare(b.localAccount) || a.name.localeCompare(b.name));
   }
@@ -259,7 +259,7 @@ export class SshPrincipalService {
       .from(sshUserPrincipals)
       .innerJoin(sshPrincipals, eq(sshUserPrincipals.principalId, sshPrincipals.id))
       .where(eq(sshUserPrincipals.identityId, identityId));
-    return (rows as any[])
+    return rows
       .map((r) => ({ identityId, principalId: r.principalId, name: r.name, description: r.description ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -363,7 +363,7 @@ export class SshPrincipalService {
       hostId: params.hostId,
       principalId: params.principalId,
       localAccount: params.localAccount,
-    } as any);
+    });
     // The rendered files changed: the host is Stale until the new files are pushed.
     await markHostPrincipalsChanged(ctx, params.hostId);
     await createAuditLog({
@@ -392,7 +392,7 @@ export class SshPrincipalService {
       .where(eq(sshHostPrincipalMaps.hostId, hostId));
 
     const byAccount: Record<string, string[]> = {};
-    for (const m of maps as any[]) {
+    for (const m of maps) {
       (byAccount[m.account] ??= []).push(m.name);
     }
     const files: Record<string, string> = {};
@@ -411,7 +411,7 @@ export class SshPrincipalService {
       directive: 'AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u',
       files,
       sha256: principalFilesSha256(files),
-      stale: isStale(host as any),
+      stale: isStale(host),
     };
   }
 
@@ -424,7 +424,7 @@ export class SshPrincipalService {
    * matched by the REST router's `/not found/i` handler and becomes a 404.
    */
   async markPushed(ctx: ServiceContext, hostId: string): Promise<MarkPushedResult> {
-    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
     if (!host) {
       await createAuditLog({
         db: ctx.db,
@@ -474,7 +474,7 @@ export class SshPrincipalService {
         details: { via: 'fleet-token', tokenId: meta.tokenId, presented, ...details },
         ipAddress: ctx.ipAddress ?? undefined,
       });
-    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+    const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
     if (!host) {
       await audit('failure', { error: 'host not found' });
       throw new SshPrincipalError(`host ${hostId} not found`);
@@ -490,17 +490,17 @@ export class SshPrincipalService {
   }
 
   /** Push time is never before the last change, so a confirmed push always clears Stale. */
-  private async stampPushed(ctx: ServiceContext, host: any): Promise<Date> {
+  private async stampPushed(ctx: ServiceContext, host: typeof sshHosts.$inferSelect): Promise<Date> {
     const changed = host.principalsChangedAt ? new Date(host.principalsChangedAt).getTime() : 0;
     const pushedAt = new Date(Math.max(Date.now(), changed));
-    await ctx.db.update(sshHosts).set({ lastPrincipalPushAt: pushedAt } as any).where(eq(sshHosts.id, host.id));
+    await ctx.db.update(sshHosts).set({ lastPrincipalPushAt: pushedAt }).where(eq(sshHosts.id, host.id));
     return pushedAt;
   }
 
   /** List hosts whose rendered principal files changed after the last push. */
   async staleHosts(ctx: ServiceContext): Promise<Array<{ id: string; fqdn: string }>> {
     const hosts = await ctx.db.select().from(sshHosts);
-    return (hosts as any[])
+    return hosts
       .filter((h) => h.status !== 'offboarded' && isStale(h))
       .map((h) => ({ id: h.id, fqdn: h.fqdn }));
   }
@@ -513,7 +513,7 @@ export class SshPrincipalService {
       .innerJoin(sshPrincipals, eq(sshHostPrincipalMaps.principalId, sshPrincipals.id))
       .where(eq(sshHostPrincipalMaps.hostId, hostId));
     void sshIdentities;
-    return (rows as any[]).map((r) => r.name);
+    return rows.map((r) => r.name);
   }
 }
 

@@ -52,8 +52,8 @@ function NewSshHost() {
       }
       utils.ssh.host.list.invalidate();
       navigate({ to: '/ssh/hosts/$id', params: { id: host.id } });
-    } catch (error: any) {
-      toast.error(`Failed: ${error.message}`);
+    } catch (error) {
+      toast.error(`Failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

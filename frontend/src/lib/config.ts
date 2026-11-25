@@ -7,15 +7,19 @@ interface RuntimeConfig {
 
 let config: RuntimeConfig | null = null;
 
+function hasApiUrl(data: unknown): data is RuntimeConfig {
+  return data !== null && typeof data === 'object' && 'apiUrl' in data && typeof data.apiUrl === 'string';
+}
+
 export async function loadConfig(): Promise<RuntimeConfig> {
   if (config) return config;
 
   try {
     const response = await fetch('/config.json');
     if (response.ok) {
-      const data = await response.json();
+      const data: unknown = await response.json();
       // Only use runtime config if it's not the placeholder
-      if (data.apiUrl && data.apiUrl !== '__API_URL__') {
+      if (hasApiUrl(data) && data.apiUrl && data.apiUrl !== '__API_URL__') {
         config = data;
         return config;
       }

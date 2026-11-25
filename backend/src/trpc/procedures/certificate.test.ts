@@ -8,6 +8,7 @@
  * 4. Validity status computation
  * 5. Error handling for not found
  */
+import { TRPCError } from '@trpc/server';
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'crypto';
@@ -1219,8 +1220,8 @@ describe('certificate - KMS inconsistency handling (CONFLICT error)', () => {
       await caller.certificate.getById({ id: orphanedCertId });
       // If we get here, the KMS mock might be returning data - verify the error path
       expect.fail('Expected CONFLICT error but call succeeded');
-    } catch (error: any) {
-      // tRPC wraps errors - check for CONFLICT code
+    } catch (error) {
+      if (!(error instanceof TRPCError)) throw error;
       expect(error.code).toBe('CONFLICT');
       expect(error.message).toContain('not found in KMS');
     }

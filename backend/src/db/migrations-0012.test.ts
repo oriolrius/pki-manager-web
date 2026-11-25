@@ -25,14 +25,14 @@ describe('migration 0012 (principals_changed_at backfill)', () => {
     const pre = join(work, 'pre');
     cpSync(MIGRATIONS, pre, { recursive: true });
     const journalPath = join(pre, 'meta', '_journal.json');
-    const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
-    journal.entries = journal.entries.filter((e: any) => e.idx <= 11);
+    const journal: { entries: { idx: number }[] } = JSON.parse(readFileSync(journalPath, 'utf8'));
+    journal.entries = journal.entries.filter((e) => e.idx <= 11);
     writeFileSync(journalPath, JSON.stringify(journal));
 
     const sqlite = new Database(join(work, 'db.sqlite'));
     try {
       migrate(drizzle(sqlite), { migrationsFolder: pre });
-      const cols = (sqlite.prepare(`PRAGMA table_info(ssh_hosts)`).all() as any[]).map((c) => c.name);
+      const cols = sqlite.prepare<[], { name: string; pk: number }>(`PRAGMA table_info(ssh_hosts)`).all().map((c) => c.name);
       expect(cols).not.toContain('principals_changed_at');
 
       const pushedSec = 1_790_000_000;
@@ -51,8 +51,8 @@ describe('migration 0012 (principals_changed_at backfill)', () => {
       migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS });
 
       const row = (id: string) =>
-        sqlite.prepare(`SELECT last_principal_push_at AS push, principals_changed_at AS changed FROM ssh_hosts WHERE id = ?`).get(id) as any;
-      const stale = (r: any) => (r.changed ?? 0) > (r.push ?? 0);
+        sqlite.prepare<[string], { push: number | null; changed: number | null }>(`SELECT last_principal_push_at AS push, principals_changed_at AS changed FROM ssh_hosts WHERE id = ?`).get(id)!;
+      const stale = (r: ReturnType<typeof row>) => (r.changed ?? 0) > (r.push ?? 0);
 
       expect(row('pushed')).toEqual({ push: pushedSec * 1000, changed: null });
       expect(stale(row('pushed'))).toBe(false);

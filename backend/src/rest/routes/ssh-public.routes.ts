@@ -4,6 +4,7 @@
  * the /api/v1 OpenAPI/auth block). The public raw KRL bytes route (/krl/:caId.bin)
  * is owned separately by SSH-22.
  */
+import type { FastifyReply } from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db/client.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
@@ -18,7 +19,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   const ctx = { db, ipAddress: null };
 
   /** Fetch the freshest KRL row, lazily (re)generating when missing or stale. */
-  async function freshestKrl(caId: string): Promise<any | null> {
+  async function freshestKrl(caId: string) {
     const svc = getSshKrlService();
     let row = await svc.getLatestRow(ctx, caId).catch(() => null);
     const stale = row && new Date(row.nextUpdate).getTime() < Date.now();
@@ -86,7 +87,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   const hostKrlPublicEnabled = () => process.env.SSH_HOST_KRL_PUBLIC === 'true';
 
   /** Host row by id or fqdn (the Ansible role knows the fqdn). */
-  async function findHost(idOrFqdn: string): Promise<any | null> {
+  async function findHost(idOrFqdn: string) {
     const { sshHosts } = await import('../../db/schema.js');
     const { eq } = await import('drizzle-orm');
     const byId = (await db.select().from(sshHosts).where(eq(sshHosts.id, idOrFqdn)).limit(1))[0];
@@ -95,7 +96,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   }
 
   /** Freshest composed per-host row, lazily (re)generating; last-good on failure. */
-  async function freshestHostKrl(hostId: string): Promise<any | null> {
+  async function freshestHostKrl(hostId: string) {
     const svc = getSshHostKrlService();
     let row = await svc.getLatestRow(ctx, hostId).catch(() => null);
     const stale = row && new Date(row.nextUpdate).getTime() < Date.now();
@@ -168,7 +169,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
     };
   });
 
-  const text = (reply: any, filename?: string) => {
+  const text = (reply: FastifyReply, filename?: string) => {
     reply.header('Content-Type', 'text/plain; charset=utf-8');
     if (filename) reply.header('Content-Disposition', `attachment; filename="${filename}"`);
   };
@@ -177,19 +178,19 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   // authoritative; the legacy unscoped routes below serve the DEFAULT zone with
   // a Deprecation header so hosts already enrolled against production (the c1h1
   // VM against pki.joor.net) never break. resolveZone throws on an unknown zone.
-  const renderUserCa = (reply: any, anchors: { userCaKeys: string[] }) => {
+  const renderUserCa = (reply: FastifyReply, anchors: { userCaKeys: string[] }) => {
     text(reply, 'ssh-user-ca.pub');
     return anchors.userCaKeys.map((k) => k.trim()).join('\n') + (anchors.userCaKeys.length ? '\n' : '');
   };
-  const renderHostCa = (reply: any, anchors: { hostCaKeys: string[] }) => {
+  const renderHostCa = (reply: FastifyReply, anchors: { hostCaKeys: string[] }) => {
     text(reply, 'ssh-host-ca.pub');
     return anchors.hostCaKeys.map((k) => k.trim()).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
   };
-  const renderCertAuthority = (reply: any, anchors: { hostCaKeys: string[] }, pattern: string) => {
+  const renderCertAuthority = (reply: FastifyReply, anchors: { hostCaKeys: string[] }, pattern: string) => {
     text(reply);
     return anchors.hostCaKeys.map((k) => certAuthorityLine(k, pattern)).join('\n') + (anchors.hostCaKeys.length ? '\n' : '');
   };
-  const deprecate = (reply: any, zonedPath: string) => {
+  const deprecate = (reply: FastifyReply, zonedPath: string) => {
     reply.header('Deprecation', 'true');
     reply.header('Link', `<${zonedPath}>; rel="successor-version"`);
   };
@@ -226,9 +227,9 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
       return 'zone not found\n';
     }
   });
-  server.get('/ssh/zones/:zone/cert-authority', { schema: { hide: true } }, async (req, reply) => {
+  server.get<{ Querystring: { pattern?: string } }>('/ssh/zones/:zone/cert-authority', { schema: { hide: true } }, async (req, reply) => {
     const { zone } = req.params as { zone: string };
-    const pattern = ((req.query as any)?.pattern as string) || '*';
+    const pattern = (req.query?.pattern as string) || '*';
     try {
       return renderCertAuthority(reply, await getSshCaService().getTrustAnchors(ctx, zone), pattern);
     } catch {
@@ -254,8 +255,8 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   });
 
   // @cert-authority known_hosts lines for the Host CA(s), for a pattern.
-  server.get('/ssh/cert-authority', { schema: { hide: true } }, async (req, reply) => {
-    const pattern = ((req.query as any)?.pattern as string) || '*';
+  server.get<{ Querystring: { pattern?: string } }>('/ssh/cert-authority', { schema: { hide: true } }, async (req, reply) => {
+    const pattern = (req.query?.pattern as string) || '*';
     deprecate(reply, '/ssh/zones/default/cert-authority');
     return renderCertAuthority(reply, await getSshCaService().getTrustAnchors(ctx, DEFAULT_ZONE_ID), pattern);
   });

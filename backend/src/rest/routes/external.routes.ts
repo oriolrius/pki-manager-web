@@ -420,8 +420,8 @@ export async function externalRoutes(fastify: FastifyInstance) {
         return reply.code(409).send({ error: { code: 'CERTIFICATE_NOT_ACTIVE', message: 'The existing certificate is revoked or expired; submit a new CSR' } });
       }
       const kms = getKMSService();
-      const certPem = (existing[0] as any).certificatePem
-        ? (existing[0] as any).certificatePem
+      const certPem = existing[0].certificatePem
+        ? existing[0].certificatePem
         : await kms.getCertificate(existing[0].kmsCertificateId, existing[0].id);
       const ca = await db
         .select()
@@ -503,7 +503,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         requestUid: body.requestUid,
         createdAt: new Date(),
         updatedAt: new Date(),
-      } as any);
+      });
 
       await db.insert(auditLog).values({
         id: randomUUID(),
@@ -522,7 +522,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
           certificateType,
         }),
         ipAddress: req.ip,
-      } as any);
+      });
 
       const chainPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
 
@@ -552,7 +552,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
           error: err instanceof Error ? err.message : String(err),
         }),
         ipAddress: req.ip,
-      } as any);
+      });
       return reply.code(500).send({
         error: {
           code: 'SIGN_FAILED',
@@ -640,7 +640,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
         reason: body.reason ?? 'unspecified',
       }),
       ipAddress: req.ip,
-    } as any);
+    });
 
     // Keep the CA CRL current so the revoked serial appears promptly (best-effort).
     await publishRevocation(cert[0].id, cert[0].caId, req.ip);

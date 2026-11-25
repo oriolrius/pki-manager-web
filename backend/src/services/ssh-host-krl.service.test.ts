@@ -6,7 +6,7 @@
  * the assertions -Q cannot see (expired serial excluded while the same
  * identity's fingerprint entry remains).
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { assert, describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -63,8 +63,8 @@ describe('BLK-03 SshHostKrlService', () => {
 
   const certRow = (o: {
     caId: string; certType: 'host' | 'user'; serial: string; identityId?: string; hostId?: string;
-    fp: string; validBefore: Date; status?: string;
-  }) => ({
+    fp: string; validBefore: Date; status?: (typeof sshCertificates.$inferSelect)['status'];
+  }): typeof sshCertificates.$inferInsert => ({
     id: randomUUID(),
     caId: o.caId,
     certType: o.certType,
@@ -95,7 +95,7 @@ describe('BLK-03 SshHostKrlService', () => {
       caH: parseSshPublicKey(caPub('caH')).blob.toString('hex'),
     };
 
-    const caRow = (id: string, type: 'user' | 'host', key: string, status: string) => ({
+    const caRow = (id: string, type: 'user' | 'host', key: string, status: (typeof sshCas.$inferSelect)['status']) => ({
       id, caType: type, kmsKeyId: `kms-${key}`, kmsPublicKeyId: `kmspub-${key}`,
       opensshPublicKey: caPub(key), fingerprintSha256: fpOf(join(work, `${key}.pub`)), status,
     });
@@ -103,13 +103,13 @@ describe('BLK-03 SshHostKrlService', () => {
       caRow(ids.caUserActive, 'user', 'caA', 'active'),
       caRow(ids.caUserRetired, 'user', 'caB', 'retired'),
       caRow(ids.caHost, 'host', 'caH', 'active'),
-    ] as any);
+    ]);
 
-    await db.insert(sshHosts).values({ id: ids.host, fqdn: 'y.lab.local', status: 'active' } as any);
+    await db.insert(sshHosts).values({ id: ids.host, fqdn: 'y.lab.local', status: 'active' });
     await db.insert(sshIdentities).values([
       { id: ids.blocked, subject: 'alice@lab.local' },
       { id: ids.other, subject: 'victor@lab.local' },
-    ] as any);
+    ]);
 
     // Real signed certs so ssh-keygen -Q can arbitrate. ssh-keygen writes to
     // <key>-cert.pub; move each to a distinct name so signings don't clobber.
@@ -135,9 +135,9 @@ describe('BLK-03 SshHostKrlService', () => {
       certRow({ caId: ids.caUserActive, certType: 'user', serial: '401', identityId: ids.blocked, fp: fpOf(join(work, 'u2.pub')), validBefore: past }),
       certRow({ caId: ids.caUserActive, certType: 'user', serial: '101', identityId: ids.other, fp: fpOf(join(work, 'v.pub')), validBefore: future, status: 'revoked' }),
       certRow({ caId: ids.caHost, certType: 'host', serial: '11', hostId: ids.host, fp: fpOf(join(work, 'hk.pub')), validBefore: future, status: 'revoked' }),
-    ] as any);
+    ]);
 
-    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.host, identityId: ids.blocked, reason: 'incident' } as any);
+    await db.insert(sshHostBlocks).values({ id: randomUUID(), hostId: ids.host, identityId: ids.blocked, reason: 'incident' });
   });
 
   afterAll(async () => {
@@ -151,6 +151,7 @@ describe('BLK-03 SshHostKrlService', () => {
     expect(dto.hasSignature).toBe(true);
 
     const row = await svc.getLatestRow(ctx, ids.host);
+    assert.isNotNull(row);
     const krlPath = join(work, 'composed.krl');
     writeFileSync(krlPath, Buffer.from(row.krlBlob));
 
@@ -165,6 +166,7 @@ describe('BLK-03 SshHostKrlService', () => {
 
   it('scopes serials per issuing CA and excludes expired serials (structural decode)', async () => {
     const row = await svc.getLatestRow(ctx, ids.host);
+    assert.isNotNull(row);
     const { serialsByCaHex, hashes } = decodeKrl(Buffer.from(row.krlBlob));
 
     expect(serialsByCaHex.get(caBlobHex.caA)).toEqual([101n, 201n]); // sorted; NO expired 401
@@ -201,7 +203,7 @@ describe('BLK-03 SshHostKrlService', () => {
     signRawMock.mockRejectedValueOnce(new Error('KMS unreachable'));
     const unsigned = await svc.generate(ctx, ids.host);
     expect(unsigned.hasSignature).toBe(false);
-    const row = (await db.select().from(sshHostKrls).where(eq(sshHostKrls.id, unsigned.id)))[0] as any;
+    const row = (await db.select().from(sshHostKrls).where(eq(sshHostKrls.id, unsigned.id)))[0];
     expect(row.caSignature).toBeNull();
 
     const failAudit = await db
@@ -210,7 +212,7 @@ describe('BLK-03 SshHostKrlService', () => {
       .where(and(eq(auditLog.operation, 'ssh.host_krl.generate'), eq(auditLog.status, 'failure')))
       .orderBy(desc(auditLog.timestamp));
     expect(failAudit.length).toBeGreaterThan(0);
-    expect(JSON.parse((failAudit[0] as any).details).signError).toMatch(/KMS unreachable/);
+    expect(JSON.parse(failAudit[0].details!).signError).toMatch(/KMS unreachable/);
 
     const signed = await svc.generate(ctx, ids.host);
     expect(signed.hasSignature).toBe(true);
@@ -220,7 +222,7 @@ describe('BLK-03 SshHostKrlService', () => {
       .from(auditLog)
       .where(and(eq(auditLog.operation, 'ssh.host_krl.generate'), eq(auditLog.status, 'success')));
     expect(okAudit.length).toBeGreaterThan(0);
-    expect(JSON.parse((okAudit[okAudit.length - 1] as any).details).blockCount).toBe(1);
+    expect(JSON.parse(okAudit[okAudit.length - 1].details!).blockCount).toBe(1);
   });
 
   it('audits and throws for an unknown host', async () => {
@@ -230,7 +232,7 @@ describe('BLK-03 SshHostKrlService', () => {
       .from(auditLog)
       .where(and(eq(auditLog.operation, 'ssh.host_krl.generate'), eq(auditLog.entityId, 'no-such-host')));
     expect(fail).toHaveLength(1);
-    expect((fail[0] as any).status).toBe('failure');
-    expect(JSON.parse((fail[0] as any).details).error).toMatch(/not found/);
+    expect(fail[0].status).toBe('failure');
+    expect(JSON.parse(fail[0].details!).error).toMatch(/not found/);
   });
 });

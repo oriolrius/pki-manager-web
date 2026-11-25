@@ -1,3 +1,4 @@
+import type { RouterInputs } from '../lib/trpc';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { getApiUrl } from '@/lib/config';
@@ -51,7 +52,7 @@ function CADetail() {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
-  const [selectedReason, setSelectedReason] = useState<string>('unspecified');
+  const [selectedReason, setSelectedReason] = useState<RouterInputs['ca']['revoke']['reason']>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer' | 'p12-truststore' | 'p12-keystore' | 'jks-truststore' | 'jks-keystore'>('pem');
@@ -110,7 +111,7 @@ function CADetail() {
 
   const confirmRevoke = () => {
     revokeMutation.mutate(
-      { id, reason: selectedReason as any, details: revokeDetails || undefined },
+      { id, reason: selectedReason, details: revokeDetails || undefined },
       {
         onSuccess: () => {
           caQuery.refetch();
@@ -188,7 +189,7 @@ function CADetail() {
     }
   };
 
-  if (caQuery.isLoading) {
+  if (caQuery.isPending) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         Loading CA details...
@@ -207,7 +208,8 @@ function CADetail() {
 
     if (isKmsInconsistency) {
       // Extract metadata from error cause (sent by backend)
-      const errorCause = caQuery.error.data?.cause as {
+      const data = caQuery.error.data;
+      const errorCause = (data && 'cause' in data ? data.cause : undefined) as {
         type?: string;
         caId?: string;
         kmsCertificateId?: string;
@@ -457,7 +459,7 @@ function CADetail() {
                 <select
                   id="reason"
                   value={selectedReason}
-                  onChange={(e) => setSelectedReason(e.target.value)}
+                  onChange={(e) => setSelectedReason(e.target.value as typeof selectedReason)}
                   className="w-full px-3 py-2 border rounded-md bg-background"
                 >
                   {REVOCATION_REASONS.map((reason) => (
@@ -549,7 +551,7 @@ function CADetail() {
           <select
             id="ca-export-format"
             value={selectedFormat}
-            onChange={(e) => setSelectedFormat(e.target.value as any)}
+            onChange={(e) => setSelectedFormat(e.target.value as typeof selectedFormat)}
             className="h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <optgroup label="Certificate (public only)">

@@ -3,6 +3,7 @@
  * CRUD via a standalone Fastify instance (server.ts auto-starts, so we build our
  * own). Gated on KMS_AVAILABLE.
  */
+import type { SshCaDto } from '../../services/ssh-ca.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { registerSshPublicRoutes } from './ssh-public.routes.js';
@@ -22,7 +23,7 @@ const KMS = process.env.KMS_AVAILABLE === 'true';
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) {
+  for (const c of cas) {
     try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ }
   }
   for (const t of [sshHostKrls, sshHostBlocks, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
@@ -33,8 +34,8 @@ async function wipe() {
 describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
   let app: FastifyInstance;
   let work: string;
-  let userCa: any;
-  let hostCa: any;
+  let userCa: SshCaDto;
+  let hostCa: SshCaDto;
   let hostId: string;
 
   beforeAll(async () => {
@@ -100,7 +101,7 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     expect(created.caType).toBe('user');
     expect(created.opensshPublicKey).toContain('ecdsa-sha2-nistp256');
     const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/cas' });
-    expect(list.json().some((c: any) => c.id === created.id)).toBe(true);
+    expect(list.json<{ id: string; revoked?: boolean }[]>().some((c) => c.id === created.id)).toBe(true);
   });
 
   it('manages principals over REST: create, list, map to a host account, render', async () => {
@@ -110,7 +111,7 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     expect(principal.name).toBe('admins');
 
     const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/principals' });
-    expect(list.json().some((p: any) => p.id === principal.id)).toBe(true);
+    expect(list.json<{ id: string; revoked?: boolean }[]>().some((p) => p.id === principal.id)).toBe(true);
 
     const m = await app.inject({ method: 'POST', url: '/api/v1/ssh/principals/map', payload: { hostId, principalId: principal.id, localAccount: 'deploy' } });
     expect(m.statusCode).toBe(200);
@@ -132,17 +133,17 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     expect(body.record.opSet).toEqual(['sign-host', 'get-principals']);
 
     const list = await app.inject({ method: 'GET', url: '/api/v1/ssh/tokens' });
-    expect(list.json().some((t: any) => t.id === body.record.id)).toBe(true);
+    expect(list.json<{ id: string; revoked?: boolean }[]>().some((t) => t.id === body.record.id)).toBe(true);
 
     const rev = await app.inject({ method: 'POST', url: `/api/v1/ssh/tokens/${body.record.id}/revoke` });
     expect(rev.statusCode).toBe(200);
-    expect((await app.inject({ method: 'GET', url: '/api/v1/ssh/tokens' })).json().find((t: any) => t.id === body.record.id).revoked).toBe(true);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/ssh/tokens' })).json<{ id: string; revoked?: boolean }[]>().find((t) => t.id === body.record.id)!.revoked).toBe(true);
   });
 
   it('lists hosts and looks one up by fqdn (GET /hosts?fqdn=)', async () => {
     const all = await app.inject({ method: 'GET', url: '/api/v1/ssh/hosts' });
     expect(all.statusCode).toBe(200);
-    expect(all.json().some((h: any) => h.id === hostId)).toBe(true);
+    expect(all.json<{ id: string; revoked?: boolean }[]>().some((h) => h.id === hostId)).toBe(true);
 
     const one = await app.inject({ method: 'GET', url: '/api/v1/ssh/hosts?fqdn=rest.lab.local' });
     expect(one.json().length).toBe(1);
@@ -161,7 +162,7 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
   it('revokes a user cert over REST, lists it, and serves a KRL that sshd accepts', async () => {
     // resolve the active user CA
     const cas = (await app.inject({ method: 'GET', url: '/api/v1/ssh/cas' })).json();
-    const uca = cas.find((c: any) => c.caType === 'user' && c.status === 'active');
+    const uca = cas.find((c: SshCaDto) => c.caType === 'user' && c.status === 'active');
     expect(uca).toBeTruthy();
 
     // issue a user cert we can revoke
@@ -180,7 +181,7 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
 
     // it shows up in the revocation list
     const revs = (await app.inject({ method: 'GET', url: `/api/v1/ssh/cas/${uca.id}/revocations` })).json();
-    expect(revs.some((r: any) => r.serial === issued.cert.serial)).toBe(true);
+    expect(revs.some((r: { serial: string }) => r.serial === issued.cert.serial)).toBe(true);
 
     // the bare KRL bytes parse and mark this cert REVOKED (what sshd would do)
     const krl = await app.inject({ method: 'GET', url: `/api/v1/ssh/cas/${uca.id}/krl.bin` });
@@ -194,8 +195,8 @@ describe.skipIf(!KMS)('SSH-18 REST + public downloads', () => {
     let q = '';
     try {
       q = execFileSync('ssh-keygen', ['-Qf', join(work, 'revoked_keys'), join(work, 'u-cert.pub')], { encoding: 'utf8' });
-    } catch (e: any) {
-      q = (e.stdout ?? '').toString();
+    } catch (e) {
+      q = String(e instanceof Error && 'stdout' in e ? e.stdout : '');
     }
     expect(q).toContain('REVOKED');
   });

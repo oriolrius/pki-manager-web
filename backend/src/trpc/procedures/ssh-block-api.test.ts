@@ -5,6 +5,7 @@
  * shared-fingerprint warning passthrough, and the read model (host access
  * join, identity tuples with state, fleet distribution). KMS mocked.
  */
+import { testContext } from '../../test/context.js';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { execFileSync } from 'node:child_process';
@@ -26,8 +27,7 @@ vi.mock('../../kms/service.js', () => ({
   getKMSService: () => ({ signRaw: signRawMock }),
 }));
 
-const makeCtx = () => ({ req: { ip: '127.0.0.1' }, res: {}, db, user: undefined });
-const caller = () => appRouter.createCaller(makeCtx() as any);
+const caller = () => appRouter.createCaller(testContext({ ip: '127.0.0.1' }));
 
 async function wipe() {
   for (const t of [sshHostKrls, sshHostBlocks, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
@@ -89,29 +89,29 @@ describe('BLK-08 block API (dev opt-in)', () => {
     await db.insert(sshCas).values([
       { id: ids.caUser, caType: 'user', kmsKeyId: 'k-u', kmsPublicKeyId: 'kp-u', opensshPublicKey: caPub('caU'), fingerprintSha256: 'SHA256:u', status: 'active' },
       { id: ids.caHost, caType: 'host', kmsKeyId: 'k-h', kmsPublicKeyId: 'kp-h', opensshPublicKey: caPub('caH'), fingerprintSha256: 'SHA256:h', status: 'active' },
-    ] as any);
+    ]);
     await db.insert(sshHosts).values({
       id: ids.host,
       fqdn: 'api.lab.local',
       opensshHostPubkey: 'ecdsa-sha2-nistp256 AAAA...',
       hostKeyAlgorithm: 'ecdsa-sha2-nistp256',
       status: 'active',
-    } as any);
+    });
     await db.insert(sshIdentities).values([
       { id: ids.alice, subject: 'alice@lab' },
       { id: ids.carol, subject: 'carol@lab' },
-    ] as any);
+    ]);
     // Entitlement chain: alice holds role 'admins' which maps to root on the host.
-    await db.insert(sshPrincipals).values({ id: ids.role, name: 'admins' } as any);
-    await db.insert(sshUserPrincipals).values({ id: randomUUID(), identityId: ids.alice, principalId: ids.role } as any);
-    await db.insert(sshHostPrincipalMaps).values({ id: randomUUID(), hostId: ids.host, principalId: ids.role, localAccount: 'root' } as any);
+    await db.insert(sshPrincipals).values({ id: ids.role, name: 'admins' });
+    await db.insert(sshUserPrincipals).values({ id: randomUUID(), identityId: ids.alice, principalId: ids.role });
+    await db.insert(sshHostPrincipalMaps).values({ id: randomUUID(), hostId: ids.host, principalId: ids.role, localAccount: 'root' });
     // Shared key: alice + carol certified for the same pubkey (over-block warning).
-    const cert = (identityId: string, serial: string) => ({
+    const cert = (identityId: string, serial: string): typeof sshCertificates.$inferInsert => ({
       id: randomUUID(), caId: ids.caUser, certType: 'user', identityId, serial, keyId: `k-${serial}`,
       principals: '[]', validAfter: new Date(Date.now() - 3600_000), validBefore: new Date(Date.now() + 6 * 24 * 3600_000),
       certOpenssh: 'unused', subjectPubkeyFingerprint: sharedFp, kmsSigningKeyId: 'kms', status: 'active',
     });
-    await db.insert(sshCertificates).values([cert(ids.alice, '1'), cert(ids.carol, '2')] as any);
+    await db.insert(sshCertificates).values([cert(ids.alice, '1'), cert(ids.carol, '2')]);
 
     rest = Fastify();
     await rest.register(sshRoutes, { prefix: '/api/v1/ssh' });
@@ -133,7 +133,7 @@ describe('BLK-08 block API (dev opt-in)', () => {
 
     const audits = await db.select().from(auditLog).where(and(eq(auditLog.operation, 'ssh.host.block'), eq(auditLog.status, 'success')));
     expect(audits.length).toBe(1);
-    expect(JSON.parse((audits[0] as any).details)).toMatchObject({ identityId: ids.alice, hostId: ids.host, reason: 'api test' });
+    expect(JSON.parse(audits[0].details!)).toMatchObject({ identityId: ids.alice, hostId: ids.host, reason: 'api test' });
 
     const lifted = await caller().ssh.block.unblock({ hostId: ids.host, identityId: ids.alice });
     expect(lifted!.block.status).toBe('lifted');
@@ -164,12 +164,12 @@ describe('BLK-08 block API (dev opt-in)', () => {
     expect(access!.fqdn).toBe('api.lab.local');
     expect(['effective', 'pending', 'lifting']).toContain(access!.state.state);
 
-    const alice = access!.entries.find((e: any) => e.subject === 'alice@lab')!;
+    const alice = access!.entries.find((e) => e.subject === 'alice@lab')!;
     expect(alice.viaRoles).toEqual(['admins']);
     expect(alice.localAccounts).toEqual(['root']);
     expect(alice.blocked).toBe(false);
 
-    const carol = access!.entries.find((e: any) => e.subject === 'carol@lab')!;
+    const carol = access!.entries.find((e) => e.subject === 'carol@lab')!;
     expect(carol.blocked).toBe(true); // pre-emptive: not entitled, still listed
     expect(carol.viaRoles).toEqual([]);
     expect(carol.block?.reason).toBe('not entitled but blocked');
@@ -182,13 +182,13 @@ describe('BLK-08 block API (dev opt-in)', () => {
     expect(tuples[0].state.state).toBeDefined();
 
     const fleet = await caller().ssh.block.fleetDistribution();
-    const row = fleet!.find((r: any) => r.hostId === ids.host)!;
+    const row = fleet!.find((r) => r.hostId === ids.host)!;
     expect(row.blockCount).toBe(1); // carol active; alice lifted
     expect(row.state.state).toBeDefined();
     expect(row.krlNumber).toBeGreaterThan(0);
 
     const restFleet = await rest.inject({ method: 'GET', url: '/api/v1/ssh/blocks/fleet' });
     expect(restFleet.statusCode).toBe(200);
-    expect(JSON.parse(restFleet.body).find((r: any) => r.hostId === ids.host).blockCount).toBe(1);
+    expect(restFleet.json<{ hostId: string; blockCount: number }[]>().find((r) => r.hostId === ids.host)!.blockCount).toBe(1);
   });
 });

@@ -31,7 +31,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -105,8 +105,8 @@ describe.skipIf(!KMS)('ZONE-09 external API zone scoping (A2)', () => {
     });
     expect(res.statusCode).toBe(200);
     const hostId = res.json().hostId;
-    const row = (await db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
-    const prod = (await db.select().from(zones).where(eq(zones.name, 'prod')).limit(1))[0] as any;
+    const row = (await db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
+    const prod = (await db.select().from(zones).where(eq(zones.name, 'prod')).limit(1))[0];
     expect(row.zoneId).toBe(prod.id); // signed the PROD host, not staging's
 
     // Exactly one cert was issued, against the prod host row.

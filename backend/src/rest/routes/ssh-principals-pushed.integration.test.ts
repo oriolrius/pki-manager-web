@@ -46,7 +46,7 @@ describe('TASK-246 — POST /external/ssh/hosts/:fqdn/principals-pushed', () => 
   beforeEach(async () => {
     await wipe();
     hostId = randomUUID();
-    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active' } as any);
+    await db.insert(sshHosts).values({ id: hostId, fqdn: FQDN, status: 'active' });
     const p = await getSshPrincipalService().createPrincipal(ctx, { name: 'ops' });
     await getSshPrincipalService().mapToHost(ctx, { hostId, principalId: p.id, localAccount: 'root' });
     token = (await getSshFleetTokenService().mint(ctx, { name: 'ack', opSet: ['get-principals'] })).token;
@@ -68,7 +68,7 @@ describe('TASK-246 — POST /external/ssh/hosts/:fqdn/principals-pushed', () => 
     expect((await getSshPrincipalService().render(ctx, hostId)).stale).toBe(false);
 
     const rows = await db.select().from(auditLog).where(and(eq(auditLog.operation, 'ssh.principal.mark_pushed'), eq(auditLog.entityId, hostId)));
-    expect(rows.map((r: any) => r.status)).toEqual(['success']);
+    expect(rows.map((r) => r.status)).toEqual(['success']);
   });
 
   it('a stale hash (files changed after the GET) is refused with 409 + the current hash', async () => {
@@ -84,7 +84,7 @@ describe('TASK-246 — POST /external/ssh/hosts/:fqdn/principals-pushed', () => 
     expect((await getSshPrincipalService().render(ctx, hostId)).stale).toBe(true);
 
     const rows = await db.select().from(auditLog).where(and(eq(auditLog.operation, 'ssh.principal.mark_pushed'), eq(auditLog.entityId, hostId)));
-    expect(rows.map((r: any) => r.status)).toEqual(['failure']);
+    expect(rows.map((r) => r.status)).toEqual(['failure']);
   });
 
   it('needs a token (401) and a 64-hex sha256 (400)', async () => {
@@ -109,14 +109,14 @@ describe('TASK-246 — POST /external/ssh/hosts/:fqdn/principals-pushed', () => 
 
   it('a host outside the token zone is 404 and audited as a failure', async () => {
     const zoneId = randomUUID();
-    await db.insert(zones).values({ id: zoneId, name: `z-${zoneId.slice(0, 8)}`, displayName: 'Other' } as any);
+    await db.insert(zones).values({ id: zoneId, name: `z-${zoneId.slice(0, 8)}`, displayName: 'Other' });
     try {
-      await db.update(sshHosts).set({ zoneId } as any).where(eq(sshHosts.id, hostId));
+      await db.update(sshHosts).set({ zoneId }).where(eq(sshHosts.id, hostId));
       await db.delete(sshHostPrincipalMaps).where(eq(sshHostPrincipalMaps.hostId, hostId));
       const res = await app.inject({ method: 'POST', url: `${BASE}/${FQDN}/principals-pushed`, headers: auth(), payload: { sha256: '0'.repeat(64) } });
       expect(res.statusCode).toBe(404);
       const rows = await db.select().from(auditLog).where(and(eq(auditLog.operation, 'ssh.principal.mark_pushed'), eq(auditLog.entityId, FQDN)));
-      expect(rows.map((r: any) => r.status)).toEqual(['failure']);
+      expect(rows.map((r) => r.status)).toEqual(['failure']);
     } finally {
       await db.delete(sshHosts).where(eq(sshHosts.id, hostId));
       await db.delete(zones).where(eq(zones.id, zoneId));

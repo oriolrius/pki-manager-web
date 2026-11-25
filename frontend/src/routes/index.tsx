@@ -85,7 +85,7 @@ function Dashboard() {
             <div className="flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-xl font-bold">
-                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.totalCAs}
+                  {statsQuery.isPending ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.totalCAs}
                 </span>
                 <span className="text-xs text-muted-foreground">Total CAs</span>
               </div>
@@ -102,7 +102,7 @@ function Dashboard() {
             <div className="flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-xl font-bold text-primary">
-                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.activeCAs}
+                  {statsQuery.isPending ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.activeCAs}
                 </span>
                 <span className="text-xs text-muted-foreground">Active CAs</span>
               </div>
@@ -117,7 +117,7 @@ function Dashboard() {
             <div className="flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-xl font-bold">
-                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.totalCertificates}
+                  {statsQuery.isPending ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.totalCertificates}
                 </span>
                 <span className="text-xs text-muted-foreground">Total Certs</span>
               </div>
@@ -134,7 +134,7 @@ function Dashboard() {
             <div className="flex-1">
               <div className="flex items-baseline gap-2">
                 <span className="text-xl font-bold text-primary">
-                  {statsQuery.isLoading ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.activeCertificates}
+                  {statsQuery.isPending ? '...' : statsQuery.isError ? 'Err' : statsQuery.data.activeCertificates}
                 </span>
                 <span className="text-xs text-muted-foreground">Active Certs</span>
               </div>
@@ -224,7 +224,7 @@ function Dashboard() {
         </div>
 
         <div className="overflow-x-auto">
-          {expiringQuery.isLoading ? (
+          {expiringQuery.isPending ? (
             <div className="p-8 text-center text-muted-foreground">
               Loading...
             </div>

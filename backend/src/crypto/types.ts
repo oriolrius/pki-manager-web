@@ -247,3 +247,16 @@ export interface GeneratedCRL {
   /** Number of revoked certificates */
   revokedCount: number;
 }
+
+/** Fields node-forge reads and writes on parsed X.509 extensions. */
+export interface ForgeExtension extends KeyUsage, Partial<Record<ExtendedKeyUsage, boolean>> {
+  name?: string;
+  id?: string;
+  critical?: boolean;
+  value?: string;
+  cA?: boolean;
+  pathLenConstraint?: number;
+  subjectKeyIdentifier?: string;
+  keyIdentifier?: string;
+  altNames?: { type: number; value: string; ip?: string }[];
+}

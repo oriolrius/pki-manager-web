@@ -11,6 +11,7 @@
  * strictly-newer). Unlike max()+1 over the KRL tables, the allocator survives
  * future pruning of old KRL rows.
  */
+import type { db as database } from './client.js';
 import { eq, sql } from 'drizzle-orm';
 import type Database from 'better-sqlite3';
 import { sshKrlSeq } from './schema.js';
@@ -43,7 +44,7 @@ export function ensureKrlSeqSeeded(sqlite: Database.Database): void {
     .run();
 }
 
-export async function allocateKrlNumber(db: any): Promise<number> {
+export async function allocateKrlNumber(db: Pick<typeof database, 'update'>): Promise<number> {
   const rows = await db
     .update(sshKrlSeq)
     .set({ value: sql`${sshKrlSeq.value} + 1` })

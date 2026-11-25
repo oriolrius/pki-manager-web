@@ -2,6 +2,7 @@
  * SSH-BULK — bulk renew (new serial, subject pubkey preserved) + bulk revoke,
  * validated against the live KMS + ssh-keygen. Gated on KMS_AVAILABLE.
  */
+import type { SignedSshCert } from './ssh-cert.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
@@ -23,7 +24,7 @@ const ctx = { db, ipAddress: null };
 async function wipe() {
   const cas = await db.select().from(sshCas);
   const kms = getKMSService();
-  for (const c of cas as any[]) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
+  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -31,8 +32,8 @@ async function wipe() {
 
 describe.skipIf(!KMS)('SSH-BULK', () => {
   let work: string;
-  let userCert: any;
-  let hostCert: any;
+  let userCert: Pick<SignedSshCert, 'id' | 'serial' | 'certOpenssh'>;
+  let hostCert: Pick<SignedSshCert, 'id'>;
 
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'ssh-bulk-'));
@@ -62,10 +63,10 @@ describe.skipIf(!KMS)('SSH-BULK', () => {
     const res = await getSshBulkService().bulkRenew(ctx, [userCert.id]);
     expect(res.renewed).toBe(1);
     const newId = res.results[0].newCertId!;
-    const renewed = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, newId)).limit(1))[0] as any;
+    const renewed = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, newId)).limit(1))[0];
     expect(renewed.serial).not.toBe(userCert.serial);
     // prior cert is now superseded
-    const prior = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, userCert.id)).limit(1))[0] as any;
+    const prior = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, userCert.id)).limit(1))[0];
     expect(prior.supersededBy).toBe(newId);
     // renewed cert validates and carries the same subject fingerprint
     writeFileSync(join(work, 'ur.pub'), renewed.certOpenssh);
@@ -77,7 +78,7 @@ describe.skipIf(!KMS)('SSH-BULK', () => {
   it('bulk-revokes a set of certs (idempotent on already-revoked)', async () => {
     const res = await getSshBulkService().bulkRevoke(ctx, [hostCert.id], 'fleet rotation');
     expect(res.revoked).toBe(1);
-    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, hostCert.id)).limit(1))[0] as any;
+    const row = (await db.select().from(sshCertificates).where(eq(sshCertificates.id, hostCert.id)).limit(1))[0];
     expect(row.status).toBe('revoked');
     // second revoke is a no-op (already revoked)
     const res2 = await getSshBulkService().bulkRevoke(ctx, [hostCert.id]);

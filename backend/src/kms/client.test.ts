@@ -2,20 +2,17 @@
  * Unit tests for KMSClient.getCertificatePrivateKeyId — the KMIP GetAttributes/PrivateKeyLink
  * resolver that all CRL signing (and PKCS#12 export) depends on. fetch is mocked, so CI-safe.
  */
+import type { KMIPElement, KMIPRequest } from './types.js';
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { KMSClient } from './client.js';
 import { logger } from '../lib/logger.js';
 
 function mockFetchOnce(body: unknown, ok = true, status = 200) {
-  const res = {
-    ok,
-    status,
-    statusText: ok ? 'OK' : 'Error',
-    json: async () => body,
-    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
-  };
-  return vi.spyOn(globalThis, 'fetch' as any).mockResolvedValue(res as any);
+  const res = new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+    status, statusText: ok ? 'OK' : 'Error',
+  });
+  return vi.spyOn(globalThis, 'fetch').mockResolvedValue(res);
 }
 
 function attrsResponse(links: Array<{ type: string; id: string }>) {
@@ -68,6 +65,11 @@ describe('KMSClient.getCertificatePrivateKeyId', () => {
     await expect(client.getCertificatePrivateKeyId('cert-id')).rejects.toThrow(/PrivateKeyLink/);
   });
 
+  it('rejects a malformed certificate structure before decoding certificate bytes', async () => {
+    mockFetchOnce({ tag: 'GetResponse', value: [{ tag: 'Certificate', value: 'invalid' }] });
+    await expect(client.getCertificate('cert-id')).rejects.toThrow('Expected KMIP Certificate structure');
+  });
+
   it('throws when the response has no Attributes', async () => {
     mockFetchOnce({ tag: 'GetAttributesResponse', value: [{ tag: 'UniqueIdentifier', type: 'TextString', value: 'cert-id' }] });
     await expect(client.getCertificatePrivateKeyId('cert-id')).rejects.toThrow(/No attributes/i);
@@ -81,21 +83,25 @@ describe('KMSClient.certify — requested validity', () => {
 
   // Capture every KMIP request body the client POSTs; return a benign response so the
   // certify() follow-up Gets short-circuit. We only assert on the first (Certify) request.
-  function captureFetch(): { bodies: any[] } {
-    const bodies: any[] = [];
-    vi.spyOn(globalThis, 'fetch' as any).mockImplementation(async (_url: any, init: any) => {
+  function captureFetch() {
+    const bodies: KMIPRequest[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      if (typeof init?.body !== 'string') throw new Error('Expected KMIP JSON');
       bodies.push(JSON.parse(init.body));
-      return { ok: true, status: 200, statusText: 'OK', json: async () => ({ tag: 'Response', value: [] }), text: async () => '{}' } as any;
+      return Response.json({ tag: 'Response', value: [] });
     });
     return { bodies };
   }
 
-  function findVendorAttr(requestValue: any[], name: string): any | undefined {
-    const attrs = requestValue.find((e: any) => e.tag === 'Attributes')?.value ?? [];
-    return attrs
-      .filter((a: any) => a.tag === 'Attribute')
-      .map((a: any) => a.value)
-      .find((v: any[]) => v.some((f) => f.tag === 'AttributeName' && f.value === name));
+  function children(element?: KMIPElement): KMIPElement[] {
+    return Array.isArray(element?.value) ? element.value : [];
+  }
+
+  function findVendorAttr(requestValue: KMIPElement[], name: string) {
+    return children(requestValue.find((e) => e.tag === 'Attributes'))
+      .filter((a) => a.tag === 'Attribute')
+      .map(children)
+      .find((fields) => fields.some((f) => f.tag === 'AttributeName' && f.value === name));
   }
 
   it('encodes daysValid as the cosmian requested_validity_days vendor attribute (Integer)', async () => {
@@ -110,11 +116,11 @@ describe('KMSClient.certify — requested validity', () => {
   it.each([undefined, 'issuing-ca-id'])('encodes CN-only subjects without inventing organization/country (issuer: %s)', async (issuerCertificateId) => {
     const cap = captureFetch();
     await client.certify({ subjectName: 'CN=SCEP Registration Authority', issuerCertificateId, publicKeyId: 'public-key-id' }).catch(() => {});
-    const attributes = cap.bodies[0].value.find((field: any) => field.tag === 'Attributes').value;
-    const fields = attributes.find((field: any) => field.tag === 'CertificateAttributes').value;
+    const attributes = children(cap.bodies[0].value.find((field) => field.tag === 'Attributes'));
+    const fields = children(attributes.find((field) => field.tag === 'CertificateAttributes'));
     expect(fields).toContainEqual({ tag: 'CertificateSubjectCn', type: 'TextString', value: 'SCEP Registration Authority' });
     for (const tag of ['CertificateSubjectO', 'CertificateSubjectC']) {
-      expect(fields.filter((field: any) => field.tag === tag)).toEqual([{ tag, type: 'TextString', value: '' }]);
+      expect(fields.filter((field) => field.tag === tag)).toEqual([{ tag, type: 'TextString', value: '' }]);
     }
     if (!issuerCertificateId) {
       for (const tag of ['CertificateIssuerO', 'CertificateIssuerC']) {
@@ -126,10 +132,10 @@ describe('KMSClient.certify — requested validity', () => {
   it('preserves supplied organization and country without duplicate fallback fields', async () => {
     const cap = captureFetch();
     await client.certify({ subjectName: 'CN=Device,O=Existing Org,C=DE', publicKeyId: 'public-key-id' }).catch(() => {});
-    const attributes = cap.bodies[0].value.find((field: any) => field.tag === 'Attributes').value;
-    const fields = attributes.find((field: any) => field.tag === 'CertificateAttributes').value;
-    expect(fields.filter((field: any) => field.tag === 'CertificateSubjectO')).toEqual([{ tag: 'CertificateSubjectO', type: 'TextString', value: 'Existing Org' }]);
-    expect(fields.filter((field: any) => field.tag === 'CertificateSubjectC')).toEqual([{ tag: 'CertificateSubjectC', type: 'TextString', value: 'DE' }]);
+    const attributes = children(cap.bodies[0].value.find((field) => field.tag === 'Attributes'));
+    const fields = children(attributes.find((field) => field.tag === 'CertificateAttributes'));
+    expect(fields.filter((field) => field.tag === 'CertificateSubjectO')).toEqual([{ tag: 'CertificateSubjectO', type: 'TextString', value: 'Existing Org' }]);
+    expect(fields.filter((field) => field.tag === 'CertificateSubjectC')).toEqual([{ tag: 'CertificateSubjectC', type: 'TextString', value: 'DE' }]);
   });
 
   it('omits the validity attribute when daysValid is not provided', async () => {

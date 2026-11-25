@@ -34,7 +34,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
   let version: string;
 
   async function hostRow() {
-    return (await db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0] as any;
+    return (await db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
   }
 
   beforeAll(async () => {
@@ -62,7 +62,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
       opensshPublicKey: hostPubkey,
       fingerprintSha256: 'SHA256:contract-test',
       status: 'active',
-    } as any);
+    });
 
     hostId = randomUUID();
     await db.insert(sshHosts).values({
@@ -71,7 +71,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
       opensshHostPubkey: hostPubkey,
       hostKeyAlgorithm: 'ecdsa-sha2-nistp256',
       status: 'active',
-    } as any);
+    });
 
     // Fresh KRL row (nextUpdate in the future) so the route serves without regenerating.
     const blob = buildKrl({ krlVersionNumber: 1n, generatedDate: BigInt(Math.floor(Date.now() / 1000)) });
@@ -86,7 +86,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
       thisUpdate: new Date(),
       nextUpdate: new Date(Date.now() + 3600_000),
       revokedCount: 0,
-    } as any);
+    });
   });
 
   afterAll(async () => {
@@ -98,18 +98,18 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
   });
 
   it('stamps last_krl_fetch_at AND last_krl_version on 200 (unchanged behavior)', async () => {
-    await db.update(sshHosts).set({ lastKrlFetchAt: null, lastKrlVersion: null } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ lastKrlFetchAt: null, lastKrlVersion: null }).where(eq(sshHosts.id, hostId));
     const res = await app.inject({ method: 'POST', url: '/api/v1/external/ssh/krl', payload: { host_id: FQDN } });
     expect(res.statusCode).toBe(200);
     expect(res.headers['x-krl-version']).toBe(version);
     const h = await hostRow();
     expect(h.lastKrlVersion).toBe(version);
-    expect(new Date(h.lastKrlFetchAt).getTime()).toBeGreaterThan(Date.now() - 10_000);
+    expect(new Date(h.lastKrlFetchAt!).getTime()).toBeGreaterThan(Date.now() - 10_000);
   });
 
   it('stamps last_krl_fetch_at on 304 without touching last_krl_version', async () => {
     const staleTime = new Date(Date.now() - 3 * 3600_000);
-    await db.update(sshHosts).set({ lastKrlFetchAt: staleTime, lastKrlVersion: version } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ lastKrlFetchAt: staleTime, lastKrlVersion: version }).where(eq(sshHosts.id, hostId));
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/external/ssh/krl',
@@ -118,7 +118,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
     });
     expect(res.statusCode).toBe(304);
     const h = await hostRow();
-    expect(new Date(h.lastKrlFetchAt).getTime()).toBeGreaterThan(Date.now() - 10_000);
+    expect(new Date(h.lastKrlFetchAt!).getTime()).toBeGreaterThan(Date.now() - 10_000);
     expect(h.lastKrlVersion).toBe(version);
   });
 
@@ -126,7 +126,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
     // Host previously saw an OLDER version (e.g. installed via the public path);
     // the conditional pull misses -> 200 restamps both. Conversely a matching
     // If-None-Match must NOT rewrite last_krl_version (order-independence guard).
-    await db.update(sshHosts).set({ lastKrlFetchAt: null, lastKrlVersion: 'sha256:older' } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ lastKrlFetchAt: null, lastKrlVersion: 'sha256:older' }).where(eq(sshHosts.id, hostId));
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/external/ssh/krl',
@@ -142,7 +142,7 @@ describe('BLK-01 ECIES KRL fetch stamping (contract)', () => {
   it('a healthy 304-only puller is no longer flagged by stalePullingHosts', async () => {
     // Simulate a puller whose last unconditional fetch is ancient but that 304s
     // every 15 minutes: before BLK-01 this host read as stale between hourly regens.
-    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(Date.now() - 3 * 3600_000) } as any).where(eq(sshHosts.id, hostId));
+    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(Date.now() - 3 * 3600_000) }).where(eq(sshHosts.id, hostId));
     const before = await getSshMonService().metrics(ctx);
     expect(before.stalePullingHosts).toBe(1);
 

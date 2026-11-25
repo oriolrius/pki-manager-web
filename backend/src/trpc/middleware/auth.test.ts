@@ -4,6 +4,8 @@
  * Tests for tRPC auth middleware.
  * Integration tests require Keycloak to be running.
  */
+import { testContext } from '../../test/context.js';
+import { TRPCError } from '@trpc/server';
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import {
@@ -19,16 +21,7 @@ import type { Context } from '../context.js';
 
 // Mock context for testing
 function createMockContext(authHeader?: string): Context {
-  return {
-    req: {
-      headers: {
-        authorization: authHeader,
-      },
-    } as any,
-    res: {} as any,
-    db: {} as any,
-    user: undefined,
-  };
+  return testContext({ headers: { authorization: authHeader } });
 }
 
 // Keycloak test configuration
@@ -184,39 +177,39 @@ describe('Auth Middleware Integration Tests (requires Keycloak)', () => {
     if (!keycloakAvailable) return;
 
     const ctx = createMockContext(`Bearer ${userToken}`);
-    let capturedCtx: any;
+    let capturedCtx: AuthenticatedContext | undefined;
 
     await authMiddlewareHandler({
       ctx,
-      next: (opts: any) => {
+      next: (opts) => {
         capturedCtx = opts?.ctx;
         return Promise.resolve({ ok: true });
       },
     });
 
     expect(capturedCtx).toBeDefined();
-    expect(capturedCtx.user).toBeDefined();
-    expect(capturedCtx.user.sub).toBeDefined();
-    expect(capturedCtx.user.roles).toContain('user');
+    expect(capturedCtx!.user).toBeDefined();
+    expect(capturedCtx!.user.sub).toBeDefined();
+    expect(capturedCtx!.user.roles).toContain('user');
   });
 
   it('should accept valid admin token and extract admin role', async () => {
     if (!keycloakAvailable) return;
 
     const ctx = createMockContext(`Bearer ${adminToken}`);
-    let capturedCtx: any;
+    let capturedCtx: AuthenticatedContext | undefined;
 
     await authMiddlewareHandler({
       ctx,
-      next: (opts: any) => {
+      next: (opts) => {
         capturedCtx = opts?.ctx;
         return Promise.resolve({ ok: true });
       },
     });
 
     expect(capturedCtx).toBeDefined();
-    expect(capturedCtx.user).toBeDefined();
-    expect(capturedCtx.user.roles).toContain('admin');
+    expect(capturedCtx!.user).toBeDefined();
+    expect(capturedCtx!.user.roles).toContain('admin');
     // Admin may or may not have 'user' role depending on Keycloak config
   });
 });
@@ -273,7 +266,7 @@ describe('Role Middleware Integration Tests (requires Keycloak)', () => {
     let authenticatedCtx: AuthenticatedContext | undefined;
     await authMiddlewareHandler({
       ctx,
-      next: (opts: any) => {
+      next: (opts) => {
         authenticatedCtx = opts?.ctx;
         return Promise.resolve({ ok: true });
       },
@@ -292,7 +285,7 @@ describe('Role Middleware Integration Tests (requires Keycloak)', () => {
     let authenticatedCtx: AuthenticatedContext | undefined;
     await authMiddlewareHandler({
       ctx,
-      next: (opts: any) => {
+      next: (opts) => {
         authenticatedCtx = opts?.ctx;
         return Promise.resolve({ ok: true });
       },
@@ -312,7 +305,7 @@ describe('Role Middleware Integration Tests (requires Keycloak)', () => {
     let authenticatedCtx: AuthenticatedContext | undefined;
     await authMiddlewareHandler({
       ctx,
-      next: (opts: any) => {
+      next: (opts) => {
         authenticatedCtx = opts?.ctx;
         return Promise.resolve({ ok: true });
       },
@@ -371,12 +364,12 @@ describe('Admin Role Middleware Integration Tests (requires Keycloak)', () => {
    * Helper to simulate admin role check middleware behavior
    * This replicates the logic from init.ts adminRoleMiddleware
    */
-  async function simulateAdminProcedure(ctx: Context): Promise<any> {
+  async function simulateAdminProcedure(ctx: Context) {
     // First apply auth middleware
     let authenticatedCtx: AuthenticatedContext | undefined;
     await authMiddlewareHandler({
       ctx,
-      next: (opts: any) => {
+      next: (opts) => {
         authenticatedCtx = opts?.ctx;
         return Promise.resolve();
       },
@@ -408,8 +401,9 @@ describe('Admin Role Middleware Integration Tests (requires Keycloak)', () => {
     // Verify it's a FORBIDDEN error
     try {
       await simulateAdminProcedure(ctx);
-    } catch (error: any) {
-      expect(error.code).toBe('FORBIDDEN');
+    } catch (error) {
+      if (!(error instanceof TRPCError)) throw error;
+        expect(error.code).toBe('FORBIDDEN');
     }
   });
 
