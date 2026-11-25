@@ -13,7 +13,10 @@ PKI Manager uses OpenID Connect (OIDC) for authentication. Keycloak serves as th
 
 ## Prerequisites
 
-- Keycloak server (version 20+) accessible via HTTPS
+- Keycloak server accessible via HTTPS. The repository runs Keycloak 26: `26.5.2` in the
+  dev stack (`keycloak/docker-compose.yml`), and `26.0.5` in the demo stack
+  (`site/demo/compose.demo.yml`) and the end-to-end environment (`docker/docker-compose.e2e.yml`).
+  Other versions are not tested.
 - Admin access to Keycloak
 - PKI Manager deployed and accessible
 

@@ -104,6 +104,9 @@ async function run() {
     const caKeys = await client.createKeyPair({ keyAlgorithm: "RSA-2048", tags: ["spike-ca"] });
     created.priv = caKeys.privateKeyId;
     created.pub = caKeys.publicKeyId;
+    // Cosmian KMS 5.28 signs only with an Active issuer key (a new key pair is PreActive).
+    await client.activate(caKeys.privateKeyId);
+    await client.activate(caKeys.publicKeyId);
     const caCert = await client.certify({
       publicKeyId: caKeys.publicKeyId,
       subjectName: CA_SUBJECT,

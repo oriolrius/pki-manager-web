@@ -218,6 +218,49 @@ error client.pem: verification failed
 
 The certificate works for client authentication and is rejected as a server certificate.
 
+### Rules for names and validity
+
+The backend checks the request before it calls the KMS. A request that breaks a rule is refused
+with a message that names the rule. These rules are read from the code
+(`backend/src/crypto/validation.ts`, `backend/src/services/certificate.service.ts` and
+`backend/src/trpc/schemas.ts`, the request schema in `backend/src/rest/routes/certificate.routes.ts`);
+they apply to the form and to the API.
+
+For every type:
+
+- CN: 1 to 64 characters. O: 1 to 64 characters. C: exactly 2 characters. OU: up to 64
+  characters. ST and L: up to 128 characters in the web UI, up to 64 in the REST API.
+- Validity: 1 to 825 days.
+- Each entry of the Email Addresses list must be an email address.
+
+For `server` and `dual` certificates, the CN and each DNS name must be a domain name:
+
+- 253 characters or less (and the CN 64 or less), with at least two labels:
+  `portal.acme.example` is accepted, `portal` and `localhost` are refused.
+- Each label is 1 to 63 characters of letters, digits and hyphens, and starts and ends with a
+  letter or a digit. An underscore is refused.
+- A wildcard is accepted only as the full first label, followed by at least two labels:
+  `*.acme.example` is accepted; `www.*.acme.example`, `*.example` and `*` are refused.
+- Each IP address must be an IPv4 address (four numbers from 0 to 255) or an IPv6 address.
+
+For the other types:
+
+| Type | Rules |
+|---|---|
+| `client` | The CN is an email address, a user name (letters, digits, `_` and `-`), or a host name. Validity up to 730 days. |
+| `email` | At least one email address, and all the addresses have the same domain. Validity up to 730 days. |
+| `code_signing` | O is required. The key is not RSA-2048: use RSA-4096, ECDSA P-256 or ECDSA P-384. |
+
+The DNS and IP lists are not checked for `client`, `email` and `code_signing` certificates.
+
+CSV bulk issuance (section 8) has its own copy of these checks. It uses the same domain name, IP
+address and validity rules, with these differences:
+
+- It does not check the length of the subject fields.
+- A `client` user name can also contain `.`.
+- The email addresses of an `email` row can have different domains.
+- A `code_signing` row accepts up to 1095 days, and CSV always makes RSA-2048 keys.
+
 ## 4. Download formats
 
 On the server certificate page select **Download**.

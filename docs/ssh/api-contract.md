@@ -5,7 +5,20 @@ Reference for the **automation / external** SSH endpoints that the Ansible
 download endpoints. (The operator-facing CRUD lives under `/api/v1/ssh` and is
 OIDC-authenticated; it is documented in Swagger at `/api/docs`.)
 
-All error responses use the standard shape: `{"error": {"code": "...", "message": "..."}}`.
+The handlers send errors in the standard shape: `{"error": {"code": "...", "message": "..."}}`.
+One exception: a body that does not match the route's JSON schema (for example, a missing
+required field) is refused by Fastify before the handler runs. That `400` has Fastify's own
+shape: `{"statusCode": 400, "code": "FST_ERR_VALIDATION", "error": "Bad Request", "message": "..."}`.
+
+### Errors of the token-scoped endpoints
+
+Every endpoint under `/api/v1/external/ssh/` except `/krl` checks the fleet token first:
+
+| Status | Code | Cause |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | no `Authorization: Bearer` header, or the token is unknown or revoked |
+| `403` | `FORBIDDEN` | the token's op-set does not include the operation of this endpoint |
+| `429` | `RATE_LIMITED` | more than 120 requests with this token in a fixed 60-second window (in-memory, per backend process) |
 
 ## Authentication
 
@@ -30,11 +43,27 @@ Content-Type: application/json
 
 { "fqdn": "server.example.com",
   "addresses": ["10.0.0.5"],
-  "opensshHostPubkey": "ssh-ed25519 AAAA… root@server",
+  "opensshHostPubkey": "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBMJpWK6CqtAoS4olpmTzXiTn/IZvxFmJxzfxCp1zai3lkeBwDIGSQkxOPhH2C7KjDD2SbxHzE6bT08vlnIBg5wM= root@server",
   "validForSeconds": 31536000 }                    # optional (default +52w)
 ```
 → `200 { "hostId", "certOpenssh", "serial", "keyId", "validBefore" }`.
 The host is auto-registered on first call. `source = automation`.
+
+The host key must be `ecdsa-sha2-nistp256` (the content of `/etc/ssh/ssh_host_ecdsa_key.pub`).
+The same key is the subject of the host certificate and the key that the encrypted KRL
+(`POST /krl`) is encrypted to, and ECIES needs a P-256 key. Any other key type is refused
+with `400 SSH_ERROR`:
+
+```json
+{"error":{"code":"SSH_ERROR","message":"SSH host keys must be ecdsa-sha2-nistp256 — paste /etc/ssh/ssh_host_ecdsa_key.pub (got 'ssh-ed25519'). The host certificate and encrypted KRL distribution both require a P-256 key."}}
+```
+
+| Status | Code | Cause |
+|---|---|---|
+| `400` | `VALIDATION_ERROR` | the body fails the Zod schema (for example, an invalid `fqdn`) |
+| `400` | `SSH_ERROR` | the service refused or failed: host key not `ecdsa-sha2-nistp256`, not an OpenSSH public key, host offboarded, no active Host CA in the token's zone, KMS error. `message` gives the cause. |
+
+Plus the token errors above and the Fastify schema `400`.
 
 ### `POST /api/v1/external/ssh/sign-user`
 ```http
@@ -47,6 +76,15 @@ The host is auto-registered on first call. `source = automation`.
   "validForSeconds": 604800 }                      # optional (default +1w)
 ```
 → `200 { "identityId", "certOpenssh", "serial", "keyId", "validBefore" }`.
+User keys can be `ssh-ed25519` or `ecdsa-sha2-nistp256`.
+
+| Status | Code | Cause |
+|---|---|---|
+| `400` | `VALIDATION_ERROR` | the body fails the Zod schema (for example, an invalid principal name or CIDR) |
+| `403` | `TOKEN_LIMIT` | the request is outside the token limits (see below) |
+| `400` | `SSH_ERROR` | the service refused or failed: not an OpenSSH public key, identity disabled, identity not entitled to a requested principal, no active User CA in the token's zone, KMS error. `message` gives the cause. |
+
+Plus the token errors above and the Fastify schema `400`.
 
 **Token limits (optional, set at mint time).** A `sign-user` token can carry:
 
@@ -69,13 +107,21 @@ POST /api/v1/ssh/tokens          # OIDC (operator) — or trpc.ssh.token.mint
 ```
 
 ### `POST /api/v1/external/ssh/register-host-pubkey`
-Register the host's ECIES key (enables encrypted KRL delivery). Returns `501`
-unless the backend runs with `SSH_ECIES_ENABLED=true`.
+Token op: `register-host-pubkey`. Confirms that the host can receive the encrypted KRL. No new
+key is made: the host key on file (from `sign-host`) is the ECIES key.
 ```http
-{ "fqdn": "server.example.com" }
+{ "fqdn": "server.example.com" }                 # "host_id" is accepted as an alias
 ```
-→ `200 { "hostId", "ready", "keyAlgorithm", "fingerprint" }`
-(the host must already have an `ecdsa-sha2-nistp256` host key on file; otherwise `409 ECIES_KEY_UNSUPPORTED`).
+→ `200 { "hostId", "ready", "keyAlgorithm", "fingerprint" }`.
+
+| Status | Code | Cause |
+|---|---|---|
+| `501` | `NOT_IMPLEMENTED` | the backend does not run with `SSH_ECIES_ENABLED=true` |
+| `400` | `VALIDATION_ERROR` | no `fqdn`, or not a valid host name |
+| `404` | `NOT_FOUND` | no host with this FQDN in the token's zone |
+| `409` | `ECIES_KEY_UNSUPPORTED` | the host key on file is not `ecdsa-sha2-nistp256`, or the host has no key |
+
+Plus the token errors above.
 
 ### `GET /api/v1/external/ssh/hosts/:fqdn/auth-principals`
 Token op: `get-principals`. Returns the host's rendered `AuthorizedPrincipalsFile`
@@ -91,6 +137,14 @@ map (the host is looked up by FQDN **in the token's zone**):
 `/etc/ssh/auth_principals/<account>`. `stale` is `true` when these files
 changed (a mapping was added or removed) after the last confirmed push. A host
 certificate issue/renew never makes a host stale.
+
+| Status | Code | Cause |
+|---|---|---|
+| `400` | `VALIDATION_ERROR` | `:fqdn` is not a valid host name |
+| `404` | `NOT_FOUND` | no host with this FQDN in the token's zone |
+| `400` | `SSH_ERROR` | the render failed; `message` gives the cause |
+
+Plus the token errors above.
 
 **Canonical `sha256`** (stable; automation computes it the same way): for each
 account in ascending byte order of its name, append
@@ -115,8 +169,16 @@ longer stale.
 → `409 { "error": { "code": "SHA256_MISMATCH", … }, "currentSha256": "<64 hex>" }`
 when the hash is not the hash of the **current** render (the mappings changed
 after your GET): nothing changes; fetch again, install, acknowledge again.
-`400` bad body/FQDN · `401/403` token · `404` host not in the token's zone.
-Every attempt writes an `ssh.principal.mark_pushed` audit row (success or failure).
+
+
+| Status | Code | Cause |
+|---|---|---|
+| `400` | `VALIDATION_ERROR` | `:fqdn` is not a valid host name, or `sha256` is not 64 hex characters |
+| `404` | `NOT_FOUND` | no host with this FQDN in the token's zone |
+| `409` | `SHA256_MISMATCH` | the hash is not the hash of the current render (see above) |
+| `400` | `SSH_ERROR` | the acknowledgement failed; `message` gives the cause |
+
+Plus the token errors above. Every attempt writes an `ssh.principal.mark_pushed` audit row (success or failure).
 
 ### `POST /api/v1/external/ssh/krl`  *(ECIES path; no token)*
 ```http
@@ -140,13 +202,23 @@ generation fails the endpoint answers `503 NO_KRL` (**no per-CA fallback**) and
 pullers keep their last-good KRL. Both 200 and 304 stamp the host's
 `last_krl_fetch_at` telemetry.
 
-| Status | Meaning |
-|---|---|
-| `200` | new/encrypted KRL | `304` | host already current |
-| `400` | malformed `host_id` | `404` | host not registered for distribution, or offboarded |
-| `409` | `AMBIGUOUS_HOST`: FQDN exists in several zones, send `zone` | | |
-| `401/403` | invalid / out-of-scope token (sign/register); `403 TOKEN_LIMIT` = sign-user limit exceeded | `429` | rate-limited |
-| `501` | ECIES path disabled | `503` | no CA / per-host KRL not initialized |
+This endpoint has no token, so it never returns `401` or `403`.
+
+| Status | Code | Meaning |
+|---|---|---|
+| `200` | | the encrypted KRL (`application/octet-stream`, header `X-KRL-Version`) |
+| `304` | | `If-None-Match` equals the current version: the host is current |
+| `429` | `RATE_LIMITED` | more than 120 requests from this IP address in a fixed 60-second window |
+| `501` | `NOT_IMPLEMENTED` | the backend does not run with `SSH_ECIES_ENABLED=true` |
+| `400` | `VALIDATION_ERROR` | no `host_id` in the body, or not a valid host name |
+| `404` | `NOT_FOUND` | the `zone` is unknown; the host is not registered or has no host key; the host is offboarded |
+| `409` | `AMBIGUOUS_HOST` | the FQDN exists in several zones: send `zone` |
+| `503` | `NO_KRL` | the per-host KRL is not initialized (its first generation failed), or no KRL exists (legacy per-CA path) |
+| `503` | `NO_CA` | legacy per-CA path only (`SSH_HOST_KRL_SERVE=false`): no active Host CA in the host's zone |
+| `404` | `ECIES_KEY_UNSUPPORTED` | the host key on file cannot receive ECIES (it is not P-256) |
+| `500` | `ENCRYPT_FAILED` | the ECIES encryption failed for another reason |
+
+The two encryption failures write an `ssh.krl.distribute` audit row with `status: failure`.
 
 Retryability: sign/register are **idempotent with an `Idempotency-Key`** and safe
 to retry; without it a retry mints a new serial. `/krl` is always safe to retry.

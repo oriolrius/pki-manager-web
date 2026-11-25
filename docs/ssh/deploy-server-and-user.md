@@ -52,7 +52,7 @@ Certificate validity windows **and** KRL freshness depend on an accurate clock, 
 | **Fleet token** `pkimg_…`, scoped to ONE Host CA | Correct ops (see §1). Store in Ansible Vault. |
 | `community.crypto` collection on the **Ansible controller** | `ansible-galaxy collection install -r ansible/requirements.yml` |
 | **NTP/chrony** on every server and client | Hard requirement (above). |
-| User has an SSH keypair; **only the public key** reaches the operator | ed25519 (default) or `ecdsa-sha2-nistp256`. |
+| User has an SSH keypair; **only the public key** reaches the operator | User key: ed25519 (default) or `ecdsa-sha2-nistp256`. Host keys are always `ecdsa-sha2-nistp256` (§2). |
 | Auth gate | With OIDC disabled the SSH REST/tRPC surface is fail-closed; set `ALLOW_UNAUTHENTICATED_SSH_CA=true` for local dev, else these endpoints return **403**. |
 
 ---
@@ -156,7 +156,7 @@ Live revocation is **OFF** by default — a plain run installs only an empty, fa
 |---|---|
 | Transport | Encrypted to the host's own key; signature-verified before install |
 | Signature verified? | **Yes** — composed-KRL Host-CA signature checked against `/etc/ssh/ssh-host-ca.pub` |
-| Host key type | switched to **`ecdsa-sha2-nistp256`** (ECIES is P-256 only) |
+| Host key type | **`ecdsa-sha2-nistp256`**, the same key as for the host certificate (ECIES is P-256 only) |
 | Backend flag | `SSH_ECIES_ENABLED=true` (**required**) |
 | Token ops | `sign-host`, `get-principals`, **`register-host-pubkey`** |
 
@@ -180,7 +180,7 @@ NTP is enforced on this path (`ssh_host_cert_require_timesync`, default `true`).
 
 - **A default run enables NO live revocation.** `ssh_host_cert_ecies_enabled` is `false`, so `RevokedKeys` is just an empty fail-closed placeholder until you enable the ECIES channel (§2.2).
 - **Unattended renewal stores the token on the host** (`0600`, `/etc/pki-manager/ssh-renew.env`) so it can re-mint itself; a compromised host can then sign host certs for any FQDN under that Host CA. Set `ssh_host_cert_renew_enabled: false` to renew by re-running the playbook from the controller instead.
-- **ECIES is P-256-only:** an ed25519 host key gets `409 ECIES_KEY_UNSUPPORTED` on `register-host-pubkey`. The role always uses an ecdsa host key (`ssh_host_cert_key_type: ecdsa`), and the backend rejects any other host key type — do **not** force an ed25519 key. The role accepts 200/404/409/501 from the URI call but then **asserts status == 200**, so a backend without `SSH_ECIES_ENABLED` (501) or a host not yet signed (404) fails the play with an explicit message.
+- **Host keys are `ecdsa-sha2-nistp256` only.** One key is the subject of the host certificate and the ECIES recipient of the KRL, and ECIES is P-256 only. `sign-host` refuses any other key type with `400 SSH_ERROR`, and `register-host-pubkey` answers `409 ECIES_KEY_UNSUPPORTED` when the key on file is not P-256. The role uses an ecdsa host key (`ssh_host_cert_key_type: ecdsa`, 256 bits) — do **not** set an ed25519 key. The role accepts 200/404/409/501 from the URI call but then **asserts status == 200**, so a backend without `SSH_ECIES_ENABLED` (501) or a host not yet signed (404) fails the play with an explicit message.
 - **Init-less containers:** set `ssh_host_cert_reload_method: command` so sshd is reloaded via SIGHUP instead of the service module.
 - **Never hand-edit `60-ssh-ca.conf`.** It is fetched verbatim from `GET /ssh/hosts/<id>/sshd-config` and is algorithm-aware (an ecdsa/ECIES host gets ecdsa `HostKey`/`HostCertificate` paths automatically). Re-render server-side.
 
