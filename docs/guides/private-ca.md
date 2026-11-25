@@ -1,13 +1,13 @@
 # Build a private CA and issue certificates
-<!-- tested-with: 3.15.0 -->
+<!-- tested-with: 3.17.0+298b92d5 -->
 
 Acme Example Ltd runs internal HTTPS services (`portal.acme.example`, a wiki, a VPN). It wants
 its own CA, so that browsers and tools inside the company trust these services without a
 public CA. This guide builds that CA and issues, renews and revokes certificates. Every step
 shows the UI and then checks the result with `openssl`, `keytool` or `curl`.
 
-Every step was run on a demo stack with release **3.15.0** (see [Install PKI Manager and log in](../get-started/install.md)
-to install one). You log in as an `admin` user. The `user` role can issue and download, but it
+Every step was run on a demo stack with a build of `main` at commit `298b92d5` (after release
+**3.17.0**; see [Install PKI Manager and log in](../get-started/install.md) to install one). You log in as an `admin` user. The `user` role can issue and download, but it
 cannot create CAs or revoke.
 
 PKI Manager creates **root CAs** only. Each root CA is its own trust anchor and signs end-entity
@@ -73,8 +73,8 @@ openssl x509 -in ca.pem -noout -subject -issuer -dates -ext basicConstraints,key
 ```text
 subject=CN = Acme Internal Root CA, OU = IT Security, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
 issuer=CN = Acme Internal Root CA, OU = IT Security, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
-notBefore=Nov 24 09:57:44 2026 GMT
-notAfter=Nov 21 09:57:44 2036 GMT
+notBefore=Nov 25 20:54:23 2026 GMT
+notAfter=Nov 22 20:54:23 2036 GMT
 X509v3 Basic Constraints: critical
     CA:TRUE
 X509v3 Key Usage: critical
@@ -84,9 +84,6 @@ X509v3 Key Usage: critical
 - `subject` equals `issuer`: the CA is self-signed.
 - `CA:TRUE` and `Certificate Sign, CRL Sign`: it can sign certificates and CRLs.
 - The key is RSA 4096 (`openssl x509 -in ca.pem -noout -text` shows `Public-Key: (4096 bit)`).
-
-> **Note:** the form text lists `digitalSignature` in the CA key usage. The issued CA certificate
-> has only `Certificate Sign, CRL Sign`.
 
 Where to get the CA certificate later:
 
@@ -150,9 +147,9 @@ openssl x509 -in portal.pem -noout -subject -issuer -serial -dates \
 ```text
 subject=CN = portal.acme.example, OU = Web Platform, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
 issuer=CN = Acme Internal Root CA, OU = IT Security, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
-serial=0B5DDC8D87601CAF3273FDA9A8673C52E0F5F355
-notBefore=Nov 24 09:57:46 2026 GMT
-notAfter=Nov 24 09:57:46 2027 GMT
+serial=291D4370A05BAA6DAC883EB617B3C23F74597775
+notBefore=Nov 25 20:54:32 2026 GMT
+notAfter=Nov 25 20:54:32 2027 GMT
 X509v3 Basic Constraints: critical
     CA:FALSE
 X509v3 Key Usage: critical
@@ -163,7 +160,7 @@ X509v3 Subject Alternative Name:
     DNS:portal.acme.example, DNS:www.portal.acme.example, IP Address:127.0.0.1
 X509v3 CRL Distribution Points:
     Full Name:
-      URI:http://localhost:47300/crl/eb46f8f5-379b-4d5a-892e-b3c92b5c6dcf.crl
+      URI:http://localhost:47300/crl/7e0ceb52-e865-4372-9fb1-bd570c7274e0.crl
 ```
 
 Check the chain:
@@ -212,6 +209,7 @@ X509v3 Key Usage: critical
 X509v3 Extended Key Usage:
     TLS Web Client Authentication
 client.pem: OK
+CN = maria.puig, OU = Finance, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
 error 26 at 0 depth lookup: unsupported certificate purpose
 error client.pem: verification failed
 ```
@@ -286,7 +284,7 @@ stored**: save it with the file.
 ![PKCS#12 selected, with the encrypt option and the export password](img/private-ca/09-download-pkcs12.png)
 
 Download `PKCS#12`, `PEM with Private Key` and `JKS Keystore` with the password `Acme-Export-1`.
-The files are named like `portal.acme.example-0b5ddc8d.p12` (CN and the first 8 characters of
+The files are named like `portal.acme.example-291d4370.p12` (CN and the first 8 characters of
 the serial). Rename them `portal.p12`, `portal-key.zip` and `portal.jks`.
 
 ![Certificate page after the JKS download, with the password shown above](img/private-ca/10-after-jks.png)
@@ -308,7 +306,7 @@ PKCS7 Data
 Shrouded Keybag: pbeWithSHA1And3-KeyTripleDES-CBC, Iteration 2048
 
 subject=CN = portal.acme.example, OU = Web Platform, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
-serial=0B5DDC8D87601CAF3273FDA9A8673C52E0F5F355
+serial=291D4370A05BAA6DAC883EB617B3C23F74597775
 ```
 
 The file has two certificate bags (server + CA) and one encrypted private key (`Shrouded Keybag`).
@@ -322,8 +320,8 @@ keytool -list -v -keystore portal.jks -storepass Acme-Export-1
 ```text
 Keystore type: JKS
 Your keystore contains 1 entry
-portal.acme.example, Nov 24, 2026, PrivateKeyEntry,
 Alias name: portal.acme.example
+Creation date: Nov 25, 2026
 Entry type: PrivateKeyEntry
 Certificate chain length: 2
 Owner: O=Acme Example Ltd, L=Barcelona, ST=Barcelona, C=ES, OU=Web Platform, CN=portal.acme.example
@@ -336,13 +334,13 @@ Owner: O=Acme Example Ltd, L=Barcelona, ST=Barcelona, C=ES, OU=IT Security, CN=A
 
 ```bash
 unzip portal-key.zip
-openssl pkey -in portal.acme.example-0b5ddc8d.priv -passin pass:Acme-Export-1 -pubout | openssl sha256
-openssl x509 -in portal.acme.example-0b5ddc8d.pem -noout -pubkey | openssl sha256
+openssl pkey -in portal.acme.example-291d4370.priv -passin pass:Acme-Export-1 -pubout | openssl sha256
+openssl x509 -in portal.acme.example-291d4370.pem -noout -pubkey | openssl sha256
 ```
 
 ```text
-SHA256(stdin)= 6f5d57b756b8809f560f31815f2f8fe0a5bdc6e100a185fdc25d815ce86f907d
-SHA256(stdin)= 6f5d57b756b8809f560f31815f2f8fe0a5bdc6e100a185fdc25d815ce86f907d
+SHA256(stdin)= fa344d4e567a98bb4d1ac17a322e2caef416be8d57a930722e1ad7c0849daa9b
+SHA256(stdin)= fa344d4e567a98bb4d1ac17a322e2caef416be8d57a930722e1ad7c0849daa9b
 ```
 
 The ZIP has a `.pem` (certificate) and a `.priv` (key, `BEGIN ENCRYPTED PRIVATE KEY`). Both
@@ -354,7 +352,7 @@ Start a test TLS server with the certificate and the key from the ZIP:
 
 ```bash
 openssl s_server -accept 48443 -www -cert portal.pem \
-  -key portal.acme.example-0b5ddc8d.priv -pass pass:Acme-Export-1
+  -key portal.acme.example-291d4370.priv -pass pass:Acme-Export-1
 ```
 
 In a second terminal, call it by name. `--resolve` maps the name to `127.0.0.1`:
@@ -419,13 +417,13 @@ for f in portal.pem portal2.pem; do echo $f; openssl x509 -in $f -noout -serial 
 
 ```text
 portal.pem
-serial=0B5DDC8D87601CAF3273FDA9A8673C52E0F5F355
-notBefore=Nov 24 09:57:46 2026 GMT
-notAfter=Nov 24 09:57:46 2027 GMT
+serial=291D4370A05BAA6DAC883EB617B3C23F74597775
+notBefore=Nov 25 20:54:32 2026 GMT
+notAfter=Nov 25 20:54:32 2027 GMT
 portal2.pem
-serial=3941780C958BDD7E1975876E1AF01CBB3A5FBF46
-notBefore=Nov 24 10:02:38 2026 GMT
-notAfter=Nov 24 10:02:38 2027 GMT
+serial=0349BB30EB624410219704645919EB25C4C05723
+notBefore=Nov 25 20:54:50 2026 GMT
+notAfter=Nov 25 20:54:50 2027 GMT
 ```
 
 What to know:
@@ -460,36 +458,41 @@ The page now shows `REVOKED` and the revocation date and reason. A revoked certi
 Fetch the CRL from the URL that is inside the certificate. No login is needed.
 
 ```bash
-curl -s -o crl.pem -D - http://localhost:47300/crl/eb46f8f5-379b-4d5a-892e-b3c92b5c6dcf.crl | head -8
+curl -s -o crl.pem -D - http://localhost:47300/crl/7e0ceb52-e865-4372-9fb1-bd570c7274e0.crl | head -8
 openssl crl -in crl.pem -noout -text
 ```
 
 ```text
 HTTP/1.1 200 OK
+vary: Origin
+access-control-allow-credentials: true
 content-type: application/x-pem-file
-last-modified: Tue, 24 Nov 2026 10:03:16 GMT
-expires: Tue, 01 Dec 2026 10:03:16 GMT
-cache-control: public, max-age=604793
-...
+last-modified: Wed, 25 Nov 2026 20:54:57 GMT
+expires: Wed, 02 Dec 2026 20:54:57 GMT
+cache-control: public, max-age=604068
+content-length: 1173
 Certificate Revocation List (CRL):
         Version 2 (0x1)
         Signature Algorithm: sha384WithRSAEncryption
         Issuer: CN = Acme Internal Root CA, OU = IT Security, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
-        Last Update: Nov 24 10:03:16 2026 GMT
-        Next Update: Dec  1 10:03:16 2026 GMT
+        Last Update: Nov 25 20:54:57 2026 GMT
+        Next Update: Dec  2 20:54:57 2026 GMT
         CRL extensions:
             X509v3 CRL Number:
-                1
+                2
+            X509v3 Authority Key Identifier:
+                DB:3B:1E:22:A4:35:52:BE:54:8D:38:97:6A:A4:F0:04:EB:D1:DA:AB
 Revoked Certificates:
-    Serial Number: 3941780C958BDD7E1975876E1AF01CBB3A5FBF46
-        Revocation Date: Nov 24 10:03:16 2026 GMT
+    Serial Number: 0349BB30EB624410219704645919EB25C4C05723
+        Revocation Date: Nov 25 20:54:57 2026 GMT
         CRL entry extensions:
             X509v3 CRL Reason Code:
                 Superseded
 ```
 
-The CRL lists the serial of the renewed certificate (`3941…FBF46`) with the reason `Superseded`.
-It is valid for 7 days (`Next Update`). The same URL with `.der` instead of `.crl` gives the CRL in DER format (`application/pkix-crl`).
+The CRL lists the serial of the renewed certificate (`0349…5723`) with the reason `Superseded`.
+Its number is 2: number 1 is the empty CRL that the CA got when it was created. The two CORS
+headers are there because the demo sets `FRONTEND_URL`. The CRL is valid for 7 days (`Next Update`). The same URL with `.der` instead of `.crl` gives the CRL in DER format (`application/pkix-crl`).
 
 > **Note:** since 3.16.1, each new CA gets an empty, signed CRL at creation. The URL in the
 > certificates works before the first revocation, so a client that must find a CRL (strict mode)

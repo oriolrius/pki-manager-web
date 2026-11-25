@@ -1,8 +1,9 @@
 # Automate issuance: integrations, tokens and SCEP
-<!-- tested-with: 3.15.0 -->
+<!-- tested-with: 3.17.0+298b92d5 -->
 
 This guide shows how a machine, not a person, gets certificates from PKI Manager.
-Every command and screenshot below was run against a demo stack with release **3.15.0**.
+Every command and screenshot below was run against a demo stack with a build of `main` at
+commit `298b92d5` (after release **3.17.0**). The SCEP gateway is the published image `3.17.0`.
 Output is trimmed. Ids, serials and dates are examples; yours differ.
 
 The reference for every endpoint is [docs/api/integrations.md](../api/integrations.md).
@@ -215,9 +216,7 @@ the UI:
 
 ![Certificates list filtered by the CI certificate, which now has the revoked icon](img/integrations/15-ci-certificate.png)
 
-> **Doc mismatch found while writing this guide:** the API reference says the default
-> revocation `reason` is `cessationOfOperation`. The backend stores `unspecified` when you
-> send no reason (`backend/src/rest/routes/external.routes.ts`), and any text is accepted.
+> **Note:** when you send no `reason`, the backend stores `unspecified`. Any text is accepted.
 > Send an RFC 5280 reason name yourself.
 
 ## 3. See a policy rejection and its audit row
@@ -249,9 +248,8 @@ Other rejections that were run, all `400`:
 | `scep` token, `durationDays: 365` | `INVALID_VALIDITY` | `SCEP validity is limited to 90 days` |
 | `scep` token, CSR with `serverAuth` EKU | `CSR_PROFILE_REJECTED` | `SCEP requires clientAuth-only EKU` |
 
-> **Doc mismatch found while writing this guide:** the API reference says `durationDays` is
-> "clamped to 1 to 825". The request schema rejects a larger value with `400` before the
-> clamp can apply. Send 825 or less.
+> **Note:** a `durationDays` value above 825 is not reduced to 825. The request is rejected
+> with `400`. Send 825 or less.
 
 ### Where the rejection is logged
 
@@ -343,7 +341,7 @@ What was run, and what was not:
 | Item | Status |
 |---|---|
 | SCEP integration in the UI | run |
-| Gateway from the published image `ghcr.io/oriolrius/pki-manager-web/scep:3.15.0` | run |
+| Gateway from the published image `ghcr.io/oriolrius/pki-manager-web/scep:3.17.0` | run |
 | RA provisioned by the backend on first start | run |
 | `GetCACaps`, `GetCACert` | run |
 | One device enrollment, certificate checked with OpenSSL | run |
@@ -458,9 +456,14 @@ PASS
 The gateway log shows the issued serial, and the same serial again for the retry:
 
 ```text
-{"level":"INFO","msg":"scep.enroll","status":"success","serial":"3faea358180744c6502edb5da55706f84c2c48dd"}
-{"level":"INFO","msg":"scep.enroll","status":"success","serial":"3faea358180744c6502edb5da55706f84c2c48dd"}
+{"level":"INFO","msg":"scep.enroll","status":"success","serial":"18fb7bee70904921dc90b599ee30cc76e3ab12a"}
+{"level":"INFO","msg":"scep.enroll","status":"success","serial":"18fb7bee70904921dc90b599ee30cc76e3ab12a"}
 ```
+
+> **Note:** the gateway `3.17.0` writes the serial without a leading zero. In this run the
+> certificate serial is `018fb7bee70904921dc90b599ee30cc76e3ab12a` (40 characters) and the log
+> has 39. The gateway built from `main` writes the full serial. The search in the next step
+> finds the certificate with both forms.
 
 > **Note:** the test makes the device certificate with `CN=device-1`. It stays in the CA
 > as a real certificate. Use an isolated CA, as the README says.
@@ -475,8 +478,8 @@ The test does not save the certificate, so fetch it from PKI Manager. In the UI,
 Or use the API (`$ADMIN` is a management token; `format=pem` returns base64 in a JSON field):
 
 ```bash
-CERT_ID=$(curl -s "$API/api/v1/certificates?limit=100" -H "Authorization: Bearer $ADMIN" \
-  | jq -r '.items[] | select(.serialNumber=="3faea358180744c6502edb5da55706f84c2c48dd") | .id')
+CERT_ID=$(curl -s "$API/api/v1/certificates?search=18fb7bee70904921dc90b599ee30cc76e3ab12a" \
+  -H "Authorization: Bearer $ADMIN" | jq -r '.items[0].id')
 curl -s "$API/api/v1/certificates/$CERT_ID/download?format=pem" -H "Authorization: Bearer $ADMIN" \
   | jq -r .data | base64 -d > device.crt
 curl -s $B/ca-bundle -H "Authorization: Bearer $SCEP_TOKEN" | jq -r .certificatePem > device-ca.pem
@@ -489,8 +492,8 @@ openssl x509 -in device.crt -noout -subject -issuer -dates -ext extendedKeyUsage
 device.crt: OK
 subject=CN = device-1
 issuer=CN = Integrations Demo Device CA, C = ES, O = Example Corp
-notBefore=Nov 24 10:01:21 2026 GMT
-notAfter=Feb 22 10:01:21 2027 GMT
+notBefore=Nov 25 21:11:58 2026 GMT
+notAfter=Feb 23 21:11:58 2027 GMT
 X509v3 Extended Key Usage:
     TLS Web Client Authentication
 X509v3 Basic Constraints: critical
@@ -511,7 +514,7 @@ A wrong challenge is rejected and no certificate is issued. The test fails with
 
 The same policy applies if you call the backend directly with the SCEP token (see the table
 in part 3): validity above 90 days gives `INVALID_VALIDITY`, and a non-`clientAuth` CSR gives
-`CSR_PROFILE_REJECTED`. The SCEP integration also writes `scep.ra.provision`,
+`CSR_PROFILE_REJECTED`. The SCEP integration also writes `scep.ra.provision`, `scep.ra.renew`,
 `scep.ra.sign` and `scep.ra.decrypt` rows in the audit log, found with the same `entityId`
 filter as in part 3.
 

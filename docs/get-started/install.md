@@ -1,8 +1,10 @@
 # Install PKI Manager and log in
-<!-- tested-with: 3.15.0 -->
+<!-- tested-with: 3.17.0+298b92d5 -->
 
 This guide runs PKI Manager with Docker Compose and the published images. It takes about
-ten minutes. Every step below was run on a clean machine with release **3.15.0**.
+ten minutes. Every step below was run in a clean clone with a build of `main` at commit
+`298b92d5` (after release **3.17.0**). That run used images built from the commit, so it did not
+run `docker compose pull`.
 
 You get three containers:
 
@@ -28,7 +30,7 @@ Open `.env` and set these values. The defaults work on `localhost`.
 
 | Variable | Set it to | Why |
 |---|---|---|
-| `IMAGE_TAG` | a release, for example `3.15.0` | `latest` changes under you; pin a version. |
+| `IMAGE_TAG` | a release, for example `3.17.0` | `latest` changes under you; pin a version. |
 | `FRONTEND_EXTERNAL_PORT` / `BACKEND_EXTERNAL_PORT` | free ports (default `8080` / `3000`) | Host ports of the UI and the API. |
 | `CRL_DISTRIBUTION_URL` | a URL that **clients** can reach, ending in `/crl` | It is written into every certificate you issue, so set it before the first CA. |
 
@@ -95,7 +97,21 @@ Okta or Microsoft Entra ID. Two roles exist: `user` (view, issue, download) and 
    }
    ```
 
-3. `docker compose up -d --no-build --wait` again.
+3. Apply both changes:
+
+   ```bash
+   docker compose up -d --no-build --wait
+   docker compose restart frontend
+   ```
+
+   The first command starts the backend again with the new variables. It does not start the
+   frontend again, because only the content of `config.json` changed. The frontend container
+   reads the origins of its Content-Security-Policy from `config.json` when it starts. Without
+   the restart, the browser cannot reach the identity provider: the page stays on
+   "Redirecting to login..." and the browser console shows `Refused to connect ... because it
+   violates the following Content Security Policy directive: "connect-src 'self' ..."`.
+   After the restart, `docker compose logs frontend` shows the new origins
+   (`CSP connect-src/frame-src: 'self' http://localhost:3000 https://keycloak.example.com`).
 
 The client `pki-web` is a **public** client with PKCE (no client secret). Its redirect URI is
 `<your UI URL>/callback`. Step-by-step setup: [Keycloak](../operations/keycloak.md), and
