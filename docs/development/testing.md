@@ -39,22 +39,37 @@ The backend uses `OIDC_DISCOVERY_BASE_URL` to fetch OIDC configuration from the 
 The `docker-compose.e2e.yml` provides a complete isolated environment for testing:
 
 ```bash
-# 1. Build images with latest code (if you made changes)
-docker build --target backend -t ghcr.io/oriolrius/pki-manager-web/backend:latest -f docker/Dockerfile .
-docker build --target frontend -t ghcr.io/oriolrius/pki-manager-web/frontend:latest -f docker/Dockerfile .
+# 1. Build the images from your checkout
+docker build --target backend -t ghcr.io/oriolrius/pki-manager-web/backend:e2e -f docker/Dockerfile .
+docker build --target frontend -t ghcr.io/oriolrius/pki-manager-web/frontend:e2e -f docker/Dockerfile .
 
-# 2. Start the E2E environment (includes Keycloak with pre-configured test users)
-docker compose -f docker/docker-compose.e2e.yml up -d
+# 2. Start the E2E environment (Keycloak with the test users, KMS, backend, frontend)
+#    and wait until every service is healthy (~60-90 seconds for Keycloak)
+IMAGE_TAG=e2e docker compose -f docker/docker-compose.e2e.yml up -d --wait
 
-# 3. Wait for all services to be healthy (~60-90 seconds for Keycloak)
-docker compose -f docker/docker-compose.e2e.yml ps
-
-# 4. Run the RBAC tests
+# 3. Run the RBAC tests
 pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
 
-# 5. Cleanup when done
+# 4. Cleanup when done
 docker compose -f docker/docker-compose.e2e.yml down -v
 ```
+
+Without `IMAGE_TAG`, Compose uses the published `latest` images. The stack uses the same
+Cosmian KMS version and `kms/kms.toml` as `docker/docker-compose.yml`, and the same Keycloak
+version as the dev stack. The containers read the mounted files (`kms/kms.toml`,
+`docker/keycloak-e2e-realm.json`, `docker/config.e2e.json`): with a checkout made under
+`umask 077`, make them world-readable first (`chmod a+r`).
+
+### E2E in CI
+
+The workflow `.github/workflows/e2e.yml` runs these steps on each pull request to `main` that
+changes the backend, the frontend, `docker/`, `tests/` or the Playwright configuration, and on
+manual dispatch. It builds the two images from the commit, starts the stack, and runs
+`tests/e2e-rbac.spec.ts`. When the tests fail, it uploads `playwright-report/` and
+`test-results/` as the artifact `playwright-report`.
+
+`tests/auth.spec.ts` and `tests/auth-m2m.spec.ts` need the dev stack (realm `pki-dev`), and
+`tests/e2e-production.spec.ts` needs a deployed instance: CI does not run them.
 
 ### E2E Test Users
 

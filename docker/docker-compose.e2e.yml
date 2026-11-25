@@ -23,7 +23,7 @@
 services:
   # Keycloak Identity Provider
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.5
+    image: quay.io/keycloak/keycloak:26.5.2  # same as the dev stack (keycloak/docker-compose.yml)
     container_name: pki-e2e-keycloak
     restart: unless-stopped
     ports:
@@ -51,16 +51,19 @@ services:
 
   # Cosmian KMS
   kms:
-    image: ghcr.io/cosmian/kms:5.12.0
+    # Same version and config-file mode as docker/docker-compose.yml.
+    image: ghcr.io/cosmian/kms:5.28.0
     container_name: pki-e2e-kms
     restart: unless-stopped
     networks:
       - pki-e2e-network
     volumes:
-      - kms-data:/root/cosmian-kms
+      - kms-data:/cosmian-kms/sqlite-data
+      - ../kms/kms.toml:/etc/cosmian/kms.toml:ro
     environment:
-      - KMS_PORT=9998
-      - RUST_LOG=info
+      - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
+    tmpfs:
+      - /tmp
 
   # Backend API
   backend:

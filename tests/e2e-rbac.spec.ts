@@ -138,9 +138,17 @@ async function loginAsUser(page: Page) {
 }
 
 /**
+ * Helper: Open the "PKI" menu of the top navigation (a <details> menu)
+ */
+async function openPkiMenu(page: Page) {
+  await page.locator('details[data-navigation-menu] > summary', { hasText: /^\s*PKI\s*$/ }).click();
+}
+
+/**
  * Helper: Navigate to CAs page
  */
 async function navigateToCAs(page: Page) {
+  await openPkiMenu(page);
   await page.getByRole('link', { name: /certificate authorities/i }).click();
   await expect(page).toHaveURL(/\/cas$/);
   await expect(page.getByRole('button', { name: /create ca/i })).toBeVisible({
@@ -152,6 +160,7 @@ async function navigateToCAs(page: Page) {
  * Helper: Navigate to Certificates page
  */
 async function navigateToCertificates(page: Page) {
+  await openPkiMenu(page);
   await page.getByRole('link', { name: /^certificates$/i }).click();
   await expect(page).toHaveURL(/\/certificates$/);
 }
@@ -265,9 +274,27 @@ async function expectForbidden(page: Page): Promise<boolean> {
   return (
     bodyText?.includes('FORBIDDEN') ||
     bodyText?.includes('Admin access required') ||
+    bodyText?.includes('Admin role required') ||
     bodyText?.includes('403') ||
     false
   );
+}
+
+/**
+ * Helper: click the confirm button of the dialog that an action opened, if one is shown.
+ * The delete actions use the shared confirm dialog (role="dialog"). The revoke actions use
+ * their own dialog: its confirm button is the last button with that name on the page.
+ */
+async function confirmAction(page: Page, name: RegExp, scope: 'dialog' | 'page') {
+  const button =
+    scope === 'dialog'
+      ? page.getByRole('dialog').getByRole('button', { name })
+      : page.getByRole('button', { name }).last();
+  const shown = await button
+    .waitFor({ state: 'visible', timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  if (shown) await button.click();
 }
 
 /**
@@ -626,11 +653,8 @@ test.describe('Production E2E - User Role Tests', () => {
       if (await revokeButton.isVisible()) {
         await revokeButton.click();
 
-        // If there's a confirmation dialog, confirm it
-        const confirmButton = page.getByRole('button', { name: /confirm/i });
-        if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await confirmButton.click();
-        }
+        // Confirm in the dialog that the action opened
+        await confirmAction(page, /^revoke ca$/i, 'page');
 
         await page.waitForTimeout(2000);
 
@@ -656,11 +680,8 @@ test.describe('Production E2E - User Role Tests', () => {
       if (await deleteButton.isVisible()) {
         await deleteButton.click();
 
-        // If there's a confirmation dialog, confirm it
-        const confirmButton = page.getByRole('button', { name: /confirm/i });
-        if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await confirmButton.click();
-        }
+        // Confirm in the dialog that the action opened
+        await confirmAction(page, /^delete$/i, 'dialog');
 
         await page.waitForTimeout(2000);
 
@@ -781,11 +802,8 @@ test.describe('Production E2E - Certificate RBAC Tests', () => {
       if (await revokeButton.isVisible()) {
         await revokeButton.click();
 
-        // Handle confirmation if present
-        const confirmButton = page.getByRole('button', { name: /confirm/i });
-        if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await confirmButton.click();
-        }
+        // Confirm in the dialog that the action opened
+        await confirmAction(page, /^revoke certificate$/i, 'page');
 
         await page.waitForTimeout(2000);
         const isForbidden = await expectForbidden(page);
@@ -809,11 +827,8 @@ test.describe('Production E2E - Certificate RBAC Tests', () => {
       if (await deleteButton.isVisible()) {
         await deleteButton.click();
 
-        // Handle confirmation if present
-        const confirmButton = page.getByRole('button', { name: /confirm/i });
-        if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await confirmButton.click();
-        }
+        // Confirm in the dialog that the action opened
+        await confirmAction(page, /^delete$/i, 'dialog');
 
         await page.waitForTimeout(2000);
         const isForbidden = await expectForbidden(page);

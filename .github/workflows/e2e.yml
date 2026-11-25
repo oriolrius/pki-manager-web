@@ -1,0 +1,90 @@
+name: E2E
+
+# Playwright RBAC tests (tests/e2e-rbac.spec.ts) against the Compose stack of
+# docker/docker-compose.e2e.yml: Keycloak (realm pki-e2e), Cosmian KMS, and the
+# backend and frontend images built from this commit.
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker/**'
+      - 'kms/kms.toml'
+      - 'tests/**'
+      - 'playwright.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.nvmrc'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rbac:
+    name: Playwright RBAC
+    # Pinned: Playwright 1.56 has no browser build for ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      IMAGE_TAG: e2e
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build the backend and frontend images
+        run: |
+          docker build -f docker/Dockerfile --target backend \
+            -t "ghcr.io/oriolrius/pki-manager-web/backend:${IMAGE_TAG}" .
+          docker build -f docker/Dockerfile --target frontend \
+            -t "ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG}" .
+
+      - name: Start the E2E stack
+        run: docker compose -f docker/docker-compose.e2e.yml up -d --wait --wait-timeout 300
+
+      - name: Run the RBAC tests
+        run: pnpm exec playwright test tests/e2e-rbac.spec.ts --reporter=list,html
+
+      - name: Show the stack logs
+        if: failure()
+        run: docker compose -f docker/docker-compose.e2e.yml logs --no-color --tail=200
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+      - name: Stop the E2E stack
+        if: always()
+        run: docker compose -f docker/docker-compose.e2e.yml down -v
