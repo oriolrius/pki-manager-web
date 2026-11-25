@@ -10,7 +10,7 @@ The SSH Certificate Manager milestone (doc-006) was designed against an assumed 
 "reuses" a CRL-signing seam and the k8s cluster / external-issuer machinery. That assumption had
 to be verified, not trusted, before any SSH code is written or any migration is numbered — a wrong
 base would make every "reuse"/"generalise" claim reference absent code and would collide on
-migration numbers. SSH-00 (TASK-116) is that verification.
+migration numbers. SSH-00 (TASK-282) is that verification.
 
 ## Decision
 
@@ -51,6 +51,6 @@ would have a different head.
 
 ## Related tasks
 
-- TASK-116 (SSH-00) — this verification. **Done.**
+- TASK-282 (SSH-00) — this verification. **Done.**
 - All SSH migration tasks (TASK-122…126) — reference the journal-verified head, not a literal.
 - decision-011 — the signing-path decision SSH-00 gated.

@@ -7,7 +7,7 @@ created_date: '2026-06-29 15:51'
 
 # SSH Certificate Manager Milestone
 
-> Human-readable anchor for the **SSH Certificate Manager** milestone (41 tasks, TASK-116..156).
+> Human-readable anchor for the **SSH Certificate Manager** milestone (41 tasks: TASK-282 (SSH-00, first numbered TASK-116) and TASK-117..156).
 > Decisions: [decision-011](../decisions/decision-011%20-%20SSH-Certificate-Signing-Approach.md) ·
 > [decision-012](../decisions/decision-012%20-%20SSH-Data-Model-and-KRL-State.md) ·
 > [decision-013](../decisions/decision-013%20-%20SSH-KRL-Distribution.md).
@@ -72,7 +72,7 @@ revocation falls back to the bare served KRL.
 ### 1. SSH Crypto Core & Baseline
 The verified branch baseline + migration head, the empirical signing decision, and the
 dependency-free OpenSSH wire primitives + signing seam — the only genuinely new crypto.
-- TASK-116 — SSH-00: Establish SSH milestone base branch, true migration head, and reuse inventory
+- TASK-282 — SSH-00: Establish SSH milestone base branch, true migration head, and reuse inventory
 - TASK-117 — SSH-SENS: Decision + spike: keep SSH CA keys NON-exportable and sign via Cosmian native ec sign (PKCS#11/KMIP) vs in-memory export
 - TASK-118 — SSH-01: OpenSSH wire-format primitives + certificate encoder (TS) with empty-principal/key-id guards
 - TASK-119 — SSH-02: SSH public-key parser + OpenSSH/SPKI format conversion

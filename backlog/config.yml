@@ -5,11 +5,11 @@ labels: []
 date_format: yyyy-mm-dd
 max_column_width: 20
 auto_open_browser: false
-default_port: 6430
+default_port: 52082
 remote_operations: true
-auto_commit: true
+auto_commit: false
 zero_padded_ids: 3
 bypass_git_hooks: true
-check_active_branches: true
+check_active_branches: false
 active_branch_days: 30
 task_prefix: "task"
