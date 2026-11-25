@@ -1,16 +1,24 @@
-import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, Outlet, useMatchRoute, useSearch } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
-import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check, Shield } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check, Shield, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from '@/components/ui';
+import {
+  CERTIFICATE_PAGE_SIZES,
+  CERTIFICATE_TYPES,
+  CERTIFICATE_TYPE_LABELS,
+  DEFAULT_CERTIFICATE_PAGE_SIZE,
+  certificateListInput,
+  validateCertificateListSearch,
+  type CertificateListSearch,
+} from '@/lib/certificate-list-search';
 
 export const Route = createFileRoute('/certificates')({
   component: Certificates,
+  validateSearch: validateCertificateListSearch,
 });
 
-const CA_FILTER_STORAGE_KEY = 'pki-manager-ca-filter';
-const STATUS_FILTER_STORAGE_KEY = 'pki-manager-status-filter';
-const TYPE_FILTER_STORAGE_KEY = 'pki-manager-type-filter';
+const SEARCH_DEBOUNCE_MS = 300;
 
 const DOWNLOAD_FORMATS = [
   { value: 'pem', label: 'PEM - Certificate only (ASCII)', requiresPassword: false, hasPrivateKey: false },
@@ -55,10 +63,54 @@ function Certificates() {
   const toast = useToast();
   const matchRoute = useMatchRoute();
   const isDetailPage = matchRoute({ to: '/certificates/$id', fuzzy: false });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCA, setSelectedCA] = useState<string>('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('');
-  const [selectedType, setSelectedType] = useState<string>('');
+  const listSearch = useSearch({ from: '/certificates' });
+  const listInput = certificateListInput(listSearch);
+  const pageSize = listInput.limit;
+  const currentPage = listSearch.page ?? 1;
+  const hasFilters = Boolean(listSearch.q || listSearch.ca || listSearch.status || listSearch.type);
+
+  // Change the URL state. A filter, sort or page-size change goes back to page 1.
+  const updateListSearch = (patch: Partial<CertificateListSearch>, opts: { keepPage?: boolean } = {}) => {
+    navigate({
+      to: '/certificates',
+      search: (prev: CertificateListSearch) => ({
+        ...prev,
+        ...(opts.keepPage ? {} : { page: undefined }),
+        ...patch,
+      }),
+      replace: true,
+    });
+  };
+
+  // The text search is debounced: the URL (and so the query) changes only when typing stops.
+  const [searchTerm, setSearchTerm] = useState(listSearch.q ?? '');
+  const pushedSearchTerm = useRef(listSearch.q ?? '');
+  useEffect(() => {
+    // The URL changed from outside (back button, link): show its value.
+    const urlTerm = listSearch.q ?? '';
+    if (urlTerm !== pushedSearchTerm.current) {
+      pushedSearchTerm.current = urlTerm;
+      setSearchTerm(urlTerm);
+    }
+  }, [listSearch.q]);
+  useEffect(() => {
+    if (searchTerm === pushedSearchTerm.current) return;
+    const timer = setTimeout(() => {
+      pushedSearchTerm.current = searchTerm;
+      updateListSearch({ q: searchTerm.trim() ? searchTerm : undefined });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateListSearch is recreated every render
+  }, [searchTerm]);
+
+  const toggleSort = (sort: 'notAfter' | 'subjectDn') => {
+    const active = listInput.sortBy === sort;
+    updateListSearch({
+      sort,
+      order: active && listInput.sortOrder === 'asc' ? 'desc' : 'asc',
+    });
+  };
+
   const [selectedCertificates, setSelectedCertificates] = useState<Set<string>>(new Set());
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
@@ -119,7 +171,7 @@ function Certificates() {
   };
 
   // Helper to build progress items from selected certificates
-  const buildProgressItems = (certIds: string[], certificates: typeof filteredCertificates) => {
+  const buildProgressItems = (certIds: string[], certificates: typeof pageCertificates) => {
     return certIds.map(id => {
       const cert = certificates.find(c => c.id === id);
       return {
@@ -130,10 +182,20 @@ function Certificates() {
     });
   };
 
-  const certificatesQuery = trpc.certificate.list.useQuery({
-    limit: 50,
-    offset: 0,
+  // Filters, sorting and paging run on the server. Keep the previous page on screen
+  // while the next one loads.
+  const certificatesQuery = trpc.certificate.list.useQuery(listInput, {
+    placeholderData: (previous) => previous,
   });
+  const pageCertificates = certificatesQuery.data?.items ?? [];
+  const totalCount = certificatesQuery.data?.totalCount ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  // A selection is for the rows on screen: clear it when the page or a filter changes.
+  const listKey = JSON.stringify(listInput);
+  useEffect(() => {
+    setSelectedCertificates(new Set());
+  }, [listKey]);
 
   // Fetch CAs list for lookup
   const casQuery = trpc.ca.list.useQuery({});
@@ -248,7 +310,7 @@ function Certificates() {
         setShowConfirmDialog(false);
         // Initialize progress with all items as "processing" (batch mode)
         const certIds = Array.from(selectedCertificates);
-        const items = buildProgressItems(certIds, filteredCertificates);
+        const items = buildProgressItems(certIds, pageCertificates);
         setBulkOperationProgress({
           isOpen: true,
           operation: 'revoke',
@@ -272,7 +334,7 @@ function Certificates() {
         setShowConfirmDialog(false);
         // Initialize progress with all items as "processing" (batch mode)
         const certIds = Array.from(selectedCertificates);
-        const items = buildProgressItems(certIds, filteredCertificates);
+        const items = buildProgressItems(certIds, pageCertificates);
         setBulkOperationProgress({
           isOpen: true,
           operation: 'renew',
@@ -297,7 +359,7 @@ function Certificates() {
         setShowConfirmDialog(false);
         // Initialize progress with all items as "processing" (batch mode)
         const certIds = Array.from(selectedCertificates);
-        const items = buildProgressItems(certIds, filteredCertificates);
+        const items = buildProgressItems(certIds, pageCertificates);
         setBulkOperationProgress({
           isOpen: true,
           operation: 'delete',
@@ -464,10 +526,10 @@ function Certificates() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedCertificates.size === filteredCertificates.length) {
+    if (selectedCertificates.size === pageCertificates.length) {
       setSelectedCertificates(new Set());
     } else {
-      setSelectedCertificates(new Set(filteredCertificates.map(c => c.id)));
+      setSelectedCertificates(new Set(pageCertificates.map(c => c.id)));
     }
   };
 
@@ -481,122 +543,28 @@ function Certificates() {
     setSelectedCertificates(newSelected);
   };
 
-  // Load filters from localStorage on mount
-  useEffect(() => {
-    const storedCA = localStorage.getItem(CA_FILTER_STORAGE_KEY);
-    const storedStatus = localStorage.getItem(STATUS_FILTER_STORAGE_KEY);
-    const storedType = localStorage.getItem(TYPE_FILTER_STORAGE_KEY);
+  // Every CA can be a filter value, not only the CAs of the certificates on this page.
+  const caOptions = useMemo(
+    () => Array.from(caLookup.values() as Iterable<{ id: string; cn: string }>)
+      .sort((a, b) => a.cn.localeCompare(b.cn)),
+    [caLookup],
+  );
 
-    if (storedCA) setSelectedCA(storedCA);
-    if (storedStatus) setSelectedStatus(storedStatus);
-    if (storedType) setSelectedType(storedType);
-  }, []);
-
-  // Save CA filter to localStorage when it changes
+  // A page past the end (for example after a delete): go to the last page.
   useEffect(() => {
-    if (selectedCA) {
-      localStorage.setItem(CA_FILTER_STORAGE_KEY, selectedCA);
-    } else {
-      localStorage.removeItem(CA_FILTER_STORAGE_KEY);
+    if (certificatesQuery.isSuccess && !certificatesQuery.isPlaceholderData && currentPage > pageCount) {
+      updateListSearch({ page: pageCount > 1 ? pageCount : undefined }, { keepPage: true });
     }
-  }, [selectedCA]);
-
-  // Save status filter to localStorage when it changes
-  useEffect(() => {
-    if (selectedStatus) {
-      localStorage.setItem(STATUS_FILTER_STORAGE_KEY, selectedStatus);
-    } else {
-      localStorage.removeItem(STATUS_FILTER_STORAGE_KEY);
-    }
-  }, [selectedStatus]);
-
-  // Save type filter to localStorage when it changes
-  useEffect(() => {
-    if (selectedType) {
-      localStorage.setItem(TYPE_FILTER_STORAGE_KEY, selectedType);
-    } else {
-      localStorage.removeItem(TYPE_FILTER_STORAGE_KEY);
-    }
-  }, [selectedType]);
-
-  // Extract unique CAs from certificates
-  const uniqueCAs = useMemo(() => {
-    if (!certificatesQuery.data?.items || !caLookup.size) return [];
-
-    const caMap = new Map<string, { id: string; cn: string }>();
-    certificatesQuery.data.items.forEach(cert => {
-      const ca = caLookup.get(cert.caId);
-      if (ca && !caMap.has(ca.id)) {
-        caMap.set(ca.id, { id: ca.id, cn: ca.cn });
-      }
-    });
-
-    return Array.from(caMap.values()).sort((a, b) => a.cn.localeCompare(b.cn));
-  }, [certificatesQuery.data, caLookup]);
-
-  // Extract unique certificate types
-  const uniqueTypes = useMemo(() => {
-    if (!certificatesQuery.data?.items) return [];
-
-    const types = new Set<string>();
-    certificatesQuery.data.items.forEach(cert => {
-      types.add(cert.certificateType);
-    });
-
-    return Array.from(types).sort();
-  }, [certificatesQuery.data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- updateListSearch is recreated every render
+  }, [certificatesQuery.isSuccess, certificatesQuery.isPlaceholderData, currentPage, pageCount]);
 
   // If we're on a detail page, only show the outlet
   if (isDetailPage) {
     return <Outlet />;
   }
 
-  // Filter certificates by CN, SAN, CA, status, and type
-  const filteredCertificates = certificatesQuery.data?.items.filter((cert) => {
-    // Filter by CA if selected
-    if (selectedCA && cert.caId !== selectedCA) {
-      return false;
-    }
-
-    // Filter by status if selected
-    if (selectedStatus) {
-      if (selectedStatus === 'expired') {
-        const isExpired = new Date(cert.notAfter).getTime() < Date.now();
-        if (!isExpired || cert.status !== 'active') {
-          return false;
-        }
-      } else if (cert.status !== selectedStatus) {
-        return false;
-      }
-    }
-
-    // Filter by type if selected
-    if (selectedType && cert.certificateType !== selectedType) {
-      return false;
-    }
-
-    // Filter by search term (CN or SAN)
-    if (!searchTerm) return true;
-
-    const searchLower = searchTerm.toLowerCase();
-
-    // Extract CN from Subject DN
-    const cnMatch = cert.subjectDn.match(/CN=([^,]+)/);
-    const commonName = cnMatch ? cnMatch[1] : cert.subjectDn;
-
-    // Check if CN matches
-    if (commonName.toLowerCase().includes(searchLower)) {
-      return true;
-    }
-
-    // SANs are already arrays from backend, use them directly
-    const sanDns = cert.sanDns || [];
-    const sanIp = cert.sanIp || [];
-    const sanEmail = cert.sanEmail || [];
-    const allSans = [...sanDns, ...sanIp, ...sanEmail];
-
-    return allSans.some(san => san.toLowerCase().includes(searchLower));
-  }) || [];
+  const firstRow = totalCount === 0 ? 0 : listInput.offset + 1;
+  const lastRow = listInput.offset + pageCertificates.length;
 
   return (
     <div className="space-y-4">
@@ -1212,28 +1180,31 @@ docker run --rm -v my-certs:/target \\
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Filter by CN or SAN..."
+            aria-label="Search certificates"
+            placeholder="Search by subject, SAN or serial..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <select
-          value={selectedCA}
-          onChange={(e) => setSelectedCA(e.target.value)}
-          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px] ${selectedCA ? 'filter-active' : ''}`}
+          aria-label="Filter by CA"
+          value={listSearch.ca ?? ''}
+          onChange={(e) => updateListSearch({ ca: e.target.value || undefined })}
+          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[180px] ${listSearch.ca ? 'filter-active' : ''}`}
         >
           <option value="">All CAs</option>
-          {uniqueCAs.map(ca => (
+          {caOptions.map(ca => (
             <option key={ca.id} value={ca.id}>
               {ca.cn}
             </option>
           ))}
         </select>
         <select
-          value={selectedStatus}
-          onChange={(e) => setSelectedStatus(e.target.value)}
-          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[140px] ${selectedStatus ? 'filter-active' : ''}`}
+          aria-label="Filter by status"
+          value={listSearch.status ?? ''}
+          onChange={(e) => updateListSearch({ status: (e.target.value || undefined) as CertificateListSearch['status'] })}
+          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[140px] ${listSearch.status ? 'filter-active' : ''}`}
         >
           <option value="">All Status</option>
           <option value="active">Active</option>
@@ -1241,14 +1212,15 @@ docker run --rm -v my-certs:/target \\
           <option value="expired">Expired</option>
         </select>
         <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[150px] ${selectedType ? 'filter-active' : ''}`}
+          aria-label="Filter by type"
+          value={listSearch.type ?? ''}
+          onChange={(e) => updateListSearch({ type: (e.target.value || undefined) as CertificateListSearch['type'] })}
+          className={`px-4 py-2 border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary min-w-[150px] ${listSearch.type ? 'filter-active' : ''}`}
         >
           <option value="">All Types</option>
-          {uniqueTypes.map(type => (
+          {CERTIFICATE_TYPES.map(type => (
             <option key={type} value={type}>
-              {type}
+              {CERTIFICATE_TYPE_LABELS[type]}
             </option>
           ))}
         </select>
@@ -1281,7 +1253,7 @@ docker run --rm -v my-certs:/target \\
                   <th className="px-4 py-3 text-center w-12">
                     <input
                       type="checkbox"
-                      checked={selectedCertificates.size === filteredCertificates.length && filteredCertificates.length > 0}
+                      checked={selectedCertificates.size === pageCertificates.length && pageCertificates.length > 0}
                       onChange={toggleSelectAll}
                       className="rounded border-gray-300"
                     />
@@ -1289,12 +1261,19 @@ docker run --rm -v my-certs:/target \\
                   <th className="px-4 py-3 text-center text-sm font-medium w-20">
                     {/* Icons column */}
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Expiration
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Common Name (CN)
-                  </th>
+                  <SortableHeader
+                    label="Expiration"
+                    active={listInput.sortBy === 'notAfter'}
+                    order={listInput.sortOrder}
+                    onClick={() => toggleSort('notAfter')}
+                  />
+                  <SortableHeader
+                    label="Common Name (CN)"
+                    title="Sort by subject DN"
+                    active={listInput.sortBy === 'subjectDn'}
+                    order={listInput.sortOrder}
+                    onClick={() => toggleSort('subjectDn')}
+                  />
                   <th className="px-4 py-3 text-left text-sm font-medium">
                     Subject Alternative Names
                   </th>
@@ -1304,17 +1283,17 @@ docker run --rm -v my-certs:/target \\
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filteredCertificates.length === 0 ? (
+                {pageCertificates.length === 0 ? (
                   <tr>
                     <td
                       colSpan={6}
                       className="px-4 py-8 text-center text-muted-foreground"
                     >
-                      {searchTerm || selectedCA || selectedStatus || selectedType ? 'No certificates match your filters' : 'No certificates found'}
+                      {hasFilters ? 'No certificates match your filters' : 'No certificates found'}
                     </td>
                   </tr>
                 ) : (
-                  filteredCertificates.map((cert) => {
+                  pageCertificates.map((cert) => {
                     // Extract CN from Subject DN
                     const cnMatch = cert.subjectDn.match(/CN=([^,]+)/);
                     const commonName = cnMatch ? cnMatch[1] : cert.subjectDn;
@@ -1415,8 +1394,79 @@ docker run --rm -v my-certs:/target \\
               </tbody>
             </table>
           </div>
+          <nav
+            aria-label="Certificate pages"
+            className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm text-muted-foreground"
+          >
+            <span>
+              {firstRow}–{lastRow} of {totalCount} certificate{totalCount !== 1 ? 's' : ''}
+            </span>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2">
+                Per page
+                <select
+                  aria-label="Certificates per page"
+                  value={pageSize}
+                  onChange={(e) => {
+                    const size = Number(e.target.value) as (typeof CERTIFICATE_PAGE_SIZES)[number];
+                    updateListSearch({ size: size === DEFAULT_CERTIFICATE_PAGE_SIZE ? undefined : size });
+                  }}
+                  className="rounded-md border bg-background px-2 py-1 text-foreground"
+                >
+                  {CERTIFICATE_PAGE_SIZES.map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+              </label>
+              <span>Page {currentPage} of {pageCount}</span>
+              <button
+                type="button"
+                aria-label="Previous page"
+                disabled={currentPage <= 1}
+                onClick={() => updateListSearch({ page: currentPage - 1 > 1 ? currentPage - 1 : undefined }, { keepPage: true })}
+                className="rounded-md border p-1.5 text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Next page"
+                disabled={currentPage >= pageCount}
+                onClick={() => updateListSearch({ page: currentPage + 1 }, { keepPage: true })}
+                className="rounded-md border p-1.5 text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </nav>
         </div>
       )}
     </div>
+  );
+}
+
+function SortableHeader({ label, title, active, order, onClick }: {
+  label: string;
+  title?: string;
+  active: boolean;
+  order: 'asc' | 'desc';
+  onClick: () => void;
+}) {
+  const Icon = order === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th
+      className="px-4 py-3 text-left text-sm font-medium"
+      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        title={title ?? `Sort by ${label.toLowerCase()}`}
+        className="inline-flex items-center gap-1 hover:text-foreground"
+      >
+        {label}
+        {active && <Icon className="h-3.5 w-3.5" />}
+      </button>
+    </th>
   );
 }

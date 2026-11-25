@@ -564,13 +564,17 @@ type, CN, SANs, date and days left. The **Days Left** badge changes colour (gree
 
 | Filter | Values |
 |---|---|
-| Text box "Filter by CN or SAN..." | part of a CN or a SAN |
+| Text box "Search by subject, SAN or serial..." | part of the subject DN, a SAN or the serial number |
 | CA list | `All CAs` or one CA |
 | Status list | `All Status`, `Active`, `Revoked`, `Expired` |
-| Type list | `All Types`, `client`, `email`, `server` |
+| Type list | `All Types`, `Server`, `Client`, `Dual (mTLS)`, `Email (S/MIME)`, `Code signing` |
 
 Each row shows the status icon, the type icon, the expiry date with the days left
 (`14 days left` is shown in orange), the CN, the SANs and the issuing CA.
+
+The server applies the filters. The list shows 50 rows per page. The bar below the table shows
+the total, changes the page and sets 25, 50 or 100 rows per page. Click the **Expiration** or
+**Common Name (CN)** header to sort by that column.
 
 ![Certificate list filtered by text acme.example and the Acme Internal Root CA](img/private-ca/18-certificate-list.png)
 
