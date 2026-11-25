@@ -189,7 +189,7 @@ function CADetail() {
     }
   };
 
-  if (caQuery.isLoading) {
+  if (caQuery.isPending) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         Loading CA details...
@@ -208,7 +208,8 @@ function CADetail() {
 
     if (isKmsInconsistency) {
       // Extract metadata from error cause (sent by backend)
-      const errorCause = caQuery.error.data?.cause as {
+      const data = caQuery.error.data;
+      const errorCause = (data && 'cause' in data ? data.cause : undefined) as {
         type?: string;
         caId?: string;
         kmsCertificateId?: string;

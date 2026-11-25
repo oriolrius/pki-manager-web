@@ -9,7 +9,7 @@
     "build:docker": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -42,6 +42,7 @@
     "@types/node": "^24.9.1",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
+    "@types/swagger-ui-react": "^5.18.0",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.36.0",

@@ -11,11 +11,12 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/lib/download', () => ({ downloadFile: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/config', () => ({ getApiUrl: () => 'https://pki.example/trpc' }));
 vi.mock('@/components/ui', () => ({ useToast: () => ({ error: vi.fn() }), useConfirm: () => vi.fn() }));
+const request = vi.hoisted(() => ({ paused: false }));
 const policy = vi.hoisted(() => ({ data: { enabled: true, allowed: true } as { enabled: boolean; allowed: boolean } }));
 vi.mock('@/lib/trpc', () => ({ trpc: {
   useUtils: () => ({}),
   ca: {
-    getById: { useQuery: () => ({ data: {
+    getById: { useQuery: () => request.paused ? { isPending: true, isLoading: false } : ({ data: {
       id: 'test-ca', subjectDn: 'CN=Root', serialNumber: '1234', keyAlgorithm: 'RSA-2048',
       status: 'active', kmsKeyId: 'kms-key', notBefore: '2026-01-01', notAfter: '2036-01-01',
       createdAt: '2026-01-01', updatedAt: '2026-01-01', certificatePem: 'certificate',
@@ -25,8 +26,14 @@ vi.mock('@/lib/trpc', () => ({ trpc: {
   },
 } }));
 const Page = Route.options.component as ComponentType;
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); request.paused = false; });
 afterEach(() => { vi.unstubAllGlobals(); });
+
+it('keeps the loading view while the initial CA request is paused', () => {
+  request.paused = true;
+  render(<Page />);
+  expect(screen.getByText('Loading CA details...')).toBeInTheDocument();
+});
 
 describe('CA export passwords', () => {
   it.each(['p12-truststore', 'jks-truststore', 'p12-keystore', 'jks-keystore'])('downloads %s with the visible generated password', async (format) => {

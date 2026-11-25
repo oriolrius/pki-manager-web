@@ -261,7 +261,7 @@ function CertificateDetail() {
     }
   };
 
-  if (certQuery.isLoading) {
+  if (certQuery.isPending) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         Loading certificate details...
@@ -281,7 +281,8 @@ function CertificateDetail() {
     // KMS/Database inconsistency error - Certificate exists in DB but not in KMS
     if (isKmsInconsistency) {
       // Extract metadata from error cause (sent by backend)
-      const errorCause = certQuery.error.data?.cause as {
+      const data = certQuery.error.data;
+      const errorCause = (data && 'cause' in data ? data.cause : undefined) as {
         type?: string;
         certId?: string;
         kmsCertificateId?: string;

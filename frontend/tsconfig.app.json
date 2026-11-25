@@ -30,5 +30,6 @@
       "@/*": ["./src/*"]
     }
   },
+  "references": [{ "path": "../backend/tsconfig.router.json" }],
   "include": ["src"]
 }

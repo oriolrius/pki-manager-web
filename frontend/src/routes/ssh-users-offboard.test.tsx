@@ -3,13 +3,14 @@
  * an active identity only, and wired to ssh.user.offboard through the confirm dialog.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ConfirmOptions, ConfirmResult } from '@/components/ui';
 import type { ComponentType } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   navigate: vi.fn(),
   offboardAsync: vi.fn(async () => ({ ok: true })),
-  confirm: vi.fn(async () => ({ confirmed: true, reason: 'left' })),
+  confirm: vi.fn<(opts: ConfirmOptions) => Promise<ConfirmResult>>(async () => ({ confirmed: true, reason: 'left' })),
   fetchCerts: vi.fn(async () => [{ status: 'active' }, { status: 'active' }, { status: 'revoked' }]),
   invalidateIdentities: vi.fn(),
   toastSuccess: vi.fn(),
@@ -94,7 +95,7 @@ describe('SSH users page — Offboard', () => {
     render(<Page />);
     fireEvent.click(screen.getByRole('button', { name: 'Offboard' }));
     await waitFor(() => expect(h.offboardAsync).toHaveBeenCalledWith({ id: 'id-1', reason: 'left' }));
-    const opts = (h.confirm.mock.calls as unknown as [{ title: string }][])[0][0];
+    const opts = h.confirm.mock.calls[0][0];
     expect(opts.title).toBe('Offboard alice@corp?');
     expect(h.fetchCerts).toHaveBeenCalledWith({ identityId: 'id-1' });
     await waitFor(() => expect(h.invalidateIdentities).toHaveBeenCalled());

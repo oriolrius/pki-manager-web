@@ -4,7 +4,6 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ConfirmOptions } from '@/components/ui';
 import { OffboardDialogBody } from './OffboardDialogBody';
 import {
   activeCertsPhrase,
@@ -61,7 +60,7 @@ describe('offboardIdentityFlow', () => {
   it('confirms with a danger dialog + optional reason, offboards with the reason, reports the count', async () => {
     const deps = makeDeps();
     await expect(offboardIdentityFlow(deps)).resolves.toBe('done');
-    const opts = (deps.confirm.mock.calls as unknown as [ConfirmOptions][])[0][0];
+    const opts = vi.mocked(deps.confirm).mock.calls[0][0];
     expect(opts.title).toBe('Offboard alice@corp?');
     expect(opts.confirmLabel).toBe('Offboard');
     expect(opts.tone).toBe('danger');
