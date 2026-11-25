@@ -6,7 +6,7 @@
  */
 
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import type { JsonSchema7Type } from 'zod-to-json-schema';
+import type { OpenAPIV3 } from 'openapi-types';
 import {
   // Common schemas
   idSchema,
@@ -55,7 +55,7 @@ import {
 
 // Helper function to convert Zod schema to JSON Schema with proper typing
 // Extracts the actual schema from definitions to make it OpenAPI-compatible
-function toJsonSchema(schema: Parameters<typeof zodToJsonSchema>[0], name: string): JsonSchema7Type {
+function toJsonSchema(schema: Parameters<typeof zodToJsonSchema>[0], name: string): OpenAPIV3.SchemaObject {
   const result = zodToJsonSchema(schema, {
     name,
     target: 'openApi3',
@@ -65,14 +65,14 @@ function toJsonSchema(schema: Parameters<typeof zodToJsonSchema>[0], name: strin
   if (result.definitions && typeof result.definitions === 'object') {
     const definitions = result.definitions as Record<string, unknown>;
     if (definitions[name]) {
-      return definitions[name] as JsonSchema7Type;
+      return definitions[name] as OpenAPIV3.SchemaObject;
     }
   }
 
   // If no $ref/definitions pattern, return the schema directly
   // But remove $schema if present (not needed in OpenAPI)
   const { $schema, definitions, $ref, ...cleanSchema } = result;
-  return cleanSchema as JsonSchema7Type;
+  return cleanSchema as OpenAPIV3.SchemaObject;
 }
 
 // ============================================================================

@@ -4,6 +4,10 @@
  * it bypasses the OIDC preHandler; auth is the bearer fleet token instead.
  * Idempotent on the Idempotency-Key header. Issued certs are source=automation.
  */
+import type { SshKrl } from '../../db/schema.js';
+import type { SshHostKrl } from '../../db/schema.js';
+import { errorMessage } from '../../lib/error-message.js';
+import type { FastifyRequest } from 'fastify';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { setAuditActor, sshTokenActor } from '../../lib/audit-actor.js';
 import { z } from 'zod';
@@ -86,7 +90,7 @@ const err = (reply: FastifyReply, status: number, code: string, message: string)
 export function registerSshExternalRoutes(server: FastifyInstance): void {
   const base = '/api/v1/external/ssh';
 
-  async function authn(req: any, reply: FastifyReply, op: SshTokenOp): Promise<VerifiedToken | null> {
+  async function authn(req: FastifyRequest, reply: FastifyReply, op: SshTokenOp): Promise<VerifiedToken | null> {
     const auth = (req.headers['authorization'] as string | undefined) ?? '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : undefined;
     const verified = await getSshFleetTokenService().verify({ db, ipAddress: req.ip }, token, req.ip);
@@ -113,7 +117,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
    * stop because a reply (replay or error) was already sent.
    */
   async function idempotency(
-    req: any,
+    req: FastifyRequest,
     reply: FastifyReply,
     token: VerifiedToken,
     op: SshIdempotencyOp,
@@ -184,7 +188,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       } else if (host.opensshHostPubkey !== body.opensshHostPubkey.trim()) {
         // Host keys are ecdsa-sha2-nistp256 only (same rule as register()).
         assertEcdsaHostKey(parseSshPublicKey(body.opensshHostPubkey).algo);
-        await db.update(sshHosts).set({ opensshHostPubkey: body.opensshHostPubkey.trim(), updatedAt: new Date() } as any).where(eq(sshHosts.id, host.id));
+        await db.update(sshHosts).set({ opensshHostPubkey: body.opensshHostPubkey.trim(), updatedAt: new Date() }).where(eq(sshHosts.id, host.id));
       }
       const issued = await getSshHostService().issue(ctx, {
         hostId: host.id,
@@ -197,9 +201,9 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       if (idem.reservation) await completeIdempotent(ctx, idem.reservation, issued.cert.id, response, new Date(issued.cert.validBefore));
       await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_certificate', entityId: issued.cert.id, status: 'success', details: { tokenId: token.id, fqdn: body.fqdn, op: 'sign-host' }, ipAddress: req.ip });
       return response;
-    } catch (e: any) {
+    } catch (e) {
       if (idem.reservation) await releaseIdempotent(ctx, idem.reservation);
-      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'sign-host failed');
+      return err(reply, 400, 'SSH_ERROR', errorMessage(e) ?? 'sign-host failed');
     }
   });
 
@@ -260,7 +264,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         caId: token.userCaId ?? undefined,
         sshPublicKey: body.sshPublicKey,
         principals: body.principals,
-        extensions: body.extensions as any,
+        extensions: body.extensions,
         forceCommand: body.forceCommand,
         sourceAddress: body.sourceAddress,
         validForSeconds,
@@ -271,9 +275,9 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       if (idem.reservation) await completeIdempotent(ctx, idem.reservation, issued.cert.id, response, new Date(issued.cert.validBefore));
       await createAuditLog({ db, operation: 'ssh.external.sign', entityType: 'ssh_certificate', entityId: issued.cert.id, status: 'success', details: { tokenId: token.id, subject: body.subject, op: 'sign-user' }, ipAddress: req.ip });
       return response;
-    } catch (e: any) {
+    } catch (e) {
       if (idem.reservation) await releaseIdempotent(ctx, idem.reservation);
-      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'sign-user failed');
+      return err(reply, 400, 'SSH_ERROR', errorMessage(e) ?? 'sign-user failed');
     }
   });
 
@@ -282,7 +286,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // key IS the ECIES key (already stored at host registration as opensshHostPubkey).
   // No KMS keypair is generated; this only confirms the host is eligible for
   // encrypted KRL distribution (its host key is a usable P-256 key).
-  server.post(`${base}/register-host-pubkey`, {
+  server.post<{ Body: { fqdn?: string; host_id?: string } }>(`${base}/register-host-pubkey`, {
     schema: {
       tags: sshExtTag,
       summary: 'Confirm a host is eligible for encrypted (ECIES) KRL distribution',
@@ -300,7 +304,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     const token = await authn(req, reply, 'register-host-pubkey');
     if (!token) return reply;
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
-    const fqdn = (req.body as any)?.fqdn ?? (req.body as any)?.host_id;
+    const fqdn = req.body?.fqdn ?? req.body?.host_id;
     if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'fqdn required');
     const host = (await db
       .select()
@@ -310,8 +314,8 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     if (!host) return err(reply, 404, 'NOT_FOUND', `host ${fqdn} not registered`);
     try {
       return await getSshHostService().registerEciesKey({ db, ipAddress: req.ip }, host.id);
-    } catch (e: any) {
-      return err(reply, 409, 'ECIES_KEY_UNSUPPORTED', e?.message ?? 'host not eligible for ECIES KRL');
+    } catch (e) {
+      return err(reply, 409, 'ECIES_KEY_UNSUPPORTED', errorMessage(e) ?? 'host not eligible for ECIES KRL');
     }
   });
 
@@ -321,7 +325,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // authoritative render (dual bare-P + P@fqdn forms) is produced by the SAME
   // ssh-principal.service.render() the admin tRPC procedure uses, so the bytes
   // match exactly. Fleet-token auth (get-principals op); no idempotency (read).
-  server.get(`${base}/hosts/:fqdn/auth-principals`, {
+  server.get<{ Params: { fqdn: string } }>(`${base}/hosts/:fqdn/auth-principals`, {
     schema: {
       tags: sshExtTag,
       summary: "Render a host's AuthorizedPrincipalsFile map (fleet token)",
@@ -330,7 +334,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   }, async (req, reply) => {
     const token = await authn(req, reply, 'get-principals');
     if (!token) return;
-    const fqdn = (req.params as any)?.fqdn as string;
+    const fqdn = req.params?.fqdn as string;
     if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'invalid fqdn');
     const host = (await db
       .select()
@@ -342,8 +346,8 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       const render = await getSshPrincipalService().render({ db, ipAddress: req.ip }, host.id);
       await createAuditLog({ db, operation: 'ssh.external.principals.fetch', entityType: 'ssh_host', entityId: host.id, status: 'success', details: { tokenId: token.id, fqdn, accounts: Object.keys(render.files).length }, ipAddress: req.ip });
       return render;
-    } catch (e: any) {
-      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'principals render failed');
+    } catch (e) {
+      return err(reply, 400, 'SSH_ERROR', errorMessage(e) ?? 'principals render failed');
     }
   });
 
@@ -352,7 +356,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   // by echoing their canonical sha256. Marks pushed (clears Stale) ONLY when the
   // hash matches the CURRENT render; otherwise 409 + the current hash, nothing
   // changes. Same op as the GET: a token that may read the files may confirm them.
-  server.post(`${base}/hosts/:fqdn/principals-pushed`, {
+  server.post<{ Params: { fqdn: string } }>(`${base}/hosts/:fqdn/principals-pushed`, {
     schema: {
       tags: sshExtTag,
       summary: "Acknowledge that a host's principal files were installed (fleet token; sha256 must match the current render)",
@@ -362,7 +366,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   }, async (req, reply) => {
     const token = await authn(req, reply, 'get-principals');
     if (!token) return;
-    const fqdn = (req.params as any)?.fqdn as string;
+    const fqdn = req.params?.fqdn as string;
     if (!fqdn || !isValidHostId(fqdn)) return err(reply, 400, 'VALIDATION_ERROR', 'invalid fqdn');
     const parsed = principalsPushedBody.safeParse(req.body);
     if (!parsed.success) return err(reply, 400, 'VALIDATION_ERROR', parsed.error.issues.map((i) => i.message).join('; '));
@@ -377,18 +381,18 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     }
     try {
       return await getSshPrincipalService().acknowledgePush({ db, ipAddress: req.ip }, host.id, parsed.data.sha256, { tokenId: token.id });
-    } catch (e: any) {
+    } catch (e) {
       if (e instanceof SshPrincipalHashMismatchError) {
         return (reply as FastifyReply).status(409).send({ error: { code: 'SHA256_MISMATCH', message: e.message }, currentSha256: e.currentSha256 });
       }
-      return err(reply, 400, 'SSH_ERROR', e?.message ?? 'principals acknowledge failed');
+      return err(reply, 400, 'SSH_ERROR', errorMessage(e) ?? 'principals acknowledge failed');
     }
   });
 
   // ---- POST /krl (SSH-24 encrypted per-host distribution) ----
   // No app auth: ECIES means only the target host can decrypt (the 404-vs-200
   // host oracle is an accepted bounded disclosure). host_id is in the BODY.
-  server.post(`${base}/krl`, {
+  server.post<{ Body: { host_id?: string; zone?: string } }>(`${base}/krl`, {
     // No response schema: the success payload is an ECIES-encrypted binary envelope, so a
     // JSON response schema would corrupt it via fast-json-stringify.
     schema: {
@@ -406,14 +410,14 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
   }, async (req, reply) => {
     if (!rateLimitOk(`ecies-krl:${req.ip}`, 120, 60_000)) return err(reply, 429, 'RATE_LIMITED', 'too many requests');
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
-    const hostId = (req.body as any)?.host_id;
+    const hostId = req.body?.host_id;
     if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');
     // Amendment A2: this route has NO app auth (ECIES is the authentication) and
     // resolves the host by FQDN alone. Now that (zone_id, fqdn) is unique, the
     // same FQDN can exist in several zones — disambiguate by an optional `zone`.
-    const zoneRef = (req.body as any)?.zone as string | undefined;
-    const matches = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId))) as any[];
-    let host: any;
+    const zoneRef = req.body?.zone as string | undefined;
+    const matches = (await db.select().from(sshHosts).where(eqcol(sshHosts.fqdn, hostId)));
+    let host: typeof sshHosts.$inferSelect | undefined;
     if (zoneRef) {
       let zone;
       try {
@@ -434,7 +438,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     // valid_until on every pull (and audit-spam failed regens).
     if (host.status === 'offboarded') return err(reply, 404, 'NOT_FOUND', 'host is offboarded');
 
-    let row: any | null = null;
+    let row: SshKrl | SshHostKrl | null = null;
     if (hostKrlServeEnabled()) {
       // BLK-06: the payload source is the freshest COMPOSED per-host row.
       const svc = getSshHostKrlService();
@@ -453,7 +457,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
         // Stale: lazy regen (the BLK-05 invalidation backstop); keep last-good on failure.
         try {
           await svc.generate({ db, ipAddress: req.ip }, host.id);
-          row = await svc.getLatestRow({ db, ipAddress: req.ip }, host.id);
+          row = await svc.getLatestRow({ db, ipAddress: req.ip }, host.id) ?? row;
         } catch { /* keep last-good */ }
       }
     } else {
@@ -488,7 +492,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       // BLK-01 (pinned req #5): a 304 is a successful conditional pull — stamp the
       // fetch time or a healthy 15-min puller reads as stale between hourly regens.
       // last_krl_version stays 200-only (it records what was SERVED, not confirmed).
-      await db.update(sshHosts).set({ lastKrlFetchAt: new Date() } as any).where(eqcol(sshHosts.id, host.id));
+      await db.update(sshHosts).set({ lastKrlFetchAt: new Date() }).where(eqcol(sshHosts.id, host.id));
       reply.header('X-KRL-Version', version);
       return reply.code(304).send();
     }
@@ -510,14 +514,14 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
     let ciphertext: Buffer;
     try {
       ciphertext = eciesEncryptV1(host.opensshHostPubkey, payload);
-    } catch (e: any) {
+    } catch (e) {
       // Host key is ed25519 (or otherwise not P-256): operator must provision an ecdsa host key.
       const unsupported = e instanceof EciesError;
-      await createAuditLog({ db, operation: 'ssh.krl.distribute', entityType: 'ssh_host', entityId: host.id, status: 'failure', details: { host_id: hostId, error: unsupported ? 'ECIES_KEY_UNSUPPORTED' : 'ENCRYPT_FAILED', message: e?.message }, ipAddress: req.ip });
+      await createAuditLog({ db, operation: 'ssh.krl.distribute', entityType: 'ssh_host', entityId: host.id, status: 'failure', details: { host_id: hostId, error: unsupported ? 'ECIES_KEY_UNSUPPORTED' : 'ENCRYPT_FAILED', message: errorMessage(e) }, ipAddress: req.ip });
       if (unsupported) return err(reply, 404, 'ECIES_KEY_UNSUPPORTED', e.message);
-      return err(reply, 500, 'ENCRYPT_FAILED', e?.message ?? 'ECIES encryption failed');
+      return err(reply, 500, 'ENCRYPT_FAILED', errorMessage(e) ?? 'ECIES encryption failed');
     }
-    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version } as any).where(eqcol(sshHosts.id, host.id));
+    await db.update(sshHosts).set({ lastKrlFetchAt: new Date(), lastKrlVersion: version }).where(eqcol(sshHosts.id, host.id));
     await createAuditLog({ db, operation: 'ssh.krl.distribute', entityType: 'ssh_host', entityId: host.id, status: 'success', details: { host_id: hostId, krl_version: version, envelope_bytes: ciphertext.length, model: 'local-ecies' }, ipAddress: req.ip });
     reply.header('X-KRL-Version', version);
     reply.header('Content-Type', 'application/octet-stream');

@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates, auditLog } from '../../db/schema.js';
@@ -480,7 +481,7 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
 
     try {
       // Build WHERE conditions
-      const conditions: any[] = [];
+      const conditions: SQL[] = [];
 
       if (caId) {
         conditions.push(eq(certificates.caId, caId));
@@ -881,7 +882,7 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
 
     try {
       // Build WHERE conditions
-      const conditions: any[] = [];
+      const conditions: SQL[] = [];
 
       if (operation) {
         conditions.push(eq(auditLog.operation, operation));
@@ -1039,7 +1040,7 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
 
     try {
       // Build date filter conditions
-      const dateConditions: any[] = [];
+      const dateConditions: SQL[] = [];
       if (startDate) {
         dateConditions.push(gte(certificates.createdAt, new Date(startDate * 1000)));
       }
@@ -1047,16 +1048,16 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
         dateConditions.push(lte(certificates.createdAt, new Date(endDate * 1000)));
       }
 
-      let data: any[] = [];
+      let data: Record<string, unknown>[] = [];
       let reportName = '';
-      let summary: Record<string, any> = {};
+      let summary: Record<string, unknown> = {};
 
       // Generate report based on type
       if (reportType === 'certificate_inventory') {
         reportName = 'Certificate Inventory Report';
 
         // Build where conditions
-        const conditions: any[] = [...dateConditions];
+        const conditions: SQL[] = [...dateConditions];
         if (caId) {
           conditions.push(eq(certificates.caId, caId));
         }
@@ -1092,7 +1093,7 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
         reportName = 'Revocation Report';
 
         // Build where conditions
-        const conditions: any[] = [...dateConditions, eq(certificates.status, 'revoked')];
+        const conditions: SQL[] = [...dateConditions, eq(certificates.status, 'revoked')];
         if (caId) {
           conditions.push(eq(certificates.caId, caId));
         }
@@ -1123,7 +1124,7 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
         reportName = 'CA Operations Report';
 
         // Build date conditions for audit log
-        const auditDateConditions: any[] = [];
+        const auditDateConditions: SQL[] = [];
         if (startDate) {
           auditDateConditions.push(gte(auditLog.timestamp, new Date(startDate * 1000)));
         }
@@ -1132,7 +1133,7 @@ export async function utilityRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         // Build where conditions
-        const conditions: any[] = [
+        const conditions: SQL[] = [
           ...auditDateConditions,
           eq(auditLog.entityType, 'ca'),
         ];
