@@ -21,7 +21,8 @@ import { PAGES, EXTERNAL, PRODUCT, RECORDS, NOT_PAGES, ALIASES, REPO_ONLY } from
 
 const SITE = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = join(SITE, '..');
-const BASE = '/pki-manager-web';
+// The site is served at the root of its domain (astro.config.mjs base '/').
+const BASE = '';
 const GH = 'https://github.com/oriolrius/pki-manager-web';
 const OUT_DOCS = join(SITE, 'src', 'content', 'docs');
 const OUT_PRODUCT = join(SITE, 'src', 'content', 'product');

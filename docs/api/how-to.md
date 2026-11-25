@@ -4,7 +4,7 @@
 Every command on this page runs in CI against a demo stack (release 3.17.0), so it works as
 written. You need `curl`, `jq` and `openssl`.
 
-The full list of endpoints, with every field, is the [API reference](https://oriolrius.github.io/pki-manager-web/api/reference/). Each instance
+The full list of endpoints, with every field, is the [API reference](https://pki-manager.oriolrius.cat/api/reference/). Each instance
 also serves its own Swagger UI at `/api/docs` and the document at `/api/v1/openapi.json`.
 
 ## Credentials
@@ -171,5 +171,5 @@ curl -s "$API/api/v1/cas/?limit=500" -H "Authorization: Bearer $TOKEN" | jq .
 
 ## Next
 
-- [API reference](https://oriolrius.github.io/pki-manager-web/api/reference/): every endpoint and field, generated from the source code.
+- [API reference](https://pki-manager.oriolrius.cat/api/reference/): every endpoint and field, generated from the source code.
 - [SSH external API contract](../ssh/api-contract.md): fleet tokens and SSH signing.

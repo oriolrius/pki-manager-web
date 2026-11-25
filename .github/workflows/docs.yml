@@ -3,7 +3,14 @@ name: Docs site
 # Builds the website (site/: product pages and docs, Astro + Starlight) on every change to its sources.
 # The sources are the Markdown of the whole repository (docs/, backlog/decisions, backlog/docs, component
 # READMEs, CHANGELOG.md): site/docs.config.mjs is the inventory, and the build fails on a file without a home.
-# Pull requests: build + internal link check only. Push to main: build and deploy to GitHub Pages.
+# Pull requests: build + internal link check only.
+# Push to main: build, publish the image ghcr.io/<repo>/site, and ask the k5 deploy job to run.
+#
+# Deploy (docs/development/ci.md): GitHub cannot reach Dockhand on k5, so it only publishes the image
+# and calls workflow_dispatch on the Gitea repository oriolrius/k5-stack-pki-site. That Gitea workflow
+# runs on the k5 runner: it pins the new digest, deploys the Dockhand stack, checks
+# https://pki-manager.oriolrius.cat/healthz and rolls back on failure. It also polls every 15 minutes,
+# so a lost dispatch only delays the deploy.
 on:
   push:
     branches: [main]
@@ -14,6 +21,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/site
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -46,9 +56,11 @@ jobs:
       - name: Build (sync docs, render diagrams with plantuml.joor.net, OpenAPI from source, Astro, link check)
         run: npm run build
       - if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
+          name: site-dist
           path: site/dist
+          retention-days: 7
 
   # Every runnable example of the API how-to must work against a real stack (published images).
   examples:
@@ -63,10 +75,67 @@ jobs:
         if: always()
         run: site/demo/demo.sh down
 
-  deploy:
-    # Push to main, or by hand (Actions → Docs site → Run workflow)
+  # The built site as an image: nginx (unprivileged, read-only). site/Dockerfile.
+  # Tag sha-<commit> always; tag `main` (the one k5 follows) only from the main branch.
+  # Run by hand on another branch to publish a test image without deploying it.
+  image:
     if: github.event_name != 'pull_request'
     needs: [build, examples]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: site/dist
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: site
+          file: site/Dockerfile
+          push: true
+          build-args: REVISION=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}:main', env.IMAGE) || '' }}
+          platforms: linux/amd64
+          provenance: false
+
+  # Ask k5 to deploy now. Without the secret, the 15-minute poll on k5 deploys the image.
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the Gitea deploy workflow (k5-stack-pki-site)
+        env:
+          TOKEN: ${{ secrets.GITEA_DEPLOY_TOKEN }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::notice::GITEA_DEPLOY_TOKEN not set: k5 deploys at its next poll"; exit 0; fi
+          code=$(curl -s -o /tmp/r -w '%{http_code}' -X POST \
+            -H "Authorization: token $TOKEN" -H 'Content-Type: application/json' \
+            -d "{\"ref\":\"main\",\"inputs\":{\"digest\":\"$DIGEST\",\"revision\":\"$GITHUB_SHA\"}}" \
+            https://git.oriolrius.cat/api/v1/repos/oriolrius/k5-stack-pki-site/actions/workflows/deploy.yml/dispatches)
+          cat /tmp/r; echo
+          [ "$code" = 204 ] || { echo "::warning::dispatch answered $code: k5 deploys at its next poll"; exit 0; }
+          echo "Deploy of $DIGEST requested; result: https://git.oriolrius.cat/oriolrius/k5-stack-pki-site/actions"
+
+  # The old address (oriolrius.github.io/pki-manager-web/) sends each reader to the same page on the new site.
+  legacy-redirect:
+    if: github.ref == 'refs/heads/main'
+    needs: image
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -75,5 +144,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+      - run: mkdir -p out && cp site/legacy/404.html out/404.html && cp site/legacy/404.html out/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
       - id: deployment
         uses: actions/deploy-pages@v4

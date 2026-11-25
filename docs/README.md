@@ -3,7 +3,7 @@
 This folder is the source of the documentation. Read it on the website, where it has
 navigation, search and the API reference:
 
-**<https://oriolrius.github.io/pki-manager-web/>**
+**<https://pki-manager.oriolrius.cat/>**
 
 | Folder | Content |
 |---|---|

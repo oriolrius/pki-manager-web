@@ -4,9 +4,9 @@
 > Private keys are made and kept in a KMS.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-oriolrius.github.io-FF6600.svg)](https://oriolrius.github.io/pki-manager-web/)
+[![Website](https://img.shields.io/badge/website-oriolrius.github.io-FF6600.svg)](https://pki-manager.oriolrius.cat/)
 
-**Website: <https://oriolrius.github.io/pki-manager-web/>**. It says what PKI Manager does, how it
+**Website: <https://pki-manager.oriolrius.cat/>**. It says what PKI Manager does, how it
 works and how to use it. This file does not repeat it.
 
 ![Dashboard of PKI Manager with counters for CAs, certificates and SSH, and the certificates that expire next](docs/features/img/dashboard.png)
@@ -19,10 +19,10 @@ certificates by themselves.
 
 | Read | To know |
 |---|---|
-| [What it does](https://oriolrius.github.io/pki-manager-web/features/) | Each capability, with screenshots and with what it does not do |
-| [How it works](https://oriolrius.github.io/pki-manager-web/how-it-works/) | The parts, and where each private key lives |
-| [Install and log in](https://oriolrius.github.io/pki-manager-web/get-started/install/) | Docker Compose with the published images, about ten minutes |
-| [Documentation](https://oriolrius.github.io/pki-manager-web/get-started/) | Guides, SSH certificates (19 short videos), operations and the API reference |
+| [What it does](https://pki-manager.oriolrius.cat/features/) | Each capability, with screenshots and with what it does not do |
+| [How it works](https://pki-manager.oriolrius.cat/how-it-works/) | The parts, and where each private key lives |
+| [Install and log in](https://pki-manager.oriolrius.cat/get-started/install/) | Docker Compose with the published images, about ten minutes |
+| [Documentation](https://pki-manager.oriolrius.cat/get-started/) | Guides, SSH certificates (19 short videos), operations and the API reference |
 | [Release notes](CHANGELOG.md) | What changed in each version |
 
 ## A personal project
@@ -30,7 +30,7 @@ certificates by themselves.
 I built PKI Manager for my own infrastructure, and I use it there. No company is behind it and
 nothing is for sale: there is no paid edition, no hosted service and no support contract. The
 source code is public because it can be useful to someone else.
-[About this project](https://oriolrius.github.io/pki-manager-web/about/) says what you can expect.
+[About this project](https://pki-manager.oriolrius.cat/about/) says what you can expect.
 
 ## Repository layout
 
