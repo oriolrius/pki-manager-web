@@ -7,6 +7,10 @@
 
 import { KMSClient } from "./client.js";
 import { execSync } from "child_process";
+import { fileURLToPath } from "url";
+
+// The KMS compose project at the repository root (kms/), found from this file.
+const KMS_DIR = fileURLToPath(new URL("../../../kms", import.meta.url));
 
 async function waitForKMS(client: KMSClient, maxAttempts = 10): Promise<boolean> {
   for (let i = 0; i < maxAttempts; i++) {
@@ -50,12 +54,12 @@ async function testPersistence() {
     console.log("3️⃣  Restarting KMS container...");
     console.log("   Stopping container...");
     execSync("docker compose down", {
-      cwd: "/home/oriol/miimetiq3/pki-manager/kms",
+      cwd: KMS_DIR,
       stdio: "pipe"
     });
     console.log("   Starting container...");
     execSync("docker compose up -d", {
-      cwd: "/home/oriol/miimetiq3/pki-manager/kms",
+      cwd: KMS_DIR,
       stdio: "pipe"
     });
     console.log("   Waiting for KMS to be ready...");
