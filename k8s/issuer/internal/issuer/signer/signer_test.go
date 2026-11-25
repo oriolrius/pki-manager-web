@@ -52,3 +52,28 @@ func TestRevoke_Success(t *testing.T) {
 		t.Fatalf("err=%v r=%+v", err, r)
 	}
 }
+
+// Found with FuzzClientResponse: a 200 answer with no certificate was accepted,
+// and the controller then marked the CertificateRequest Ready with an empty
+// certificate.
+func TestSign_RejectsResponseWithoutCertificate(t *testing.T) {
+	for _, body := range []string{`{}`, `null`, `{"serialNumber":"01","certificatePem":""}`,
+		`{"certificatePem":"-----BEGIN CERTIFICATE-----\nMAA=\n-----END CERTIFICATE-----\n"}`,
+		`{"certificatePem":"-----BEGIN PRIVATE KEY-----\nMAA=\n-----END PRIVATE KEY-----\n"}`} {
+		c := New("https://pki.example.test", "t")
+		c.hc.Transport = respond{200, []byte(body)}
+		if r, err := c.Sign(context.Background(), &SignRequest{CSRPem: "x", RequestUID: "u"}); err == nil || r != nil {
+			t.Fatalf("accepted %s", body)
+		}
+	}
+}
+
+func TestSign_AcceptsResponseWithCertificate(t *testing.T) {
+	body, _ := json.Marshal(SignResponse{SerialNumber: "01", CertificatePEM: testCertPEM(t)})
+	c := New("https://pki.example.test", "t")
+	c.hc.Transport = respond{200, body}
+	r, err := c.Sign(context.Background(), &SignRequest{CSRPem: "x", RequestUID: "u"})
+	if err != nil || r.SerialNumber != "01" {
+		t.Fatalf("err=%v r=%+v", err, r)
+	}
+}
