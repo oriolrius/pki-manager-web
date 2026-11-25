@@ -928,14 +928,19 @@ describe('certificate.issue - Code Signing Certificates', () => {
       caller.certificate.issue({
         caId,
         certificateType: 'code_signing',
-        // organization deliberately omitted; cast lets Zod's runtime "Required" check fire
+        // Omit organization to check the runtime schema.
         subject: {
           commonName: 'Code Signer',
           country: 'US',
         } as { commonName: string; organization: string; country: string },
         validityDays: 730,
       })
-    ).rejects.toThrow('Required');
+    ).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+      cause: { issues: expect.arrayContaining([
+        expect.objectContaining({ code: 'invalid_type', path: ['subject', 'organization'] }),
+      ]) },
+    });
   });
 
   it('should enforce minimum key strength for code signing certificates', async () => {

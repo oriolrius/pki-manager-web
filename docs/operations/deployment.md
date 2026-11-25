@@ -152,9 +152,9 @@ the client IP from `X-Forwarded-For`:
 |---|---|
 | _unset_ / `false` | Ignore proxy headers (default; correct when clients connect directly) |
 | `10.222.35.0/24,172.18.0.5` | Trust only these peers (IPs/CIDRs; also `loopback`, `linklocal`, `uniquelocal`). **Recommended** |
-| `1`..`10` | Trust that many hops whatever the peer: only safe if the backend is unreachable except through them |
 
-`true` (trust anyone) is rejected and so are malformed entries, so the backend
+Numeric hop counts cannot identify the trusted peer. Replace them with proxy IPs or CIDRs.
+The backend rejects hop counts, `true` and malformed entries. It
 fails at startup instead of silently ignoring a typo. List **every** proxy hop
 that can reach the backend: e.g. the edge proxy's network **and** the frontend
 nginx, which also forwards `/cas/*`, `/krl/*` and `/ssh/zones/*`. Each proxy

@@ -115,8 +115,8 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 | Area | Stack |
 |---|---|
 | Backend | Fastify 5 · tRPC v11 · Drizzle + better-sqlite3 · Zod · node-forge · jose · Vitest |
-| Frontend | React 19 · TanStack Router/Query · tRPC client · Tailwind 4 · Vite 7 · Vitest+RTL |
-| Issuer | Go 1.23 · controller-runtime 0.20 · cert-manager 1.16 · Helm |
+| Frontend | React 19 · TanStack Router/Query · tRPC client · Tailwind 4 · Vite 8 · Vitest+RTL |
+| Issuer | Go 1.26.11 · controller-runtime 0.20 · cert-manager 1.16 · Helm |
 | Website | Astro · Starlight, in `site/` (content comes from `docs/` and `backlog/`) |
 | Tooling | just · pnpm workspaces (Node 22 LTS, `.nvmrc`; pnpm ≥9) · Commitizen conventional commits |
 

@@ -1,13 +1,23 @@
-import { generateOpenApiDocument } from 'trpc-swagger';
+import { generateOpenApiDocument } from 'trpc-to-openapi';
 import { appRouter } from './router.js';
-import type { OpenAPIV3 } from 'openapi-types';
 import { APP_VERSION } from '../lib/version.js';
 
-export const openApiDocument: OpenAPIV3.Document = generateOpenApiDocument(appRouter, {
+const document = generateOpenApiDocument(appRouter, {
+  options: {
+    override: ({ zodSchema, jsonSchema }) => {
+      if (zodSchema._zod.def.type === 'date') Object.assign(jsonSchema, { type: 'string', format: 'date-time' });
+    },
+  },
+  openApiVersion: '3.0.3',
   title: 'PKI Manager API',
   version: APP_VERSION,
   baseUrl: 'http://localhost:3000/api',
   description: 'Public Key Infrastructure (PKI) Management System API - Certificate Authority and Certificate Management',
+  docsUrl: 'https://github.com/your-org/pki-manager',
+});
+
+export const openApiDocument: ReturnType<typeof generateOpenApiDocument> = {
+  ...document,
   tags: [
     {
       name: 'certificates',
@@ -26,5 +36,4 @@ export const openApiDocument: OpenAPIV3.Document = generateOpenApiDocument(appRo
       description: 'Audit log operations - query system audit logs',
     },
   ],
-  docsUrl: 'https://github.com/your-org/pki-manager',
-});
+};

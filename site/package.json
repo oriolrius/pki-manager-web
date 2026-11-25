@@ -12,5 +12,10 @@
     "@astrojs/starlight": "0.42.10",
     "astro": "7.4.7",
     "starlight-openapi": "0.27.1"
+  },
+  "overrides": {
+    "httpsnippet": {
+      "form-data": "^4.0.6"
+    }
   }
 }

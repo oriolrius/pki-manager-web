@@ -1,5 +1,5 @@
 import { initTRPC, TRPCError } from '@trpc/server';
-import type { OpenApiMeta } from 'trpc-swagger';
+import type { OpenApiMeta } from 'trpc-to-openapi';
 import type { Context, AuthenticatedContext } from './context.js';
 import { authMiddlewareHandler } from './middleware/auth.js';
 import { isOIDCEnabled } from '../lib/oidc.js';

@@ -16,8 +16,7 @@
  *     The SSH/external responses are varied and complex, so responses are documented
  *     permissively — "an object" / "an array of objects" — never hand-enumerated.
  */
-import { zodToJsonSchema } from 'zod-to-json-schema';
-import type { ZodTypeAny } from 'zod';
+import { z } from 'zod';
 
 /**
  * Permissive object response: documents "a JSON object" without fast-json-stringify
@@ -58,24 +57,11 @@ export const errorResponse = {
 /**
  * Convert a Zod object schema into a Fastify/OpenAPI request-body JSON schema.
  *
- * Uses the repo's existing zod-to-json-schema conversion (mirrors openapi-schemas.ts),
- * strips the top-level `$schema` (not valid in OpenAPI), and FORCES
- * `additionalProperties: true`. The forced override is the safety guarantee from constraint
- * (1): zod-to-json-schema emits `additionalProperties: false` for plain objects, which — as
- * a Fastify body schema — would reject any request carrying extra keys even though the
- * handler's Zod `.strip()` parse accepts them.
+ * Keep unknown request fields available to the handler. Use draft 7 because
+ * Fastify compiles this schema with Ajv before it serves the route.
  */
-export function zodBodySchema(schema: ZodTypeAny): Record<string, unknown> {
-  // NOTE: target is `jsonSchema7`, NOT `openApi3`. Because this schema is attached to a
-  // Fastify route it is compiled by ajv (draft-07+) at startup — and the `openApi3` target
-  // emits the draft-04 boolean form `exclusiveMinimum: true` (from Zod `.positive()`), which
-  // ajv rejects with "exclusiveMinimum must be number", failing route registration. The
-  // `jsonSchema7` target emits the numeric form (`exclusiveMinimum: 0`) that ajv accepts and
-  // @fastify/swagger still renders into the OpenAPI requestBody.
-  const json = zodToJsonSchema(schema, {
-    target: 'jsonSchema7',
-    $refStrategy: 'none',
-  }) as Record<string, unknown>;
+export function zodBodySchema(schema: z.ZodType): Record<string, unknown> {
+  const json = z.toJSONSchema(schema, { target: 'draft-7', io: 'input' });
   delete json.$schema;
   return { ...json, additionalProperties: true };
 }

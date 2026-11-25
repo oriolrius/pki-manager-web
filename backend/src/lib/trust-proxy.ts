@@ -10,19 +10,15 @@ const KEYWORDS = new Set(['loopback', 'linklocal', 'uniquelocal']);
  * - unset, empty or `false`: proxy headers are ignored; `req.ip` is the TCP peer.
  * - comma-separated IPs/CIDRs (or `loopback`/`linklocal`/`uniquelocal`): only
  *   these peers may set the client address. Recommended.
- * - a hop count (`1`..`10`): trusts that many proxies whatever the peer, so only
- *   safe when the backend is unreachable except through them.
  *
  * `true` (trust everyone) is rejected: anyone reaching the port could forge
  * `req.ip`. Invalid values throw so a typo cannot silently disable the setting.
  */
-export function parseTrustProxy(raw: string | undefined): false | number | string[] {
+export function parseTrustProxy(raw: string | undefined): false | string[] {
   const value = raw?.trim() ?? '';
   if (value === '' || value === 'false') return false;
   if (/^\d+$/.test(value)) {
-    const hops = Number(value);
-    if (hops < 1 || hops > 10) throw new Error(`TRUST_PROXY hop count must be 1..10, got "${value}"`);
-    return hops;
+    throw new Error('TRUST_PROXY hop counts cannot identify trusted peers; list the proxy IPs/CIDRs instead');
   }
   if (value === 'true') {
     throw new Error('TRUST_PROXY=true would trust a forged X-Forwarded-For from anyone; list the proxy IPs/CIDRs instead');

@@ -211,7 +211,7 @@ No rate limiting is currently enforced. This may change in future versions.
           required: ['total', 'limit', 'offset', 'hasMore'],
         },
 
-        // === Schemas generated from Zod via zod-to-json-schema ===
+        // === Schemas generated from Zod ===
 
         // Common/Enum schemas
         SubjectDN: openApiSchemas.SubjectDN,
