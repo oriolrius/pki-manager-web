@@ -7,7 +7,7 @@ calling the PKI Manager backend REST API. See the root `AGENTS.md` for repo-wide
 
 ## What it is
 
-- Module `github.com/oriolrius/pki-manager-issuer`, Go 1.23. Deps: controller-runtime 0.20,
+- Module `github.com/oriolrius/pki-manager-issuer`, Go 1.26.11. Deps: controller-runtime 0.20,
   cert-manager 1.16 APIs, k8s 0.32.
 - CRDs in group `pki-manager.issuer.io/v1alpha1`: `Issuer` (namespaced) + `ClusterIssuer`
   (cluster-scoped), sharing `IssuerSpec`.
@@ -46,7 +46,7 @@ change both sides together when the external API changes.
 | `make docker-build` | `docker build -t $(IMG) .` (default `ghcr.io/oriolrius/pki-manager-issuer:dev`) |
 | `make e2e-in-cluster` | full kind e2e (KMS + backend + issuer + cert-manager); see `test/e2e/in-cluster/README.md` |
 
-`Dockerfile`: static `golang:1.26.11` build (pinned by digest) (module stays `go 1.23`) → distroless nonroot (UID 65532), binary `/manager`; the builder's patched CA bundle replaces distroless's stale one (#9).
+`Dockerfile`: static `golang:1.26.11` build (pinned by digest) → distroless nonroot (UID 65532), binary `/manager`; the builder's patched CA bundle replaces distroless's stale one (#9).
 Install via Helm chart `deploy/helm/pki-manager-issuer/`:
 
 ```bash
