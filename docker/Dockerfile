@@ -56,27 +56,26 @@ WORKDIR /app/backend
 RUN pnpm build
 
 ################################################################################
-# Build Frontend - Use npm for simpler dependency resolution
+# Build Frontend - pnpm with the workspace lock file (same as the backend)
 ################################################################################
-FROM node:22-alpine AS build-frontend
-
-# Update npm to latest
-RUN npm install -g npm@latest
-
-WORKDIR /app
+FROM base AS build-frontend
 
 # Accept build arguments for frontend configuration
 ARG VITE_API_URL=http://localhost:3000/trpc
 
-# Copy root package.json (needed for version import in frontend)
-COPY package.json ./
-
-# Copy backend source (needed for tRPC types)
+# Workspace manifests and the one lock file (root package.json is also needed for
+# the version import in frontend/src/routes/__root.tsx)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
+
+# Install only the frontend and its dependencies, exactly as pnpm-lock.yaml pins them
+RUN pnpm install --frozen-lockfile --filter frontend...
+
+# Backend source (type-only imports of the tRPC router; erased by Vite)
 COPY backend/src/ ./backend/src/
 
-# Copy frontend source files (excluding node_modules via .dockerignore)
-COPY frontend/package.json frontend/package-lock.json* ./frontend/
+# Copy frontend source files
 COPY frontend/src/ ./frontend/src/
 COPY frontend/public/ ./frontend/public/
 COPY frontend/index.html frontend/silent-renew.html ./frontend/
@@ -85,15 +84,11 @@ COPY frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.js
 COPY frontend/tailwind.config.js* frontend/postcss.config.js* ./frontend/
 COPY frontend/eslint.config.js* ./frontend/
 
-# Install frontend dependencies using npm (simpler flat node_modules)
-WORKDIR /app/frontend
-RUN npm install
-
 # Set environment variable for Vite build
 ENV VITE_API_URL=${VITE_API_URL}
 
-# Build frontend using npm
-RUN npm run build:docker
+WORKDIR /app/frontend
+RUN pnpm run build:docker
 
 ################################################################################
 # Production Backend Stage

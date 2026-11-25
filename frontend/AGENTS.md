@@ -9,12 +9,14 @@ RTL. See the root `AGENTS.md` for repo-wide rules.
 
 | Command | Does |
 |---|---|
-| `npm run dev` | Vite dev — host `0.0.0.0`, **port `52080`** (not 5173) |
-| `npm run build` | `tsc -b && vite build` |
-| `npm run build:docker` | `vite build` only (relaxed `tsconfig.build.json`) |
-| `npm run typecheck` / `lint` / `test` | `tsc --noEmit` / `eslint .` / `vitest run` |
+| `pnpm dev` | Vite dev — host `0.0.0.0`, **port `52080`** (not 5173) |
+| `pnpm build` | `tsc -b && vite build` |
+| `pnpm build:docker` | `vite build` only (relaxed `tsconfig.build.json`) |
+| `pnpm typecheck` / `lint` / `test` | `tsc --noEmit` / `eslint .` / `vitest run` |
 
-Use **npm** here (this dir has `package-lock.json`), even though the repo root uses pnpm.
+Use **pnpm**, as in the whole workspace. The one lock file is `pnpm-lock.yaml` at the repository
+root; the Docker build (`docker/Dockerfile`, stage `build-frontend`) installs from it with
+`pnpm install --frozen-lockfile --filter frontend...`.
 
 ## Architecture
 
@@ -72,6 +74,6 @@ Tailwind **4** via PostCSS (no `tailwind.config.js`; tokens are CSS-first in `sr
 
 - **Dev port `52080`, open it as `http://localhost:52080`.** `vite.config.ts` has no
   `allowedHosts`, so only localhost/IPs are accepted, and only localhost is a secure context.
-- `build:docker`/`tsconfig.build.json` **relax strictness** — run `npm run typecheck` to catch real type errors.
+- `build:docker`/`tsconfig.build.json` **relax strictness** — run `pnpm typecheck` to catch real type errors.
 - No page of the web UI loads a script from another origin or inline (`src/silent-renew.test.ts`
   checks the HTML files). A new HTML page is a Vite build entry, and `docker/Dockerfile` copies it.
