@@ -5,6 +5,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/website-pki--manager.oriolrius.cat-FF6600.svg)](https://pki-manager.oriolrius.cat/)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/oriolrius/pki-manager-web/badge)](https://scorecard.dev/viewer/?uri=github.com/oriolrius/pki-manager-web)
 
 **Website: <https://pki-manager.oriolrius.cat/>**. It says what PKI Manager does, how it
 works and how to use it. This file does not repeat it.
@@ -62,6 +63,9 @@ Then open <http://localhost:52080> and log in as `admin` / `admin`. The details 
 [How the docs are organised](docs/development/documentation.md).
 
 Problem reports and pull requests are welcome. There is no response time.
+
+A security vulnerability is different: do not open a public issue. Report it in private as the
+[security policy](SECURITY.md) says.
 
 ## Related projects
 
