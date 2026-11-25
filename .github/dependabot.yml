@@ -1,0 +1,110 @@
+# Dependabot version updates. How the pull requests are handled: docs/development/ci.md.
+#
+# - Weekly, on Monday. Minor and patch updates of one ecosystem come in ONE grouped pull request;
+#   a major update comes alone.
+# - cooldown: a new version must be 7 days old before Dependabot proposes it (a bad or malicious
+#   release is usually found and removed in that time). Security updates do not wait.
+# - Commit prefixes follow the conventional commits of the repository (Commitizen).
+# - Not here on purpose: the images of the Compose files (the KMS and Keycloak versions are
+#   pinned by hand, after a test), and the root uv.lock (it has no packages).
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+
+  # Root pnpm workspace: backend, frontend and the Playwright tests (pnpm-lock.yaml).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build(deps)
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # The website and the video tooling: each has its own package-lock.json.
+  - package-ecosystem: npm
+    directories:
+      - /site
+      - /docs/ssh/explainer/video
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build(deps)
+    groups:
+      site-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directories:
+      - /k8s/issuer
+      - /scep
+      - /krl-client
+      - /krl-client/spike
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build(deps)
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  # Base images of the Dockerfiles (tag and digest).
+  - package-ecosystem: docker
+    directories:
+      - /docker
+      - /k8s/issuer
+      - /scep
+      - /site
+      - /ansible/tests/e2e
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build(deps)
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+
+  # ansible-core of the Ansible e2e (requirements.txt with hashes).
+  - package-ecosystem: pip
+    directory: /ansible/tests/e2e
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: build(deps)
+    groups:
+      pip-minor-patch:
+        update-types: [minor, patch]

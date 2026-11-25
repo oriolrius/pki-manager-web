@@ -1,0 +1,9 @@
+name: PKI Manager CodeQL configuration
+
+# Not first-party source: installed or generated trees. They are git-ignored, so a CI checkout
+# does not have them; the list also keeps a local run of the CodeQL CLI clean.
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - ansible/tests/e2e/_collections/**
+  - frontend/src/routeTree.gen.ts

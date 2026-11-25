@@ -1,0 +1,58 @@
+name: Scorecard
+
+# OpenSSF Scorecard (https://scorecard.dev): checks the security practices of this repository
+# (pinned dependencies, token permissions, branch protection, ...). The result goes to the
+# code scanning page and, signed, to api.scorecard.dev (the badge of the README reads it).
+# This file follows the example of ossf/scorecard-action. With `publish_results: true` the
+# action accepts only this shape of job: do not add steps or top-level `env`/`defaults`.
+on:
+  # For the Branch-Protection check.
+  branch_protection_rule:
+  schedule:
+    - cron: '15 5 * * 1' # Mondays 05:15 UTC
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    # Scorecard supports only the default branch.
+    if: ${{ github.event.repository.default_branch == github.ref_name }}
+    permissions:
+      security-events: write # upload SARIF to code scanning
+      id-token: write # sign the results published to api.scorecard.dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@23f22cd43608bae7a1f1fa2603d7314dee9538a5 # v2.6.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code scanning
+        if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          sarif_file: results.sarif
