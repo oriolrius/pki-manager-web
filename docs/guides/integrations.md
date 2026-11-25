@@ -1,4 +1,5 @@
 # Automate issuance: integrations, tokens and SCEP
+<!-- tested-with: 3.15.0 -->
 
 This guide shows how a machine, not a person, gets certificates from PKI Manager.
 Every command and screenshot below was run against a demo stack with release **3.15.0**.

@@ -24,7 +24,10 @@ jobs:
       run:
         working-directory: docs/site
     steps:
+      # Full history and tags: each page shows the release that has its last change (scripts/version.mjs)
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: docs/site/.nvmrc

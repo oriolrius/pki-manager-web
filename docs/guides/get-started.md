@@ -1,4 +1,5 @@
 # Install PKI Manager and log in
+<!-- tested-with: 3.15.0 -->
 
 This guide runs PKI Manager with Docker Compose and the published images. It takes about
 ten minutes. Every step below was run on a clean machine with release **3.15.0**.

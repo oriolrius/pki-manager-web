@@ -1,4 +1,5 @@
 # Issue Kubernetes certificates with cert-manager
+<!-- tested-with: 3.15.0 -->
 
 This guide issues a TLS certificate for `app.acme.example` inside Kubernetes.
 cert-manager creates the request. The PKI Manager issuer sends it to PKI Manager.

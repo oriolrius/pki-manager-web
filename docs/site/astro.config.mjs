@@ -18,6 +18,8 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: REPO }],
       editLink: { baseUrl: `${REPO}/edit/main/` },
       customCss: ['./src/styles/theme.css'],
+      // Version badge next to the title, versions line under each page title
+      components: { SiteTitle: './src/components/SiteTitle.astro', PageTitle: './src/components/PageTitle.astro' },
       // OpenAPI reference generated from the backend source at build time (scripts/openapi.mjs).
       plugins: [
         starlightOpenAPI([

@@ -1,4 +1,5 @@
 # Call the REST API
+<!-- tested-with: 3.15.0 -->
 
 Every command on this page runs in CI against a demo stack (release 3.15.0), so it works as
 written. You need `curl`, `jq` and `openssl`.

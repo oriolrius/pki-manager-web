@@ -1,0 +1,27 @@
+---
+// Site title with the PKI Manager version that these docs describe.
+import Default from '@astrojs/starlight/components/SiteTitle.astro';
+import v from '../version.json';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<div class="sl-flex site-title-wrap">
+  <Default />
+  <a class="version-badge" href={`${base}/operations/releases/`} title={`These docs describe PKI Manager ${v.version}. Release notes`}>v{v.version}</a>
+</div>
+
+<style>
+  .site-title-wrap { align-items: center; gap: 0.5rem; min-width: 0; }
+  .version-badge {
+    flex-shrink: 0;
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.3rem;
+    font-size: var(--sl-text-xs);
+    font-weight: 600;
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .version-badge:hover { color: var(--sl-color-text-accent); border-color: var(--sl-color-text-accent); }
+</style>
