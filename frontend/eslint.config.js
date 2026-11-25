@@ -31,9 +31,7 @@ export default defineConfig([
           ignoreRestSiblings: true,
         },
       ],
-      // Existing debt, reported as warnings until it is typed (issue #73).
-      // New code must not add `any`.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
       // Fast refresh hint for the Vite dev server only; it has no effect on the
       // build. Files that export a hook next to a provider stay as they are.
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
