@@ -6,7 +6,6 @@ import { login, shooter, RUN_DIR } from './helpers';
 // Guide: docs/guides/mqtt.md. Acme runs a Mosquitto broker (mqtt.acme.example) with mutual TLS.
 // The guide is run in phases, with the broker steps (shell) between them:
 //   PHASE=issue      CA, server certificate, client certificate, downloads
-//   PHASE=bootstrap  issue and revoke a spare certificate: the CA has no CRL until its first revocation
 //   PHASE=revoke     revoke the client certificate (after the broker accepted it)
 const shot = shooter('mqtt');
 const WORK = join(RUN_DIR, 'mqtt');
@@ -116,18 +115,6 @@ test('3 client certificate', async ({ page }) => {
   await grab(page, 'pem', 'client.pem');
   await grab(page, 'pem-key', 'client-key.zip');
   await grab(page, 'pkcs12', 'client.p12', { pw: 'Acme-Export-1' });
-});
-
-test('4 spare certificate, revoked to create the first CRL', async ({ page }) => {
-  test.skip(PHASE !== 'bootstrap');
-  await login(page);
-  await issueCert(page, { type: 'client', cn: 'sensor-spare', ou: 'Factory Sensors', days: 365 });
-  await submitIssue(page, 'spareId');
-  await page.getByRole('button', { name: 'Revoke', exact: true }).click();
-  await page.locator('#reason').selectOption('superseded');
-  await page.locator('textarea').fill('Spare certificate, revoked to create the first CRL');
-  await page.getByRole('button', { name: 'Revoke Certificate' }).click();
-  await expect(page.getByText('REVOKED', { exact: true }).first()).toBeVisible({ timeout: 60_000 });
 });
 
 test('5 revoke the client certificate', async ({ page }) => {

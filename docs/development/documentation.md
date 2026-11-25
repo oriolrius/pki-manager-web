@@ -68,6 +68,10 @@ is built from them, and the rules that keep one source of truth.
   <!-- tested-with: 3.17.0 -->
   ```
 
+  When the steps ran on a build of `main` that is not a release yet, add the short commit after
+  the last release: `<!-- tested-with: 3.17.0+298b92d5 -->`. The page then says "main at
+  298b92d5 (after 3.17.0)". Change it to the release number when you run the steps on that release.
+
 ### Product pages
 
 The pages under `/features/`, `/how-it-works/` and `/about/` use the product layout instead of
@@ -131,6 +135,7 @@ its own ports, with its own Keycloak, and never touches the dev data.
 just demo up        # start a clean demo stack (UI http://localhost:47380, API http://localhost:47300)
 just demo token     # print an access token of the demo admin
 just demo shots     # start it and take the screenshots (Playwright specs in site/demo/shots/)
+just demo check     # browser check of the CSP with an OIDC login (the stack must be up)
 just demo down      # stop it and delete its volumes
 ```
 
@@ -138,6 +143,18 @@ just demo down      # stop it and delete its volumes
 - `IMAGE_TAG` selects the release of the images, for example `IMAGE_TAG=3.16.1 just demo up`. The
   default is in `site/demo/demo.sh`; change it when you run the examples and the screenshots again
   on a new release, and change the `tested-with` line of those pages too.
+- `DEMO_BUILD=1 just demo up` (or `shots`) builds the backend and frontend images from your
+  checkout (tag `local`) and does not pull them. Use it to run the guides on `main` before a release.
+- Some guides need steps outside the browser between two sets of screenshots. Their specs have
+  phases: `STEP=2 SERIAL=<serial>` for `03-k8s-issuer.spec.ts` (after the cluster steps),
+  `PHASE=revoke` and `PHASE=csr` for `05-mqtt.spec.ts`, and test `D:` of `04-integrations.spec.ts`
+  needs the SCEP gateway. Run these with Playwright directly, because `just demo shots` starts a
+  clean stack: `cd site/demo && PHASE=revoke ../../node_modules/.bin/playwright test --config playwright.config.ts shots/05-mqtt.spec.ts`.
+- `just demo check` runs `site/demo/checks/csp-oidc.spec.ts` in a headless browser: login with
+  Keycloak, the main pages, the token renewal with the refresh token, the renewal in the hidden
+  iframe (`silent-renew.html`) and logout, with no CSP violation. `BASE_URL=http://localhost:PORT`
+  runs it on another origin, for example an edge proxy in front of the demo stack. It changes the
+  demo realm for the run (90-second access tokens) and puts the settings back.
 - The specs in `site/demo/shots/` write the screenshots of the guides to `docs/guides/img/` and the
   screenshots of the product pages to `docs/features/img/`. Commit the images.
 - `site/demo/doc-examples.sh docs/api/how-to.md` runs every `bash` block of a document against the

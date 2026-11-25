@@ -231,8 +231,8 @@ test('8 short-lived certificate, dashboard and list', async ({ page }) => {
   await expect(page.getByText('vpn.acme.example').first()).toBeVisible();
   await snap(page, '17-dashboard', 1300);
   await page.goto('/certificates');
-  await expect(page.getByPlaceholder('Filter by CN or SAN...')).toBeVisible();
-  await page.getByPlaceholder('Filter by CN or SAN...').fill('acme.example');
+  await expect(page.getByPlaceholder('Search by subject, SAN or serial...')).toBeVisible();
+  await page.getByPlaceholder('Search by subject, SAN or serial...').fill('acme.example');
   await page.locator('select').nth(0).selectOption({ label: 'Acme Internal Root CA' });
   await page.waitForTimeout(1200);
   await snap(page, '18-certificate-list', 1000);

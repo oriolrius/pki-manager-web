@@ -6,13 +6,16 @@ import v from '../version.json';
 const pki = Astro.locals.starlightRoute.entry.data.pki;
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const rel = (ver: string) => `https://github.com/oriolrius/pki-manager-web/releases/tag/v${ver}`;
+// "3.17.0+298b92d5": the steps ran on a build of main at that commit, after release 3.17.0.
+const [testedRelease, testedCommit] = (pki?.testedWith ?? '').split('+');
 ---
 
 <Default />
 <p class="pki-version">
   Docs for <a href={`${base}/operations/releases/`}>PKI Manager {v.version}</a>{v.date && ` (released ${v.date})`}{v.commitsAfter > 0 && `, from main ${v.commit} (${v.commitsAfter} commits after the release)`}.{' '}
-  {pki?.testedWith && (
-    <>Steps tested with <a href={rel(pki.testedWith)}>{pki.testedWith}</a>.{' '}</>
+  {pki?.testedWith && (testedCommit
+    ? <>Steps tested with main at <a href={`https://github.com/oriolrius/pki-manager-web/commit/${testedCommit}`}>{testedCommit}</a> (after <a href={rel(testedRelease)}>{testedRelease}</a>).{' '}</>
+    : <>Steps tested with <a href={rel(pki.testedWith)}>{pki.testedWith}</a>.{' '}</>
   )}
   {pki && (pki.changedIn
     ? <>Page last changed in <a href={rel(pki.changedIn)}>{pki.changedIn}</a>.</>
