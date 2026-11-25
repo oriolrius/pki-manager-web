@@ -234,7 +234,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
   });
   fastify.addHook('onResponse', async (req, reply) => {
     if (reply.statusCode < 400 || req.externalAudited) return;
-    if (!req.integration && !anonymousAuditBudget.allow(req.ip)) return;
+    if ((!req.integration || reply.statusCode === 429) && !anonymousAuditBudget.allow(req.ip)) return;
     try {
       await db.insert(auditLog).values({
         id: randomUUID(), operation: 'external.reject', entityType: 'integration',

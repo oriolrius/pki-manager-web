@@ -35,6 +35,8 @@ vi.mock('../../services/crl.service.js', () => ({
 }));
 
 import { generateCRL } from '../../crypto/crl.js';
+import { registerRequestLimits, tokenRequestsPerMinute } from '../middleware/request-limits.js';
+import { resetRateLimits } from '../middleware/ssh-rate-limit.js';
 import { externalRoutes } from './external.routes.js';
 import { parseTrustProxy } from '../../lib/trust-proxy.js';
 import { db } from '../../db/client.js';
@@ -151,6 +153,35 @@ describe('External /sign wiring (KMS certify)', () => {
       await db.insert(crls).values({ id: randomUUID(), caId, crlNumber: number, thisUpdate: now, nextUpdate: next, crlPem: generated.pem, revokedCount: revoked.length });
       return true;
     });
+  });
+
+  it('limits requests before token verification and counts verified token IDs across IPs', async () => {
+    resetRateLimits();
+    const limited = Fastify();
+    const url = '/api/v1/external/health';
+    const headers = { authorization: 'Bearer test-token' };
+    vi.stubEnv('API_IP_REQUESTS_PER_MINUTE', '1');
+    try {
+      await registerRequestLimits(limited);
+      await limited.register(externalRoutes, { prefix: '/api/v1/external' });
+      expect((await limited.inject({ url, headers })).statusCode).toBe(200);
+      const blocked = await limited.inject({ url, headers });
+      expect(blocked.statusCode).toBe(429);
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+      expect(verifyToken).toHaveBeenCalledTimes(1);
+
+      for (let i = 1; i < tokenRequestsPerMinute; i++) {
+        const response = await limited.inject({ url, headers, remoteAddress: `192.0.2.${i}` });
+        expect(response.statusCode).toBe(200);
+      }
+      const otherIp = await limited.inject({ url, headers, remoteAddress: '198.51.100.1' });
+      expect(otherIp.statusCode).toBe(429);
+      expect(otherIp.json().error.message).toContain('token');
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+      await limited.close();
+    }
   });
 
   let lastCsr = '';

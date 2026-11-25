@@ -1,3 +1,5 @@
+import { tokenRequestsPerMinute } from './request-limits.js';
+import { rateLimitOk } from './ssh-rate-limit.js';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { db } from '../../db/client.js';
 import { setAuditActor, integrationActor } from '../../lib/audit-actor.js';
@@ -38,4 +40,9 @@ export async function integrationAuthPreHandler(
   }
   req.integration = integration;
   setAuditActor(integrationActor(integration));
+  if (!rateLimitOk(`integration:${integration.id}`, tokenRequestsPerMinute, 60_000)) {
+    reply.header('Retry-After', '60').code(429).send({
+      error: { code: 'RATE_LIMITED', message: 'Too many requests for this token' },
+    });
+  }
 }

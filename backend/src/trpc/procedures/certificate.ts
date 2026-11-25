@@ -1477,6 +1477,7 @@ export const certificateRouter = router({
       const { formatDN } = await import('../../crypto/dn.js');
       const { parseCertificate } = await import('../../crypto/index.js');
       const {
+        isClientCertificateEmail,
         validateDomainName,
         validateServerSANs,
         validateCertificateValidity,
@@ -1629,7 +1630,7 @@ export const certificateRouter = router({
                 throw new Error(clientValidityCheck.error || 'Invalid validity period');
               }
 
-              const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(commonName);
+              const isEmail = isClientCertificateEmail(commonName);
               const isUsername = /^[a-zA-Z0-9._-]+$/.test(commonName);
               const isHostname = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(commonName);
               if (!isEmail && !isUsername && !isHostname) {
