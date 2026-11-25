@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from '@trpc/server';
 import type { OpenApiMeta } from 'trpc-swagger';
 import type { Context, AuthenticatedContext } from './context.js';
-import { createAuthMiddleware } from './middleware/auth.js';
+import { authMiddlewareHandler } from './middleware/auth.js';
 import { isOIDCEnabled } from '../lib/oidc.js';
 import { logger } from '../lib/logger.js';
 
@@ -59,7 +59,7 @@ export const loggedProcedure = t.procedure.use(loggingMiddleware);
 /**
  * Authentication middleware - validates JWT and adds user to context
  */
-const authMiddleware = createAuthMiddleware(t);
+const authMiddleware = t.middleware(authMiddlewareHandler);
 
 /**
  * Protected procedure - requires valid JWT token

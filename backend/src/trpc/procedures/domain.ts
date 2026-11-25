@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm';
 import { router, protectedProcedure } from '../init.js';
 import { z } from 'zod';
 import { certificates } from '../../db/schema.js';
@@ -16,7 +17,7 @@ const listDomainsSchema = z
 /**
  * Extract domain names from certificate subject DN and SANs
  */
-function extractDomains(cert: any): string[] {
+function extractDomains(cert: Pick<typeof certificates.$inferSelect, 'id' | 'subjectDn' | 'sanDns'>): string[] {
   const domains: Set<string> = new Set();
 
   // Extract from CN (Common Name)
@@ -74,7 +75,7 @@ export const domainRouter = router({
       };
 
       // Build WHERE conditions
-      const conditions: any[] = [];
+      const conditions: SQL[] = [];
 
       if (params.caId) {
         conditions.push(eq(certificates.caId, params.caId));

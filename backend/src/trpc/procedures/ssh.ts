@@ -4,6 +4,7 @@
  * errors map to TRPCError codes. CA management uses sshAdminProcedure (admin +
  * fail-closed when OIDC off, SSH-34); issuance/reads use sshProtectedProcedure.
  */
+import type { Context } from '../context.js';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { router, sshAdminProcedure, sshProtectedProcedure } from '../init.js';
@@ -75,7 +76,7 @@ function mapSshError(error: unknown): never {
   throw error;
 }
 
-const svcCtx = (ctx: any) => ({ db: ctx.db, ipAddress: ctx.req?.ip ?? null });
+const svcCtx = (ctx: Context) => ({ db: ctx.db, ipAddress: ctx.req?.ip ?? null });
 
 // Zone management (decision-017 §7). CRUD is admin-tier like CA management;
 // reads are protected. resolveZone is fail-closed — see ssh-zone.service.
@@ -537,7 +538,7 @@ const krlRouter = router({
 // sshProtectedProcedure — the same tier as host revoke/offboard; CA-level
 // actions stay admin-only. The actor (createdBy/liftedBy) is the OIDC subject
 // when present.
-const actorOf = (ctx: any): string | undefined =>
+const actorOf = (ctx: { user?: { preferredUsername?: string; preferred_username?: string; email?: string; sub: string } }): string | undefined =>
   ctx.user?.preferredUsername ?? ctx.user?.preferred_username ?? ctx.user?.email ?? ctx.user?.sub ?? undefined;
 
 const blockRouter = router({

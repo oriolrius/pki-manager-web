@@ -1,3 +1,4 @@
+import type { Readable } from 'node:stream';
 import { kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../init.js';
@@ -36,7 +37,7 @@ import {
 } from '../../services/certificate.service.js';
 import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
-import { convertCertificateFormat } from '../../crypto/x509.js';
+import { findForgeExtension, convertCertificateFormat } from '../../crypto/x509.js';
 import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { X509Certificate, createHash } from 'node:crypto';
 
@@ -389,8 +390,8 @@ export const certificateRouter = router({
       const { logger } = await import('../../lib/logger.js');
       const kmsService = getKMSService();
       let certificatePem: string;
-      if ((certificate as any).certificatePem) {
-        certificatePem = (certificate as any).certificatePem;
+      if (certificate.certificatePem) {
+        certificatePem = certificate.certificatePem;
       } else try {
         certificatePem = await kmsService.getCertificate(
           certificate.kmsCertificateId,
@@ -426,7 +427,7 @@ export const certificateRouter = router({
       const sha256Fingerprint = fp('sha256');
       const sha1Fingerprint = fp('sha1');
 
-      let forgeCert: any = null;
+      let forgeCert = null;
       try {
         forgeCert = forge.default.pki.certificateFromPem(certificatePem);
       } catch {
@@ -434,8 +435,8 @@ export const certificateRouter = router({
       }
 
       // Parse Key Usage extension
-      let keyUsage: any = null;
-      const keyUsageExt = forgeCert?.extensions.find((ext: any) => ext.name === 'keyUsage');
+      let keyUsage = null;
+      const keyUsageExt = findForgeExtension(forgeCert, 'keyUsage');
       if (keyUsageExt) {
         keyUsage = {
           digitalSignature: keyUsageExt.digitalSignature || undefined,
@@ -452,7 +453,7 @@ export const certificateRouter = router({
 
       // Parse Extended Key Usage extension
       let extendedKeyUsage: string[] | null = null;
-      const ekuExt = forgeCert?.extensions.find((ext: any) => ext.name === 'extKeyUsage');
+      const ekuExt = findForgeExtension(forgeCert, 'extKeyUsage');
       if (ekuExt) {
         extendedKeyUsage = [];
         if (ekuExt.serverAuth) extendedKeyUsage.push('serverAuth');
@@ -463,8 +464,8 @@ export const certificateRouter = router({
       }
 
       // Parse Basic Constraints extension
-      let basicConstraints: any = null;
-      const bcExt = forgeCert?.extensions.find((ext: any) => ext.name === 'basicConstraints');
+      let basicConstraints = null;
+      const bcExt = findForgeExtension(forgeCert, 'basicConstraints');
       if (bcExt) {
         basicConstraints = {
           cA: bcExt.cA || false,
@@ -761,7 +762,7 @@ export const certificateRouter = router({
             generateCrl: input.generateCrl,
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         // Keep the CA CRL current so the revoked serial appears promptly (best-effort).
         await getCRLService().regenerateForCa(
@@ -794,7 +795,7 @@ export const certificateRouter = router({
             reason: input.reason,
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -866,7 +867,7 @@ export const certificateRouter = router({
             revocationReason: cert.revocationReason,
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         // Optional: Destroy KMS key if requested
         if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
@@ -922,7 +923,7 @@ export const certificateRouter = router({
             serialNumber: cert.serialNumber,
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -1013,8 +1014,8 @@ export const certificateRouter = router({
       try {
         // node-forge can't read EC certs; build these lazily and fall back to Node/openssl
         // for the formats that support EC (DER, PKCS#12, JKS). PKCS#7 stays forge-only.
-        let forgeCert: any = null;
-        let forgeCaCert: any = null;
+        let forgeCert = null;
+        let forgeCaCert = null;
         try {
           forgeCert = forge.default.pki.certificateFromPem(certificatePem);
           forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
@@ -1339,7 +1340,7 @@ export const certificateRouter = router({
             // Create TAR file using tar-stream
             const { pack } = await import('tar-stream');
             const { PassThrough } = await import('stream');
-            const streamToBuffer = async (stream: any): Promise<Buffer> => {
+            const streamToBuffer = async (stream: Readable): Promise<Buffer> => {
               const chunks: Buffer[] = [];
               for await (const chunk of stream) {
                 chunks.push(chunk);
@@ -1408,7 +1409,7 @@ export const certificateRouter = router({
             filename: filename,
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         logger.info(
           { certId: input.id, format: input.format, filename },
@@ -1434,7 +1435,7 @@ export const certificateRouter = router({
             format: input.format,
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         logger.error({ error, certId: input.id, format: input.format }, 'Failed to download certificate');
 
@@ -1567,7 +1568,7 @@ export const certificateRouter = router({
             throw new Error(`Invalid CSV format. Expected at least 4 fields (certificateType, CN, O, C), got ${parts.length}`);
           }
 
-          const certificateType = parts[0];
+          const parsedType = certificateTypeSchema.safeParse(parts[0]);
           const commonName = parts[1];
           const organization = parts[2];
           const country = parts[3];
@@ -1575,9 +1576,11 @@ export const certificateRouter = router({
           const validityDays = parts[5] ? parseInt(parts[5], 10) : input.defaultValidityDays || 365;
 
           // Validate certificate type
-          if (!['server', 'client', 'dual', 'code_signing', 'email'].includes(certificateType)) {
-            throw new Error(`Invalid certificate type: ${certificateType}. Must be one of: server, client, dual, code_signing, email`);
+          if (!parsedType.success) {
+            throw new Error(`Invalid certificate type: ${parts[0]}. Must be one of: server, client, dual, code_signing, email`);
           }
+
+          const certificateType = parsedType.data;
 
           // Validate required fields
           if (!commonName) {
@@ -1731,7 +1734,7 @@ export const certificateRouter = router({
             caId: input.caId,
             subjectDn: subjectName,
             serialNumber: certMetadata.serialNumber,
-            certificateType: certificateType as any,
+            certificateType,
             notBefore: certMetadata.validity.notBefore,
             notAfter: certMetadata.validity.notAfter,
             kmsCertificateId: certInfo.certificateId,
@@ -1753,7 +1756,7 @@ export const certificateRouter = router({
             status: 'success',
             details: JSON.stringify({
               caId: input.caId,
-              certificateType: certificateType,
+              certificateType,
               subject: subjectName,
               keyAlgorithm: 'RSA-2048',
               validityDays: validityDays,
@@ -1765,7 +1768,7 @@ export const certificateRouter = router({
               bulkRow: rowNumber,
             }),
             ipAddress: ctx.req.ip,
-          } as any);
+          });
 
           logger.info({ certId, subjectName, caId: input.caId, row: rowNumber }, 'Certificate issued successfully (bulk)');
 
@@ -1806,7 +1809,7 @@ export const certificateRouter = router({
           defaultValidityDays: input.defaultValidityDays,
         }),
         ipAddress: ctx.req.ip,
-      } as any);
+      });
 
       logger.info(
         { caId: input.caId, totalRows: lines.length, successful, failed },
@@ -1907,7 +1910,7 @@ export const certificateRouter = router({
               generateCrl: input.generateCrl,
             }),
             ipAddress: ctx.req.ip,
-          } as any);
+          });
 
           results.push({
             certificateId: certId,
@@ -1944,7 +1947,7 @@ export const certificateRouter = router({
           generateCrl: input.generateCrl,
         }),
         ipAddress: ctx.req.ip,
-      } as any);
+      });
 
       // Regenerate the CRL once per affected CA so revoked serials appear (best-effort).
       for (const caId of affectedCaIds) {
@@ -2193,7 +2196,7 @@ export const certificateRouter = router({
               revokeOriginal: input.revokeOriginal,
             }),
             ipAddress: ctx.req.ip,
-          } as any);
+          });
 
           logger.info({ newCertId, originalCertId: certId }, 'Certificate renewed successfully (bulk)');
 
@@ -2232,7 +2235,7 @@ export const certificateRouter = router({
           revokeOriginal: input.revokeOriginal,
         }),
         ipAddress: ctx.req.ip,
-      } as any);
+      });
 
       // Regenerate the CRL once per CA whose original cert was revoked on renewal (best-effort).
       for (const caId of affectedCaIds) {
@@ -2325,7 +2328,7 @@ export const certificateRouter = router({
               removeFromCrl: input.removeFromCrl,
             }),
             ipAddress: ctx.req.ip,
-          } as any);
+          });
 
           // Optional: Destroy KMS key if requested
           if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
@@ -2387,7 +2390,7 @@ export const certificateRouter = router({
           destroyKey: input.destroyKey,
         }),
         ipAddress: ctx.req.ip,
-      } as any);
+      });
 
       logger.info(
         { totalCertificates: input.certificateIds.length, successful, failed },
@@ -2453,8 +2456,8 @@ export const certificateRouter = router({
 
       // Helper function to generate certificate in a specific format
       const generateCertificateFile = async (
-        certificate: any,
-        ca: any,
+        certificate: typeof certificates.$inferSelect,
+        ca: typeof certificateAuthorities.$inferSelect,
         format: string,
         password?: string,
         encryptKey?: boolean
@@ -2469,8 +2472,8 @@ export const certificateRouter = router({
         );
         // node-forge can't read EC certs; build lazily (null for EC) and use Node/openssl for
         // the EC-capable formats (DER, PKCS#12, JKS). PKCS#7 stays forge-only.
-        let forgeCert: any = null;
-        let forgeCaCert: any = null;
+        let forgeCert = null;
+        let forgeCaCert = null;
         try {
           forgeCert = forge.default.pki.certificateFromPem(certificatePem);
           forgeCaCert = forge.default.pki.certificateFromPem(caCertificatePem);
@@ -2599,7 +2602,7 @@ export const certificateRouter = router({
           let certCount = 0;
 
           // Collect all unique CA certificates for chain inclusion
-          const caMap = new Map<string, { ca: any; pem: string }>();
+          const caMap = new Map<string, { ca: typeof certificateAuthorities.$inferSelect; pem: string }>();
 
           for (const { ca } of certResults) {
             if (!ca) continue;
@@ -2676,8 +2679,8 @@ export const certificateRouter = router({
                 );
                 certCount++;
                 logger.info({ certId: certificate.id, alias }, 'Certificate added to JKS Keystore');
-              } catch (keytoolError: any) {
-                logger.error({ error: keytoolError.message, certId: certificate.id }, 'Failed to add certificate to JKS Keystore');
+              } catch (keytoolError) {
+                logger.error({ error: keytoolError instanceof Error ? keytoolError.message : String(keytoolError), certId: certificate.id }, 'Failed to add certificate to JKS Keystore');
               }
             } catch (error) {
               logger.error({ error, certId: certificate.id }, 'Failed to process certificate for JKS Keystore bulk download');
@@ -2707,7 +2710,7 @@ export const certificateRouter = router({
               format: 'jks-keystore',
             }),
             ipAddress: ctx.req.ip,
-          } as any);
+          });
 
           logger.info(
             { totalCertificates: certCount, format: 'jks-keystore' },
@@ -2746,7 +2749,7 @@ export const certificateRouter = router({
           let caCount = 0;
 
           // Collect all unique CA certificates
-          const caMap = new Map<string, { ca: any; pem: string }>();
+          const caMap = new Map<string, { ca: typeof certificateAuthorities.$inferSelect; pem: string }>();
 
           for (const { ca } of certResults) {
             if (!ca) continue;
@@ -2784,8 +2787,8 @@ export const certificateRouter = router({
               );
               caCount++;
               logger.info({ caId, caAlias }, 'CA certificate added to JKS Truststore as trusted entry');
-            } catch (error: any) {
-              logger.warn({ caId, error: error.message }, 'Failed to add CA certificate to JKS Truststore (may already exist)');
+            } catch (error) {
+              logger.warn({ caId, error: error instanceof Error ? error.message : String(error) }, 'Failed to add CA certificate to JKS Truststore (may already exist)');
             }
           }
 
@@ -2812,7 +2815,7 @@ export const certificateRouter = router({
               format: 'jks-truststore',
             }),
             ipAddress: ctx.req.ip,
-          } as any);
+          });
 
           logger.info(
             { totalCAs: caCount, format: 'jks-truststore' },
@@ -2838,7 +2841,7 @@ export const certificateRouter = router({
       if (input.format === 'docker-volume') {
         const { pack } = await import('tar-stream');
         const { PassThrough } = await import('stream');
-        const streamToBuffer = async (stream: any): Promise<Buffer> => {
+        const streamToBuffer = async (stream: Readable): Promise<Buffer> => {
           const chunks: Buffer[] = [];
           for await (const chunk of stream) {
             chunks.push(chunk);
@@ -2853,7 +2856,7 @@ export const certificateRouter = router({
         let certCount = 0;
 
         // First, collect all unique CA certificates
-        const caMap = new Map<string, { ca: any; pem: string }>();
+        const caMap = new Map<string, { ca: typeof certificateAuthorities.$inferSelect; pem: string }>();
         for (const { ca } of certResults) {
           if (!ca) continue;
           if (!caMap.has(ca.id)) {
@@ -2949,7 +2952,7 @@ export const certificateRouter = router({
             format: 'docker-volume',
           }),
           ipAddress: ctx.req.ip,
-        } as any);
+        });
 
         logger.info(
           { totalCertificates: certCount, format: 'docker-volume' },
@@ -3046,7 +3049,7 @@ export const certificateRouter = router({
           format: input.format,
         }),
         ipAddress: ctx.req.ip,
-      } as any);
+      });
 
       logger.info(
         { totalCertificates: input.certificateIds.length, format: input.format },
