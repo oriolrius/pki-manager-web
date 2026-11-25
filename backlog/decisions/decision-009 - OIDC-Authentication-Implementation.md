@@ -2,7 +2,7 @@
 id: decision-009
 title: 009 - OIDC Authentication Implementation
 date: '2025-02-05'
-status: proposed
+status: accepted
 ---
 
 ## Context
