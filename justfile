@@ -76,6 +76,17 @@ build:
 db-migrate:
     cd backend && pnpm db:migrate
 
+# Sync the CodeGraph index of this checkout and of the indexed sibling repositories
+codegraph:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -d .codegraph ] || codegraph init .
+    codegraph sync .
+    for d in ../pki-manager-cli ../pki-manager-ansible; do
+      [ -d "$d/.codegraph" ] && { echo "== $d"; codegraph sync "$d"; }
+    done
+    true
+
 # ─────────────────────────── website ───────────────────────────
 
 # Website (product pages + docs) with live reload on http://localhost:52085
