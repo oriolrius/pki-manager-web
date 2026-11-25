@@ -18,6 +18,7 @@ is built from them, and the rules that keep one source of truth.
 | The API reference | generated from the backend source when the site is built | `/api/reference/` |
 | Work to do | `backlog/tasks/` and GitHub issues | not published |
 | Rules for coding agents | the `AGENTS.md` files | not published |
+| How to report a vulnerability, and which versions get fixes | `SECURITY.md` at the root (GitHub shows it on the Security tab) | GitHub |
 
 ## The rules
 

@@ -113,6 +113,7 @@ export const ALIASES = {
  */
 export const REPO_ONLY = {
   'README.md': 'front page of the repository; it links to the site and repeats nothing',
+  'SECURITY.md': 'security policy; GitHub shows it on the Security tab of the repository, where a reporter looks for it',
   'AGENTS.md': 'instructions for coding agents',
   'backend/AGENTS.md': 'instructions for coding agents',
   'frontend/AGENTS.md': 'instructions for coding agents',

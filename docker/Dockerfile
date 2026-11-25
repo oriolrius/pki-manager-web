@@ -3,7 +3,7 @@
 ################################################################################
 # Base Stage - Common dependencies for pnpm-based builds
 ################################################################################
-FROM node:22-alpine AS base
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS base
 
 # Install specific pnpm version for reproducibility (patched: see security scan)
 RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
@@ -93,7 +93,7 @@ RUN pnpm run build:docker
 ################################################################################
 # Production Backend Stage
 ################################################################################
-FROM node:22-alpine AS backend
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS backend
 
 # Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan, then
 # install dumb-init for signal handling, the openssl CLI (PKCS#12 export + encrypted key
@@ -164,7 +164,7 @@ CMD ["node", "backend/dist/server.js"]
 ################################################################################
 # Production Frontend Stage
 ################################################################################
-FROM nginx:alpine AS frontend
+FROM nginx:alpine@sha256:7fc0fb4af7bf006aeb31aea88069976060f8f0a0a86b667126742cc17f4e31ae AS frontend
 
 # Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan
 RUN apk upgrade --no-cache

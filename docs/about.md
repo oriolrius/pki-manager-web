@@ -34,6 +34,8 @@ I publish the source code because it can be useful to someone else. That is the 
   that fits the project.
 - **Problem reports are welcome**, in [GitHub Issues](https://github.com/oriolrius/pki-manager-web/issues).
   I read them and I answer when I can. There is no response time.
+- **A security vulnerability is reported in private**, not in an issue. The
+  [security policy](../SECURITY.md) says how, what to include and what happens next.
 - **Each release has notes.** Versions follow semantic versioning. Read the
   [release notes](../CHANGELOG.md) before an upgrade.
 - **The software comes without warranty.** The licence is
