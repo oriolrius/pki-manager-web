@@ -1,3 +1,77 @@
+## v3.18.0 (2026-11-25)
+
+**Security fix, OpenSSF hardening, dependency upgrades**
+
+This release fixes the security advisory
+[GHSA-cw54-v7j3-m29f](https://github.com/oriolrius/pki-manager-web/security/advisories/GHSA-cw54-v7j3-m29f):
+SAN values of a certificate request could add extensions or SAN entries to the issued
+certificate. It also updates every dependency with a known vulnerability (OSV-Scanner: 163 → 0),
+adds fuzz and property tests (which found 7 more bugs, fixed here), rate limits on the external
+APIs, and the supply-chain checks of OpenSSF Scorecard (pinned actions and images, CodeQL,
+Dependabot, SLSA provenance for `krl-client`).
+
+### Security
+
+- **GHSA-cw54-v7j3-m29f** (medium): a line break or a comma in `sanDns`, `sanIp` or `sanEmail`
+  added extensions (for example `cRLDistributionPoints`, `nameConstraints`, a second
+  `basicConstraints`) or SAN entries to a certificate issued or renewed through the management
+  API. The backend now refuses these values for every certificate type, at issue and at renew.
+  The external signing API was not affected.
+- **scep**: a truncated PKCS#7 message made the gateway panic before authentication (pkcs7
+  v0.2.3); `SCEP_SHARED_SUBJECT` keys now match exactly.
+- **k8s-issuer**: a sign response with no certificate no longer marks a CertificateRequest Ready.
+- **api**: per-IP and per-token request limits on `/api/v1/external` and the SSH fleet and trust
+  endpoints; linear parsing replaces two backtracking regular expressions.
+- Dependencies with known vulnerabilities upgraded (Fastify, node-forge, Zod 4, Vite, Go modules,
+  Go 1.26.11 / 1.27.4).
+
+### Upgrade notes
+
+- `TRUST_PROXY` no longer accepts a hop count (`1`, `2`, ...): list the proxy IPs or CIDRs. The
+  backend stops at startup with a clear error otherwise.
+- New limits: 600 requests per minute per client IP and 120 per integration or fleet token, per
+  backend process (`API_IP_REQUESTS_PER_MINUTE`, `API_TOKEN_REQUESTS_PER_MINUTE`). Behind a proxy,
+  set `TRUST_PROXY`, or all clients share the proxy's IP limit. Size the token limit for the peak
+  of the Kubernetes issuer: it marks a request failed on HTTP 429.
+- Stricter names: a DNS name or IP address with whitespace at an end, an IPv4 address with a
+  leading zero (`010.0.0.1`) and an IPv6 address with a zone (`fe80::1%eth0`) are refused. The web
+  form trims what you type.
+- After a change of `config.json`, restart the frontend container (`docker compose restart
+  frontend`): its CSP takes the identity provider origin from that file at start.
+
+### Fix
+
+- **backend**: refuse SAN values that change the KMS extension text
+- **backend**: generate positive X.509 serial numbers
+- **frontend**: trim the names and addresses of the certificate form
+- **backend**: strict CN/SAN validators, DN parser and SSH cert parser
+- **k8s-issuer**: refuse a sign response that holds no certificate
+- **scep**: update pkcs7 to v0.2.3 and match shared subject keys exactly
+- **security**: bound API requests and remove backtracking from input validation
+- **scep**: log the full certificate serial on enrollment
+- **deps**: require patched transitive versions after lockfile regeneration
+- **deps**: update vulnerable JavaScript packages and migrate schema generation
+- **go**: upgrade affected modules and require Go 1.26.11
+- **frontend**: run strict typechecks against the backend router declarations
+- **dev**: seed-ssh-dev.sh registers ecdsa P-256 host keys
+- **lint**: scope the ajv override so ESLint runs, add a CI lint job
+- **ssh**: scope the external Idempotency-Key cache to the fleet token
+- **docker**: send the security headers on every frontend response
+- **docker**: make the Compose variables reach the containers and have an effect
+- **ca**: sign the CRL when a CA is revoked
+- **frontend**: server-side paging, filters and sort in the certificate list
+- **api**: release version and Apache-2.0 licence in OpenAPI and health
+- **frontend**: bundle the silent-renew page instead of loading oidc-client-ts from a CDN
+- **backlog**: keep the empty tasks and milestones folders in git
+
+### Refactor
+
+- **frontend**: derive form fields from router inputs
+- **rest**: type route inputs, OpenAPI schemas and KRL lookup
+- **trpc**: type middleware and procedure results
+- **services**: infer PKI and SSH rows from the database schema
+- **crypto**: type forge extensions and KMIP structures
+
 ## v3.17.0 (2026-11-24)
 
 **Security hardening: no stack traces, no passwords in URLs, CA key export opt-in**
