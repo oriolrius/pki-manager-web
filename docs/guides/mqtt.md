@@ -1,5 +1,5 @@
 # Client certificate authentication with revocation (worked example: Mosquitto)
-<!-- tested-with: 3.15.0 -->
+<!-- tested-with: 3.17.0+298b92d5 -->
 
 Acme Example Ltd runs a Mosquitto broker for factory sensors. Only sensors with a valid
 certificate may connect, and the broker must use TLS. This guide builds that setup with
@@ -20,8 +20,8 @@ This guide redoes the broker posts with PKI Manager and says what changes and wh
 Read post 1 for the concepts. This guide does not repeat them. Post 4 is not redone: a
 public CA cannot issue client certificates, and PKI Manager is a private CA.
 
-Every step was run on a demo stack with release **3.15.0** (see
-[Install PKI Manager and log in](../get-started/install.md)) and Mosquitto **2.0.22**
+Every step was run on a demo stack with a build of `main` at commit `298b92d5` (after release
+**3.17.0**; see [Install PKI Manager and log in](../get-started/install.md)) and Mosquitto **2.0.22**
 (`eclipse-mosquitto:2.0.22`). You log in as an `admin` user. The CA, certificate and CRL
 steps use the same screens as [Build a private CA](private-ca.md). That guide has the
 details of each form and download format.
@@ -118,7 +118,7 @@ X509v3 Extended Key Usage:
     TLS Web Client Authentication
 X509v3 CRL Distribution Points:
     Full Name:
-      URI:http://localhost:47300/crl/ad5bf329-0b3d-4619-ac67-21bc7b6d95a6.crl
+      URI:http://localhost:47300/crl/44482bb8-f783-4ac3-866e-8726b66ceaba.crl
 ```
 
 The server certificate is for servers only (`serverAuth`). The client certificate is for
@@ -173,9 +173,15 @@ the CA (CRL number 1), so the URL in the certificate works before the first revo
 Fetch the CRL with that URL and check it:
 
 ```bash
-curl -sS -o certs/crl.pem http://localhost:47300/crl/ad5bf329-0b3d-4619-ac67-21bc7b6d95a6.crl
+curl -sS -o certs/crl.pem http://localhost:47300/crl/44482bb8-f783-4ac3-866e-8726b66ceaba.crl
 chmod 600 certs/crl.pem
-openssl crl -in certs/crl.pem -noout -nextupdate -issuer
+openssl crl -in certs/crl.pem -noout -nextupdate -issuer -crlnumber
+```
+
+```text
+nextUpdate=Dec  2 20:56:36 2026 GMT
+issuer=CN = Acme MQTT Root CA, OU = IT Security, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
+crlNumber=0x01
 ```
 
 The CRL is valid for 7 days (`Next Update`). See [step 8](#8-keep-the-crl-fresh).
@@ -293,27 +299,24 @@ rc=0
 Fetch the new CRL from the URL inside the certificate:
 
 ```bash
-curl -sS -o certs/crl.pem http://localhost:47300/crl/ad5bf329-0b3d-4619-ac67-21bc7b6d95a6.crl
+curl -sS -o certs/crl.pem http://localhost:47300/crl/44482bb8-f783-4ac3-866e-8726b66ceaba.crl
 openssl crl -in certs/crl.pem -noout -text | grep -E "CRL Number|Serial Number|Reason" -A1
 ```
 
 ```text
             X509v3 CRL Number:
                 2
-    Serial Number: 3391F21D683A3326D0A6A851E562ED8185F4FB56
-        Revocation Date: Nov 24 10:30:39 2026 GMT
+--
+    Serial Number: 7B5016C1020C6CBADCCEC89B4BABEBEE3DC62B3A
+        Revocation Date: Nov 25 21:10:43 2026 GMT
+--
             X509v3 CRL Reason Code:
                 Key Compromise
-    Serial Number: 2925792E20E72BF41564363CF16EF811E4245D1E
-        Revocation Date: Nov 24 10:30:11 2026 GMT
-            X509v3 CRL Reason Code:
-                Superseded
 ```
 
-The serial `3391…FB56` is `sensor-01` (`openssl x509 -in certs/client.pem -noout -serial`).
-This output comes from a run before 3.16.1. A new CA had no CRL then, so that run also
-revoked a spare certificate (`2925…5D1E`, reason `Superseded`) to get a first CRL. With
-3.16.1 the CRL has only the `sensor-01` entry.
+The serial `7B50…2B3A` is `sensor-01` (`openssl x509 -in certs/client.pem -noout -serial`).
+The CRL number is 2: number 1 was the empty CRL of step 4.
+
 Tell the broker to reload. In this test `SIGHUP` was enough, no restart:
 
 ```bash
@@ -378,10 +381,10 @@ flow. In short:
    ```json
    {
      "idempotent": false,
-     "id": "35a5f44d-1cce-43e4-b0b8-74cb1c2cc1dd",
-     "serialNumber": "75cdb48b111ab69107cf91c3cc44fdbb36f720d8",
-     "notBefore": "2026-11-24T10:31:19.000Z",
-     "notAfter": "2027-11-24T10:31:19.000Z"
+     "id": "78e71904-c918-4cd1-90e1-fb3b701a3fce",
+     "serialNumber": "3d318b40f37c49a305f52d744f9e64f3b2cbb0cd",
+     "notBefore": "2026-11-25T21:10:52.000Z",
+     "notAfter": "2027-11-25T21:10:52.000Z"
    }
    ```
 
@@ -401,12 +404,12 @@ The script [mqtt/refresh-crl.sh](mqtt/refresh-crl.sh) does four things:
 One manual run, against the stack of this guide:
 
 ```bash
-CRL_URL=http://localhost:47300/crl/ad5bf329-0b3d-4619-ac67-21bc7b6d95a6.crl CERTS=$PWD/certs ./refresh-crl.sh
+CRL_URL=http://localhost:47300/crl/44482bb8-f783-4ac3-866e-8726b66ceaba.crl CERTS=$PWD/certs ./refresh-crl.sh
 ```
 
 ```text
 verify OK
-2026-11-24T10:31:06Z CRL updated, nextUpdate=Dec  1 10:30:39 2026 GMT
+2026-11-25T21:10:56Z CRL updated, nextUpdate=Dec  2 21:10:43 2026 GMT
 ```
 
 A wrong CRL URL (a CA id that does not exist) stops the script and keeps the old file:
@@ -454,4 +457,4 @@ WantedBy=timers.target
 | Inventory, expiry view and audit rows with the actor of each operation. | The UI has no audit page. Read the audit log through the API. |
 
 Source of the screenshots: `site/demo/shots/05-mqtt.spec.ts` (run with `PHASE=issue`,
-`bootstrap`, `revoke` and `csr`).
+`revoke` and `csr`).

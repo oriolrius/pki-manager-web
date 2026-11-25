@@ -1,22 +1,24 @@
 # Issue Kubernetes certificates with cert-manager
-<!-- tested-with: 3.15.0 -->
+<!-- tested-with: 3.17.0+298b92d5 -->
 
 This guide issues a TLS certificate for `app.acme.example` inside Kubernetes.
 cert-manager creates the request. The PKI Manager issuer sends it to PKI Manager.
 PKI Manager signs it with your CA. The private key of the CA stays in the KMS.
 The private key of the certificate never leaves the cluster.
 
-Every step below ran on a local **kind** cluster against a demo PKI Manager **3.15.0**.
+Every step below ran on a local **kind** cluster against a demo PKI Manager built from `main`
+at commit `298b92d5` (after release **3.17.0**).
 Output is trimmed. Names and IDs are from that run.
 
 | Part | Version used |
 |---|---|
-| PKI Manager (backend, UI) | 3.15.0 |
+| PKI Manager (backend, UI) | `main` at `298b92d5` (after 3.17.0) |
 | Kubernetes (kind node) | v1.35.0 |
 | cert-manager (Helm chart) | v1.19.1 |
 | cmctl (for renewal) | v2.1.1 |
-| Issuer chart | `pki-manager-issuer` 3.16.0, from `k8s/issuer/deploy/helm/` in the repository |
-| Issuer image | `ghcr.io/oriolrius/pki-manager-issuer:64d0e19` |
+| kind | v0.31.0 |
+| Issuer chart | `pki-manager-issuer` 3.17.0, from `k8s/issuer/deploy/helm/` in the repository |
+| Issuer image | `ghcr.io/oriolrius/pki-manager-issuer:3.17.0` (the default of the chart) |
 
 ## How it fits together
 
@@ -126,40 +128,34 @@ Click **I have saved the token**. The integration is in the list.
 Keep the CA ID and the token in shell variables for the next steps:
 
 ```bash
-export CA_ID=fcc188c4-a767-418f-883c-b9f4748cf5e7   # from the CA page
+export CA_ID=2ec82965-b4ce-4698-8f7f-5ecac873a290   # from the CA page
 export TOKEN=pkimg_...                                # from the dialog
 ```
 
 ## 3. Install the issuer
 
 The chart is in the repository, not in a Helm repository. Install it from your clone.
-
-`values.yaml`:
-
-```yaml
-image:
-  tag: "64d0e19"
-```
+The default values are enough: the chart uses the image of its own version.
 
 ```bash
 cd pki-manager-web/k8s/issuer
 helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
-  --namespace pki-manager-issuer --create-namespace -f values.yaml --wait
+  --namespace pki-manager-issuer --create-namespace --wait
 kubectl get pods -n pki-manager-issuer
 kubectl get crd | grep pki-manager
 ```
 
 ```text
 NAME                                                     READY   STATUS    RESTARTS   AGE
-pki-manager-issuer-pki-manager-issuer-86868dc74c-pzpgt   1/1     Running   0          17s
+pki-manager-issuer-pki-manager-issuer-7459b8fc5f-6jkvz   1/1     Running   0          17s
 
-clusterissuers.pki-manager.issuer.io   2026-11-24T09:58:50Z
-issuers.pki-manager.issuer.io          2026-11-24T09:58:50Z
+clusterissuers.pki-manager.issuer.io   2026-11-25T21:08:06Z
+issuers.pki-manager.issuer.io          2026-11-25T21:08:06Z
 ```
 
 Notes:
 
-- **`image.tag` defaults to the chart `appVersion`.** The version is the release version (`cz bump` keeps it in sync), and the `k8s-issuer` workflow publishes the image tag `X.Y.Z` on each `vX.Y.Z` tag. The workflow also publishes the short commit SHA and `latest` from `main`. Pin a tag with `image.tag` if you need one.
+- **`image.tag` defaults to the chart `appVersion`** (here `3.17.0`). The version is the release version (`cz bump` keeps it in sync), and the `k8s-issuer` workflow publishes the image tag `X.Y.Z` on each `vX.Y.Z` tag. The workflow also publishes the short commit SHA and `latest` from `main`. Pin a tag with `image.tag` if you need one.
 - The chart also installs an approver ClusterRole (`approver.enabled=true`, default). It lets cert-manager approve requests for the signers `issuers.pki-manager.issuer.io/*` and `clusterissuers.pki-manager.issuer.io/*`. Without it, cert-manager never approves requests for this issuer. See [Troubleshooting](#7-troubleshooting). Set `approver.enabled=false` only when you approve requests in another way.
 - If cert-manager runs under another ServiceAccount than `cert-manager` in namespace `cert-manager`, set `approver.certManagerServiceAccount.name` and `.namespace`.
 
@@ -181,7 +177,7 @@ metadata:
   name: pki-manager
 spec:
   url: http://pki-demo-backend:3000   # real install: https://pki.example.com
-  caId: fcc188c4-a767-418f-883c-b9f4748cf5e7
+  caId: 2ec82965-b4ce-4698-8f7f-5ecac873a290
   authSecretRef:
     name: pki-manager-token
     key: token
@@ -196,8 +192,8 @@ kubectl get clusterissuer.pki-manager.issuer.io pki-manager -o jsonpath='{.statu
 
 ```text
 NAME          READY   AGE
-pki-manager   True    8s
-[{"message":"PKI Manager reachable and CA matches","reason":"Verified","status":"True","type":"Ready"}]
+pki-manager   True    9s
+[{"lastTransitionTime":"2026-11-25T21:08:26Z","message":"PKI Manager reachable and CA matches","observedGeneration":1,"reason":"Verified","status":"True","type":"Ready"}]
 ```
 
 `Ready=True` and reason `Verified` mean:
@@ -276,9 +272,9 @@ openssl verify -CAfile ca.crt tls.crt
 ```text
 subject=CN = app.acme.example
 issuer=CN = K8s Demo Root CA, OU = Platform, C = ES, O = Acme Demo
-serial=51E1A69E54CB718DAE5437F5D43AB63F0C541710
-notBefore=Nov 24 10:00:26 2026 GMT
-notAfter=Feb 22 10:00:26 2027 GMT
+serial=199DD571FAF6B468D6E961993F7D904F8A0F12BA
+notBefore=Nov 25 21:08:43 2026 GMT
+notAfter=Feb 23 21:08:43 2027 GMT
 X509v3 Subject Alternative Name:
     DNS:app.acme.example
 X509v3 Extended Key Usage:
@@ -296,7 +292,7 @@ kubectl get certificaterequest app-tls-1 -o jsonpath='{.metadata.annotations.pki
 ```
 
 ```text
-51e1a69e54cb718dae5437f5d43ab63f0c541710
+199dd571faf6b468d6e961993f7d904f8a0f12ba
 ```
 
 The same serial is in PKI Manager. The **Integrations** list counts the certificates this token issued:
@@ -387,9 +383,9 @@ certificate.cert-manager.io/app-tls   True    app-tls   29s
 NAME                                           APPROVED   DENIED   READY   ISSUER        AGE
 certificaterequest.cert-manager.io/app-tls-2   True                True    pki-manager   10s
 
-serial=7571947267DC3A96069F0E17ADC3D7E15BE9E13F
-notBefore=Nov 24 10:00:46 2026 GMT
-notAfter=Feb 22 10:00:46 2027 GMT
+serial=49B0080E363173BE846D1F7DCE74C77648C7C5E1
+notBefore=Nov 25 21:09:05 2026 GMT
+notAfter=Feb 23 21:09:05 2027 GMT
 2
 ```
 
@@ -399,7 +395,7 @@ What changed:
 |---|---|---|
 | CertificateRequest | `app-tls-1` | `app-tls-2` |
 | Certificate revision | 1 | 2 |
-| Serial | `51E1A69E...` | `7571947267...` |
+| Serial | `199DD571...` | `49B0080E...` |
 
 A renewal is a new certificate. PKI Manager keeps the old one until it expires or you revoke it.
 The new certificate is in the list. Open it from **PKI → Certificates**:
@@ -411,7 +407,8 @@ It does not apply here: Kubernetes holds the key of these certificates.
 
 ## 7. Troubleshooting
 
-All messages below were seen in this run.
+The messages below were seen in this run, with two exceptions: the `ErrImagePull` row and the
+row about the approver ClusterRole come from the run on 3.15.0 and were not produced again.
 
 | Where | Message or symptom | Cause | Fix |
 |---|---|---|---|
@@ -419,7 +416,7 @@ All messages below were seen in this run.
 | ClusterIssuer `Ready=False`, reason `SecretMissing` | `Secret "missing-secret" not found` | Wrong Secret name, or Secret not in the controller namespace. | Create the Secret in `pki-manager-issuer` (ClusterIssuer) or in the Issuer namespace. |
 | Reason `Unreachable` | `Get "http://localhost:3000/api/v1/external/health": dial tcp [::1]:3000: connect: connection refused` | The URL is not reachable from the pod. `localhost` is the pod itself. | Use a URL the pod can reach. Set `caBundle` for a private TLS CA. |
 | Reason `Unreachable` | `pki-manager GET /api/v1/external/health: 401 UNAUTHORIZED: Invalid or revoked service token` | The token is wrong or the integration is revoked. | Create a new integration and replace the Secret. |
-| Reason `CAIDMismatch` | `token bound to caId=fcc188c4-... but spec.caId=00000000-...` | `spec.caId` is not the CA of the token. | Set `spec.caId` to the CA of the integration. |
+| Reason `CAIDMismatch` | `token bound to caId=2ec82965-... but spec.caId=00000000-...` | `spec.caId` is not the CA of the token. | Set `spec.caId` to the CA of the integration. |
 | `kubectl get certificaterequest`: APPROVED and READY empty, Certificate `False` | Request never approved. | The approver ClusterRole is missing (`approver.enabled=false`) or bound to the wrong ServiceAccount. | Install with `approver.enabled=true`. Set `approver.certManagerServiceAccount.*` to match cert-manager. Approval then happens on its own. |
 | CertificateRequest `Ready=False`, event `SignFailed` | `pki-manager POST /api/v1/external/sign: 400 INVALID_CSR: CSR must include a subject CN or at least one SAN` | The Certificate has neither `commonName` nor any SAN. | Set `dnsNames` (or `commonName`) on the Certificate. |
 | Ingress event `BadConfig` (no Certificate is created) | `Could not determine issuer for ingress due to bad annotations: both "cert-manager.io/cluster-issuer" and "cert-manager.io/issuer-group" may not be set, both "cert-manager.io/cluster-issuer" and "cert-manager.io/issuer-kind" may not be set` | The `cluster-issuer` annotation was used together with kind and group. | Use `cert-manager.io/issuer` with `issuer-kind` and `issuer-group`. |

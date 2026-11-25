@@ -253,6 +253,27 @@ Set `OIDC_ISSUER` and `OIDC_AUDIENCE` together to turn login on. With both unset
 The redirect URI is `<origin>/callback`, the post-logout URI is `<origin>/` and silent renewal uses `<origin>/silent-renew.html`.
 That page is part of the frontend build: its script comes from the application, not from a CDN, so silent renewal also works without Internet access.
 
+How the web UI renews the access token (tested with Keycloak 26.0.5 on a build of `main` at commit `298b92d5`):
+
+- The UI renews the token 60 seconds before it expires.
+- When the provider gave a refresh token, the UI sends it to the token endpoint. No iframe is
+  used. Keycloak gives a refresh token by default.
+- With no refresh token, the UI opens the provider in a hidden iframe (`prompt=none`). The
+  provider redirects the iframe to `<origin>/silent-renew.html` with a new authorization code.
+  The CSP of the frontend container allows this: its `frame-src` has the origin of
+  `oidc.authority`, and `frame-ancestors 'self'` lets the UI frame its own page.
+- In the test, Keycloak answered the iframe request with a `302` redirect that had no
+  `X-Frame-Options` and no `Content-Security-Policy` header. The headers of the Keycloak login
+  pages (`X-Frame-Options: SAMEORIGIN`) did not block the renewal, because no Keycloak page is
+  shown in the iframe.
+- The iframe needs the session cookie of the provider. The test had the UI and Keycloak on the
+  same site (`localhost`, different ports). When the provider is on another site, browsers that
+  block third-party cookies do not send that cookie: the renewal fails and the user logs in
+  again. Not tested here. Use refresh tokens in that case.
+- In Docker, the frontend container must start again after a change of `config.json`, or its CSP
+  blocks the provider: see
+  [Security headers of the frontend container](deployment.md#security-headers-of-the-frontend-container).
+
 The `VITE_*` values are read when the frontend is built (development with Vite, or your own image).
 In Docker, set the same values in `docker/config.json` instead (`oidc.authority`, `oidc.clientId`,
 `oidc.scope`): the web UI reads that file when it starts, and its values win over the build values.

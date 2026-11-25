@@ -114,6 +114,7 @@ test('C3: rotate, step 2: revoke the old token', async ({ page }) => {
   await page.getByRole('button', { name: 'Revoke', exact: true }).last().click();
   await expect(page.getByText('Service token revoked')).toBeVisible();
   await page.waitForTimeout(600);
+  await onlyMine(page, /Integrations Demo CI/); // the clip shows the first rows: other guides add rows above
   await shot(page, '08-revoked', { clip: { x: 90, y: 150, width: 1260, height: 125 } });
 });
 
@@ -131,7 +132,7 @@ test('D: SCEP integration and device certificate', async ({ page }) => {
   await page.waitForTimeout(500);
   await shot(page, '14-device-certificates');
   await page.getByRole('combobox').first().selectOption({ index: 0 });
-  await page.getByPlaceholder(/Filter by CN/).fill('app.example.internal');
+  await page.getByPlaceholder('Search by subject, SAN or serial...').fill('app.example.internal');
   await page.waitForTimeout(800);
   await shot(page, '15-ci-certificate');
 });

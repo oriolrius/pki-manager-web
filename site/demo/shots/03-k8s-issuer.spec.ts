@@ -55,7 +55,7 @@ test('step 2: issued certificates in PKI Manager', async ({ page }) => {
   await page.goto('/certificates');
   await page.getByText('app.acme.example').first().waitFor({ timeout: 30_000 });
   console.log(await page.getByRole('row', { name: /app\.acme\.example/ }).count());
-  await page.getByPlaceholder('Filter by CN or SAN...').fill('acme.example');
+  await page.getByPlaceholder('Search by subject, SAN or serial...').fill('acme.example');
   await page.getByRole('combobox').first().selectOption({ label: 'K8s Demo Root CA' });
   await page.waitForTimeout(800);
   await shot(page, '07-certificates-list');

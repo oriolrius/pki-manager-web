@@ -18,7 +18,7 @@ services:
       - "127.0.0.1:47385:8085"
     networks: [pki-demo-network]
   scep:
-    image: ghcr.io/oriolrius/pki-manager-web/scep:${SCEP_IMAGE_TAG:-3.15.0}
+    image: ghcr.io/oriolrius/pki-manager-web/scep:${SCEP_IMAGE_TAG:-3.17.0}
     container_name: pki-demo-scep
     network_mode: "service:scep-net"
     command: [serve]

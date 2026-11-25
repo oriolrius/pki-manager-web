@@ -11,9 +11,11 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
+	"math/big"
 	"mime"
 	"net/http"
 	"strings"
@@ -307,9 +309,16 @@ func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 			return g.certRep(msg, signer, nil, scep.BadRequest)
 		}
 	}
-	slog.Info("scep.enroll", "status", "success", "serial", issued.SerialNumber.Text(16))
+	slog.Info("scep.enroll", "status", "success", "serial", serialHex(issued.SerialNumber))
 	return result, nil
 }
+
+// serialHex returns the serial number as PKI Manager shows it: lowercase hex of whole bytes.
+// big.Int.Text(16) drops a leading zero digit, and then the logged serial finds no certificate.
+func serialHex(serial *big.Int) string {
+	return hex.EncodeToString(serial.Bytes())
+}
+
 func validateCSR(csr *x509.CertificateRequest, signer *x509.Certificate) error {
 	return validateCSRPolicy(csr, signer, false, false)
 }

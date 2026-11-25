@@ -38,7 +38,7 @@ const signBodySchema = {
     },
     durationDays: {
       type: 'integer', minimum: 1, maximum: 825,
-      description: 'Requested validity in days (clamped server-side to 1..825; default 90)',
+      description: 'Requested validity in days (1 to 825; default 90). A value out of this range is rejected with 400.',
     },
     certificateType: { type: 'string', enum: ['server', 'client', 'dual'], description: 'Metadata hint only. Key usage and extended key usage are taken from the signed CSR.' },
     k8sNamespace: { type: 'string' },
