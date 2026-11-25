@@ -8,6 +8,7 @@ vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (options: Record<string, unknown>) => ({ options }),
   useNavigate: () => navigate,
   useMatchRoute: () => () => false,
+  useSearch: () => ({}),
   Outlet: () => null,
 }));
 vi.mock('@/components/ui', () => ({ useToast: () => ({ error: vi.fn(), success: vi.fn() }) }));

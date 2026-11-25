@@ -25,14 +25,17 @@ links:
   for a password.
 - Renew a certificate. The new certificate has a new serial number and, unless you say otherwise,
   a new key. You choose if the old certificate stays valid or is revoked.
-- Find certificates by name, CA, status or type.
+- Find certificates by name, SAN, serial number, CA, status or type. The server does the
+  filtering, the sorting (by expiry or subject) and the paging (25, 50 or 100 rows per page). The
+  filters, the sort and the page are in the URL, so you can bookmark or share a filtered list.
 
 ![List of certificates with expiry, common name, subject alternative names and issuing CA](img/certificates.png)
 
 ### Many at once
 
 - Paste CSV lines to issue many certificates in one step.
-- Select rows in the list to download, renew, revoke or delete up to 100 certificates together.
+- Select rows on one page of the list to download, renew, revoke or delete up to 100 certificates
+  together. A change of page or filter clears the selection.
 
 ![Bulk page where CSV lines create many certificates](img/bulk.png)
 
@@ -56,6 +59,4 @@ request (CSR) through the API. See [Automation and API](automation-api.md).
 
 - It does not send an email or call a webhook before a certificate expires. The dashboard and the
   API show the dates.
-- The certificate page of the web UI shows the 50 newest certificates and filters them in the
-  browser. For more than that, use the API, which has paging, filters and sorting.
 - CSV issuance always makes RSA-2048 keys, and it has no fields for unit, state and locality.
