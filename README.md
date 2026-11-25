@@ -62,7 +62,8 @@ Then open <http://localhost:52080> and log in as `admin` / `admin`. The details 
 [Development setup](docs/development/setup.md). Each kind of document has one home:
 [How the docs are organised](docs/development/documentation.md).
 
-Problem reports and pull requests are welcome. There is no response time.
+Problem reports and pull requests are welcome. There is no response time. The rules for a
+change (tests, checks, commits) are in [Contributing](CONTRIBUTING.md).
 
 A security vulnerability is different: do not open a public issue. Report it in private as the
 [security policy](SECURITY.md) says.

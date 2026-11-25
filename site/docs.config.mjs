@@ -50,6 +50,7 @@ export const PAGES = {
   'development/testing': ['Testing', 2],
   'development/ci': ['CI and releases', 3],
   'development/documentation': ['How the docs are organised', 4],
+  'development/contributing': ['Contributing', 5],
 };
 
 /**
@@ -58,6 +59,7 @@ export const PAGES = {
  */
 export const EXTERNAL = {
   'CHANGELOG.md': { to: 'operations/releases', title: 'Release notes' },
+  'CONTRIBUTING.md': { to: 'development/contributing' },
   'ansible/README.md': { to: 'ssh/ansible-role' },
   'krl-client/README.md': { to: 'ssh/krl-client' },
   'scep/README.md': { to: 'operations/scep-gateway' },
