@@ -67,8 +67,8 @@ function NewCA() {
 
       utils.ca.list.invalidate();
       navigate({ to: `/cas/${result.id}` });
-    } catch (error: any) {
-      toast.error(`Failed to create CA: ${error.message}`);
+    } catch (error) {
+      toast.error(`Failed to create CA: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -216,7 +216,7 @@ function NewCA() {
                 </label>
                 <select
                   value={formData.keyAlgorithm}
-                  onChange={(e) => setFormData(prev => ({ ...prev, keyAlgorithm: e.target.value as any }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, keyAlgorithm: e.target.value as typeof prev.keyAlgorithm }))}
                   className="w-full px-3 py-2 border rounded-md bg-background"
                 >
                   <option value="RSA-2048">RSA 2048 (Standard)</option>

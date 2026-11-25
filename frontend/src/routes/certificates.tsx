@@ -1,3 +1,4 @@
+import type { RouterInputs } from '../lib/trpc';
 import { createFileRoute, useNavigate, Outlet, useMatchRoute, useSearch } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { Search, CheckCircle, XCircle, Server, User, Mail, FileCode, Award, Download, RefreshCw, Trash2, AlertCircle, Copy, Check, Shield, ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react';
@@ -118,7 +119,7 @@ function Certificates() {
     callback: () => void;
   } | null>(null);
   const [showBulkDownloadDialog, setShowBulkDownloadDialog] = useState(false);
-  const [bulkDownloadFormat, setBulkDownloadFormat] = useState<string>('pem');
+  const [bulkDownloadFormat, setBulkDownloadFormat] = useState<NonNullable<RouterInputs['certificate']['bulkDownload']['format']>>('pem');
   const [bulkDownloadPassword, setBulkDownloadPassword] = useState('');
   const [bulkEncryptPrivateKey, setBulkEncryptPrivateKey] = useState(true);
   const [showBulkPrivateKeyWarning, setShowBulkPrivateKeyWarning] = useState(false);
@@ -295,7 +296,7 @@ function Certificates() {
   const bulkDownload = trpc.certificate.bulkDownload.useQuery(
     {
       certificateIds: Array.from(selectedCertificates),
-      format: bulkDownloadFormat as any,
+      format: bulkDownloadFormat,
       password: bulkDownloadPassword || undefined,
       encryptPrivateKey: bulkEncryptPrivateKey,
     },
@@ -519,9 +520,9 @@ function Certificates() {
         setBulkEncryptPrivateKey(true);
         setShowBulkPrivateKeyWarning(false);
       }
-    } catch (error: any) {
+    } catch (error) {
       setShowProgressDialog(false);
-      toast.error(`Failed to download certificates: ${error.message}`);
+      toast.error(`Failed to download certificates: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -667,7 +668,7 @@ function Certificates() {
                     <select
                       id="bulk-format"
                       value={bulkDownloadFormat}
-                      onChange={(e) => setBulkDownloadFormat(e.target.value)}
+                      onChange={(e) => setBulkDownloadFormat(e.target.value as typeof bulkDownloadFormat)}
                       className="w-full px-3 py-2 border rounded-md bg-background"
                     >
                       {DOWNLOAD_FORMATS.map((format) => (

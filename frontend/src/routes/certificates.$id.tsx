@@ -1,3 +1,4 @@
+import type { RouterInputs } from '../lib/trpc';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { useState } from 'react';
@@ -67,10 +68,10 @@ function CertificateDetail() {
   const [showRenewDialog, setShowRenewDialog] = useState(false);
   const [renewKeepKey, setRenewKeepKey] = useState(false);
   const [renewRevokeOld, setRenewRevokeOld] = useState(false);
-  const [selectedReason, setSelectedReason] = useState<string>('unspecified');
+  const [selectedReason, setSelectedReason] = useState<RouterInputs['certificate']['revoke']['reason']>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState<string>('pem');
+  const [downloadFormat, setDownloadFormat] = useState<NonNullable<RouterInputs['certificate']['download']['format']>>('pem');
   const [downloadPassword, setDownloadPassword] = useState(generateExportPassword);
   const [lastExport, setLastExport] = useState<{ filename: string; password: string } | null>(null);
   const [encryptPrivateKey, setEncryptPrivateKey] = useState(true);
@@ -126,7 +127,7 @@ function CertificateDetail() {
     try {
       const result = await utils.certificate.download.fetch({
         id,
-        format: downloadFormat as any,
+        format: downloadFormat,
         password: (selectedFormat?.requiresPassword || (selectedFormat?.hasPrivateKey && encryptPrivateKey)) ? downloadPassword : undefined,
         encryptPrivateKey: selectedFormat?.hasPrivateKey ? (selectedFormat.requiresPassword || encryptPrivateKey) : undefined,
       });
@@ -185,8 +186,8 @@ function CertificateDetail() {
         setDownloadedDockerVolumeFilename(downloadedFilename);
         setShowDockerVolumeInfoPopup(true);
       }
-    } catch (error: any) {
-      toast.error(`Failed to download certificate: ${error.message}`);
+    } catch (error) {
+      toast.error(`Failed to download certificate: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -208,8 +209,8 @@ function CertificateDetail() {
       utils.certificate.list.invalidate();
       toast.success(`Certificate renewed successfully. New ID: ${data.id}`);
       navigate({ to: `/certificates/${data.id}` });
-    } catch (error: any) {
-      toast.error(`Failed to renew certificate: ${error.message}`);
+    } catch (error) {
+      toast.error(`Failed to renew certificate: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -219,7 +220,7 @@ function CertificateDetail() {
 
   const confirmRevoke = () => {
     revokeMutation.mutate(
-      { id, reason: selectedReason as any, details: revokeDetails || undefined },
+      { id, reason: selectedReason, details: revokeDetails || undefined },
       {
         onSuccess: () => {
           certQuery.refetch();
@@ -536,7 +537,7 @@ function CertificateDetail() {
                     <select
                       id="format"
                       value={downloadFormat}
-                      onChange={(e) => setDownloadFormat(e.target.value)}
+                      onChange={(e) => setDownloadFormat(e.target.value as typeof downloadFormat)}
                       className="w-full px-3 py-2 border rounded-md bg-background"
                     >
                       {DOWNLOAD_FORMATS.map((format) => (
@@ -832,7 +833,7 @@ function CertificateDetail() {
                 <select
                   id="reason"
                   value={selectedReason}
-                  onChange={(e) => setSelectedReason(e.target.value)}
+                  onChange={(e) => setSelectedReason(e.target.value as typeof selectedReason)}
                   className="w-full px-3 py-2 border rounded-md bg-background"
                 >
                   {REVOCATION_REASONS.map((reason) => (

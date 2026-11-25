@@ -213,7 +213,7 @@ function KrlForCa({ caId }: { caId: string }) {
                 </td>
               </tr>
             ) : (
-              revocations.map((r: any) => (
+              revocations.map((r) => (
                 <tr key={r.id}>
                   <td className="px-3 py-2">{r.targetType}</td>
                   <td className="px-3 py-2 font-mono text-xs break-all">{r.serial ?? r.keyFingerprint ?? '—'}</td>
