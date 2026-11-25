@@ -8,7 +8,7 @@ status: accepted
 # OpenAPI Specification Design for PKI Manager REST API
 
 ## Status
-**Proposed** | Date: 2025-11-27
+**Accepted** | Date: 2025-11-27 (built as the `/api/v1` REST API)
 
 ## Context
 
