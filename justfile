@@ -23,7 +23,7 @@ setup:
 dev:
     @bash scripts/dev-session.sh restart
 
-# Restart only the Backlog.md web UI, on all interfaces (0.0.0.0:6430)
+# Restart only the Backlog.md web UI, on all interfaces (0.0.0.0:52082)
 backlog:
     @bash scripts/dev-session.sh backlog
 
