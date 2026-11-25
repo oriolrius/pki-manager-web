@@ -2,7 +2,7 @@
 # Grants cert-manager's approver controller permission to approve CertificateRequests that
 # reference this external issuer's signers. Without it, cert-manager 1.16+ leaves such
 # requests unapproved (Pending) forever, since its default approver only auto-approves
-# first-party (cert-manager.io) signers. See docs/install.md (Approval).
+# first-party (cert-manager.io) signers. See docs/guides/kubernetes.md (repository root).
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

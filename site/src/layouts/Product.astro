@@ -1,0 +1,52 @@
+---
+// Layout of the product pages (home, features, how it works, about).
+// The docs pages use Starlight; both share the palette, the typeface and the theme setting.
+import '../styles/product.css';
+import Header from '../components/product/Header.astro';
+import Footer from '../components/product/Footer.astro';
+import { base } from '../lib/product';
+
+interface Props { title: string; description: string; current?: 'features' | 'how-it-works' | 'about' }
+const { title, description, current } = Astro.props;
+const fullTitle = title === 'PKI Manager' ? title : `${title} | PKI Manager`;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href={`${base}/favicon.svg`} type="image/svg+xml" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <!-- The same setting as the docs (Starlight keeps it in localStorage as "starlight-theme"). -->
+    <script is:inline>
+      (() => {
+        let stored = null;
+        try { stored = localStorage.getItem('starlight-theme'); } catch {}
+        const theme = stored === 'light' || stored === 'dark' ? stored : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#content">Skip to the content</a>
+    <Header current={current} />
+    <main id="content" data-pagefind-body>
+      <slot />
+    </main>
+    <Footer />
+    <script is:inline>
+      document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = next;
+        try { localStorage.setItem('starlight-theme', next); } catch {}
+      });
+    </script>
+  </body>
+</html>

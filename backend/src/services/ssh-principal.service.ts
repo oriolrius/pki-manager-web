@@ -49,7 +49,7 @@ export class SshPrincipalHashMismatchError extends SshPrincipalError {
 
 /**
  * Canonical SHA-256 of a host's rendered principal files (TASK-246). The form
- * is documented in docs/ssh-api-contract.md and MUST stay stable — fleet
+ * is documented in docs/ssh/api-contract.md and MUST stay stable — fleet
  * automation computes it independently:
  *
  *   for each account in ascending byte order of its name:

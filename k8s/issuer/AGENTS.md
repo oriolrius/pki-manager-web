@@ -54,8 +54,8 @@ helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
   -n pki-manager-issuer --create-namespace
 ```
 
-Then create a `Secret` (key `token` = cluster token from the PKI Manager UI) and an
-`Issuer`/`ClusterIssuer` (samples in `test/e2e/sample-*.yaml`; guide `docs/install.md`).
+Then create a `Secret` (key `token` = the token of a Kubernetes integration from the PKI Manager UI) and an
+`Issuer`/`ClusterIssuer` (samples in `test/e2e/sample-*.yaml`; guide `docs/guides/kubernetes.md` at the repository root).
 
 ## Gotchas
 

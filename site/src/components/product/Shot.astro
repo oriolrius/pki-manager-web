@@ -1,0 +1,14 @@
+---
+// A screenshot of the product. `tall` cuts a long page and fades its end; the image links to the full picture.
+import { Image, getImage } from 'astro:assets';
+
+interface Props { image: ImageMetadata; alt: string; tall?: boolean; eager?: boolean; caption?: string }
+const { image, alt, tall = false, eager = false, caption } = Astro.props;
+const full = await getImage({ src: image, format: 'webp' });
+---
+<figure class:list={['shot', { tall }]}>
+  <a href={full.src} aria-label="Open the full screenshot">
+    <Image src={image} alt={alt} widths={[640, 960, 1280, image.width]} sizes="(min-width: 78rem) 76rem, 100vw" loading={eager ? 'eager' : 'lazy'} />
+  </a>
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>

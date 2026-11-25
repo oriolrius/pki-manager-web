@@ -3,8 +3,39 @@
 `AGENTS.md` files are the single source of agent guidance (Claude Code and Codex both read
 them). Do not add `CLAUDE.md` files: Claude Code ignores every `AGENTS.md` when one exists.
 
-Web PKI manager: CA hierarchies, X.509 issue/renew/revoke, CRLs, and a cert-manager
-external issuer for Kubernetes. Private keys live in a **Cosmian KMS**; metadata in SQLite.
+PKI Manager is a self-hosted web application to run your own certificate authorities: root CAs,
+X.509 issue/renew/revoke, CRLs, an SSH CA, a cert-manager external issuer for Kubernetes and an
+optional SCEP gateway. Private keys live in a **Cosmian KMS**; metadata in SQLite.
+
+It is a personal project of its author, with no commercial interest. Never write marketing claims
+about it: say what it does, how, and what it does not do.
+
+## Where things are
+
+| You need | Read |
+|---|---|
+| What the product does and does not do (verified) | [docs/features/](docs/features/), [docs/how-it-works.md](docs/how-it-works.md) |
+| The top-level folders | [README.md](README.md#repository-layout) |
+| Run it from source, the dev stack | [docs/development/setup.md](docs/development/setup.md) |
+| Tests, images, CI, releases | [docs/development/testing.md](docs/development/testing.md), [docs/development/ci.md](docs/development/ci.md) |
+| Where every document lives, and the rules | [docs/development/documentation.md](docs/development/documentation.md) |
+| Internals of a subsystem | [backend/AGENTS.md](backend/AGENTS.md), [frontend/AGENTS.md](frontend/AGENTS.md), [k8s/issuer/AGENTS.md](k8s/issuer/AGENTS.md) |
+| Why something is built this way | `backlog/decisions/` |
+
+Read the guide of a subsystem before you work in it: it has verified commands, architecture and
+gotchas.
+
+## Documentation rules: one source of truth
+
+- One topic has one document. Search before you write. Change the document that exists and link to it.
+- Documentation lives under `docs/`, and its path is its URL on the site. Never add a Markdown
+  guide at the repository root or in a code folder. Never write prose in `site/`.
+- Decisions go to `backlog/decisions/` and specifications to `backlog/docs/`, with the Backlog.md
+  CLI. The site publishes them as history.
+- The site build fails when a Markdown file has no declared home (`site/docs.config.mjs`).
+- Write only what you ran or read in the code. English only. Diagrams are PlantUML
+  (`docs/diagrams/`), never ASCII art.
+- The full rules: [docs/development/documentation.md](docs/development/documentation.md).
 
 ## Backlog.md CLI — Task Management
 
@@ -31,41 +62,19 @@ ACs must be **outcome-oriented and testable** ("User can log in"), not implement
 | Title / desc / status / assignee | `-t` / `-d` / `-s` / `-a` |
 | Labels | `-l a,b` |
 
-## Repository Layout
-
-pnpm monorepo (workspaces `frontend`, `backend`) + a standalone Go module + infra dirs.
-
-```
-backend/      Fastify: tRPC + REST/OpenAPI API, crypto, KMS, SQLite   → backend/AGENTS.md
-frontend/     React 19 SPA: TanStack Router/Query + tRPC + OIDC       → frontend/AGENTS.md
-k8s/issuer/   Go cert-manager external issuer (own go.mod, Helm)      → k8s/issuer/AGENTS.md
-docker/       Full-stack Compose + Dockerfile          → DEPLOYMENT.md
-keycloak/     Keycloak dev IdP + realm import          → KEYCLOAK.md
-kms/          Cosmian KMS dev stack                    → kms/README.md
-ansible/      SSH host-cert deploy role                → ansible/README.md
-docs/ssh/     SSH onboarding guides (concept/quickstart/setup/zones) → docs/ssh/concept.md
-tests/        Playwright E2E (auth, RBAC, screenshots)
-backlog/      Backlog.md tasks / docs / decisions
-```
-
-Per-directory guides: [backend](backend/AGENTS.md) · [frontend](frontend/AGENTS.md) ·
-[k8s/issuer](k8s/issuer/AGENTS.md). Read the relevant one for verified commands,
-architecture, and gotchas before working in that subsystem.
-
 ## Architecture
 
-```
-React SPA ──tRPC──┐                 Keycloak (OIDC) ── bearer JWT
-                  ▼
-Backend (Fastify): /trpc · /api/v1 (REST+Swagger) · /api/v1/external (cluster tokens)
-   └ services/ → crypto (node-forge) · Cosmian KMS (KMIP/HTTP, private keys) · SQLite (Drizzle)
-k8s/issuer (Go) ── POST /api/v1/external/sign ──► Backend   (one cluster token = one CA)
-```
-
-The `services/` layer is exposed over **two APIs**: typed tRPC (`/trpc`, used by the
-frontend) and REST/OpenAPI (`/api/v1`, Swagger at `/api/docs`), plus a cluster-token
-external-issuer API. **OIDC is optional** — with no `OIDC_ISSUER`/`OIDC_AUDIENCE` set, the
-backend runs fully unauthenticated.
+- The web UI (React SPA) calls the backend over tRPC with the OIDC bearer token.
+- The backend (Fastify) has four API surfaces: `/trpc` (typed, internal to the web UI), `/api/v1`
+  (REST, Swagger at `/api/docs`), `/api/v1/external` (integration tokens: Kubernetes issuer, SCEP
+  gateway, scripts) and `/api/v1/external/ssh` (SSH fleet tokens).
+- `services/` hold the logic. Both APIs delegate to them: crypto (node-forge), Cosmian KMS
+  (KMIP over HTTP, private keys), SQLite (Drizzle).
+- `k8s/issuer` (Go) sends each CSR to `POST /api/v1/external/sign`. One integration token is bound
+  to one CA.
+- **OIDC is optional**: with no `OIDC_ISSUER`/`OIDC_AUDIENCE`, the management API has no login.
+  The external API still needs its token, and the SSH CA operations need
+  `ALLOW_UNAUTHENTICATED_SSH_CA=true`.
 
 **SSH Zones** (decision-017): a generic `zones` table makes the SSH manager multi-tenant —
 `ssh_cas/hosts/identities/principals/fleet_tokens` carry a `zone_id` and a host trusts only
@@ -80,49 +89,28 @@ one zone exists, an error once several do. Single-zone installs are unchanged. S
 | Backend | Fastify 5 · tRPC v11 · Drizzle + better-sqlite3 · Zod · node-forge · jose · Vitest |
 | Frontend | React 19 · TanStack Router/Query · tRPC client · Tailwind 4 · Vite 7 · Vitest+RTL |
 | Issuer | Go 1.23 · controller-runtime 0.20 · cert-manager 1.16 · Helm |
-| Tooling | pnpm workspaces (Node ≥20, pnpm ≥9) · Commitizen conventional commits |
+| Website | Astro · Starlight, in `site/` (content comes from `docs/` and `backlog/`) |
+| Tooling | just · pnpm workspaces (Node ≥20, pnpm ≥9) · Commitizen conventional commits |
 
-## Root Commands
+## Commands
+
+`just` is the entry point. Run `just` to list every recipe.
 
 | Command | Action |
 |---|---|
-| `pnpm dev` | attach-or-create the `dev-pki-manager` tmux session running **mprocs** (`backend` + `frontend` + `backlog`) |
-| `pnpm dev:status` / `dev:stop` | inspect / tear down that session and its ports (KMS + Keycloak keep running) |
-| `pnpm dev:down` | `dev:stop` + stop the KMS/Keycloak containers and the backlog relay — nothing left consuming resources |
-| `pnpm build` / `test` / `typecheck` / `lint` | fan out to both workspaces (`-r`) |
-| `pnpm test:screenshots` | Playwright `tests/screenshots.spec.ts` |
+| `just setup` | install dependencies, create the `.env` files, migrate the dev database |
+| `just dev` | **restart** the dev stack: stop this repository's old processes, start KMS and Keycloak, then **mprocs** (`backend` + `frontend` + `backlog`) in the tmux session `dev-pki-manager`. It works without a TTY |
+| `just status` / `just logs [proc]` | session, ports and screen / last lines of a process log |
+| `just stop` / `just down` | stop the processes / also the KMS and Keycloak containers |
+| `just test` / `typecheck` / `lint` / `build` | both workspaces (`pnpm -r`) |
+| `just site-build` | build the website and check its links |
+| `just demo up\|down\|shots` | demo stack for the screenshots and the API examples of the docs |
 
-Per-workspace commands (DB migrations, ports, build modes) live in the subsystem guides;
-the Go issuer uses `make` from `k8s/issuer/`.
-
-## Local Dev Quick Start
-
-```bash
-cd kms && docker compose up -d          # Cosmian KMS  (:42998)
-cd keycloak && docker compose up -d     # Keycloak     (:42997) — `pnpm dev` also starts both
-pnpm install
-cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env
-cd backend && pnpm db:migrate
-pnpm dev                                # login at http://localhost:52080 as admin/admin (OIDC on by default); backend :52081 + frontend :52080 + backlog :6430
-```
-
-**Launching the stack as an agent — read
-[DEVELOPMENT.md § Launching the Dev Stack](DEVELOPMENT.md#launching-the-dev-stack) first.**
-`pnpm dev` (= `scripts/dev-session.sh`) is idempotent: it keeps mprocs in the
-`dev-pki-manager` **tmux** session and reattaches instead of starting a second stack —
-which matters because Orca restarts its panes on every update while the stack keeps
-running detached. **Never launch bare `mprocs`.** Since the session is created detached,
-you can run `pnpm dev` headlessly (no `Stdin is not a tty`) and then read the stack with
-`tmux capture-pane -p -t dev-pki-manager`. The remaining gotcha: WSL2 only forwards
-**IPv4** binds to the Windows browser, so anything on the IPv6 wildcard (`*:PORT`, e.g.
-`backlog browser` on 6430) needs a socat relay. That doc also has the real port table,
-verify commands, and the cleanup recipe.
-
-The dev stack runs on **`http://localhost`** (`42xxx`/`52xxx` ports, IPv4 binds, so the same
-URLs work in Orca's and in the Windows browser). Use `localhost`, never a LAN/WSL hostname:
-OIDC login needs a secure context (HTTPS or localhost) — see [frontend/AGENTS.md](frontend/AGENTS.md).
-Details: [DEVELOPMENT.md](DEVELOPMENT.md) (dev), [DEPLOYMENT.md](DEPLOYMENT.md) (Docker),
-[KEYCLOAK.md](KEYCLOAK.md) / [OIDC.md](OIDC.md) (auth).
+**Never launch bare `mprocs`.** After `just dev`, the web UI is at http://localhost:52080 (login
+`admin`/`admin`, OIDC is on by default) and the API at http://localhost:52081. Use `localhost`,
+never another host name: OIDC login needs a secure context (see [frontend/AGENTS.md](frontend/AGENTS.md)).
+Per-workspace commands (DB migrations, ports, build modes) are in the subsystem guides. The Go
+issuer uses `make` from `k8s/issuer/`.
 
 ## Conventions
 
@@ -138,7 +126,7 @@ Details: [DEVELOPMENT.md](DEVELOPMENT.md) (dev), [DEPLOYMENT.md](DEPLOYMENT.md) 
 
 ## Certificate Fields
 
-- **Types:** `server`, `client`, `email`, `code_signing` (schema also allows `dual`)
+- **Types:** `server`, `client`, `dual`, `email`, `code_signing`
 - **Required subject:** CN, O, C (2-letter). **Optional:** OU, ST, L.
 - **SANs:** DNS, IP, email.
 

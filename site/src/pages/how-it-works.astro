@@ -1,0 +1,27 @@
+---
+import { render } from 'astro:content';
+import Product from '../layouts/Product.astro';
+import { page, url } from '../lib/product';
+
+const how = await page('docs/how-it-works.md');
+const { Content } = await render(how);
+---
+<Product title={how.data.title} description={how.data.summary} current="how-it-works">
+  <header class="page-head">
+    <div class="narrow">
+      <h1>{how.data.title}</h1>
+      <p class="lead">{how.data.summary}</p>
+    </div>
+  </header>
+  <div class="narrow page-body">
+    <div class="prose"><Content /></div>
+    <section class="more">
+      <h2>Read more</h2>
+      <ul>
+        <li><a href={url('features')}>What PKI Manager does</a></li>
+        <li><a href={url('get-started/install')}>Install PKI Manager and log in</a></li>
+        <li><a href={url('project/decisions')}>Decision records: why it is built this way</a></li>
+      </ul>
+    </section>
+  </div>
+</Product>

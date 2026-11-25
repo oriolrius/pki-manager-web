@@ -80,4 +80,4 @@ letting the short TTL expire; use the KRL for emergencies.
 
 Automation (unattended Ansible/CI signing via fleet tokens, the external
 `/api/v1/external/ssh/*` endpoints, and the ECIES KRL puller) is **API-only** for
-now — see [the API contract](../ssh-api-contract.md).
+now — see [the API contract](api-contract.md).

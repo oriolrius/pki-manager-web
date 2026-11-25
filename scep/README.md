@@ -16,7 +16,7 @@ scheme for external issuance. The gateway `/scep` protocol runs on its own serve
 
 | Operation / feature | Support |
 | --- | --- |
-| `GET /scep?operation=GetCACaps` | `POSTPKIOperation`, `SHA-256`, `AES` |
+| `GET /scep?operation=GetCACaps` | `POSTPKIOperation`, `SHA-256`, `AES`, `Renewal` |
 | `GET /scep?operation=GetCACert` | DER CMS certificate bundle containing CA and RA |
 | `POST /scep?operation=PKIOperation` | `application/x-pki-message` or `application/octet-stream` |
 | Legacy GET `PKIOperation&message=<URL-encoded base64>` | Supported within HTTP header limits |
@@ -43,8 +43,8 @@ claimed as completed or Microsoft certification.
 
 ## Architecture and authorization
 
-Deploy [integration foundation #18](https://github.com/oriolrius/pki-manager-web/pull/18)
-first. Create an active CA and a dedicated **SCEP / MDM** integration under
+The backend must have integrations (migration 0010, PKI Manager 3.15.0 or newer).
+Create an active CA and a dedicated **SCEP / MDM** integration under
 **Operations → Integrations**, then give its CA-bound service token to the gateway.
 Devices receive only the challenge and CA trust.
 
@@ -93,13 +93,13 @@ protected from integration-token revocation.
 ## Docker / Arcane: one additional container
 
 Use one existing Compose project and its existing `.env`. Add this service,
-network membership, and volume to your Compose. Replace the image tag with a
-build containing this change and foundation #18 in the backend.
+network membership, and volume to your Compose. Use the image tag of a release
+(3.15.0 or newer), the same as your backend.
 
 ```yaml
 services:
   scep:
-    image: ghcr.io/tilwegener/pki-manager-web/scep:${IMAGE_TAG:-dev}
+    image: ghcr.io/oriolrius/pki-manager-web/scep:${IMAGE_TAG:-latest}
     restart: unless-stopped
     command: [serve]
     user: "10001:10001"
@@ -153,7 +153,7 @@ with ownership/read permission for UID 10001. Use a cryptographically random
 optional and idempotent against the backend binding.
 
 Cosmian KMS **5.28.0** is pinned and tested. Before upgrading an existing 5.12
-installation, follow [the KMS backup/migration runbook](../DEPLOYMENT.md#kms-upgrade-backup-before-recreating-the-container).
+installation, follow [the KMS backup/migration runbook](../docs/operations/deployment.md#kms-upgrade-backup-before-recreating-the-container).
 KMS 5.24 reuses serials for the same key and cannot support safe RA renewal;
 5.28 generates fresh serials. The explicit config mounts `/cosmian-kms/sqlite-data` and is selected with
 `COSMIAN_KMS_CONF`; mounting an unrelated directory does not persist keys.

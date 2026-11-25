@@ -1,28 +1,15 @@
 # pki-manager-issuer
 
-cert-manager external issuer for [PKI Manager](../..). Reconciles `cert-manager.io/CertificateRequest` resources whose `issuerRef.group=pki-manager.issuer.io` by submitting the CSR to the PKI Manager external API and writing the signed certificate back to the request.
+cert-manager external issuer for [PKI Manager](../..). It reconciles `cert-manager.io/CertificateRequest`
+resources whose `issuerRef.group=pki-manager.issuer.io`: it sends the CSR to the PKI Manager external API and
+writes the signed certificate back to the request.
 
 Architecture follows [`cert-manager/sample-external-issuer`](https://github.com/cert-manager/sample-external-issuer).
 
-## CRDs
-
-- `Issuer` (namespaced)
-- `ClusterIssuer` (cluster-scoped)
-
-Both share `IssuerSpec`:
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `url` | yes | PKI Manager base URL |
-| `caId` | yes | UUID of the CA to issue from (matches token's bound CA) |
-| `authSecretRef` | yes | Secret holding `token` key (or `key` override) |
-| `caBundle` | no | PEM CA bundle used to verify TLS to PKI Manager |
-| `certificateType` | no | `server` / `client` / `dual` (default `dual`) |
-| `revokeOnDelete` | no | Add finalizer to revoke when CR is deleted (default `false`) |
-
-`Secret` lookup namespace:
-- `Issuer`: same namespace as Issuer
-- `ClusterIssuer`: `--cluster-resource-namespace` flag (default = controller pod namespace)
+**To install and use the issuer**, read the guide
+[Issue Kubernetes certificates with cert-manager](../../docs/guides/kubernetes.md). It has the fields of
+`Issuer` and `ClusterIssuer`, the Helm values and the troubleshooting table. The API that the issuer calls is
+the [Integration API](../../docs/api/integrations.md). This README is for people who change the issuer.
 
 ## Develop
 
@@ -33,14 +20,17 @@ make fmt vet     # tidy + lint
 make tidy        # go mod tidy
 ```
 
-## Deploy via Helm
+Run every `go` and `make` command inside `k8s/issuer/`: it is its own Go module.
 
-```
-helm upgrade --install pki-manager-issuer deploy/helm/pki-manager-issuer \
-  --namespace pki-manager-issuer --create-namespace
-```
+## Helm chart
 
-CRDs ship under `deploy/helm/pki-manager-issuer/crds/` — Helm installs (but does not upgrade) them per the Helm CRD convention.
+The chart is in `deploy/helm/pki-manager-issuer/`. CRDs ship under `crds/`: Helm installs them, but does not
+upgrade them (the Helm CRD convention). After a change to a CRD, apply it with `kubectl apply`.
+
+The controller reads the token `Secret` in this namespace:
+
+- `Issuer`: the namespace of the Issuer.
+- `ClusterIssuer`: the `--cluster-resource-namespace` flag (default: the namespace of the controller pod).
 
 ## Local kind-based E2E
 
@@ -50,6 +40,10 @@ Pre-reqs on host: `kind`, `kubectl`, `helm`, `docker`, running PKI Manager backe
 make e2e-local
 # follow printed steps to apply sample-clusterissuer.yaml + sample-certificate.yaml
 ```
+
+## Security
+
+Threats and an operational checklist: [docs/security.md](docs/security.md).
 
 ## Reference
 

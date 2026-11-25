@@ -1,0 +1,5 @@
+/* Ubuntu (Ubuntu Font Licence). The files are copied to public/fonts by scripts/sync-docs.mjs. */
+@font-face { font-family: Ubuntu; src: url(../../public/fonts/Ubuntu-Regular.ttf); font-weight: 400; font-display: swap; }
+@font-face { font-family: Ubuntu; src: url(../../public/fonts/Ubuntu-Medium.ttf); font-weight: 500; font-display: swap; }
+@font-face { font-family: Ubuntu; src: url(../../public/fonts/Ubuntu-Bold.ttf); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Ubuntu Mono'; src: url(../../public/fonts/UbuntuMono-Regular.ttf); font-weight: 400; font-display: swap; }

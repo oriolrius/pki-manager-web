@@ -32,7 +32,7 @@ INTEGRATION_TOKEN=pkimg_...      # from Operations -> Integrations, bound to one
 ### Get an OIDC access token for a script
 
 Use the client credentials flow with a confidential client in your identity provider (see
-[OIDC: machine-to-machine](../../OIDC.md#machine-to-machine-authentication)). With Keycloak:
+[OIDC: machine-to-machine](../operations/oidc.md#machine-to-machine-authentication)). With Keycloak:
 
 <!-- example: skip -->
 ```bash
@@ -151,7 +151,7 @@ jq -r .certificatePem signed.json | openssl x509 -noout -subject -issuer
 ```
 
 `requestUid` makes the call safe to repeat: the same value returns the same certificate
-(`"idempotent": true`). More in [Automate issuance](../guides/integrations.md).
+(`"idempotent": true`). More in [Automate issuance](../guides/automation.md).
 
 ## 7. Read an error
 
@@ -172,4 +172,4 @@ curl -s "$API/api/v1/cas/?limit=500" -H "Authorization: Bearer $TOKEN" | jq .
 ## Next
 
 - [API reference](https://oriolrius.github.io/pki-manager-web/api/reference/): every endpoint and field, generated from the source code.
-- [SSH external API contract](../ssh-api-contract.md): fleet tokens and SSH signing.
+- [SSH external API contract](../ssh/api-contract.md): fleet tokens and SSH signing.

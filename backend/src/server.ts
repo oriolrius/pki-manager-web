@@ -17,7 +17,7 @@ import { parseTrustProxy } from './lib/trust-proxy.js';
 
 const server = Fastify({
   // Behind a reverse proxy, req.ip (audit rows, rate limits) is the proxy's
-  // address unless TRUST_PROXY lists it. See DEPLOYMENT.md.
+  // address unless TRUST_PROXY lists it. See docs/operations/deployment.md.
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   logger: {
     transport: {

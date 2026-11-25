@@ -1,0 +1,11 @@
+---
+// Footer of the docs pages: the default one, then one line that says what this project is.
+import Default from '@astrojs/starlight/components/Footer.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+<Default />
+<p class="project-note">
+  PKI Manager is a personal project of Oriol Rius, built for his own use. It is not a commercial product.{' '}
+  <a href={`${base}/about/`}>About this project</a>
+</p>

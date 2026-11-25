@@ -54,7 +54,7 @@ services:
       # CRL Distribution Point
       - CRL_DISTRIBUTION_URL=${CRL_DISTRIBUTION_URL:-http://localhost:3000/crl}
 
-      # Reverse proxies allowed to set the client IP (see DEPLOYMENT.md)
+      # Reverse proxies allowed to set the client IP (see docs/operations/deployment.md)
       - TRUST_PROXY=${TRUST_PROXY:-}
 
       # CA private key export as keystore (off unless "true"; admin only, audited)
