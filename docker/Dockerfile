@@ -181,8 +181,20 @@ RUN addgroup -g 1001 -S nginx-user && \
 # Copy built frontend
 COPY --from=build-frontend --chown=nginx-user:nginx-user /app/frontend/dist /usr/share/nginx/html
 
-# Copy unified nginx configuration
-COPY docker/nginx.conf /etc/nginx/nginx.conf
+# The API URL built into the bundle. With no apiUrl in config.json the bundle calls it, so
+# csp-sources.sh allows its origin in the CSP connect-src.
+ARG VITE_API_URL=http://localhost:3000/trpc
+ENV PKI_BUILD_API_URL=${VITE_API_URL}
+
+# Copy unified nginx configuration and the security-header includes. --chmod: a checkout made
+# with umask 077 has mode 600 files, which the non-root nginx cannot read.
+COPY --chmod=644 docker/nginx.conf /etc/nginx/nginx.conf
+# Make the folder first: a COPY --chmod that creates it gives the folder mode 644 too.
+RUN mkdir -m 755 /etc/nginx/pki
+COPY --chmod=644 docker/nginx/security-headers.conf docker/nginx/security-headers-csp.conf /etc/nginx/pki/
+# csp-sources.sh rewrites csp-sources.conf at start (the CSP origins), so nginx-user owns it.
+COPY --chmod=644 --chown=nginx-user:nginx-user docker/nginx/csp-sources.conf /etc/nginx/pki/csp-sources.conf
+COPY --chmod=755 docker/nginx/csp-sources.sh /usr/local/bin/csp-sources.sh
 
 # Create necessary directories and set permissions
 RUN mkdir -p /var/cache/nginx/client_temp \
@@ -208,4 +220,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 # Runtime settings of the web UI come only from /usr/share/nginx/html/config.json
 # (mount your own file: apiUrl, oidc). The image ships "{}": the build-time defaults apply.
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+# csp-sources.sh reads the CSP origins from that file, then starts nginx.
+ENTRYPOINT ["/usr/local/bin/csp-sources.sh"]
+CMD ["nginx", "-g", "daemon off;"]

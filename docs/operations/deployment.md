@@ -62,6 +62,9 @@ read environment variables. `VITE_API_URL` is a build argument: it sets the defa
 compiled into a frontend image that you build yourself, and `apiUrl` overrides it. The published
 images have the default `http://localhost:3000/trpc`.
 
+The origins in this file also set the CSP of the web UI: see
+[Security headers of the frontend container](#security-headers-of-the-frontend-container).
+
 When the browser calls the API on another origin (for example the UI on `:8080` and the API on
 `:3000`), set `FRONTEND_URL` to the origin of the UI. See
 [Browser origins (`FRONTEND_URL`)](#browser-origins-frontend_url).
@@ -282,6 +285,66 @@ paths/regexes to the backend service, and a default (lower priority) router to t
 frontend. In Kubernetes, use `Exact`/`ImplementationSpecific` path types (or a
 regex-capable ingress) for the `/ssh/...`, `/krl/`, `/crl/`, `/cas/....pem`, `/api/`,
 and `/trpc` routes to the backend Service, with a catch-all `/` to the frontend.
+
+## Security headers of the frontend container
+
+The nginx of the frontend container adds these headers to every response, also to the
+error responses:
+
+| Header | Value |
+|---|---|
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `X-XSS-Protection` | `0` (turns off the legacy XSS filter of old browsers, as OWASP recommends) |
+
+The files that nginx serves itself (the SPA routes, `index.html`, `silent-renew.html`,
+`config.json`, `/assets/*`, `/health`) also get this `Content-Security-Policy`:
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;
+font-src 'self' data:; connect-src 'self' <origins>; frame-src 'self' <origins>;
+frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'
+```
+
+- `script-src 'self'`: the pages load only `/assets/*.js`. There is no inline script and no eval.
+- `style-src 'unsafe-inline'`: the UI sets inline styles (React `style` attributes).
+- `frame-ancestors 'self'`: only the same origin can frame the pages. The app frames its own
+  `/silent-renew.html` for the OIDC silent renewal.
+- `<origins>`: the API and the OIDC provider can be on other origins. At start, the image
+  entrypoint (`docker/nginx/csp-sources.sh`) allows every `http(s)://host[:port]` origin that it
+  finds in `config.json` (`apiUrl`, `oidc.authority`). With no `apiUrl`, it allows the origin of
+  the API URL built into the image (`VITE_API_URL` at build time). The startup log shows the
+  result (`CSP connect-src/frame-src: ...`).
+- To allow more origins (for example an OIDC token endpoint on a host other than the authority),
+  list them in `config.json`. The web UI ignores this key:
+
+  ```json
+  { "apiUrl": "/trpc", "oidc": { "authority": "https://id.example.com/realms/pki" },
+    "cspSources": ["https://sso.example.com"] }
+  ```
+
+The proxied backend paths (`/api/`, `/trpc`, `/crl/`, `/cas/`, `/krl/`, `/ssh/...`) get the four
+headers of the table but not this CSP: the backend sets its own CSP on the pages that it serves
+(Swagger UI at `/api/docs`).
+
+The headers are in `docker/nginx/security-headers.conf` and `docker/nginx/security-headers-csp.conf`.
+nginx inherits `add_header` only into a `location` that has no `add_header` of its own, so each such
+`location` of `docker/nginx.conf` includes one of these files again.
+
+Check a running container:
+
+```bash
+curl -sI http://localhost:8080/ | grep -iE 'content-security|x-frame|nosniff|referrer'
+```
+
+`docker/check-security-headers.sh <image>` starts an image and checks the headers of `/`,
+`/silent-renew.html`, an asset, `/health` and the proxied paths. CI runs it on each frontend build
+(`docker-build.yml`).
+
+If an edge proxy in front of the container adds the same headers, the browser gets them twice.
+Two `Content-Security-Policy` headers apply together (the stricter result). Let one of them set
+the headers.
 
 ## Environment Configuration
 
