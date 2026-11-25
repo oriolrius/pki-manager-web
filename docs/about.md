@@ -14,7 +14,7 @@ facts:
     value: Apache-2.0
 ---
 
-I am Oriol Rius. I needed certificates for my own servers, devices and SSH logins, and I did not
+I am [Oriol Rius](https://oriolrius.cat). I needed certificates for my own servers, devices and SSH logins, and I did not
 want to keep a folder of `openssl` scripts. So I built PKI Manager, and I use it for my own
 infrastructure.
 
@@ -46,6 +46,13 @@ PKI Manager keeps private keys in [Cosmian KMS](https://github.com/Cosmian/kms).
 provider such as [Keycloak](https://www.keycloak.org) for login, and its Kubernetes issuer works
 with [cert-manager](https://cert-manager.io). These are separate projects with their own licences.
 PKI Manager is not affiliated with them.
+
+## About me
+
+- [oriolrius.cat](https://oriolrius.cat): my personal website.
+- [oriolrius.blog](https://oriolrius.blog): my blog. I write there about the things I build and use.
+- [oriolrius.me](https://oriolrius.me): my professional website. My professional work is separate
+  from PKI Manager: this project is not a product or a service of it.
 
 ## How it is developed
 
