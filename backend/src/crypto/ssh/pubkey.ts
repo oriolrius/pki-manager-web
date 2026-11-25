@@ -170,8 +170,19 @@ export function openSshKeyBlob(key: ParsedSshPublicKey): Buffer {
 /**
  * Extract the subject public key from an OpenSSH certificate line as a plain
  * `<algo> <base64>` line (used to renew a cert without re-supplying the key).
+ * Throws SshPublicKeyError (and no other error) on a malformed line.
  */
 export function subjectPubkeyFromCert(certLine: string): string {
+  try {
+    return readSubjectPubkeyFromCert(certLine);
+  } catch (e) {
+    if (e instanceof SshPublicKeyError) throw e;
+    // A short or corrupt blob makes the reader throw a RangeError: give the typed error.
+    throw new SshPublicKeyError(`certificate blob is truncated or corrupt: ${(e as Error).message}`);
+  }
+}
+
+function readSubjectPubkeyFromCert(certLine: string): string {
   const parts = certLine.trim().split(/\s+/);
   const certType = parts[0];
   const blob = Buffer.from(parts[1] ?? '', 'base64');

@@ -6,6 +6,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -155,7 +157,25 @@ func (c *Client) Sign(ctx context.Context, req *SignRequest) (*SignResponse, err
 	if err := c.do(ctx, http.MethodPost, "/api/v1/external/sign", req, &out); err != nil {
 		return nil, err
 	}
+	// The caller writes this PEM to the CertificateRequest and marks it Ready.
+	// Fail closed when a 200 answer carries no certificate.
+	if err := checkCertificatePEM(out.CertificatePEM); err != nil {
+		return nil, fmt.Errorf("pki-manager POST /api/v1/external/sign: invalid response: %w", err)
+	}
 	return &out, nil
+}
+
+// checkCertificatePEM reports an error unless data starts with a PEM block that
+// is a parseable X.509 certificate.
+func checkCertificatePEM(data string) error {
+	block, _ := pem.Decode([]byte(data))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return errors.New("certificatePem holds no CERTIFICATE block")
+	}
+	if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+		return fmt.Errorf("certificatePem is not a certificate: %w", err)
+	}
+	return nil
 }
 
 type RevokeRequest struct {

@@ -1,21 +1,22 @@
 /**
  * Certificate validation utilities
  */
+import { isIPv4, isIPv6 } from 'node:net';
 
 /**
  * Validate a domain name (FQDN)
- * Supports wildcards in the first label only
+ * Supports wildcards in the first label only.
+ *
+ * The value is checked as given: the callers put it in the certificate without
+ * a change, so a value with a space or a line break at an end is refused.
  */
 export function validateDomainName(domain: string): { valid: boolean; error?: string } {
   if (!domain || typeof domain !== 'string') {
     return { valid: false, error: 'Domain name is required' };
   }
 
-  // Trim whitespace
-  domain = domain.trim();
-
-  if (domain.length === 0) {
-    return { valid: false, error: 'Domain name cannot be empty' };
+  if (domain !== domain.trim()) {
+    return { valid: false, error: 'Domain name must not start or end with whitespace' };
   }
 
   if (domain.length > 253) {
@@ -69,48 +70,31 @@ export function validateDomainName(domain: string): { valid: boolean; error?: st
 }
 
 /**
- * Validate an IPv4 address
+ * Validate an IPv4 address: four decimal numbers from 0 to 255, with no leading
+ * zero ("010.0.0.1" is octal for some parsers) and no whitespace.
  */
 export function validateIPv4(ip: string): { valid: boolean; error?: string } {
   if (!ip || typeof ip !== 'string') {
     return { valid: false, error: 'IP address is required' };
   }
 
-  ip = ip.trim();
-
-  // IPv4 regex pattern
-  const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-  const match = ip.match(ipv4Pattern);
-
-  if (!match) {
+  if (!isIPv4(ip)) {
     return { valid: false, error: 'Invalid IPv4 address format' };
-  }
-
-  // Validate each octet
-  for (let i = 1; i <= 4; i++) {
-    const octet = parseInt(match[i], 10);
-    if (octet < 0 || octet > 255) {
-      return { valid: false, error: `IPv4 octet out of range: ${octet}` };
-    }
   }
 
   return { valid: true };
 }
 
 /**
- * Validate an IPv6 address
+ * Validate an IPv6 address. A zone identifier ("fe80::1%eth0") is refused: it
+ * has a meaning only on one host, and a certificate cannot carry it.
  */
 export function validateIPv6(ip: string): { valid: boolean; error?: string } {
   if (!ip || typeof ip !== 'string') {
     return { valid: false, error: 'IP address is required' };
   }
 
-  ip = ip.trim();
-
-  // IPv6 regex pattern (simplified, covers most cases)
-  const ipv6Pattern = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
-
-  if (!ipv6Pattern.test(ip)) {
+  if (!isIPv6(ip) || ip.includes('%')) {
     return { valid: false, error: 'Invalid IPv6 address format' };
   }
 

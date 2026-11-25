@@ -79,7 +79,7 @@ function buildLeafExtensions(caId: string, hasBasicConstraints = false): string 
 
 type ExternalCertType = 'server' | 'client' | 'dual';
 
-interface ParsedCsr {
+export interface ParsedCsr {
   hasBasicConstraints: boolean;
   subjectDn: string;
   cn: string;
@@ -88,7 +88,7 @@ interface ParsedCsr {
   sanEmail: string[];
 }
 
-class CSRProfileError extends Error {}
+export class CSRProfileError extends Error {}
 
 const OID_RSA = '1.2.840.113549.1.1.1';
 const OID_EC = '1.2.840.10045.2.1';
@@ -134,7 +134,8 @@ function readCsr(csrPem: string): forge.pki.CertificateSigningRequest {
   return parsed;
 }
 
-function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
+/** Exported for the property tests (external-csr.property.test.ts). */
+export function parseCsrPem(csrPem: string, kind: string): ParsedCsr {
   const csr = readCsr(csrPem);
   const isEcdsa = (csr as { ecdsa?: boolean }).ecdsa === true;
   if (!isEcdsa) {

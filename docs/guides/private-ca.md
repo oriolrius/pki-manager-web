@@ -239,7 +239,9 @@ For `server` and `dual` certificates, the CN and each DNS name must be a domain 
   letter or a digit. An underscore is refused.
 - A wildcard is accepted only as the full first label, followed by at least two labels:
   `*.acme.example` is accepted; `www.*.acme.example`, `*.example` and `*` are refused.
-- Each IP address must be an IPv4 address (four numbers from 0 to 255) or an IPv6 address.
+- Each IP address must be an IPv4 address (four numbers from 0 to 255, with no leading zero:
+  `010.0.0.1` is refused) or an IPv6 address without a zone (`fe80::1%eth0` is refused).
+- A space or a line break before or after a name or an address is refused.
 
 For the other types:
 

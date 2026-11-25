@@ -75,7 +75,7 @@ func makeCert(pub any, subject pkix.Name, parent *x509.Certificate, key *rsa.Pri
 	}
 	return cert
 }
-func fixture(t *testing.T) (*gateway, *fakeIssuer, *rsa.PrivateKey, *x509.Certificate) {
+func fixture(t testing.TB) (*gateway, *fakeIssuer, *rsa.PrivateKey, *x509.Certificate) {
 	t.Helper()
 	pkcs7.ContentEncryptionAlgorithm = pkcs7.EncryptionAlgorithmAES256CBC
 	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -96,7 +96,7 @@ func fixture(t *testing.T) (*gateway, *fakeIssuer, *rsa.PrivateKey, *x509.Certif
 	signer := makeCert(&leafKey.PublicKey, pkix.Name{CommonName: "device-1"}, nil, leafKey, false)
 	return newGateway(issuer, ra, raKey, raKey, []*x509.Certificate{ca}, testChallenge), issuer, leafKey, signer
 }
-func request(t *testing.T, g *gateway, key *rsa.PrivateKey, signer *x509.Certificate, challenge string, extra []pkix.Extension) *scep.PKIMessage {
+func request(t testing.TB, g *gateway, key *rsa.PrivateKey, signer *x509.Certificate, challenge string, extra []pkix.Extension) *scep.PKIMessage {
 	t.Helper()
 	eku, _ := asn1.Marshal([]asn1.ObjectIdentifier{{1, 3, 6, 1, 5, 5, 7, 3, 2}})
 	csr := newCSR(t, key, challenge, append([]pkix.Extension{{Id: asn1.ObjectIdentifier{2, 5, 29, 37}, Value: eku}}, extra...))
@@ -109,7 +109,7 @@ func request(t *testing.T, g *gateway, key *rsa.PrivateKey, signer *x509.Certifi
 
 // Build PKCS#10 attributes with challengePassword as a SET of DirectoryString.
 // This is deliberately independent of the server's CSR parser.
-func newCSR(t *testing.T, key *rsa.PrivateKey, challenge string, extensions []pkix.Extension) *x509.CertificateRequest {
+func newCSR(t testing.TB, key *rsa.PrivateKey, challenge string, extensions []pkix.Extension) *x509.CertificateRequest {
 	t.Helper()
 	tmpl := &x509.CertificateRequest{Subject: pkix.Name{CommonName: "device-1"}, ExtraExtensions: extensions, SignatureAlgorithm: x509.SHA256WithRSA}
 	der, err := x509.CreateCertificateRequest(rand.Reader, tmpl, key)
