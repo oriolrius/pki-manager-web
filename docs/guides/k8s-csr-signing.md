@@ -23,10 +23,15 @@ ignored the CSR and fell back to "Certify from Subject" mode (generate a fresh k
 subject name). Sending the CSR under the correct tag makes the server take the CSR branch,
 which signs the CSR's own public key.
 
-Verified against Cosmian KMS 5.21.0 (see `backend/src/kms/spike-csr-certify.ts`):
+Checked on 2026-11-25 against Cosmian KMS 5.28.0, the version that the Compose files pin, with
+`backend/src/kms/spike-csr-certify.ts` and `backend/src/rest/routes/external-sign-kms.integration.test.ts`:
 - issued cert public key **==** CSR public key ✅
 - the CSR's `subjectAltName`, `keyUsage`, and `extKeyUsage` are copied into the cert ✅
 - no duplicate extensions ✅
+- RSA, ECDSA P-256 and P-384 CSRs, and a CSR with an empty subject and one SAN, keep their own public key ✅
+
+KMS 5.28 signs only with an issuer key in the `Active` state. A key pair from `CreateKeyPair`
+starts `PreActive`, so the spike activates its test CA key first.
 
 ## CSR policy
 
@@ -38,8 +43,9 @@ The CSR may use RSA 2048-8192 or ECDSA P-256/P-384 keys; the signature is verifi
 
 - `csr`: the PEM CSR, sent as `CertificateRequestValue` (ByteString) + `CertificateRequestType: PEM`.
 - `preserveCsrKey: true`: omits `CryptographicAlgorithm`/`CryptographicLength` (the KMIP
-  "generate a key pair" signal). On 5.21 the CSR branch returns before key generation, so this
-  is belt-and-suspenders; it documents intent and protects against other versions.
+  "generate a key pair" signal). On 5.21, where this was first checked, the CSR branch returned
+  before key generation, so this is belt-and-suspenders; it documents intent and protects
+  against other versions.
 - `issuerCertificateId`: the cluster CA's `kms_certificate_id`. The KMS resolves the issuer
   private key from that certificate's links and signs — the key stays in the KMS.
 - `x509Extensions`: `basicConstraints=critical,CA:FALSE` (added only when the CSR does not
@@ -65,8 +71,8 @@ The leaf certificate is stored with `source_type = 'k8s'`, a real `kms_certifica
 
 - The cluster CA must have been created **in the KMS** (the normal CA-creation flow) so that
   `kms_certificate_id` resolves to a KMS certificate with a usable issuer private-key link.
-- Verified on Cosmian KMS **5.21.0**. The `CertificateRequestValue` tag is the KMIP 2.1 field
-  name; if you pin an older server, re-run `backend/src/kms/spike-csr-certify.ts` to confirm.
+- Checked on Cosmian KMS **5.28.0**. The `CertificateRequestValue` tag is the KMIP 2.1 field
+  name; if you pin another server version, re-run `backend/src/kms/spike-csr-certify.ts` to confirm.
 
 ## Verifying
 
