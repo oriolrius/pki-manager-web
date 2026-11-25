@@ -17,11 +17,11 @@
   },
   "packageManager": "pnpm@10.34.5",
   "dependencies": {
-    "@radix-ui/react-dropdown-menu": "^2.1.16",
-    "@radix-ui/react-tabs": "^1.1.13"
+    "@radix-ui/react-dropdown-menu": "^2.2.1",
+    "@radix-ui/react-tabs": "^1.2.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.1"
+    "@playwright/test": "^1.65.1"
   },
   "pnpm": {
     "overrides": {
