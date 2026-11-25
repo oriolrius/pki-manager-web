@@ -47,7 +47,8 @@ Dots → `/` segments; `$id` = param; `routeTree.gen.ts` is **generated** (route
 
 Two config layers, **runtime wins**: build-time `VITE_*` (`VITE_API_URL`, `VITE_OIDC_*`) vs
 runtime `public/config.json` (fetched at startup; `apiUrl` + optional `oidc` block). Ships
-with placeholder `{"apiUrl":"__API_URL__"}` substituted at deploy time. **OIDC is optional**
+as `{}`; a deployment mounts its own file over it (no env substitution at start). An old
+`"__API_URL__"` value is ignored (build default). **OIDC is optional**
 — enabled only when an authority is set; otherwise the app runs unauthenticated.
 
 The whole flow is the library's (PR #7): endpoints come from OIDC discovery, login/logout are

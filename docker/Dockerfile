@@ -184,10 +184,6 @@ COPY --from=build-frontend --chown=nginx-user:nginx-user /app/frontend/dist /usr
 # Copy unified nginx configuration
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 
-# Copy and setup entrypoint script for runtime config
-COPY --chown=nginx-user:nginx-user docker/frontend-entrypoint.sh /usr/local/bin/frontend-entrypoint.sh
-RUN chmod +x /usr/local/bin/frontend-entrypoint.sh
-
 # Create necessary directories and set permissions
 RUN mkdir -p /var/cache/nginx/client_temp \
              /var/cache/nginx/proxy_temp \
@@ -210,5 +206,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1
 
-# Use entrypoint for runtime config substitution
-ENTRYPOINT ["/usr/local/bin/frontend-entrypoint.sh"]
+# Runtime settings of the web UI come only from /usr/share/nginx/html/config.json
+# (mount your own file: apiUrl, oidc). The image ships "{}": the build-time defaults apply.
+ENTRYPOINT ["nginx", "-g", "daemon off;"]

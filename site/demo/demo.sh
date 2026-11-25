@@ -13,7 +13,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 export IMAGE_TAG="${IMAGE_TAG:-3.17.0}"
 export BACKEND_EXTERNAL_PORT=47300 FRONTEND_EXTERNAL_PORT=47380
 export FRONTEND_URL=http://localhost:47380 CRL_DISTRIBUTION_URL=http://localhost:47300/crl
-export VITE_API_URL=http://localhost:47300/trpc DEMO_DIR="$HERE"
+export DEMO_DIR="$HERE"  # the UI finds the API through config.demo.json (apiUrl)
 dc() { docker compose -p pki-demo -f "$REPO/docker/docker-compose.yml" -f "$HERE/compose.demo.yml" "$@"; }
 
 up() {

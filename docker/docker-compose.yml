@@ -11,9 +11,8 @@ services:
       - ../kms/data:/cosmian-kms/sqlite-data
       - ../kms/kms.toml:/etc/cosmian/kms.toml:ro
     environment:
+      # Config-file mode: set the port and the log level in kms/kms.toml.
       - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
-      - KMS_PORT=${KMS_PORT:-9998}
-      - RUST_LOG=${KMS_LOG_LEVEL:-info}
     security_opt:
       - no-new-privileges:true
     read_only: false
@@ -41,8 +40,8 @@ services:
       - HOST=${BACKEND_HOST:-0.0.0.0}
       - LOG_LEVEL=${LOG_LEVEL:-info}
 
-      # Frontend URL for CORS
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
+      # Browser origins allowed to call the API (CORS). Empty allows every origin.
+      - FRONTEND_URL=${FRONTEND_URL:-}
 
       # Database
       - DATABASE_PATH=${DATABASE_PATH:-/app/backend/data/pki.db}
@@ -65,6 +64,14 @@ services:
       - OIDC_AUDIENCE=${OIDC_AUDIENCE:-}
       - OIDC_ROLES_SOURCE=${OIDC_ROLES_SOURCE:-token}
       - OIDC_ROLES_CLAIM=${OIDC_ROLES_CLAIM:-realm_access.roles}
+      - OIDC_DISCOVERY_BASE_URL=${OIDC_DISCOVERY_BASE_URL:-}
+
+      # SSH CA switches (see docs/ssh/api-contract.md). The defaults are the backend defaults.
+      - ALLOW_UNAUTHENTICATED_SSH_CA=${ALLOW_UNAUTHENTICATED_SSH_CA:-false}
+      - SSH_ECIES_ENABLED=${SSH_ECIES_ENABLED:-false}
+      - SSH_HOST_KRL_SERVE=${SSH_HOST_KRL_SERVE:-true}
+      - SSH_HOST_KRL_PUBLIC=${SSH_HOST_KRL_PUBLIC:-false}
+      - SSH_BLOCK_ISSUANCE_GATE=${SSH_BLOCK_ISSUANCE_GATE:-false}
     ports:
       - "${BACKEND_EXTERNAL_PORT:-3000}:3000"
     depends_on:
@@ -89,6 +96,7 @@ services:
       dockerfile: docker/Dockerfile
       target: frontend
       args:
+        # Build-time default of the API URL. apiUrl in config.json overrides it at run time.
         - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
     image: ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG:-latest}
     container_name: pki-frontend
@@ -96,10 +104,8 @@ services:
     networks:
       - pki-network
     volumes:
+      # Runtime settings of the web UI: apiUrl and oidc (docs/operations/deployment.md).
       - ./config.json:/usr/share/nginx/html/config.json:ro
-    environment:
-      # Runtime API URL - overrides build-time default via config.json
-      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/trpc}
     ports:
       - "${FRONTEND_EXTERNAL_PORT:-8080}:8080"
     depends_on:
