@@ -4,6 +4,7 @@ import type { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { openApiSchemas } from './schemas/openapi-schemas.js';
+import { APP_LICENSE, APP_VERSION } from '../lib/version.js';
 
 export const swaggerOptions: FastifyDynamicSwaggerOptions = {
   openapi: {
@@ -83,13 +84,11 @@ API remains compatible; new clients should use \`integration.*\`.
 ## Rate Limiting
 No rate limiting is currently enforced. This may change in future versions.
 `,
-      version: '1.0.0',
+      version: APP_VERSION,
       contact: {
         name: 'PKI Manager Team',
       },
-      license: {
-        name: 'MIT',
-      },
+      license: { ...APP_LICENSE },
     },
     servers: [
       {

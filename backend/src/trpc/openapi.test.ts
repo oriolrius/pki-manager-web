@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { openApiDocument } from './openapi.js';
+import { APP_VERSION } from '../lib/version.js';
 
 describe('OpenAPI Document Generation', () => {
   it('should generate a valid OpenAPI document', () => {
@@ -24,7 +25,8 @@ describe('OpenAPI Document Generation', () => {
   it('should have required info fields', () => {
     expect(openApiDocument.info).toBeDefined();
     expect(openApiDocument.info.title).toBe('PKI Manager API');
-    expect(openApiDocument.info.version).toBe('1.0.0');
+    expect(openApiDocument.info.version).toBe(APP_VERSION);
+    expect(openApiDocument.info.version).not.toBe('1.0.0');
     expect(openApiDocument.info.description).toBeDefined();
   });
 

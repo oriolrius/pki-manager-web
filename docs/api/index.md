@@ -18,6 +18,10 @@ with the URL of your instance.
 curl -s https://pki.example.com/api/v1/openapi.json | jq '.info.title, (.paths | length)'
 ```
 
+`info.version` of the OpenAPI document is the PKI Manager release version (for example `3.17.0`).
+`info.license` is `Apache-2.0`, with its SPDX identifier. `GET /api/v1/health` also returns the
+release version in its `version` field.
+
 ## API surfaces
 
 - **`/api/v1`**: management REST API. Authenticate with an OIDC access token (`Authorization: Bearer <jwt>`),
