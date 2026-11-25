@@ -4,13 +4,12 @@ name: Docs site
 # The sources are the Markdown of the whole repository (docs/, backlog/decisions, backlog/docs, component
 # READMEs, CHANGELOG.md): site/docs.config.mjs is the inventory, and the build fails on a file without a home.
 # Pull requests: build + internal link check only.
-# Push to main: build, publish the image ghcr.io/<repo>/site, and ask the k5 deploy job to run.
+# Push to main: build and publish the image ghcr.io/<repo>/site:main.
 #
-# Deploy (docs/development/ci.md): GitHub cannot reach Dockhand on k5, so it only publishes the image
-# and calls workflow_dispatch on the Gitea repository oriolrius/k5-stack-pki-site. That Gitea workflow
-# runs on the k5 runner: it pins the new digest, deploys the Dockhand stack, checks
-# https://pki-manager.oriolrius.cat/healthz and rolls back on failure. It also polls every 15 minutes,
-# so a lost dispatch only delays the deploy.
+# Deploy (docs/development/ci.md): GitHub has no access to k5 and holds no secret for it. On k5, the
+# workflow of the Gitea repository oriolrius/k5-stack-pki-site looks at :main every 5 minutes. When the
+# digest is new, it pins it, deploys the Dockhand stack, checks https://pki-manager.oriolrius.cat/healthz
+# and rolls back on failure.
 on:
   push:
     branches: [main]
@@ -111,26 +110,6 @@ jobs:
             ${{ github.ref == 'refs/heads/main' && format('{0}:main', env.IMAGE) || '' }}
           platforms: linux/amd64
           provenance: false
-
-  # Ask k5 to deploy now. Without the secret, the 15-minute poll on k5 deploys the image.
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: image
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch the Gitea deploy workflow (k5-stack-pki-site)
-        env:
-          TOKEN: ${{ secrets.GITEA_DEPLOY_TOKEN }}
-          DIGEST: ${{ needs.image.outputs.digest }}
-        run: |
-          if [ -z "$TOKEN" ]; then echo "::notice::GITEA_DEPLOY_TOKEN not set: k5 deploys at its next poll"; exit 0; fi
-          code=$(curl -s -o /tmp/r -w '%{http_code}' -X POST \
-            -H "Authorization: token $TOKEN" -H 'Content-Type: application/json' \
-            -d "{\"ref\":\"main\",\"inputs\":{\"digest\":\"$DIGEST\",\"revision\":\"$GITHUB_SHA\"}}" \
-            https://git.oriolrius.cat/api/v1/repos/oriolrius/k5-stack-pki-site/actions/workflows/deploy.yml/dispatches)
-          cat /tmp/r; echo
-          [ "$code" = 204 ] || { echo "::warning::dispatch answered $code: k5 deploys at its next poll"; exit 0; }
-          echo "Deploy of $DIGEST requested; result: https://git.oriolrius.cat/oriolrius/k5-stack-pki-site/actions"
 
   # The old address (oriolrius.github.io/pki-manager-web/) sends each reader to the same page on the new site.
   legacy-redirect:
