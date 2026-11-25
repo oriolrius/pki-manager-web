@@ -1,0 +1,123 @@
+name: Fuzz
+
+# Fuzzing of the code that parses untrusted input.
+#   - Go: native fuzz targets (FuzzXxx) of the SCEP gateway, the KRL client and
+#     the Kubernetes issuer. scripts/fuzz-go.sh finds and runs them.
+#   - TypeScript: the fast-check property tests of the backend
+#     (*.property.test.ts). They also run in the normal test suite (test.yml);
+#     the weekly run here uses many more cases.
+# Guide: docs/development/testing.md (Fuzzing).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scep/**'
+      - 'krl-client/**'
+      - 'k8s/issuer/**'
+      - 'scripts/fuzz-go.sh'
+      - '.github/workflows/fuzz.yml'
+  pull_request:
+    paths:
+      - 'scep/**'
+      - 'krl-client/**'
+      - 'k8s/issuer/**'
+      - 'scripts/fuzz-go.sh'
+      - '.github/workflows/fuzz.yml'
+  schedule:
+    - cron: '17 3 * * 1' # Monday 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: 'Time for each Go fuzz target (for example 30s, 5m)'
+        required: false
+        default: '5m'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  go:
+    name: Go fuzz (${{ matrix.module }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: scep
+            go-version: '1.27.4'
+          - module: krl-client
+            go-version: '1.26.11'
+          - module: k8s/issuer
+            go-version: '1.26.11'
+    env:
+      # 30 s for each target on a push or a pull request, 5 minutes on the weekly run.
+      FUZZTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzztime || github.event_name == 'schedule' && '5m' || '30s' }}
+      FUZZ_CRASH_DIR: ${{ github.workspace }}/fuzz-crashers
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Run the seed corpus and the saved failing inputs
+        working-directory: ${{ matrix.module }}
+        run: go test -run '^Fuzz' ./...
+
+      - name: Fuzz each target
+        env:
+          MODULE: ${{ matrix.module }}
+        run: scripts/fuzz-go.sh "$MODULE" "$FUZZTIME"
+
+      - name: Artifact name
+        if: failure()
+        id: name
+        env:
+          MODULE: ${{ matrix.module }}
+        run: echo "module=${MODULE//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crashers-${{ steps.name.outputs.module }}
+          path: fuzz-crashers/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  property:
+    name: Backend property tests (long run)
+    # The normal run of these tests is in test.yml. This job searches longer.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
+        with:
+          version: 9
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the property tests with 10000 cases for each property
+        working-directory: backend
+        env:
+          FC_NUM_RUNS: '10000'
+        run: pnpm exec vitest run property

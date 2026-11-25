@@ -74,6 +74,7 @@ cd backend && pnpm typecheck
 | krl-client | `krl-client.yml` | changes under `krl-client/`, tags `v*.*.*` | Tests the KRL client; on a tag, attaches the signed binary, its SBOM and its SLSA provenance to the release |
 | E2E | `e2e.yml` | pull requests to `main` that touch the backend, frontend, `docker/` or `tests/`; manual | Builds the images, starts `docker/docker-compose.e2e.yml`, runs the Playwright RBAC tests (see [E2E in CI](testing.md#e2e-in-ci)) |
 | Ansible e2e | `ansible-e2e.yml` | changes to `ansible/`, the SSH routes and services, `krl-client/` | End-to-end test of the SSH host role in Docker |
+| Fuzz | `fuzz.yml` | push and pull request that touch `scep/`, `krl-client/` or `k8s/issuer/`; every Monday; manual | Runs each Go fuzz target for 30 s (5 minutes on Monday) and, on Monday, the backend property tests with more cases (see [Fuzzing](testing.md#fuzzing)) |
 | Security | `security.yml` | push and pull request to `main` | Secret scan (gitleaks) |
 | CodeQL | `codeql.yml` | push and pull request to `main`; weekly | Static analysis of the TypeScript/JavaScript, Go and Python code and of the workflows. Results go to code scanning |
 | Dependency review | `dependency-review.yml` | pull requests to `main` | Fails when the pull request adds a dependency with a known vulnerability of severity high or critical |

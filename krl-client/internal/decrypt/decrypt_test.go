@@ -34,7 +34,7 @@ func assertDecryptCode(t *testing.T, err error) {
 
 // writeHostKey generates an ecdsa nistp256 key, writes it in OpenSSH private-key
 // format (like /etc/ssh/ssh_host_ecdsa_key), and returns the path + ecdh key.
-func writeHostKey(t *testing.T) (string, *ecdh.PrivateKey) {
+func writeHostKey(t testing.TB) (string, *ecdh.PrivateKey) {
 	t.Helper()
 	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -57,7 +57,7 @@ func writeHostKey(t *testing.T) (string, *ecdh.PrivateKey) {
 
 // sealV1 mirrors the backend eciesEncryptV1 (test-only sender) so this package's
 // round-trip is self-contained; cross-impl parity with node is proven in KRLC-02a.
-func sealV1(t *testing.T, recipient *ecdh.PublicKey, pt []byte) []byte {
+func sealV1(t testing.TB, recipient *ecdh.PublicKey, pt []byte) []byte {
 	t.Helper()
 	eph, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {
