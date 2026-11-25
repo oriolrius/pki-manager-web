@@ -14,6 +14,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      // Two HTML entries: the SPA and the OIDC silent-renew page (`silent_redirect_uri`,
+      // served at /silent-renew.html). The silent-renew script is bundled like the app,
+      // so no page of the web UI loads a script from a third-party origin.
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        'silent-renew': path.resolve(__dirname, 'silent-renew.html'),
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 52080,

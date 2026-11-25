@@ -58,7 +58,8 @@ single-flight, 60 s buffer). The session lives in **`localStorage`** (`userStore
 `oidc.user:<authority>:<clientId>`. **Requires a secure context** (HTTPS or
 `http://localhost`): `AuthProvider` shows an explicit error otherwise. There is no
 non-HTTPS fallback any more — don't reintroduce one. Silent renew prefers the refresh
-token; the iframe fallback uses `public/silent-renew.html` (loads oidc-client-ts from a **CDN**).
+token; the iframe fallback uses `silent-renew.html` (frontend root, a second Vite build
+entry in `vite.config.ts`; its script `src/silent-renew.ts` bundles oidc-client-ts, no CDN).
 
 ## Styling
 
@@ -71,4 +72,5 @@ Tailwind **4** via PostCSS (no `tailwind.config.js`; tokens are CSS-first in `sr
 - **Dev port `52080`, open it as `http://localhost:52080`.** `vite.config.ts` has no
   `allowedHosts`, so only localhost/IPs are accepted, and only localhost is a secure context.
 - `build:docker`/`tsconfig.build.json` **relax strictness** — run `npm run typecheck` to catch real type errors.
-- `silent-renew.html` pulls oidc-client-ts from a public CDN — silent renew breaks in air-gapped envs.
+- No page of the web UI loads a script from another origin or inline (`src/silent-renew.test.ts`
+  checks the HTML files). A new HTML page is a Vite build entry, and `docker/Dockerfile` copies it.
