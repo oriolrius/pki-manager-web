@@ -35,4 +35,4 @@ open engine/player.html?ep=03&preview=1    # interactive preview with audio
 Edit the narration in `video/script.md`; the voice is cached per sentence, so only changed
 sentences are synthesised again. Spoken forms of acronyms live in `video/pronunciation.json`.
 
-The public site renders this page at <https://oriolrius.github.io/pki-manager-web/ssh/videos/>, with the YouTube videos (`youtube.json`) in place of the local MP4 files.
+The public site renders this page at <https://pki-manager.oriolrius.cat/ssh/videos/>, with the YouTube videos (`youtube.json`) in place of the local MP4 files.

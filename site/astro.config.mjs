@@ -5,11 +5,13 @@ import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
 import { REDIRECTS } from './docs.config.mjs';
 
 const REPO = 'https://github.com/oriolrius/pki-manager-web';
-const BASE = '/pki-manager-web';
+// Served at the root of https://pki-manager.oriolrius.cat (k5). The old GitHub Pages
+// address (oriolrius.github.io/pki-manager-web/) redirects here: see site/legacy/.
+const BASE = '';
 
 export default defineConfig({
-  site: 'https://oriolrius.github.io',
-  base: BASE,
+  site: 'https://pki-manager.oriolrius.cat',
+  base: '/',
   trailingSlash: 'always',
   // Pages that moved keep their old address (docs.config.mjs).
   redirects: Object.fromEntries(Object.entries(REDIRECTS).map(([from, to]) => [`/${from}`, `${BASE}/${to}/`])),

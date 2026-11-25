@@ -1,7 +1,7 @@
 # REST API
 
 - **[Call the API](how-to.md)**: credentials and working `curl` examples (they run in CI).
-- **[Endpoints](https://oriolrius.github.io/pki-manager-web/api/reference/)**: every operation and
+- **[Endpoints](https://pki-manager.oriolrius.cat/api/reference/)**: every operation and
   field, generated from the source code of the documented version.
 - **[Integration API](integrations.md)**: service identities, tokens and the external issuer endpoints.
 

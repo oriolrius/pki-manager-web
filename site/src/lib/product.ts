@@ -4,7 +4,7 @@ import { getCollection, type CollectionEntry } from 'astro:content';
 export type ProductPage = CollectionEntry<'product'>;
 
 export const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-/** Site URL of a path: url('features') -> /pki-manager-web/features/ */
+/** Site URL of a path: url('features') -> /features/ */
 export const url = (path = '') => `${base}/${path ? path.replace(/^\/|\/$/g, '') + '/' : ''}`;
 
 /** The page that was written from this repository file. */

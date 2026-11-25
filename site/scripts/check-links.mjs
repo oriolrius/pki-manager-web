@@ -4,7 +4,8 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
-const BASE = '/pki-manager-web';
+// The site is served at the root of its domain (astro.config.mjs base '/').
+const BASE = '';
 const pages = [];
 const walk = (d) => readdirSync(d).forEach((f) => { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : p.endsWith('.html') && pages.push(p); });
 walk(DIST);
@@ -20,7 +21,7 @@ for (const page of pages) {
     let [path, hash] = url.replace(/&amp;/g, '&').split('#');
     let target;
     if (path === '' && hash) target = page;
-    else if (path.startsWith(BASE + '/') || path === BASE) {
+    else if (path.startsWith(BASE + '/') && !path.startsWith('//')) {
       const rel = decodeURIComponent(path.slice(BASE.length).split('?')[0]);
       const f = join(DIST, rel);
       target = existsSync(f) && statSync(f).isFile() ? f : join(f, 'index.html');
