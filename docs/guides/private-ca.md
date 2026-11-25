@@ -230,6 +230,10 @@ For every type:
   characters. ST and L: up to 128 characters in the web UI, up to 64 in the REST API.
 - Validity: 1 to 825 days.
 - Each entry of the Email Addresses list must be an email address.
+- Each entry of the DNS Names, IP Addresses and Email Addresses lists is refused when it has a
+  space, a line break or another control character, a comma, or one of the characters
+  `\ # $ " ' ;`. Each IP address must be a valid IPv4 or IPv6 address. These values go into the
+  extension text that the KMS reads, so the check applies to every certificate type.
 
 For `server` and `dual` certificates, the CN and each DNS name must be a domain name:
 

@@ -644,6 +644,9 @@ export const certificateRouter = router({
 
         return result;
       } catch (error) {
+        if (error instanceof CertificateValidationError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
+        }
         if (error instanceof CertificateNotFoundError) {
           throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
         }

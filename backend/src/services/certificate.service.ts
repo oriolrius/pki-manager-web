@@ -8,6 +8,7 @@ import { findForgeExtension, parseCertificate } from '../crypto/x509.js';
 import {
   isClientCertificateEmail,
   validateDomainName,
+  validateIPAddress,
   validateServerSANs,
   validateCertificateValidity,
 } from '../crypto/validation.js';
@@ -186,8 +187,58 @@ export interface DownloadCertificateResult {
 export type { ServiceContext };
 
 /**
+ * Characters that have a meaning in the extension text (OpenSSL config syntax):
+ * a line break starts a new `key=value`, a comma starts a new SAN entry, and
+ * `\ # $ " ' ;` are the escape, comment, variable, quote and separator characters.
+ * Whitespace is not part of a DNS name, an IP address, an email address or a URL.
+ */
+// eslint-disable-next-line no-control-regex
+const EXTENSION_UNSAFE = /[\u0000-\u0020\u007f-\u00a0\u1680\u2000-\u200f\u2028-\u202f\u205f\u2060\u3000\ufeff\\#$"';]/;
+
+/**
+ * Refuse a value that could change the structure of the extension text.
+ * buildCertificateExtensions is the one place where request values go into that
+ * text, so the check is here and not only in the validators of each certificate
+ * type (the `client`, `email` and `code_signing` types do not validate
+ * `sanDns` / `sanIp`).
+ */
+function assertExtensionValue(kind: string, value: unknown, allowComma = false): asserts value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2048) {
+    throw new CertificateValidationError(`Invalid ${kind}: a non-empty text of 2048 characters or less is required`);
+  }
+  if (EXTENSION_UNSAFE.test(value) || (!allowComma && value.includes(','))) {
+    throw new CertificateValidationError(
+      `Invalid ${kind}: whitespace, control characters, commas and the characters \\ # $ " ' ; are not allowed`,
+    );
+  }
+}
+
+/**
+ * Check every SAN value of a request. issue() and renew() call it before the
+ * first KMS operation, so a bad value is a validation error and makes no key.
+ * buildCertificateExtensions calls it again: no caller can skip it.
+ */
+export function assertSanValues(params: { sanDns?: unknown; sanIp?: unknown; sanEmail?: unknown }): void {
+  const list = (kind: string, value: unknown): unknown[] => {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value)) throw new CertificateValidationError(`Invalid ${kind}: a list is required`);
+    return value;
+  };
+  for (const dns of list('SAN DNS names', params.sanDns)) assertExtensionValue('SAN DNS name', dns);
+  for (const ip of list('SAN IP addresses', params.sanIp)) {
+    if (typeof ip !== 'string' || !validateIPAddress(ip).valid) {
+      throw new CertificateValidationError('Invalid SAN IP address: an IPv4 or IPv6 address is required');
+    }
+  }
+  for (const email of list('SAN email addresses', params.sanEmail)) assertExtensionValue('SAN email address', email);
+}
+
+/**
  * Build X.509 v3 extensions string for certificate signing
  * Format follows OpenSSL config file syntax for Cosmian KMS
+ *
+ * @throws CertificateValidationError when a SAN value or the CRL URL holds a
+ *   character that could add a line or a SAN entry to the text.
  */
 export function buildCertificateExtensions(params: {
   certificateType: 'server' | 'client' | 'dual' | 'code_signing' | 'email';
@@ -228,6 +279,7 @@ export function buildCertificateExtensions(params: {
   }
 
   // Subject Alternative Names
+  assertSanValues(params);
   const sanParts: string[] = [];
 
   if (params.sanDns && params.sanDns.length > 0) {
@@ -258,6 +310,7 @@ export function buildCertificateExtensions(params: {
 
   // CRL Distribution Point so relying parties know where to fetch the issuing CA's CRL.
   if (params.cdpUrl) {
+    assertExtensionValue('CRL distribution URL', params.cdpUrl);
     lines.push(`crlDistributionPoints=URI:${params.cdpUrl}`);
   }
 
@@ -724,6 +777,9 @@ export class CertificateService {
         throw new CertificateValidationError(`Unsupported certificate type: ${params.certificateType}`);
     }
 
+    // Every type: the SAN values go into the extension text for the KMS.
+    assertSanValues(params);
+
     // Retrieve CA from database
     const ca = await ctx.db
       .select()
@@ -883,6 +939,7 @@ export class CertificateService {
         ipAddress: ctx.ipAddress,
       });
 
+      if (error instanceof CertificateValidationError) throw error;
       throw new CertificateOperationError('issue', error);
     }
   }
@@ -976,6 +1033,8 @@ export class CertificateService {
                   (originalCert.sanIp ? JSON.parse(originalCert.sanIp) : null);
       const sanEmail = params.updateInfo && params.sanEmail !== undefined ? params.sanEmail :
                      (originalCert.sanEmail ? JSON.parse(originalCert.sanEmail) : null);
+      // Before the first KMS write: new values of the request, or the stored ones.
+      assertSanValues({ sanDns, sanIp, sanEmail });
 
       // Determine validity days
       const validityDays = params.validityDays ||
@@ -1148,6 +1207,7 @@ export class CertificateService {
         ipAddress: ctx.ipAddress,
       });
 
+      if (error instanceof CertificateValidationError) throw error;
       throw new CertificateOperationError('renew', error);
     }
   }

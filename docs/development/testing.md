@@ -78,6 +78,7 @@ are Vitest tests, so `just test` and the **Backend Tests** job run them.
 | File (under `backend/src/`) | Functions | Rule |
 |---|---|---|
 | `crypto/validation.property.test.ts` | the CN, DNS name and IP address validators | an accepted value follows the [rules for names](../guides/private-ca.md#rules-for-names-and-validity); a value that follows them is accepted |
+| `services/certificate-extensions.property.test.ts` | `buildCertificateExtensions` | a SAN value cannot add a line or a SAN entry to the extension text for the KMS |
 | `crypto/dn.property.test.ts` | `formatDN`, `parseDN`, `validateDN` | parse after format gives the same DN: a value cannot add a field |
 | `rest/routes/external-csr.property.test.ts` | the CSR parser of `POST /api/v1/external/sign`, `crypto/csr.ts` | an Error for text that is not a CSR; a changed CSR is refused; PEM to DER to PEM gives the same CSR |
 | `crypto/ssh/ssh.property.test.ts` | the OpenSSH public key parser, the wire format, the ECIES envelope | a key or `SshPublicKeyError`; write then read gives the same value; a changed envelope is refused |
