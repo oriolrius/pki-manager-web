@@ -8,7 +8,7 @@ run `just` to list the recipes.
 - Node.js 22 (LTS) and pnpm >= 9. The file `.nvmrc` at the repository root holds the Node.js
   major version (`nvm use`, `fnm use`). CI reads the same file, and `docker/Dockerfile` uses
   `node:22-alpine`. The website in `site/` pins its own exact version in `site/.nvmrc`.
-- Docker (for the Cosmian KMS and Keycloak containers)
+- Docker with Compose v2 for OpenBao and Keycloak, and OpenSSL for the dev TLS certificates
 - [just](https://just.systems), [tmux](https://github.com/tmux/tmux) and [mprocs](https://github.com/pvolok/mprocs) for the dev stack
 - Optional: the [Backlog.md](https://backlog.md) CLI (`npm install -g backlog.md`) and
   [socat](http://www.dest-unreach.org/socat/) for the task board
@@ -17,7 +17,7 @@ run `just` to list the recipes.
 
 ```bash
 just setup    # install dependencies, create backend/.env and frontend/.env, migrate the dev database
-just dev      # start KMS and Keycloak (Docker), then backend, frontend and the task board
+just dev      # start OpenBao and Keycloak (Docker), then backend, frontend and the task board
 ```
 
 Then open **http://localhost:52080** and log in as **`admin` / `admin`** (realm role `admin`)
@@ -39,7 +39,7 @@ over HTTPS.
 |---|---|---|
 | Frontend (Vite) | http://localhost:52080 | `frontend/vite.config.ts` (`host: '0.0.0.0'`, `strictPort`) |
 | Backend (Fastify) | http://localhost:52081 (Swagger at `/api/docs`) | `backend/.env` `PORT`/`HOST` |
-| Cosmian KMS | http://localhost:42998 | `kms/docker-compose.yml` |
+| OpenBao | https://localhost:42996 | `openbao/docker-compose.yml`, `scripts/dev-session.sh` |
 | Keycloak | http://localhost:42997 (admin/admin) | `keycloak/docker-compose.yml` |
 | Backlog.md web UI | http://localhost:52082, on all interfaces | `scripts/dev-session.sh` (`BACKLOG_PORT`; Backlog itself on `127.0.0.1:52083`) |
 
@@ -53,13 +53,14 @@ Backlog.md web UI in a second tmux session, `backlog-pki-manager`.
 
 | Command | Does |
 |---|---|
-| `just dev` | **Restarts** the stack: stops this repository's old processes, starts KMS and Keycloak if needed, starts mprocs, and opens it when there is a terminal |
+| `just dev` | **Restarts** the stack: stops this repository's old processes, starts and unseals OpenBao, starts Keycloak when configured, starts mprocs, and opens it when there is a terminal |
+| `just openbao` | Start or unseal only the dev key store and print the backend connection settings |
 | `just backlog` | **Restarts** only the Backlog.md web UI, on `0.0.0.0:52082` (see below) |
 | `just attach` | Opens the running stack. Does not restart it |
 | `just status` | Is it running, who holds our ports, the current mprocs screen |
 | `just logs [backend\|frontend\|backlog] [lines]` | Last lines of the process logs (`.dev-logs/<name>.log`) |
-| `just stop` | Stops the processes. KMS and Keycloak keep running, so the next `just dev` is fast |
-| `just down` | `just stop`, plus the KMS and Keycloak containers. Containers and data are kept |
+| `just stop` | Stops the processes. OpenBao and Keycloak keep running, so the next `just dev` is fast |
+| `just down` | `just stop`, plus the OpenBao and Keycloak containers. Containers and data are kept |
 
 **Why a restart.** `just dev` always gives you new processes, so the backend and the frontend
 run the code and the `.env` files that are on disk now. There is never a second stack on other
@@ -82,15 +83,17 @@ publishes it on `0.0.0.0:52082`: open it from Windows, from the LAN or from a ta
 (it leaks memory on a busy repository). `just backlog` stops only this repository's board
 (the same ownership rule), never the board of another project.
 
-Worktrees of this repository share one stack (same session, same ports). The KMS and Keycloak
-containers always run from the main checkout, so the dev KMS data stays in one place.
+Worktrees share one dev stack. OpenBao keeps its Raft data, TLS files, audit logs and dev
+credentials in `openbao/dev-state/` in the main checkout. The dev bootstrap keeps the unseal
+key and a root token there to restart this disposable store. The backend gets a scoped token.
 
 ### Check it
 
 ```bash
 just status
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:52081/api/v1/openapi.json
-curl -s http://localhost:42998/version                # KMS
+# Run from the root of the main checkout.
+curl -fsS --cacert openbao/dev-state/tls/ca.pem https://localhost:42996/v1/sys/health
 ```
 
 ## Environment configuration
@@ -107,9 +110,6 @@ NODE_ENV=development
 
 # Database
 DATABASE_PATH=./data/pki.db
-
-# Cosmian KMS
-KMS_URL=http://localhost:42998
 
 # CRL Distribution Point
 CRL_DISTRIBUTION_URL=http://localhost:52081/crl
@@ -141,14 +141,16 @@ VITE_OIDC_AUTHORITY=http://localhost:42997/realms/pki-dev
 VITE_OIDC_CLIENT_ID=pki-web
 ```
 
-## KMS and Keycloak containers
+## OpenBao and Keycloak containers
 
-`just dev` starts both. Each one has its notes next to its Compose file:
+`just dev` supplies `OPENBAO_ADDR`, `OPENBAO_CACERT` and `OPENBAO_TOKEN_FILE` to the
+backend process. To run the backend manually, run `just openbao` and export the three
+settings it prints. The token setting names a file. Keep the token file and the dev
+bootstrap credentials outside Git.
 
-- [`kms/README.md`](../../kms/README.md): the dev Cosmian KMS (`kms/kms.toml`, data in `kms/data/`).
-- [`keycloak/README.md`](../../keycloak/README.md): the dev Keycloak and its realm `pki-dev`.
-
-The backend finds the KMS with `KMS_URL` (and the optional `KMS_API_KEY`) in `backend/.env`.
+`openbao/image.env` pins the fork. `just openbao-image verify` checks the image revision.
+Use a separate OpenBao instance for live tests as described in [Testing](testing.md#unit-tests-and-checks).
+The dev realm configuration is in the [Keycloak guide](../../keycloak/README.md).
 
 ## Repository layout and code rules
 
@@ -214,6 +216,6 @@ Decisions and specifications are published on the site, under **Project**, from 
 | **Frontend can't connect** | Check `VITE_API_URL` in `frontend/.env` |
 | **Login page says "Login requires a secure context"** | Open the app with `http://localhost:52080`, not with another host name |
 | **Database locked** | Close Drizzle Studio (`pnpm db:studio`) |
-| **KMS connection fails** | Check the KMS: `curl http://localhost:42998/version` |
-| **KMS not starting** | Read its logs: `cd kms && docker compose logs` |
-| **Certificate creation fails** | Check that the KMS answers and that the CA is active and not expired |
+| **OpenBao connection fails** | Run `just openbao`. Check the TLS health endpoint above and the token file path |
+| **OpenBao fails to start** | Read its logs with `docker logs pki-manager-openbao` |
+| **Certificate creation fails** | Check that OpenBao is unsealed, accepts the backend token and that the issuing CA is active |
