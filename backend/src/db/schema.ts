@@ -674,6 +674,47 @@ export type Integration = typeof integrations.$inferSelect;
 /** @deprecated Use Integration. */
 export type Cluster = Integration;
 export type NewIntegration = typeof integrations.$inferInsert;
+// Key store objects (decision-018): the OpenBao replacement of the Cosmian object store.
+// Every id that the other tables keep in a `kms_*` column (certificate, private key, public
+// key) is a row here. Key rows pin the Transit mount, key name and key version; certificate
+// rows hold the public certificate PEM. Private key material is never stored here.
+export const keystoreObjects = sqliteTable(
+  'keystore_objects',
+  {
+    id: text('id').primaryKey(),
+    objectType: text('object_type', { enum: ['private_key', 'public_key', 'certificate'] }).notNull(),
+    provider: text('provider', { enum: ['openbao'] }).notNull().default('openbao'),
+    // 'pending' until the key exists in OpenBao; 'destroyed' after soft-delete.
+    state: text('state', { enum: ['pending', 'active', 'destroyed'] }).notNull().default('active'),
+    // Key rows: where the key lives in OpenBao Transit.
+    mount: text('mount'),
+    keyName: text('key_name'),
+    keyVersion: integer('key_version'),
+    keyAlgorithm: text('key_algorithm'),
+    exportable: integer('exportable', { mode: 'boolean' }),
+    purpose: text('purpose', { enum: ['ca', 'certificate', 'ssh_ca'] }),
+    // SubjectPublicKeyInfo PEM (key rows).
+    publicKeyPem: text('public_key_pem'),
+    // Certificate rows.
+    certificatePem: text('certificate_pem'),
+    issuerCertificateId: text('issuer_certificate_id'),
+    // Links, as the KMIP PrivateKeyLink / PublicKeyLink did.
+    privateKeyId: text('private_key_id'),
+    publicKeyId: text('public_key_id'),
+    tags: text('tags'), // JSON array
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    destroyedAt: integer('destroyed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    typeIdx: index('idx_keystore_objects_type').on(table.objectType),
+    keyNameUnique: uniqueIndex('idx_keystore_objects_key').on(table.mount, table.keyName, table.objectType),
+  })
+);
+
+export type KeystoreObject = typeof keystoreObjects.$inferSelect;
+export type NewKeystoreObject = typeof keystoreObjects.$inferInsert;
+
 /** @deprecated Use NewIntegration. */
 export type NewCluster = NewIntegration;
 
