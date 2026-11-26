@@ -44,7 +44,7 @@ Fill the form. The fields marked `*` are required.
 
 ![Create New Root Certificate Authority form filled with the Acme data](img/private-ca/02-ca-form.png)
 
-Select **Create Certificate Authority**. The key pair is made inside the Cosmian KMS. The CA page
+Select **Create Certificate Authority**. The key pair is made inside OpenBao Transit. The CA page
 opens.
 
 ![Details page of the new CA, with the download section on top](img/private-ca/03-ca-detail.png)
@@ -63,7 +63,7 @@ The list has these CA formats:
 | `P12 Keystore`, `JKS Keystore` | CA certificate + **CA private key** | only if the server has `ALLOW_CA_KEY_EXPORT=true` (default `false`), for the `admin` role, with a password; every export is audited as `ca.export_private_key` |
 
 By default the keystore formats are hidden in the UI and the REST API answers `403 CA_KEY_EXPORT_DISABLED`.
-A CA private key leaves the KMS in two cases only: to sign a CRL (in memory, never stored), and this
+A CA private key leaves OpenBao in two cases only: to sign a CRL (in memory, never stored), and this
 audited admin keystore export.
 
 ```bash
@@ -218,7 +218,7 @@ The certificate works for client authentication and is rejected as a server cert
 
 ### Rules for names and validity
 
-The backend checks the request before it calls the KMS. A request that breaks a rule is refused
+The backend checks the request before it asks OpenBao to sign. A request that breaks a rule is refused
 with a message that names the rule. These rules are read from the code
 (`backend/src/crypto/validation.ts`, `backend/src/services/certificate.service.ts` and
 `backend/src/trpc/schemas.ts`, the request schema in `backend/src/rest/routes/certificate.routes.ts`);
@@ -233,7 +233,7 @@ For every type:
 - Each entry of the DNS Names, IP Addresses and Email Addresses lists is refused when it has a
   space, a line break or another control character, a comma, or one of the characters
   `\ # $ " ' ;`. Each IP address must be a valid IPv4 or IPv6 address. These values go into the
-  extension text that the KMS reads, so the check applies to every certificate type.
+  certificate extensions, so the check applies to every certificate type.
 
 For `server` and `dual` certificates, the CN and each DNS name must be a domain name:
 

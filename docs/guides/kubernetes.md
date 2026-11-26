@@ -3,7 +3,7 @@
 
 This guide issues a TLS certificate for `app.acme.example` inside Kubernetes.
 cert-manager creates the request. The PKI Manager issuer sends it to PKI Manager.
-PKI Manager signs it with your CA. The private key of the CA stays in the KMS.
+PKI Manager signs it with your CA. The private key of the CA stays in OpenBao.
 The private key of the certificate never leaves the cluster.
 
 Every step below ran on a local **kind** cluster against a demo PKI Manager built from `main`
@@ -22,7 +22,7 @@ Output is trimmed. Names and IDs are from that run.
 
 ## How it fits together
 
-![Certificate, CertificateRequest, the pki-manager-issuer controller, POST /api/v1/external/sign with the service token, PKI Manager signs with the CA key in the KMS](../diagrams/svg/12-k8s-issuer-flow.svg)
+![Certificate, CertificateRequest, the pki-manager-issuer controller, POST /api/v1/external/sign with the service token, PKI Manager signs with the CA key in OpenBao Transit](../diagrams/svg/12-k8s-issuer-flow.svg)
 
 One service token is bound to one CA. One `Issuer` or `ClusterIssuer` uses one token.
 

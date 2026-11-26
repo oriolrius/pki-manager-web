@@ -30,9 +30,9 @@ links:
 The browser logs in with the authorization code flow and PKCE. There is no client secret in the
 browser. The backend checks each access token against the public keys of the identity provider.
 
-The key of a CA signs certificates and revocation lists inside OpenBao. It leaves OpenBao in one
-case only: when an admin exports the CA as a keystore on a server that allows it
-(`ALLOW_CA_KEY_EXPORT=true`, off by default). [How it works](../how-it-works.md) has the
+The key of a CA signs certificates inside OpenBao. It leaves OpenBao in two cases only: to sign a
+revocation list, in memory, and when an admin exports the CA as a keystore on a server that
+allows it (`ALLOW_CA_KEY_EXPORT=true`, off by default). [How it works](../how-it-works.md) has the
 full table.
 
 A password for an exported file is never part of the address (URL), so it does not stay in

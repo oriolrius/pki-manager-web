@@ -99,8 +99,8 @@ ACs must be **outcome-oriented and testable** ("User can log in"), not implement
   gateway, scripts) and `/api/v1/external/ssh` (SSH fleet tokens).
 - `services/` hold the logic. Both APIs delegate to them: crypto (node-forge, plus the local
   X.509 builder in `crypto/`), OpenBao Transit (`openbao/`: HTTPS clients for the X.509, SSH CA and
-  SCEP RA keys), SQLite (Drizzle). The backend builds certificates, CRLs and SSH certificates;
-  Transit signs them. decision-018 and doc-012 explain the cutover from Cosmian KMS.
+  SCEP RA keys), SQLite (Drizzle). The backend builds certificates and SSH certificates and
+  Transit signs them; CRLs are still signed in memory with the CA key exported from Transit. decision-018 and doc-012 explain the cutover from Cosmian KMS.
 - `k8s/issuer` (Go) sends each CSR to `POST /api/v1/external/sign`. One integration token is bound
   to one CA.
 - **OIDC is optional**: with no `OIDC_ISSUER`/`OIDC_AUDIENCE`, the management API has no login.

@@ -10,7 +10,7 @@ summary: The parts of PKI Manager, where each private key lives, and what happen
 | Part | What it does |
 |---|---|
 | Web UI | The pages that you use in the browser. An nginx container serves them and passes API calls to the backend |
-| Backend | The API and all certificate logic. It checks each request, builds the certificates and revocation lists, sends them to OpenBao to be signed, and writes the audit log |
+| Backend | The API and all certificate logic. It checks each request, builds the certificates and has OpenBao sign them, signs the revocation lists, and writes the audit log |
 | OpenBao | The PKI Manager build of OpenBao. Its Transit secrets engine makes and keeps the private keys, and signs with them. It keeps the X.509 keys, the SSH CA keys and the SCEP RA keys |
 | Database | One SQLite file: CAs, certificates, the references of the keys in OpenBao, SSH data and the audit log. It has no private keys |
 | Identity provider | Optional. Logs people in through OIDC, for example Keycloak |
@@ -23,7 +23,7 @@ runs on SSH servers and fetches their revocation list.
 
 | Key | Where it is made | When it leaves OpenBao |
 |---|---|---|
-| Key of a certificate authority (CA) | In OpenBao Transit | To export the CA as a keystore only: on a server with `ALLOW_CA_KEY_EXPORT=true` (off by default), by an admin, and each export is written to the audit log. OpenBao signs certificates and revocation lists with the key |
+| Key of a certificate authority (CA) | In OpenBao Transit | To sign a revocation list: the backend exports it from Transit and holds it in memory for that call. To export the CA as a keystore: only on a server with `ALLOW_CA_KEY_EXPORT=true` (off by default), only by an admin, and each export is written to the audit log. OpenBao signs the certificates of the CA |
 | Key of a certificate that you issue in the web UI or the API | In OpenBao Transit, as an exportable key | When someone downloads a file that contains the key (PEM key, PKCS#12, Java keystore) |
 | Key of a certificate that is requested with a CSR (Kubernetes, SCEP, your scripts) | By the requester | It is never in PKI Manager. PKI Manager sees only the CSR |
 | Key of an SSH CA | In OpenBao Transit, and it cannot be exported | Never. OpenBao signs each SSH certificate and each KRL |
@@ -47,8 +47,8 @@ the key, and gets back only the signed certificate.
 ## When you revoke a certificate
 
 1. You revoke it with a reason.
-2. The backend marks it as revoked and builds a new certificate revocation list (CRL) for that CA.
-   OpenBao signs the list with the key of the CA.
+2. The backend marks it as revoked and signs a new certificate revocation list (CRL) for that CA.
+   For that call it exports the key of the CA from OpenBao and keeps it in memory only.
 3. Clients and servers fetch the CRL from a public address and refuse the certificate.
 
 SSH uses its own list, the KRL. See [SSH certificate authority](features/ssh-certificates.md).

@@ -107,7 +107,7 @@ curl -s $B/health -H "Authorization: Bearer $TOKEN" | jq '{status, integration}'
 | Create an integration as a non-admin user (`uma`) | tRPC error `Admin role required` |
 
 The token is bound to one CA. It cannot choose another CA, and it cannot read private keys:
-private keys stay in the KMS.
+private keys stay in OpenBao.
 
 > **Note:** the token is a secret. Anyone who has it can get certificates from the bound CA,
 > inside the policy of part 3. Give each system its own integration, so you can revoke one
@@ -221,7 +221,7 @@ the UI:
 
 ## 3. See a policy rejection and its audit row
 
-The backend checks every CSR before it asks the KMS to sign. Test it with a CSR that asks for
+The backend checks every CSR before it asks OpenBao to sign. Test it with a CSR that asks for
 a CA certificate:
 
 ```bash
@@ -329,11 +329,11 @@ Facts about revocation:
 SCEP lets a device (or an MDM) get a client certificate with no login. The device sends an
 encrypted request that carries a shared **challenge**. The **gateway** (a separate container)
 speaks SCEP. It calls the backend with a SCEP integration token. The backend owns the
-registration authority (RA) key in the KMS, so the gateway has no KMS access and no private
-keys.
+registration authority (RA) key in OpenBao Transit, so the gateway has no OpenBao access and no
+private keys.
 
 ```text
-device --SCEP--> gateway --HTTPS + integration token--> backend --> KMS
+device --SCEP--> gateway --HTTPS + integration token--> backend --> OpenBao Transit
 ```
 
 What was run, and what was not:
