@@ -41,6 +41,7 @@ import { getSshPrincipalService, SshPrincipalHashMismatchError } from '../../ser
 import { resolveZone, SshZoneNotFoundError } from '../../services/ssh-zone.service.js';
 import { eciesEncryptV1, EciesError } from '../../crypto/ssh/ecies.js';
 import { createAuditLog } from '../../lib/audit.js';
+import { sshKeyErrorResponse } from '../../services/ssh-ca-key.js';
 import { rateLimitOk } from '../middleware/ssh-rate-limit.js';
 import { zodBodySchema, okObjectResponse } from '../schemas/ssh-openapi-schemas.js';
 
@@ -205,6 +206,8 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       return response;
     } catch (e) {
       if (idem.reservation) await releaseIdempotent(ctx, idem.reservation);
+      const keyError = sshKeyErrorResponse(e);
+      if (keyError) return err(reply, keyError.status, keyError.code, keyError.message);
       return err(reply, 400, 'SSH_ERROR', errorMessage(e) ?? 'sign-host failed');
     }
   });
@@ -279,6 +282,8 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       return response;
     } catch (e) {
       if (idem.reservation) await releaseIdempotent(ctx, idem.reservation);
+      const keyError = sshKeyErrorResponse(e);
+      if (keyError) return err(reply, keyError.status, keyError.code, keyError.message);
       return err(reply, 400, 'SSH_ERROR', errorMessage(e) ?? 'sign-user failed');
     }
   });

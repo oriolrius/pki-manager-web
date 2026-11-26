@@ -967,11 +967,19 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
 
+            const chainPems: string[] = [];
+            if (request.query.includeChain !== false) {
+              const issuer = await issuingCaPem(cert.caId, reply);
+              if ('error' in issuer) return issuer.error;
+              chainPems.push(issuer.pem);
+            }
+
             // Create PKCS#12 via openssl (supports RSA + EC; node-forge cannot encode EC keys).
             const p12Buffer = await createPkcs12Bundle({
               legacy: request.query.legacy,
               certPem: cert.certificatePem!,
               privateKeyPem,
+              chainPems,
               password: password!,
               friendlyName: cert.subjectDn,
             });

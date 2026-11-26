@@ -399,8 +399,13 @@ export class SshHostService {
 
   /**
    * Decommission a host in one action (SSH-32b): revoke its outstanding certs
-   * (feeding the KRL), remove its principal maps, destroy its KMS ECIES key if
-   * registered, and set status 'offboarded'. Succeeds even with no ECIES key.
+   * (feeding the KRL), remove its principal maps, and set status 'offboarded'.
+   *
+   * A legacy host may still reference a per-host ECIES key pair in the Cosmian
+   * KMS (`kms_pubkey_id`, from before decision-015 made ECIES local). The runtime
+   * has no Cosmian path, so offboarding keeps that reference on the row and
+   * records it in the audit row: the OpenBao migration revokes and destroys
+   * those keys. Succeeds with or without such a key.
    */
   async offboard(ctx: ServiceContext, hostId: string, reason = 'host decommissioned'): Promise<void> {
     const host = (await ctx.db.select().from(sshHosts).where(eq(sshHosts.id, hostId)).limit(1))[0];
@@ -416,23 +421,18 @@ export class SshHostService {
     }
     await ctx.db.delete(sshHostPrincipalMaps).where(eq(sshHostPrincipalMaps.hostId, hostId));
 
-    if (host.kmsPubkeyId) {
-      try {
-        const priv = String(host.kmsPubkeyId).replace(/_pk$/, '');
-        const { getKMSService } = await import('../kms/service.js');
-        await getKMSService().destroyKeyPair(priv, host.kmsPubkeyId);
-      } catch {
-        /* best effort */
-      }
-    }
-    await ctx.db.update(sshHosts).set({ status: 'offboarded', currentCertId: null, kmsPubkeyId: null, updatedAt: new Date() }).where(eq(sshHosts.id, hostId));
+    await ctx.db.update(sshHosts).set({ status: 'offboarded', currentCertId: null, updatedAt: new Date() }).where(eq(sshHosts.id, hostId));
     await createAuditLog({
       db: ctx.db,
       operation: 'ssh.host.offboard',
       entityType: 'ssh_host',
       entityId: hostId,
       status: 'success',
-      details: { reason, revoked: certs.filter((c) => c.status === 'active' || c.status === 'revoked').length },
+      details: {
+        reason,
+        revoked: certs.filter((c) => c.status === 'active' || c.status === 'revoked').length,
+        ...(host.kmsPubkeyId ? { legacyEciesKey: { kmsPubkeyId: host.kmsPubkeyId, cleanup: 'migration-required' } } : {}),
+      },
       ipAddress: ctx.ipAddress ?? undefined,
     });
   }

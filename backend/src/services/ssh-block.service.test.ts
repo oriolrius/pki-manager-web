@@ -23,8 +23,12 @@ import { getSshHostService } from './ssh-host.service.js';
 const { signRawMock } = vi.hoisted(() => ({
   signRawMock: vi.fn(async () => Buffer.from('detached-der-signature')),
 }));
-vi.mock('../kms/service.js', () => ({
-  getKMSService: () => ({ signRaw: signRawMock, destroyKeyPair: vi.fn() }),
+// SSH CA signing is mocked at the key layer (decision-018: OpenBao); the CA rows
+// here carry placeholder key ids, so the legacy-key check is mocked as well.
+vi.mock('./ssh-ca-key.js', async (original) => ({
+  ...(await original<object>()),
+  signWithSshCa: signRawMock,
+  isLegacySshCa: () => false,
 }));
 
 const ctx = { db, ipAddress: '10.9.9.9' };

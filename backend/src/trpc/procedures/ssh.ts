@@ -6,6 +6,7 @@
  */
 import type { Context } from '../context.js';
 import { TRPCError } from '@trpc/server';
+import { SshCaKeyExistsError, SshCaKeyMigrationRequiredError, SshCaKeyStoreError } from '../../services/ssh-ca-key.js';
 import { z } from 'zod';
 import { router, sshAdminProcedure, sshProtectedProcedure } from '../init.js';
 import {
@@ -59,6 +60,9 @@ import {
 } from '../../services/ssh-cert.service.js';
 
 function mapSshError(error: unknown): never {
+  if (error instanceof SshCaKeyMigrationRequiredError) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: error.message });
+  if (error instanceof SshCaKeyExistsError) throw new TRPCError({ code: 'CONFLICT', message: error.message });
+  if (error instanceof SshCaKeyStoreError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
   if (error instanceof SshCaExistsError || error instanceof SshZoneExistsError || error instanceof SshCertPurgeForbiddenError)
     throw new TRPCError({ code: 'CONFLICT', message: error.message });
   if (error instanceof SshZoneNotFoundError)

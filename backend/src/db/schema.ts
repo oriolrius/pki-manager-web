@@ -684,15 +684,16 @@ export const keystoreObjects = sqliteTable(
     id: text('id').primaryKey(),
     objectType: text('object_type', { enum: ['private_key', 'public_key', 'certificate'] }).notNull(),
     provider: text('provider', { enum: ['openbao'] }).notNull().default('openbao'),
-    // 'pending' until the key exists in OpenBao; 'destroyed' after soft-delete.
-    state: text('state', { enum: ['pending', 'active', 'destroyed'] }).notNull().default('active'),
+    // 'pending' until the key exists in OpenBao; 'revoked' refuses new signatures;
+    // 'destroyed' after the Transit key is deleted (the row stays for the record).
+    state: text('state', { enum: ['pending', 'active', 'revoked', 'destroyed'] }).notNull().default('active'),
     // Key rows: where the key lives in OpenBao Transit.
     mount: text('mount'),
     keyName: text('key_name'),
     keyVersion: integer('key_version'),
     keyAlgorithm: text('key_algorithm'),
     exportable: integer('exportable', { mode: 'boolean' }),
-    purpose: text('purpose', { enum: ['ca', 'certificate', 'ssh_ca'] }),
+    purpose: text('purpose', { enum: ['ca', 'certificate'] }),
     // SubjectPublicKeyInfo PEM (key rows).
     publicKeyPem: text('public_key_pem'),
     // Certificate rows.

@@ -48,24 +48,6 @@ export async function setup() {
   process.env.KMS_AVAILABLE = kmsAvailable ? 'true' : 'false';
 
   if (!kmsAvailable) {
-    console.log('\n');
-    console.log('  ┌─────────────────────────────────────────────────────────────────┐');
-    console.log('  │                        KMS NOT AVAILABLE                        │');
-    console.log('  ├─────────────────────────────────────────────────────────────────┤');
-    console.log('  │  KMS integration tests will be SKIPPED.                         │');
-    console.log('  │                                                                 │');
-    console.log('  │  To run all tests, start KMS first:                             │');
-    console.log('  │    cd kms && docker compose up -d                               │');
-    console.log('  │                                                                 │');
-    console.log('  │  Or use CI mode with: pnpm test:ci                              │');
-    console.log('  └─────────────────────────────────────────────────────────────────┘');
-    console.log('\n');
+    console.log('Live OpenBao tests skipped. Start an isolated fork with scripts/openbao-test.sh up and export its settings.');
   }
-}
-
-/**
- * Global teardown - runs once after all test files
- */
-export async function teardown() {
-  // Cleanup if needed
 }

@@ -1,8 +1,6 @@
 /**
- * KMS (Key Management System) module
- * Provides integration with Cosmian KMS for cryptographic operations
+ * Key service (OpenBao Transit since decision-018). The module keeps its historical name so
+ * the services and routes import it unchanged.
  */
-
-export { KMSClient, type KMSClientConfig } from "./client.js";
-export { KMSService, getKMSService, type KMSServiceOptions } from "./service.js";
-export * from "./types.js";
+export { KMSService, getKMSService, type KMSServiceOptions } from './service.js';
+export * from './types.js';

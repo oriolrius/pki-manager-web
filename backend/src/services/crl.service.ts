@@ -1,10 +1,10 @@
 import { randomUUID } from 'crypto';
-import { createPrivateKey } from 'node:crypto';
+import { X509Certificate, createPrivateKey, createPublicKey } from 'node:crypto';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { certificateAuthorities, certificates, crls } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
 import { parseCertificate } from '../crypto/x509.js';
-import { generateCRL } from '../crypto/crl.js';
+import { generateCRLWithSigner } from '../crypto/crl.js';
 import { getDefaultSignatureAlgorithm } from '../crypto/keys.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
@@ -50,17 +50,20 @@ export function mapRevocationReason(reason: string | null | undefined): CRLReaso
 
 /**
  * Determine the CRL signature algorithm. Prefer the CA's recorded keyAlgorithm; otherwise
- * infer it from the exported private key (RSA ≥4096 / EC P-384 use SHA-384, else SHA-256).
+ * infer it from the CA key (RSA ≥4096 / EC P-384 use SHA-384, else SHA-256).
  */
 export function resolveSignatureAlgorithm(
   caKeyAlgorithm: string | null | undefined,
-  privateKeyPem: string,
+  /** CA certificate PEM, public key PEM or private key PEM: only the key type and size are read. */
+  keyPem: string,
 ): SignatureAlgorithm {
   const known: KeyAlgorithm[] = ['RSA-2048', 'RSA-4096', 'ECDSA-P256', 'ECDSA-P384'];
   if (caKeyAlgorithm && (known as string[]).includes(caKeyAlgorithm)) {
     return getDefaultSignatureAlgorithm(caKeyAlgorithm as KeyAlgorithm);
   }
-  const key = createPrivateKey(privateKeyPem);
+  const key = keyPem.includes('CERTIFICATE')
+    ? new X509Certificate(keyPem).publicKey
+    : keyPem.includes('PRIVATE KEY') ? createPrivateKey(keyPem) : createPublicKey(keyPem);
   if (key.asymmetricKeyType === 'ec') {
     const curve = (key.asymmetricKeyDetails?.namedCurve || '').toLowerCase();
     return curve.includes('384') ? 'SHA384-ECDSA' : 'SHA256-ECDSA';
@@ -212,29 +215,25 @@ export class CRLService {
       // Parse CA certificate to extract its subject DN (used as the CRL issuer).
       const caCertInfo = parseCertificate(caCertificatePem, 'PEM');
 
-      // Sign the CRL with the CA private key. Cosmian KMS exposes no usable KMIP Sign for
-      // RSA/ECDSA (see decision-010), so we export the CA key and sign with node crypto.
-      // The key lives in memory only for the duration of this call.
+      // Sign the CRL in the key store: the CA private key never leaves OpenBao.
       //
-      // CA creation (certify-from-subject) may store the certificate id as kmsKeyId because the
-      // Certify response doesn't surface the generated private-key id; resolve the real key id
-      // from the certificate's PrivateKeyLink in that case.
+      // Older CA rows may store the certificate id as kmsKeyId; resolve the real key id from
+      // the certificate's private key link in that case.
       let caKeyId = caRecord.kmsKeyId;
       if (!caKeyId || caKeyId === caRecord.kmsCertificateId) {
         caKeyId = await kmsService.getCertificatePrivateKeyId(caRecord.kmsCertificateId, caRecord.id);
       }
-      const caPrivateKeyPem = await kmsService.getPrivateKey(caKeyId, caRecord.id);
-      const signatureAlgorithm = resolveSignatureAlgorithm(caRecord.keyAlgorithm, caPrivateKeyPem);
+      const signatureAlgorithm = resolveSignatureAlgorithm(caRecord.keyAlgorithm, caCertificatePem);
 
-      const generated = generateCRL({
+      const generated = await generateCRLWithSigner({
         issuer: caCertInfo.subject,
         crlNumber: nextCrlNumber,
         thisUpdate,
         nextUpdate,
         revokedCertificates: crlEntries,
-        signingKey: caPrivateKeyPem,
         signatureAlgorithm,
         issuerCertificate: caCertificatePem,
+        signer: (tbs, hash) => kmsService.signData(caKeyId, tbs, hash, caRecord.id),
       });
 
       const crlPem = generated.pem;

@@ -7,7 +7,7 @@
 import { randomUUID } from 'crypto';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshHostBlocks, sshHosts, sshHostPrincipalMaps, sshPrincipals } from '../db/schema.js';
-import { getKMSService } from '../kms/service.js';
+import { SshCaKeyMigrationRequiredError, isLegacySshCa, signWithSshCa } from './ssh-ca-key.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
@@ -84,6 +84,8 @@ export class SshCertService {
     if (!ca) throw new SshSignCaNotFoundError(params.caId);
     if (ca.status !== 'active' && ca.status !== 'rotating') throw new SshCaUnusableError(params.caId, ca.status);
     if (ca.caType !== params.type) throw new SshCertTypeMismatchError(params.type, ca.caType);
+    // Before a serial is allocated: a legacy Cosmian CA cannot sign until migrated.
+    if (isLegacySshCa(ca)) throw new SshCaKeyMigrationRequiredError(ca.id);
 
     const subject = parseSshPublicKey(params.sshPublicKey);
     const caBlob = parseSshPublicKey(ca.opensshPublicKey).blob;
@@ -118,10 +120,9 @@ export class SshCertService {
       allowEmptyPrincipals: params.allowEmptyPrincipals,
     });
 
-    const kms = getKMSService();
     let line: string;
     try {
-      const der = await kms.signRaw(ca.kmsKeyId, tbs, { entityId: params.caId });
+      const der = await signWithSshCa(ca, tbs, { purpose: 'certificate', ctx });
       ({ line } = assembleSshCert(tbs, derToSshEcdsaSignature(der), certType, params.keyId));
     } catch (error) {
       await createAuditLog({

@@ -389,7 +389,11 @@ describe('Certificate Download - KMS Integration', () => {
       const key = spawnSync('openssl', [...args, '-nocerts', '-nodes'], { input });
       expect(leaf.status).toBe(0);
       expect(key.status).toBe(0);
-      expect(new X509Certificate(leaf.stdout).checkPrivateKey(createPrivateKey(key.stdout))).toBe(true);
+      const cert = new X509Certificate(leaf.stdout);
+      expect(cert.checkPrivateKey(createPrivateKey(key.stdout))).toBe(true);
+      const issuer = spawnSync('openssl', [...args, '-cacerts', '-nokeys'], { input });
+      expect(issuer.status).toBe(0);
+      expect(cert.verify(new X509Certificate(issuer.stdout).publicKey)).toBe(true);
     });
 
     it('should download PKCS#12 bundle (pfx alias)', async (ctx) => {
@@ -400,7 +404,7 @@ describe('Certificate Download - KMS Integration', () => {
 
       const response = await server.inject({
         method: 'GET',
-        url: `/api/v1/certificates/${testCertId}/download?format=pfx&password=testpassword123`,
+        url: `/api/v1/certificates/${testCertId}/download?format=pfx&includeChain=false&password=testpassword123`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -408,7 +412,9 @@ describe('Certificate Download - KMS Integration', () => {
       expect(body.data).toBeDefined();
       expect(body.mimeType).toBe('application/x-pkcs12');
 
-      console.log('✅ pfx format download works (alias for p12)');
+      const issuer = spawnSync('openssl', ['pkcs12', '-passin', 'pass:testpassword123', '-cacerts', '-nokeys'], { input: Buffer.from(body.data, 'base64') });
+      expect(issuer.status).toBe(0);
+      expect(issuer.stdout.toString()).not.toContain('BEGIN CERTIFICATE');
     });
 
     it('should require password for p12 format', async (ctx) => {

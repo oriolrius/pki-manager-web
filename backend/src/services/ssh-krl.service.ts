@@ -9,7 +9,7 @@ import { randomUUID } from 'crypto';
 import { eq, and, desc } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshRevocations, sshKrls, sshHosts, sshIdempotency } from '../db/schema.js';
 import { allocateKrlNumber } from '../db/krl-seq.js';
-import { getKMSService } from '../kms/service.js';
+import { signWithSshCa } from './ssh-ca-key.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
@@ -295,7 +295,7 @@ export class SshKrlService {
     // Detached CA signature (DER) — SSH-04 pinned format; verified only by the puller.
     let signature: Buffer | null = null;
     try {
-      signature = await getKMSService().signRaw(ca.kmsKeyId, blob, { entityId: caId });
+      signature = await signWithSshCa(ca, blob, { purpose: 'krl', ctx });
     } catch (e) {
       logger.warn({ caId, error: String(e) }, 'KRL detached signing failed; serving bare KRL only');
     }

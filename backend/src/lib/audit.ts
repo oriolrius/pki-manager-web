@@ -34,6 +34,7 @@ export type AuditOperation =
   | 'ssh.ca.import'
   | 'ssh.ca.rotate'
   | 'ssh.ca.revoke'
+  | 'ssh.ca.sign'
   | 'ssh.host.register'
   | 'ssh.host.issue'
   | 'ssh.host.renew'

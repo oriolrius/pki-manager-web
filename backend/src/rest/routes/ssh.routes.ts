@@ -29,6 +29,7 @@ import {
 } from '../../trpc/ssh-schemas.js';
 import { getSshZoneService } from '../../services/ssh-zone.service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
+import { sshKeyErrorResponse } from '../../services/ssh-ca-key.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
@@ -679,6 +680,10 @@ export async function sshRoutes(api: FastifyInstance): Promise<void> {
     }
     // A revoked+still-valid cert purged without force is a deliberate 409 with a
     // dedicated code so callers can prompt for the force/dropRevocation choice.
+    // Key-store errors: a legacy CA needs migration (409), OpenBao is down or
+    // misconfigured (503) or refused (502). The OpenBao detail is in the log only.
+    const keyError = sshKeyErrorResponse(error);
+    if (keyError) return reply.status(keyError.status).send({ error: { code: keyError.code, message: keyError.message } });
     if (error?.name === 'SshCertPurgeForbiddenError') {
       return reply.status(409).send({ error: { code: 'CERT_REVOKED_NEEDS_FORCE', message: error.message } });
     }

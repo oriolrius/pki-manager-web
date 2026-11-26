@@ -13,7 +13,7 @@ import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { db } from '../../db/client.js';
 import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshHostKrls, sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../../db/schema.js';
-import { getKMSService } from '../../kms/service.js';
+import { isOpenBaoSshAvailable } from '../../test/openbao-ssh.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
@@ -21,16 +21,14 @@ import { getSshKrlService } from '../../services/ssh-krl.service.js';
 import { buildKrl } from './krl.js';
 
 const SSHD = ['/usr/sbin/sshd', '/usr/bin/sshd', '/sbin/sshd'].find((p) => existsSync(p));
-const KMS = process.env.KMS_AVAILABLE === 'true';
-const RUN = KMS && !!SSHD;
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
+const RUN = OPENBAO && !!SSHD;
 const ctx = { db, ipAddress: null };
 const PORT = 2240 + Math.floor((Date.now() / 1000) % 50);
 const USER = userInfo().username;
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }

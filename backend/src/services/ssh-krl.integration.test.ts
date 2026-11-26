@@ -3,6 +3,8 @@
  * (ETag/304/lazy-regen) -> ssh-keygen -Q confirms the cert is revoked by the
  * served bytes. Gated on KMS_AVAILABLE.
  */
+import { caPublicKeyFromLine } from '../services/ssh-ca-key.js';
+import { verifySshCaSignature } from '../openbao/ssh-transit.js';
 import type { SshCaDto } from './ssh-ca.service.js';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -14,18 +16,16 @@ import { join } from 'node:path';
 import { registerSshPublicRoutes } from '../rest/routes/ssh-public.routes.js';
 import { db } from '../db/client.js';
 import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshHostKrls, sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../db/schema.js';
-import { getKMSService } from '../kms/service.js';
+import { isOpenBaoSshAvailable } from '../test/openbao-ssh.js';
 import { getSshCaService } from './ssh-ca.service.js';
 import { getSshHostService } from './ssh-host.service.js';
 import { getSshKrlService } from './ssh-krl.service.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const ctx = { db, ipAddress: null };
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -36,7 +36,7 @@ function isRevoked(krlPath: string, keyPath: string): boolean {
   return r.status !== 0 && /REVOKED/i.test(r.stdout + r.stderr);
 }
 
-describe.skipIf(!KMS)('SSH-21/22 KRL service + public serving', () => {
+describe.skipIf(!OPENBAO)('SSH-21/22 KRL service + public serving', () => {
   let app: FastifyInstance;
   let work: string;
   let hostCa: SshCaDto;
@@ -104,7 +104,7 @@ describe.skipIf(!KMS)('SSH-21/22 KRL service + public serving', () => {
     const blob = Buffer.from(env.krl_b64, 'base64');
     const sig = Buffer.from(env.ca_signature_b64, 'base64');
     const caRow = (await db.select().from(sshCas).where(eq(sshCas.id, caId)).limit(1))[0];
-    const ok = await getKMSService().signatureVerify(caRow.kmsPublicKeyId, blob, sig);
+    const ok = verifySshCaSignature(caPublicKeyFromLine(caRow.opensshPublicKey), blob, sig);
     expect(ok).toBe(true);
   });
 

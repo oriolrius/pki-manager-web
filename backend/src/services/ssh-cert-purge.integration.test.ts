@@ -22,8 +22,12 @@ import { auditLog, sshCas, sshCertificates, sshRevocations, sshKrls, sshHosts, s
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
 import { getSshKrlService, SshCertPurgeForbiddenError } from './ssh-krl.service.js';
 
-vi.mock('../kms/service.js', () => ({
-  getKMSService: () => ({ signRaw: vi.fn(async () => Buffer.from('detached-sig')) }),
+// SSH CA signing is mocked at the key layer (decision-018: OpenBao); the CA rows
+// here carry placeholder key ids, so the legacy-key check is mocked as well.
+vi.mock('./ssh-ca-key.js', async (original) => ({
+  ...(await original<object>()),
+  signWithSshCa: vi.fn(async () => Buffer.from('detached-sig')),
+  isLegacySshCa: () => false,
 }));
 
 const ctx = { db, ipAddress: '10.0.0.9' };

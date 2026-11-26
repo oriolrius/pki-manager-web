@@ -8,7 +8,7 @@ import type { AddressInfo } from 'node:net';
 import forge from 'node-forge';
 import {
   OpenBaoConfigError, OpenBaoError, OpenBaoRATransit, OpenBaoResponseError, checkOpenBaoRAConfig, checkRAKeyPolicy,
-  defaultRAKeyProvider, loadOpenBaoConfig, verifyDigestSignature,
+  assertRAKeyProviderSetting, loadOpenBaoConfig, verifyDigestSignature,
 } from './ra-transit.js';
 
 const DIGEST_INFO = Buffer.from('3031300d060960864801650304020105000420', 'hex');
@@ -80,13 +80,15 @@ describe('OpenBao RA Transit client', () => {
   afterAll(async () => { await new Promise(resolve => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
   beforeEach(() => { seen.length = 0; for (const k of Object.keys(tamper)) delete (tamper as Record<string, unknown>)[k]; });
 
-  it('validates the provider and OpenBao settings', () => {
-    expect(defaultRAKeyProvider({})).toBe('cosmian');
-    expect(defaultRAKeyProvider({ SCEP_RA_KEY_PROVIDER: 'openbao' })).toBe('openbao');
-    expect(() => defaultRAKeyProvider({ SCEP_RA_KEY_PROVIDER: 'vault' })).toThrow(OpenBaoConfigError);
-    expect(checkOpenBaoRAConfig(0, {})).toBe('cosmian');
+  it('validates the provider setting and the OpenBao settings', () => {
+    // OpenBao is the only RA key store: the obsolete setting may only be empty or openbao.
+    expect(() => assertRAKeyProviderSetting({})).not.toThrow();
+    expect(() => assertRAKeyProviderSetting({ SCEP_RA_KEY_PROVIDER: 'openbao' })).not.toThrow();
+    for (const value of ['cosmian', 'vault']) expect(() => assertRAKeyProviderSetting({ SCEP_RA_KEY_PROVIDER: value })).toThrow(OpenBaoConfigError);
+    expect(() => checkOpenBaoRAConfig(0, {})).not.toThrow();
+    expect(() => checkOpenBaoRAConfig(0, { SCEP_RA_KEY_PROVIDER: 'cosmian' })).toThrow('obsolete');
     expect(() => checkOpenBaoRAConfig(1, {})).toThrow('OPENBAO_ADDR');
-    expect(() => checkOpenBaoRAConfig(0, { SCEP_RA_KEY_PROVIDER: 'openbao' })).toThrow('OPENBAO_ADDR');
+    expect(() => checkOpenBaoRAConfig(0, { OPENBAO_ADDR: 'http://bao:8200' })).toThrow('https');
     for (const addr of ['http://127.0.0.1:8200', 'https://u:p@bao:8200', 'https://bao:8200/v1', 'https://bao:8200/?x=1', 'not a url']) {
       expect(() => loadOpenBaoConfig({ ...env, OPENBAO_ADDR: addr }), addr).toThrow(OpenBaoConfigError);
     }
@@ -123,6 +125,11 @@ describe('OpenBao RA Transit client', () => {
       await expect(transit.readKey(name, 1), JSON.stringify(policy)).rejects.toThrow(OpenBaoResponseError);
     }
     expect(() => checkRAKeyPolicy(undefined, 1)).toThrow(OpenBaoResponseError);
+    // A migrated (imported) key passes only when the caller allows it, and never with rotation enabled.
+    tamper.policy = { imported_key: true };
+    await expect(transit.readKey(name, 1, { allowImported: true })).resolves.toBeTruthy();
+    tamper.policy = { imported_key: true, imported_key_allow_rotation: true };
+    await expect(transit.readKey(name, 1, { allowImported: true })).rejects.toThrow('rotation');
   });
 
   it('signs a digest with the fixed version and checks the signature locally', async () => {

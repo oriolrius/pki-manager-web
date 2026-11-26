@@ -18,7 +18,7 @@ import { join, resolve } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshHostKrls, sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../../db/schema.js';
-import { getKMSService } from '../../kms/service.js';
+import { isOpenBaoSshAvailable } from '../../test/openbao-ssh.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshUserService } from '../../services/ssh-user.service.js';
@@ -31,18 +31,16 @@ import { parseSshPublicKey } from './pubkey.js';
 import { buildKrl } from './krl.js';
 
 const SSHD = ['/usr/sbin/sshd', '/usr/bin/sshd', '/sbin/sshd'].find((p) => existsSync(p));
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const GO = spawnSync('go', ['version'], { encoding: 'utf8' }).status === 0;
-const RUN = KMS && !!SSHD;
+const RUN = OPENBAO && !!SSHD;
 const ctx = { db, ipAddress: null };
 const USER = userInfo().username;
 const PORT_Y = 2340 + Math.floor((Date.now() / 1000) % 40);
 const PORT_Z = PORT_Y + 41;
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -241,7 +239,7 @@ describe.skipIf(!RUN)('BLK-11 composed-KRL block matrix vs real sshd', () => {
   });
 });
 
-describe.skipIf(!(KMS && GO))('BLK-11 lineage-switch anti-rollback vs the REAL krl-client', () => {
+describe.skipIf(!(OPENBAO && GO))('BLK-11 lineage-switch anti-rollback vs the REAL krl-client', () => {
   let work: string;
   let app: FastifyInstance;
   let baseUrl: string;

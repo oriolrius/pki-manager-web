@@ -15,7 +15,7 @@ const bodies = {
       sessionKeyLength: {
         type: 'integer', enum: [...SESSION_KEY_LENGTHS],
         description: 'CMS session key length in bytes of the envelope content cipher (16: AES-128, 24: 3DES, 32: AES-256). '
-          + 'When given, the unwrapped key must have exactly this length. OpenBao bindings require this field. Legacy Cosmian bindings accept 16, 24 or 32 bytes when it is omitted. '
+          + 'Required: the unwrapped key has exactly this length. A request without it gets 400. '
           + 'A JSON integer only: a string such as "16" is rejected.',
       },
     },
@@ -48,14 +48,15 @@ export async function raRoutes(app: FastifyInstance) {
       },
       handler: async (req, reply) => {
         const identity = req.integration!;
-        // Persist intent before any KMS work. If audit storage fails, no operation
+        // Persist intent before any key-store work. If audit storage fails, no operation
         // is performed. Completing this row never records digests/plaintext/tokens.
         const id = randomUUID();
         await db.insert(auditLog).values({ id, operation: `scep.ra.${op}`, entityType: 'integration', entityId: identity.id,
           status: 'failure', ipAddress: req.ip, details: JSON.stringify({ phase: 'started' }),
         });
         req.externalAudited = true;
-        // The service records the key provider of the binding (cosmian/openbao) for the audit row.
+        // The service records the key provider of the binding for the audit row
+        // (openbao; cosmian marks a legacy binding that is refused until migrated).
         const context: RAOperationContext = {};
         try {
           let result;
@@ -67,9 +68,10 @@ export async function raRoutes(app: FastifyInstance) {
           await db.update(auditLog).set({ status: 'success', details: JSON.stringify({ phase: 'completed', ...(context.provider ? { provider: context.provider } : {}) }) }).where(eq(auditLog.id, id));
           return result;
         } catch (error) {
-          const code = error instanceof RAError ? error.statusCode : 502;
-          await db.update(auditLog).set({ details: JSON.stringify({ phase: 'failed', statusCode: code, code: 'RA_OPERATION_FAILED', ...(context.provider ? { provider: context.provider } : {}) }) }).where(eq(auditLog.id, id));
-          return reply.code(code).send({ error: { code: 'RA_OPERATION_FAILED', message: error instanceof RAError ? error.message : 'RA KMS operation failed' } });
+          const status = error instanceof RAError ? error.statusCode : 502;
+          const code = error instanceof RAError ? error.code : 'RA_OPERATION_FAILED';
+          await db.update(auditLog).set({ details: JSON.stringify({ phase: 'failed', statusCode: status, code, ...(context.provider ? { provider: context.provider } : {}) }) }).where(eq(auditLog.id, id));
+          return reply.code(status).send({ error: { code, message: error instanceof RAError ? error.message : 'RA key operation failed' } });
         }
       },
     });

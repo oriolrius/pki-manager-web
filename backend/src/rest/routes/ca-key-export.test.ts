@@ -75,12 +75,15 @@ describe('CA private key export control', () => {
     const caller = appRouter.createCaller(
       await createContext({ req: {} as FastifyRequest, res: {} as FastifyReply })
     );
+    // Provision this fixture for export. Each request still checks the current admin setting.
+    vi.stubEnv('ALLOW_CA_KEY_EXPORT', 'true');
     const ca = await caller.ca.create({
       subject: { commonName: `KeyExport Test CA ${Date.now()}`, organization: 'KeyExport Org', country: 'US' },
       keyAlgorithm: 'RSA-2048',
       validityYears: 1,
     });
     caId = ca.id;
+    vi.unstubAllEnvs();
   });
 
   afterEach(() => {

@@ -22,23 +22,15 @@ import {
   sshRevocations,
   sshKrls, sshHostKrls, sshHostBlocks,
 } from '../../db/schema.js';
-import { getKMSService } from '../../kms/service.js';
+import { isOpenBaoSshAvailable } from '../../test/openbao-ssh.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 
 // A context shaped like the real tRPC context (no OIDC user -> unauthenticated).
 const caller = () => appRouter.createCaller(testContext({ ip: '127.0.0.1' }));
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) {
-    try {
-      await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId);
-    } catch {
-      /* best effort */
-    }
-  }
   for (const t of [sshHostKrls, sshHostBlocks, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -61,7 +53,7 @@ describe('SSH-34 fail-closed authorization (OIDC disabled)', () => {
   });
 });
 
-describe.skipIf(!KMS)('SSH tRPC router (with dev opt-in)', () => {
+describe.skipIf(!OPENBAO)('SSH tRPC router (with dev opt-in)', () => {
   let work: string;
   beforeAll(async () => {
     process.env.ALLOW_UNAUTHENTICATED_SSH_CA = 'true';

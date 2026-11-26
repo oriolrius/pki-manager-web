@@ -1,28 +1,18 @@
 import forge from 'node-forge';
-import { randomUUID, X509Certificate, createHash, createPublicKey, type KeyObject } from 'node:crypto';
+import { randomUUID, X509Certificate, createHash, type KeyObject } from 'node:crypto';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationRAs, certificateAuthorities, certificates } from '../db/schema.js';
 import { getKMSService } from '../kms/service.js';
-import type { KMIPElement } from '../kms/types.js';
 import { parseCertificate } from '../crypto/x509.js';
 import { logger } from '../lib/logger.js';
 import {
-  OpenBaoConfigError, OpenBaoError, OpenBaoResponseError, defaultRAKeyProvider, getOpenBaoRATransit, type RAKeyProvider,
+  OpenBaoConfigError, OpenBaoError, OpenBaoResponseError, assertRAKeyProviderSetting, getOpenBaoRATransit, type RAKeyProvider,
 } from '../openbao/ra-transit.js';
 
 type Identity = { id: string; caId: string; kind: string };
 type Previous = { id: string; certificatePem: string };
 type Binding = typeof integrationRAs.$inferSelect;
-const text = (tag: string, value: string): KMIPElement => ({ tag, type: 'TextString', value });
-const enumeration = (tag: string, value: string): KMIPElement => ({ tag, type: 'Enumeration', value });
-function value(node: KMIPElement, tag: string): string {
-  if (node.tag === tag && typeof node.value === 'string') return node.value;
-  if (Array.isArray(node.value)) for (const child of node.value) {
-    try { return value(child as KMIPElement, tag); } catch { /* try sibling */ }
-  }
-  throw new Error('KMS response missing required RA field');
-}
 function publicState(binding: Binding) {
   if (!binding.certificatePem) throw new RAError(409, 'RA provisioning is incomplete');
   return {
@@ -31,7 +21,24 @@ function publicState(binding: Binding) {
   };
 }
 export class RAError extends Error {
-  constructor(public statusCode: number, message: string) { super(message); }
+  constructor(public statusCode: number, message: string, public code = 'RA_OPERATION_FAILED') { super(message); }
+}
+
+/**
+ * A binding with a legacy Cosmian RA key. The runtime has no Cosmian path: the
+ * key must be moved to OpenBao by the migration (which rewrites the binding to
+ * `key_provider='openbao'`, the Transit key name and its fixed version). The
+ * backend never creates a replacement key for such a binding.
+ */
+export const RA_KEY_MIGRATION_REQUIRED = 'RA_KEY_MIGRATION_REQUIRED';
+const migrationRequired = () => new RAError(409, 'RA key is in the legacy Cosmian KMS; run the OpenBao key migration', RA_KEY_MIGRATION_REQUIRED);
+
+/** A binding row that the backend created and that has no key recorded yet. */
+const unassigned = (binding: Binding) => !binding.keyId && !binding.publicKeyId;
+
+/** Refuses every operation on a legacy (Cosmian) binding that has a key or a certificate. */
+function assertNotLegacy(binding: Binding): void {
+  if (binding.keyProvider !== 'openbao' && !(unassigned(binding) && !binding.certificatePem)) throw migrationRequired();
 }
 
 /** CMS session key lengths of the content ciphers that the SCEP gateway accepts. */
@@ -43,7 +50,6 @@ export function isSessionKeyLength(value: unknown): value is SessionKeyLength {
 // One error for every decryption failure: KMS errors and length mismatches look the same.
 const decryptionFailed = () => new RAError(502, 'RA decryption failed');
 
-const RA_SUBJECT = 'CN=SCEP Registration Authority';
 const RA_EXTENSIONS = '[v3_ca]\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n';
 
 /** Filled by the service so the route can write the provider in its audit row. */
@@ -72,7 +78,7 @@ function openBaoKey(binding: Binding): { name: string; version: number } {
 
 /**
  * PKCS#10 for the RA public key, signed in OpenBao (proof of possession), so the
- * Cosmian issuing CA can certify it in CSR mode. node-forge builds the request;
+ * issuing CA can certify it in CSR mode. node-forge builds the request;
  * Node crypto checks the signature; no OpenSSL CLI.
  */
 async function openBaoRACSR(key: { name: string; version: number }, publicKey: KeyObject): Promise<string> {
@@ -110,6 +116,7 @@ export class RAService {
   async state(identity: Identity, context: RAOperationContext = {}) {
     const binding = await this.binding(identity);
     context.provider = binding.keyProvider;
+    assertNotLegacy(binding);
     return publicState(binding);
   }
 
@@ -122,6 +129,7 @@ export class RAService {
     else {
       const existing = await this.binding(identity);
       context.provider = existing.keyProvider;
+      assertNotLegacy(existing);
       if (existing.certificatePem) return publicState(existing);
       const claimed = await db.update(integrationRAs).set({ lease, leaseUntil: new Date(Date.now() + 15 * 60_000) }).where(and(
         eq(integrationRAs.integrationId, identity.id), isNull(integrationRAs.certificatePem),
@@ -131,46 +139,22 @@ export class RAService {
       binding = claimed[0];
     }
     {
-      const kms = getKMSService();
-      if (!binding.keyId && !binding.publicKeyId) {
-        // The provider is chosen once, when the first key id is recorded. A
-        // binding never changes provider afterwards.
-        let provider: RAKeyProvider;
-        try { provider = defaultRAKeyProvider(); } catch (error) { throw openBaoFailure(error, 'provision'); }
-        if (provider === 'openbao') {
-          // Record the generated name before the key exists: a retry after a lost
-          // response then reads the same key instead of creating an orphan.
-          const keyId = `scep-ra-${randomUUID()}`;
-          const recorded = db.update(integrationRAs).set({ keyProvider: 'openbao', keyId, publicKeyId: null, keyVersion: 1 })
-            .where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease), isNull(integrationRAs.keyId))).run();
-          if (recorded.changes !== 1) throw new RAError(409, 'RA lease lost');
-          binding = { ...binding, keyProvider: 'openbao', keyId, publicKeyId: null, keyVersion: 1 };
-        }
+      assertNotLegacy(binding);
+      if (unassigned(binding)) {
+        // Record the generated name before the key exists: a retry after a lost
+        // response then reads the same key instead of creating an orphan.
+        try { assertRAKeyProviderSetting(); } catch (error) { throw openBaoFailure(error, 'provision'); }
+        const keyId = `scep-ra-${randomUUID()}`;
+        const recorded = db.update(integrationRAs).set({ keyProvider: 'openbao', keyId, publicKeyId: null, keyVersion: 1 })
+          .where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease), isNull(integrationRAs.keyId), isNull(integrationRAs.publicKeyId))).run();
+        if (recorded.changes !== 1) throw new RAError(409, 'RA lease lost');
+        binding = { ...binding, keyProvider: 'openbao', keyId, publicKeyId: null, keyVersion: 1 };
       }
       context.provider = binding.keyProvider;
-      if (binding.keyProvider === 'openbao') {
-        const key = openBaoKey(binding);
-        try { await getOpenBaoRATransit().ensureKey(key.name, key.version); } catch (error) { throw openBaoFailure(error, 'provision'); }
-      } else if (!binding.keyId && !binding.publicKeyId) {
-        const response = await kms.performRAOperation('CreateKeyPair', [
-          { tag: 'CommonAttributes', value: [enumeration('CryptographicAlgorithm', 'RSA'), { tag: 'CryptographicLength', type: 'Integer', value: 3072 }] },
-          { tag: 'PrivateKeyAttributes', value: [{ tag: 'CryptographicUsageMask', type: 'Integer', value: 9 }, { tag: 'Sensitive', type: 'Boolean', value: true }] },
-          { tag: 'PublicKeyAttributes', value: [{ tag: 'CryptographicUsageMask', type: 'Integer', value: 6 }] },
-        ]);
-        const keyId = value(response, 'PrivateKeyUniqueIdentifier');
-        const publicKeyId = value(response, 'PublicKeyUniqueIdentifier');
-        await db.update(integrationRAs).set({ keyProvider: 'cosmian', keyId, publicKeyId }).where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease)));
-        binding = { ...binding, keyProvider: 'cosmian', keyId, publicKeyId };
-        context.provider = 'cosmian';
-      }
-      if (binding.keyProvider !== 'openbao') {
-        if (!binding.keyId || !binding.publicKeyId) throw new RAError(409, 'Incomplete RA key pair; operator recovery required');
-        for (const id of [binding.keyId, binding.publicKeyId]) {
-          const state = value(await kms.performRAOperation('GetAttributes', [text('UniqueIdentifier', id)]), 'State');
-          if (state === 'PreActive') await kms.performRAOperation('Activate', [text('UniqueIdentifier', id)]);
-          else if (state !== 'Active') throw new RAError(409, 'RA key is no longer usable');
-        }
-      }
+      const key = openBaoKey(binding);
+      // ensureKey creates the key only when it does not exist, and accepts only a
+      // generated key: a provisioning never adopts an imported key.
+      try { await getOpenBaoRATransit().ensureKey(key.name, key.version); } catch (error) { throw openBaoFailure(error, 'provision'); }
       const result = await this.issue(identity, binding, lease);
       // On failure retain the lease until expiry. Retries then reuse recorded keys;
       // an unrecorded allocation can be reconciled by its integration audit trail.
@@ -189,6 +173,7 @@ export class RAService {
   async renew(identity: Identity, context: RAOperationContext = {}) {
     const binding = await this.binding(identity);
     context.provider = binding.keyProvider;
+    assertNotLegacy(binding);
     if (!binding.certificatePem || !binding.keyId) throw new RAError(409, 'RA is not provisioned');
     const [cert] = await db.select().from(certificates).where(and(eq(certificates.id, binding.certificateId ?? ''), eq(certificates.integrationId, identity.id), eq(certificates.caId, identity.caId))).limit(1);
     if (!cert || cert.status !== 'active') throw new RAError(409, 'RA is revoked or not owned');
@@ -207,29 +192,26 @@ export class RAService {
     const kms = getKMSService();
     const tags = ['scep-ra', `integration:${identity.id}`, `ca:${ca.id}`];
     const daysValid = Math.min(90, Math.floor((ca.notAfter.getTime() - Date.now()) / 86400_000));
-    let expected: KeyObject;
-    let csr: string | undefined;
-    if (binding.keyProvider === 'openbao') {
-      // The RA key is in OpenBao; the issuing CA key is still in Cosmian. OpenBao
-      // signs a CSR for the fixed key version, Cosmian certifies the CSR key.
-      const key = openBaoKey(binding);
-      try {
-        const publicKey = await getOpenBaoRATransit().readKey(key.name, key.version);
-        if (!publicKey) throw new OpenBaoResponseError('RA key does not exist');
-        expected = publicKey;
-        if (daysValid >= 1) csr = await openBaoRACSR(key, publicKey);
-      } catch (error) { throw openBaoFailure(error, 'issue'); }
-    } else {
-      const publicResponse = await kms.performRAOperation('Get', [text('UniqueIdentifier', binding.publicKeyId!), enumeration('KeyFormatType', 'PKCS8'), enumeration('KeyWrapType', 'AsRegistered')]);
-      expected = createPublicKey({ key: Buffer.from(value(publicResponse, 'KeyMaterial'), 'hex'), format: 'der', type: 'spki' });
-    }
     if (daysValid < 1) throw new RAError(409, 'Issuing CA must have at least one day remaining');
+    // OpenBao signs a CSR for the fixed key version; the issuing CA certifies the
+    // CSR key (CSR mode, key preserved).
+    const key = openBaoKey(binding);
+    let expected: KeyObject;
+    let csr: string;
+    try {
+      // A renewal may use a migrated (imported) key, but only the key that the
+      // current RA certificate already certifies: the RA keeps its identity.
+      const current = binding.certificatePem ? new X509Certificate(binding.certificatePem).publicKey : undefined;
+      const publicKey = await getOpenBaoRATransit().readKey(key.name, key.version, { allowImported: current !== undefined });
+      if (!publicKey) throw new OpenBaoResponseError('RA key does not exist');
+      if (current && !current.export({ format: 'der', type: 'spki' }).equals(publicKey.export({ format: 'der', type: 'spki' }))) {
+        throw new OpenBaoResponseError('RA key does not match the current RA certificate');
+      }
+      expected = publicKey;
+      csr = await openBaoRACSR(key, publicKey);
+    } catch (error) { throw openBaoFailure(error, 'issue'); }
     const id = randomUUID();
-    const cert = csr
-      ? await kms.signCertificate({ csr, preserveCsrKey: true, issuerCertificateId: ca.kmsCertificateId, daysValid, entityId: id, tags, x509Extensions: RA_EXTENSIONS })
-      : await kms.signCertificate({ publicKeyId: binding.publicKeyId!, issuerCertificateId: ca.kmsCertificateId,
-        subjectName: RA_SUBJECT, issuerName: ca.subjectDn, daysValid, keyAlgorithm: 'RSA-3072', entityId: id, tags, x509Extensions: RA_EXTENSIONS,
-      });
+    const cert = await kms.signCertificate({ csr, preserveCsrKey: true, issuerCertificateId: ca.kmsCertificateId, daysValid, entityId: id, tags, x509Extensions: RA_EXTENSIONS });
     const pem = await kms.getCertificate(cert.certificateId, id);
     const parsed = new X509Certificate(pem);
     const caPem = await kms.getCertificate(ca.kmsCertificateId, ca.id);
@@ -250,9 +232,9 @@ export class RAService {
     db.transaction(tx => {
       const changed = tx.update(integrationRAs).set(updated).where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease))).run();
       if (changed.changes !== 1) throw new RAError(409, 'RA lease lost');
-      // An OpenBao key is not a Cosmian object: kmsKeyId stays NULL, so certificate
-      // delete/renew/export code never sends the Transit key name to Cosmian.
-      tx.insert(certificates).values({ id, caId: ca.id, kmsCertificateId: cert.certificateId, kmsKeyId: binding.keyProvider === 'openbao' ? null : binding.keyId,
+      // The RA key belongs to the binding, not to the certificate row: kmsKeyId
+      // stays NULL, so certificate delete/renew/export code never touches it.
+      tx.insert(certificates).values({ id, caId: ca.id, kmsCertificateId: cert.certificateId, kmsKeyId: null,
         subjectDn: 'CN=SCEP Registration Authority', serialNumber: metadata.serialNumber, certificateType: 'client',
         notBefore: metadata.validity.notBefore, notAfter: metadata.validity.notAfter, certificatePem: pem,
         status: 'active', sourceType: 'scep', integrationId: identity.id, requestUid: `scep-ra:${id}`,
@@ -264,67 +246,40 @@ export class RAService {
   async sign(identity: Identity, digest: Buffer, context: RAOperationContext = {}) {
     const binding = await this.active(identity);
     context.provider = binding.keyProvider;
+    assertNotLegacy(binding);
     if (digest.length !== 32) throw new RAError(400, 'SHA-256 digest required');
-    if (binding.keyProvider === 'openbao') {
-      const key = openBaoKey(binding);
-      if (!binding.certificatePem) throw new RAError(409, 'RA is not active');
-      // The current RA certificate fixes the public key the signature must verify with.
-      const publicKey = new X509Certificate(binding.certificatePem).publicKey;
-      try { return await getOpenBaoRATransit().signDigest(key.name, key.version, digest, publicKey); }
-      catch (error) { throw openBaoFailure(error, 'sign'); }
-    }
-    const result = await getKMSService().performRAOperation('Sign', [text('UniqueIdentifier', binding.keyId!),
-      { tag: 'CryptographicParameters', value: [enumeration('CryptographicAlgorithm', 'RSA'), enumeration('HashingAlgorithm', 'SHA256'), enumeration('PaddingMethod', 'PKCS1v15'), enumeration('DigitalSignatureAlgorithm', 'SHA256WithRSAEncryption')] },
-      { tag: 'DigestedData', type: 'ByteString', value: digest.toString('hex') },
-    ]);
-    return Buffer.from(value(result, 'SignatureData'), 'hex');
+    const key = openBaoKey(binding);
+    if (!binding.certificatePem) throw new RAError(409, 'RA is not active');
+    // The current RA certificate fixes the public key the signature must verify with.
+    const publicKey = new X509Certificate(binding.certificatePem).publicKey;
+    try { return await getOpenBaoRATransit().signDigest(key.name, key.version, digest, publicKey); }
+    catch (error) { throw openBaoFailure(error, 'sign'); }
   }
   /**
    * Unwraps a CMS session key with the RA key.
    *
    * `sessionKeyLength` is the key length of the envelope's content cipher (16, 24
-   * or 32 bytes), which the SCEP gateway reads from the verified envelope. When
-   * it is given, the plaintext must have exactly that length. When it is omitted
-   * (older gateways), any of 16, 24 or 32 bytes is accepted, as before.
+   * or 32 bytes), which the SCEP gateway reads from the verified envelope. It is
+   * required: the fork operation takes the expected length and never reports a
+   * padding failure (it returns a deterministic fallback key, and the CMS content
+   * decryption then fails).
    *
-   * Every failure after the input checks (KMS error, missing response field,
-   * wrong plaintext length) gives the same error, so the caller cannot tell a
-   * padding failure from a length mismatch.
-   *
-   * An OpenBao-bound RA requires `sessionKeyLength`: the fork operation takes the
-   * expected length and never reports a padding failure (it returns a
-   * deterministic fallback key, and the CMS content decryption then fails).
+   * Every failure after the input checks gives the same error, so the caller
+   * cannot tell a padding failure from a length mismatch.
    */
   async decrypt(identity: Identity, ciphertext: Buffer, sessionKeyLength?: number, context: RAOperationContext = {}) {
     const binding = await this.active(identity);
     context.provider = binding.keyProvider;
+    assertNotLegacy(binding);
     if (ciphertext.length !== 384) throw new RAError(400, 'RSA-3072 ciphertext required');
     if (sessionKeyLength !== undefined && !isSessionKeyLength(sessionKeyLength)) throw new RAError(400, 'sessionKeyLength must be 16, 24 or 32');
-    if (binding.keyProvider === 'openbao') {
-      if (sessionKeyLength === undefined) throw new RAError(400, 'sessionKeyLength is required for this RA');
-      const key = openBaoKey(binding);
-      try { return await getOpenBaoRATransit().unwrapSessionKey(key.name, key.version, ciphertext, sessionKeyLength); }
-      catch (error) {
-        if (error instanceof OpenBaoConfigError) throw openBaoFailure(error, 'decrypt');
-        openBaoFailure(error, 'decrypt'); // log only
-        throw decryptionFailed();
-      }
-    }
-    let plaintext: Buffer;
-    try {
-      const result = await getKMSService().performRAOperation('Decrypt', [text('UniqueIdentifier', binding.keyId!),
-        { tag: 'CryptographicParameters', value: [enumeration('CryptographicAlgorithm', 'RSA'), enumeration('PaddingMethod', 'PKCS1v15')] },
-        { tag: 'Data', type: 'ByteString', value: ciphertext.toString('hex') },
-      ]);
-      plaintext = Buffer.from(value(result, 'Data'), 'hex');
-    } catch {
+    if (sessionKeyLength === undefined) throw new RAError(400, 'sessionKeyLength is required for this RA');
+    const key = openBaoKey(binding);
+    try { return await getOpenBaoRATransit().unwrapSessionKey(key.name, key.version, ciphertext, sessionKeyLength); }
+    catch (error) {
+      if (error instanceof OpenBaoConfigError) throw openBaoFailure(error, 'decrypt');
+      openBaoFailure(error, 'decrypt'); // log only
       throw decryptionFailed();
     }
-    const valid = sessionKeyLength === undefined ? isSessionKeyLength(plaintext.length) : plaintext.length === sessionKeyLength;
-    if (!valid) {
-      plaintext.fill(0);
-      throw decryptionFailed();
-    }
-    return plaintext;
   }
 }

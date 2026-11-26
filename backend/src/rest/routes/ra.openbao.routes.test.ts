@@ -7,10 +7,11 @@ import { db } from '../../db/client.js';
 import { auditLog, certificateAuthorities, certificates, integrationRAs, integrations } from '../../db/schema.js';
 import { externalRoutes } from './external.routes.js';
 import { IntegrationService } from '../../services/integration.service.js';
-import { OpenBaoError, verifyDigestSignature } from '../../openbao/ra-transit.js';
+import { OpenBaoError, OpenBaoResponseError, verifyDigestSignature } from '../../openbao/ra-transit.js';
 
-// Cosmian stays the issuing CA backend; the RA key goes to a fake OpenBao Transit
-// with a real RSA-3072 key (the live fork run is in scep/README.md#ra-key-in-openbao-opt-in).
+// The RA key goes to a fake OpenBao Transit with real RSA-3072 keys (the live fork
+// run is in scep/README.md). The issuing CA facade is mocked. `operation` is the old
+// Cosmian RA entry point: the cutover never calls it.
 const { operation, signCertificate, getCertificate, transit } = vi.hoisted(() => ({
   operation: vi.fn(), signCertificate: vi.fn(), getCertificate: vi.fn(),
   transit: { readKey: vi.fn(), ensureKey: vi.fn(), signDigest: vi.fn(), unwrapSessionKey: vi.fn() },
@@ -28,8 +29,7 @@ const caPem = forge.pki.certificateToPem(ca);
 const caId = randomUUID();
 const caKMSId = `ca-${caId}`;
 const certs = new Map<string, string>();
-const baoKeys = new Map<string, { priv: KeyObject; pub: KeyObject }>();
-const cosmianKeys = new Map<string, string>();
+const baoKeys = new Map<string, { priv: KeyObject; pub: KeyObject; imported?: boolean }>();
 
 function issueFrom(publicKey: forge.pki.PublicKey, notBefore = new Date(Date.now() - 60e3), notAfter = new Date(Date.now() + 90 * 86400e3)) {
   const cert = forge.pki.createCertificate(); cert.publicKey = publicKey;
@@ -39,11 +39,10 @@ function issueFrom(publicKey: forge.pki.PublicKey, notBefore = new Date(Date.now
   cert.sign(kp.privateKey, forge.md.sha256.create()); return forge.pki.certificateToPem(cert);
 }
 
-describe('OpenBao-bound SCEP RA (opt-in)', () => {
+describe('OpenBao-bound SCEP RA', () => {
   let app: FastifyInstance;
   let bao: { id: string; token: string };
   let legacy: { id: string; token: string };
-  const field = (tag: string, value: unknown) => ({ tag, value });
   const request = (token: string, op: string, payload?: object) => app.inject({ method: op === 'state' ? 'GET' : 'POST', url: `/external/ra/${op}`, headers: { authorization: `Bearer ${token}` }, ...(op === 'state' ? {} : { payload: payload ?? {} }) });
   const bindingOf = async (id: string) => (await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, id)))[0];
 
@@ -55,31 +54,20 @@ describe('OpenBao-bound SCEP RA (opt-in)', () => {
     app = Fastify(); await app.register(externalRoutes, { prefix: '/external' }); await app.ready();
   });
   beforeEach(() => {
-    operation.mockReset().mockImplementation(async (op: string, fields: Array<{ tag: string; value: string }>) => {
-      if (op === 'CreateKeyPair') {
-        const generated = generateKeyPairSync('rsa', { modulusLength: 3072 });
-        const id = `private-${randomUUID()}`; const publicId = `public-${randomUUID()}`;
-        cosmianKeys.set(publicId, generated.publicKey.export({ type: 'spki', format: 'pem' }).toString()); cosmianKeys.set(id, 'private');
-        return field('Response', [field('PrivateKeyUniqueIdentifier', id), field('PublicKeyUniqueIdentifier', publicId)]);
-      }
-      const id = fields.find(f => f.tag === 'UniqueIdentifier')?.value;
-      if (!cosmianKeys.has(id!)) throw new Error('Unknown test KMS key');
-      if (op === 'GetAttributes') return field('Response', [field('State', 'Active')]);
-      if (op === 'Get') return field('Response', [field('KeyMaterial', forge.util.bytesToHex(forge.asn1.toDer(forge.pki.publicKeyToAsn1(forge.pki.publicKeyFromPem(cosmianKeys.get(id!)!))).getBytes()))]);
-      if (op === 'Sign') return field('Response', [field('SignatureData', Buffer.alloc(384, 7).toString('hex'))]);
-      return field('Response', []);
-    });
-    signCertificate.mockReset().mockImplementation(async (o: { csr?: string; publicKeyId?: string }) => {
+    operation.mockReset().mockRejectedValue(new Error('Cosmian RA path must not be used'));
+    signCertificate.mockReset().mockImplementation(async (o: { csr: string }) => {
       const id = randomUUID();
-      if (o.csr) {
-        const csr = forge.pki.certificationRequestFromPem(o.csr);
-        if (!csr.verify()) throw new Error('CSR signature invalid');
-        certs.set(id, issueFrom(csr.publicKey as forge.pki.PublicKey));
-      } else certs.set(id, issueFrom(forge.pki.publicKeyFromPem(cosmianKeys.get(o.publicKeyId!)!)));
+      const csr = forge.pki.certificationRequestFromPem(o.csr);
+      if (!csr.verify()) throw new Error('CSR signature invalid');
+      certs.set(id, issueFrom(csr.publicKey as forge.pki.PublicKey));
       return { certificateId: id };
     });
     getCertificate.mockReset().mockImplementation(async (id: string) => id === caKMSId ? caPem : certs.get(id));
-    transit.readKey.mockReset().mockImplementation(async (name: string) => baoKeys.get(name)?.pub ?? null);
+    transit.readKey.mockReset().mockImplementation(async (name: string, _v: number, options: { allowImported?: boolean } = {}) => {
+      const key = baoKeys.get(name);
+      if (key?.imported && !options.allowImported) throw new OpenBaoResponseError('RA provisioning requires a generated key');
+      return key?.pub ?? null;
+    });
     transit.ensureKey.mockReset().mockImplementation(async (name: string, version: number) => {
       expect(version).toBe(1);
       if (!baoKeys.has(name)) { const g = generateKeyPairSync('rsa', { modulusLength: 3072 }); baoKeys.set(name, { priv: g.privateKey, pub: g.publicKey }); }
@@ -111,21 +99,58 @@ describe('OpenBao-bound SCEP RA (opt-in)', () => {
     await db.delete(certificateAuthorities).where(eq(certificateAuthorities.id, caId));
   });
 
-  it('keeps Cosmian as the default and keeps a legacy binding on Cosmian after the switch', async () => {
-    delete process.env.SCEP_RA_KEY_PROVIDER;
-    expect((await request(legacy.token, 'provision')).statusCode).toBe(200);
-    const binding = await bindingOf(legacy.id);
-    expect(binding.keyProvider).toBe('cosmian'); expect(binding.keyVersion).toBeNull();
-    expect(operation.mock.calls.some(([op]) => op === 'CreateKeyPair')).toBe(true);
-    process.env.SCEP_RA_KEY_PROVIDER = 'openbao';
-    operation.mockClear();
-    expect((await request(legacy.token, 'sign', { digest: Buffer.alloc(32, 1).toString('base64') })).statusCode).toBe(200);
-    expect(operation.mock.calls.at(-1)?.[0]).toBe('Sign');
-    expect(transit.signDigest).not.toHaveBeenCalled();
+  it('refuses every operation on a legacy Cosmian binding and never creates a replacement key', async () => {
+    // A binding from before the cutover: Cosmian key ids and a certificate.
+    const generated = generateKeyPairSync('rsa', { modulusLength: 3072 });
+    const publicKey = forge.pki.publicKeyFromPem(generated.publicKey.export({ type: 'spki', format: 'pem' }).toString());
+    const legacyPem = issueFrom(publicKey, new Date(Date.now() - 89 * 86400e3), new Date(Date.now() + 86400e3));
+    const certId = randomUUID();
+    await db.insert(integrationRAs).values({ integrationId: legacy.id, caId, keyProvider: 'cosmian', keyId: `private-${randomUUID()}`, publicKeyId: `public-${randomUUID()}`, certificateId: certId, certificatePem: legacyPem });
+    const meta = new (await import('node:crypto')).X509Certificate(legacyPem);
+    await db.insert(certificates).values({ id: certId, caId, kmsCertificateId: `kms-${certId}`, kmsKeyId: null, subjectDn: 'CN=SCEP Registration Authority', serialNumber: meta.serialNumber,
+      certificateType: 'client', notBefore: new Date(meta.validFrom), notAfter: new Date(meta.validTo), certificatePem: legacyPem, status: 'active', sourceType: 'scep', integrationId: legacy.id, requestUid: `scep-ra:${certId}` });
+    const ops: Array<[string, object?]> = [['state'], ['provision'], ['renew'], ['sign', { digest: Buffer.alloc(32, 1).toString('base64') }], ['decrypt', { data: Buffer.alloc(384, 1).toString('base64'), sessionKeyLength: 32 }]];
+    for (const [op, payload] of ops) {
+      const res = await request(legacy.token, op, payload);
+      expect(res.statusCode, `${op}: ${res.body}`).toBe(409);
+      expect(res.json().error.code).toBe('RA_KEY_MIGRATION_REQUIRED');
+    }
+    expect(operation).not.toHaveBeenCalled();
+    expect(transit.ensureKey).not.toHaveBeenCalled(); expect(transit.signDigest).not.toHaveBeenCalled(); expect(transit.unwrapSessionKey).not.toHaveBeenCalled();
+    const unchanged = await bindingOf(legacy.id);
+    expect(unchanged.keyProvider).toBe('cosmian'); expect(unchanged.certificatePem).toBe(legacyPem); expect(unchanged.lease).toBeNull();
+    const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, legacy.id));
+    expect(audit.filter(r => r.operation === 'scep.ra.sign').map(r => JSON.parse(r.details!)))
+      .toContainEqual({ phase: 'failed', statusCode: 409, code: 'RA_KEY_MIGRATION_REQUIRED', provider: 'cosmian' });
+
+    // The migration maps the binding to the imported OpenBao key (same public key,
+    // fixed version). The RA then keeps its identity: sign, decrypt and renewal work.
+    const keyName = `scep-ra-${randomUUID()}`;
+    baoKeys.set(keyName, { priv: generated.privateKey, pub: generated.publicKey, imported: true });
+    await db.update(integrationRAs).set({ keyProvider: 'openbao', keyId: keyName, publicKeyId: null, keyVersion: 1 }).where(eq(integrationRAs.integrationId, legacy.id));
+    const digest = randomBytes(32);
+    const signed = await request(legacy.token, 'sign', { digest: digest.toString('base64') });
+    expect(signed.statusCode, signed.body).toBe(200);
+    expect(verifyDigestSignature(generated.publicKey, digest, Buffer.from(signed.json().data, 'base64'))).toBe(true);
+    const renewed = await request(legacy.token, 'renew');
+    expect(renewed.statusCode, renewed.body).toBe(200);
+    expect(renewed.json().previousCertificatesPem).toContain(legacyPem);
+    expect(transit.readKey).toHaveBeenCalledWith(keyName, 1, { allowImported: true });
+    expect(transit.ensureKey).not.toHaveBeenCalled();
+
+    // A mapped key that is not the certified key is refused: no silent re-keying.
+    const other = generateKeyPairSync('rsa', { modulusLength: 3072 });
+    baoKeys.set(keyName, { priv: other.privateKey, pub: other.publicKey, imported: true });
+    const current = await bindingOf(legacy.id);
+    await db.update(certificates).set({ notBefore: new Date(Date.now() - 90 * 86400e3), notAfter: new Date(Date.now() + 86400e3) }).where(eq(certificates.id, current.certificateId!));
+    const mismatch = await request(legacy.token, 'renew');
+    expect(mismatch.statusCode).toBe(502);
+    expect((await bindingOf(legacy.id)).certificateId).toBe(current.certificateId);
+    expect(operation).not.toHaveBeenCalled();
   });
 
-  it('provisions a new binding in OpenBao and issues its RA certificate with the Cosmian CA from an OpenBao-signed CSR', async () => {
-    process.env.SCEP_RA_KEY_PROVIDER = 'openbao';
+  it('provisions a new binding in OpenBao and issues its RA certificate from an OpenBao-signed CSR', async () => {
+    delete process.env.SCEP_RA_KEY_PROVIDER;
     const res = await request(bao.token, 'provision');
     expect(res.statusCode, res.body).toBe(200);
     expect(Object.keys(res.json()).sort()).toEqual(['certificatePem', 'previousCertificatesPem']);
@@ -139,7 +164,7 @@ describe('OpenBao-bound SCEP RA (opt-in)', () => {
     expect(certify.publicKeyId).toBeUndefined();
     expect(certify.x509Extensions).toContain('keyEncipherment');
     const [row] = await db.select().from(certificates).where(eq(certificates.id, binding.certificateId!));
-    expect(row.kmsKeyId).toBeNull(); // the Transit key name never goes to Cosmian code paths
+    expect(row.kmsKeyId).toBeNull(); // the RA key belongs to the binding, not to the certificate row
     expect(JSON.stringify(res.json())).not.toContain(binding.keyId);
     const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, bao.id));
     expect(audit.find(r => r.operation === 'scep.ra.provision')?.details).toBe(JSON.stringify({ phase: 'completed', provider: 'openbao' }));
@@ -218,12 +243,15 @@ describe('OpenBao-bound SCEP RA (opt-in)', () => {
     await db.update(certificates).set({ notBefore: new Date(Date.now() - 1000), notAfter: new Date(Date.now() + 80 * 86400e3) }).where(eq(certificates.id, binding.certificateId!));
   });
 
-  it('fails closed with 503 when the provider is not configured', async () => {
+  it('fails closed with 503 when the obsolete provider setting asks for another key store', async () => {
     const binding = await bindingOf(bao.id);
-    process.env.SCEP_RA_KEY_PROVIDER = 'vault';
     await db.update(integrationRAs).set({ keyId: null, keyProvider: 'cosmian', keyVersion: null, certificateId: null, certificatePem: null }).where(eq(integrationRAs.integrationId, bao.id));
-    const res = await request(bao.token, 'provision');
-    expect(res.statusCode).toBe(503);
+    for (const value of ['cosmian', 'vault']) {
+      process.env.SCEP_RA_KEY_PROVIDER = value;
+      await db.update(integrationRAs).set({ lease: null, leaseUntil: null }).where(eq(integrationRAs.integrationId, bao.id));
+      const res = await request(bao.token, 'provision');
+      expect(res.statusCode, value).toBe(503);
+    }
     expect(operation).not.toHaveBeenCalled(); expect(transit.ensureKey).not.toHaveBeenCalled();
     process.env.SCEP_RA_KEY_PROVIDER = 'openbao';
     await db.update(integrationRAs).set({ keyId: binding.keyId, keyProvider: 'openbao', keyVersion: 1, certificateId: binding.certificateId, certificatePem: binding.certificatePem, lease: null, leaseUntil: null }).where(eq(integrationRAs.integrationId, bao.id));

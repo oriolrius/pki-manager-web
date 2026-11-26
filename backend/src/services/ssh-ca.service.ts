@@ -1,12 +1,16 @@
 /**
  * SSH CA lifecycle (SSH-10, SSH-IMPORT, SSH-32a rotation support).
- * An SSH CA is a non-exportable ECDSA-P256 KMS keypair with a published OpenSSH
- * public key — no X.509 cert. Trust anchors publish both keys during rotation.
+ * An SSH CA is a non-exportable ECDSA-P256 OpenBao Transit key with a published
+ * OpenSSH public key — no X.509 cert. Trust anchors publish both keys during
+ * rotation. Key operations go through `ssh-ca-key.ts` (decision-018 cutover).
  */
 import { randomUUID } from 'crypto';
 import { eq, and, gt, inArray, isNull } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshHosts } from '../db/schema.js';
-import { getKMSService } from '../kms/service.js';
+import {
+  SshCaKeyExistsError, SshCaKeyMigrationRequiredError, adoptSshCaKey, caPublicKeyFromLine, createSshCaKey, isLegacySshCa, signWithSshCa,
+} from './ssh-ca-key.js';
+import { verifySshCaSignature } from '../openbao/ssh-transit.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
@@ -100,7 +104,6 @@ function toDto(row: typeof sshCas.$inferSelect): SshCaDto {
 export class SshCaService {
   /** Create a non-exportable ECDSA-P256 SSH CA (decision-011), scoped to a zone. */
   async create(ctx: ServiceContext, params: { caType: SshCaType; label?: string; zone?: string }): Promise<SshCaDto> {
-    const kms = getKMSService();
     const id = randomUUID();
     // Resolve + gate the zone (fail-closed if ambiguous; blocked if archived).
     const zone = await resolveZone(ctx, params.zone);
@@ -113,12 +116,12 @@ export class SshCaService {
     if (existing.length) throw new SshCaExistsError(params.caType, zone.name);
 
     let kmsKeyId = '';
-    let kmsPublicKeyId = '';
     try {
-      const keys = await kms.createSshCaKeyPair({ tags: [`ssh-${params.caType}-ca`, 'ssh-ca'], sensitive: true, entityId: id });
-      kmsKeyId = keys.privateKeyId;
-      kmsPublicKeyId = keys.publicKeyId;
-      const line = await kms.getSshPublicKeyLine(kmsPublicKeyId, params.label ?? `ssh-${params.caType}-ca`);
+      // The key reference is stored in both key columns (one Transit key, one version).
+      const key = await createSshCaKey(id, params.label ?? `ssh-${params.caType}-ca`);
+      kmsKeyId = key.keyRef;
+      const kmsPublicKeyId = key.keyRef;
+      const line = key.opensshPublicKey;
       const parsed = parseSshPublicKey(line);
 
       await ctx.db.insert(sshCas).values({
@@ -152,7 +155,9 @@ export class SshCaService {
         entityType: 'ssh_ca',
         entityId: id,
         status: 'failure',
-        details: { caType: params.caType, error: String(error) },
+        // A key created before a failed insert stays in OpenBao (keys are not
+        // deletable); the reference here lets an operator find it.
+        details: { caType: params.caType, ...(kmsKeyId ? { kmsKeyId } : {}), error: String(error) },
         ipAddress: ctx.ipAddress ?? undefined,
       });
       throw error;
@@ -160,15 +165,17 @@ export class SshCaService {
   }
 
   /**
-   * Adopt an existing, already-KMS-resident EC CA keypair (SSH-IMPORT) without
-   * regenerating it (no fleet re-trust). Verifies the key is usable by signing &
-   * verifying a probe before persisting.
+   * Adopt an existing OpenBao Transit EC key (SSH-IMPORT) without regenerating
+   * it (no fleet re-trust). `kmsKeyId` is the key reference
+   * `openbao-transit:<mount>:<name>:<version>`; `kmsPublicKeyId` must be the same
+   * reference. A Cosmian KMS id is refused (`SshCaKeyMigrationRequiredError`).
+   * The key must not belong to another CA in any zone. Verifies the key is usable
+   * by signing & verifying a probe before persisting.
    */
   async import(
     ctx: ServiceContext,
     params: { caType: SshCaType; label?: string; kmsKeyId: string; kmsPublicKeyId: string; zone?: string }
   ): Promise<SshCaDto> {
-    const kms = getKMSService();
     const zone = await resolveZone(ctx, params.zone);
     await assertZoneUsable(ctx, zone.id);
     const existing = await ctx.db
@@ -177,24 +184,36 @@ export class SshCaService {
       .where(and(eq(sshCas.zoneId, zone.id), eq(sshCas.caType, params.caType), eq(sshCas.status, 'active')));
     if (existing.length) throw new SshCaExistsError(params.caType, zone.name);
 
-    const line = await kms.getSshPublicKeyLine(params.kmsPublicKeyId, params.label ?? `ssh-${params.caType}-ca`);
+    if (isLegacySshCa({ kmsKeyId: params.kmsKeyId }) || isLegacySshCa({ kmsKeyId: params.kmsPublicKeyId })) {
+      throw new SshCaKeyMigrationRequiredError();
+    }
+    if (params.kmsPublicKeyId !== params.kmsKeyId) throw new SshCaAlgorithmError('kmsPublicKeyId must equal kmsKeyId (one OpenBao key reference)');
+    const { keyRef, opensshPublicKey: line } = await adoptSshCaKey(params.kmsKeyId, params.label ?? `ssh-${params.caType}-ca`);
     const parsed = parseSshPublicKey(line);
     if (parsed.algo !== 'ecdsa-sha2-nistp256') throw new SshCaAlgorithmError(parsed.algo);
 
-    // Prove the key can sign and the signature verifies (decision-011 path).
-    const probe = Buffer.from(`ssh-ca-import-probe:${parsed.fingerprintSha256}`);
-    const der = await kms.signRaw(params.kmsKeyId, probe);
-    const ok = await kms.signatureVerify(params.kmsPublicKeyId, probe, der);
-    if (!ok) throw new Error('imported CA key failed a sign/verify probe; refusing to adopt');
+    // One key is one trust anchor: refuse a key (same Transit key, any version,
+    // or the same public key) that another CA of any zone already uses.
+    const keyName = keyRef.split(':').slice(0, -1).join(':');
+    const all = await ctx.db.select({ kmsKeyId: sshCas.kmsKeyId, fingerprintSha256: sshCas.fingerprintSha256 }).from(sshCas);
+    if (all.some((c) => c.fingerprintSha256 === parsed.fingerprintSha256 || c.kmsKeyId.split(':').slice(0, -1).join(':') === keyName)) {
+      throw new SshCaKeyExistsError();
+    }
 
     const id = randomUUID();
+    // Prove the key can sign and the signature verifies with the public key we
+    // are about to publish (local verification, no key-store round trip).
+    const probe = Buffer.from(`ssh-ca-import-probe:${parsed.fingerprintSha256}`);
+    const der = await signWithSshCa({ id, kmsKeyId: keyRef, opensshPublicKey: line }, probe, { purpose: 'probe', ctx });
+    if (!verifySshCaSignature(caPublicKeyFromLine(line), probe, der)) throw new Error('imported CA key failed a sign/verify probe; refusing to adopt');
+
     await ctx.db.insert(sshCas).values({
       id,
       zoneId: zone.id,
       caType: params.caType,
       label: params.label ?? null,
-      kmsKeyId: params.kmsKeyId,
-      kmsPublicKeyId: params.kmsPublicKeyId,
+      kmsKeyId: keyRef,
+      kmsPublicKeyId: keyRef,
       opensshPublicKey: line,
       fingerprintSha256: parsed.fingerprintSha256,
       keyAlgorithm: 'ECDSA-P256',
@@ -206,7 +225,7 @@ export class SshCaService {
       entityType: 'ssh_ca',
       entityId: id,
       status: 'success',
-      details: { caType: params.caType, fingerprint: parsed.fingerprintSha256, kmsKeyId: params.kmsKeyId },
+      details: { caType: params.caType, zone: zone.name, fingerprint: parsed.fingerprintSha256, kmsKeyId: keyRef },
       ipAddress: ctx.ipAddress ?? undefined,
     });
     return toDto((await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0]);
@@ -259,14 +278,16 @@ export class SshCaService {
     const zone = await resolveZone(ctx, old.zoneId);
     await assertZoneUsable(ctx, zone.id);
 
-    // (2) CREATE SUCCESSOR keypair in the KMS (async/external) BEFORE touching
-    // the DB. A KMS failure leaves the predecessor active and untouched.
+    // (2) CREATE SUCCESSOR key in OpenBao (async/external) BEFORE touching
+    // the DB. A key-store failure leaves the predecessor active and untouched.
+    // The successor is always a new Transit key; the predecessor key (OpenBao or
+    // legacy Cosmian) is never rotated in place, so its trust anchor stays valid.
     const successorId = randomUUID();
     const label = `${old.label ?? old.caType} (rotated ${new Date().toISOString().slice(0, 10)})`;
-    const kms = getKMSService();
     try {
-      const keys = await kms.createSshCaKeyPair({ tags: [`ssh-${old.caType}-ca`, 'ssh-ca'], sensitive: true, entityId: successorId });
-      const line = await kms.getSshPublicKeyLine(keys.publicKeyId, label);
+      const key = await createSshCaKey(successorId, label);
+      const keys = { privateKeyId: key.keyRef, publicKeyId: key.keyRef };
+      const line = key.opensshPublicKey;
       const parsed = parseSshPublicKey(line);
 
       // (3) ATOMIC SWAP: demote predecessor + insert active successor in a
@@ -315,7 +336,7 @@ export class SshCaService {
       entityType: 'ssh_ca',
       entityId: successorId,
       status: 'success',
-      details: { predecessor: id, caType: old.caType },
+      details: { predecessor: id, caType: old.caType, ...(isLegacySshCa(old) ? { predecessorKeyStore: 'cosmian-legacy' } : {}) },
       ipAddress: ctx.ipAddress ?? undefined,
     });
     logger.info({ predecessor: id, successor: successorId, caType: old.caType }, 'Rotated SSH CA');
