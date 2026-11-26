@@ -16,7 +16,7 @@ steps as a live checklist that unlocks each step as you go. Read
 - Create a **User CA** (`caType: user`) — signs people's login certs.
 - Create a **Host CA** (`caType: host`) — signs servers' host certs.
 
-Both are required and come first. (Admin-only; the Cosmian KMS must be reachable.)
+Both are required and come first. (Admin-only; OpenBao must be reachable and unsealed.)
 
 ## 2. Distribute CA trust
 

@@ -4,7 +4,7 @@ Read this once before using the SSH section. It is the mental model the rest of
 the guides assume.
 
 PKI Manager is an **OpenSSH certificate authority**. It runs **two** CAs (both
-keys live safely inside the KMS):
+keys live inside OpenBao Transit and cannot be exported):
 
 - a **User CA** that signs *people's* login certificates, and
 - a **Host CA** that signs *servers'* host certificates.

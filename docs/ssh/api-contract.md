@@ -61,7 +61,7 @@ with `400 SSH_ERROR`:
 | Status | Code | Cause |
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | the body fails the Zod schema (for example, an invalid `fqdn`) |
-| `400` | `SSH_ERROR` | the service refused or failed: host key not `ecdsa-sha2-nistp256`, not an OpenSSH public key, host offboarded, no active Host CA in the token's zone, KMS error. `message` gives the cause. |
+| `400` | `SSH_ERROR` | the service refused or failed: host key not `ecdsa-sha2-nistp256`, not an OpenSSH public key, host offboarded, no active Host CA in the token's zone, OpenBao signing error. `message` gives the cause. |
 | `400` | `VALIDATION_ERROR` | the `Idempotency-Key` header is not 1 to 255 printable ASCII characters without spaces |
 | `409` | `IDEMPOTENCY_IN_PROGRESS` | a request with the same token and `Idempotency-Key` is in progress |
 | `422` | `IDEMPOTENCY_KEY_REUSED` | the `Idempotency-Key` was used for another endpoint or another request |
@@ -85,7 +85,7 @@ User keys can be `ssh-ed25519` or `ecdsa-sha2-nistp256`.
 |---|---|---|
 | `400` | `VALIDATION_ERROR` | the body fails the Zod schema (for example, an invalid principal name or CIDR) |
 | `403` | `TOKEN_LIMIT` | the request is outside the token limits (see below) |
-| `400` | `SSH_ERROR` | the service refused or failed: not an OpenSSH public key, identity disabled, identity not entitled to a requested principal, no active User CA in the token's zone, KMS error. `message` gives the cause. |
+| `400` | `SSH_ERROR` | the service refused or failed: not an OpenSSH public key, identity disabled, identity not entitled to a requested principal, no active User CA in the token's zone, OpenBao signing error. `message` gives the cause. |
 | `400` | `VALIDATION_ERROR` | the `Idempotency-Key` header is not 1 to 255 printable ASCII characters without spaces |
 | `409` | `IDEMPOTENCY_IN_PROGRESS` | a request with the same token and `Idempotency-Key` is in progress |
 | `422` | `IDEMPOTENCY_KEY_REUSED` | the `Idempotency-Key` was used for another endpoint or another request |
@@ -306,7 +306,7 @@ the SSH-34 fail-closed posture (403 when OIDC is off without
 Distribution state values: `effective` (served version matches the composed
 head — *"served to host puller at \<time\>", not confirmation of install*),
 `pending`, `lifting`, `unknown` (no usable ECIES registration ⇒ blocks cannot
-land via ECIES), plus the distinct `unsignedLatest` cause (KMS signing failed;
+land via ECIES), plus the distinct `unsignedLatest` cause (OpenBao signing failed;
 `krl-client` hosts fail-stale on last-good until a signed row lands).
 
 ### Environment gates
