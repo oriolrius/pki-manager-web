@@ -115,19 +115,18 @@ WORKDIR /app
 # Copy production dependencies from dependencies stage (includes built native modules)
 COPY --from=dependencies --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=dependencies --chown=nodejs:nodejs /app/backend/node_modules ./backend/node_modules
-COPY --from=dependencies --chown=nodejs:nodejs /app/package.json ./
-COPY --from=dependencies --chown=nodejs:nodejs /app/pnpm-workspace.yaml ./
-COPY --from=dependencies --chown=nodejs:nodejs /app/backend/package.json ./backend/
+COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/package.json ./
+COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/pnpm-workspace.yaml ./
+COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/backend/package.json ./backend/
 
 # Copy built backend
 COPY --from=build-backend --chown=nodejs:nodejs /app/backend/dist ./backend/dist
 
 # Copy database migrations (SQL files not copied by TypeScript)
-COPY --from=build-backend --chown=nodejs:nodejs /app/backend/src/db/migrations ./backend/dist/db/migrations
+COPY --from=build-backend --chown=nodejs:nodejs --chmod=u=rwX,go=rX /app/backend/src/db/migrations ./backend/dist/db/migrations
 
 # Copy entrypoint script
-COPY --chown=nodejs:nodejs docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY --chown=nodejs:nodejs --chmod=755 docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/backend/data && \
@@ -145,8 +144,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--use-openssl-ca \
     PORT=3000 \
     HOST=0.0.0.0 \
-    DATABASE_PATH=/app/backend/data/pki.db \
-    KMS_URL=http://kms:9998
+    DATABASE_PATH=/app/backend/data/pki.db
 
 # Expose port
 EXPOSE 3000
