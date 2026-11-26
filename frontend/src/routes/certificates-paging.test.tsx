@@ -105,6 +105,28 @@ describe('certificate list paging (issue #53)', () => {
     expect(lastNavigatedSearch()).toEqual({ page: undefined });
   });
 
+  it('clears the bulk selection when the URL changes page', () => {
+    const view = render(<Page />);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(screen.getByText('1 certificate selected')).toBeTruthy();
+
+    state.search = { page: 2 };
+    view.rerender(<Page />);
+    expect(screen.getByText('host-51')).toBeTruthy();
+    expect(screen.queryByText('1 certificate selected')).toBeNull();
+  });
+
+  it('updates the expiry label while the page stays open', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2035-12-31T23:59:30Z'));
+    state.totalCount = 1;
+    render(<Page />);
+    expect(screen.getByText('1 days left')).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(60_000); });
+    expect(screen.queryByText('1 days left')).toBeNull();
+    expect(screen.getByText('Expired', { selector: 'div' })).toBeTruthy();
+  });
+
   it('disables next on the last page', () => {
     state.search = { page: 3 };
     render(<Page />);

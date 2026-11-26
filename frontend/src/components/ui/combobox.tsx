@@ -47,11 +47,9 @@ export function Combobox({
 
   const selected = options.find((o) => o.value === value);
 
-  // Reset + focus the search field each time the menu opens.
+  // Focus the search field each time the menu opens.
   useEffect(() => {
     if (open) {
-      setQuery('');
-      setActiveIndex(0);
       const t = setTimeout(() => searchRef.current?.focus(), 0);
       return () => clearTimeout(t);
     }
@@ -104,7 +102,13 @@ export function Combobox({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) {
+            setQuery('');
+            setActiveIndex(0);
+          }
+          setOpen(!open);
+        }}
         className="flex w-full items-center justify-between gap-2 rounded-md border bg-background px-2 py-1 text-xs disabled:opacity-50"
       >
         <span className={selected ? 'truncate' : 'truncate text-muted-foreground'}>

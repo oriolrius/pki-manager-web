@@ -1,3 +1,4 @@
+import { useCurrentTime } from '@/lib/use-current-time';
 import { createFileRoute, useNavigate, Outlet, useMatchRoute } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 
@@ -6,6 +7,7 @@ export const Route = createFileRoute('/cas')({
 });
 
 function CertificateAuthorities() {
+  const now = useCurrentTime();
   const navigate = useNavigate();
   const matchRoute = useMatchRoute();
   const isDetailPage = matchRoute({ to: '/cas/$id', fuzzy: false });
@@ -83,7 +85,7 @@ function CertificateAuthorities() {
                     const commonName = cnMatch ? cnMatch[1] : ca.subject;
 
                     // Calculate expiration
-                    const daysUntilExpiry = Math.ceil((new Date(ca.notAfter).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    const daysUntilExpiry = Math.ceil((new Date(ca.notAfter).getTime() - now) / (1000 * 60 * 60 * 24));
                     const isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0;
                     const isExpired = daysUntilExpiry <= 0;
 

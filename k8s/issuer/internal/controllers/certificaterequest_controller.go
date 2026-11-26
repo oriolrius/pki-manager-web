@@ -92,7 +92,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Resolve issuer
 	spec, secretNS, errMsg := r.resolveIssuer(ctx, cr)
 	if errMsg != "" {
-		r.Recorder.Eventf(cr, corev1.EventTypeWarning, "IssuerError", errMsg)
+		r.Recorder.Event(cr, corev1.EventTypeWarning, "IssuerError", errMsg)
 		setReady(cr, cmapi.CertificateRequestReasonPending, errMsg)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, r.Status().Update(ctx, cr)
 	}
@@ -147,7 +147,7 @@ func (r *CertificateRequestReconciler) Reconcile(ctx context.Context, req ctrl.R
 	signDuration.WithLabelValues(resultLabel(err)).Observe(time.Since(signStart).Seconds())
 	if err != nil {
 		signTotal.WithLabelValues("error").Inc()
-		r.Recorder.Eventf(cr, corev1.EventTypeWarning, "SignFailed", err.Error())
+		r.Recorder.Event(cr, corev1.EventTypeWarning, "SignFailed", err.Error())
 		// Re-fetch to avoid stale resourceVersion
 		fresh := &cmapi.CertificateRequest{}
 		if gerr := r.Get(ctx, req.NamespacedName, fresh); gerr == nil {

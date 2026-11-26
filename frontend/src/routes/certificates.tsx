@@ -1,3 +1,4 @@
+import { useCurrentTime } from '@/lib/use-current-time';
 import type { RouterInputs } from '../lib/trpc';
 import { createFileRoute, useNavigate, Outlet, useMatchRoute, useSearch } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
@@ -60,6 +61,7 @@ function getCertificateTypeIcon(type: string) {
 }
 
 function Certificates() {
+  const now = useCurrentTime();
   const navigate = useNavigate();
   const toast = useToast();
   const matchRoute = useMatchRoute();
@@ -194,9 +196,11 @@ function Certificates() {
 
   // A selection is for the rows on screen: clear it when the page or a filter changes.
   const listKey = JSON.stringify(listInput);
-  useEffect(() => {
+  const [selectionKey, setSelectionKey] = useState(listKey);
+  if (selectionKey !== listKey) {
+    setSelectionKey(listKey);
     setSelectedCertificates(new Set());
-  }, [listKey]);
+  }
 
   // Fetch CAs list for lookup
   const casQuery = trpc.ca.list.useQuery({});
@@ -1309,7 +1313,7 @@ docker run --rm -v my-certs:/target \\
                       : 'None';
 
                     // Calculate expiration
-                    const daysUntilExpiry = Math.ceil((new Date(cert.notAfter).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    const daysUntilExpiry = Math.ceil((new Date(cert.notAfter).getTime() - now) / (1000 * 60 * 60 * 24));
                     const isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0;
                     const isExpired = daysUntilExpiry <= 0;
 
