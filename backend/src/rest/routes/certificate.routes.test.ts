@@ -19,7 +19,7 @@ import { registerRestApi } from '../index.js';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomUUID, X509Certificate } from 'crypto';
 import forge from 'node-forge';
 import { generateCertificate } from '../../crypto/x509.js';
 
@@ -759,6 +759,64 @@ describe('Certificate REST Endpoints', () => {
       // Invalid enum value returns 400 (schema validation)
       expect(response.statusCode).toBe(400);
     });
+
+    // Issue #118: chain-pem returned only the certificate, full-pem had no chain.
+    it('should put the issuing CA in chain-pem and full-pem (real KMS)', async (ctx) => {
+      const { isKmsAvailable } = await import('../../test/kms-helper.js');
+      if (!(await isKmsAvailable())) {
+        ctx.skip();
+        return;
+      }
+      const tag = randomUUID().slice(0, 8);
+      const caRes = await server.inject({
+        method: 'POST',
+        url: '/api/v1/cas/',
+        payload: {
+          subject: { commonName: `Chain Test CA ${tag}`, organization: 'Test Organization', country: 'US' },
+          keyAlgorithm: 'RSA-2048',
+          validityYears: 1,
+        },
+      });
+      expect(caRes.statusCode).toBe(201);
+      testCaId = JSON.parse(caRes.body).id;
+      const certRes = await server.inject({
+        method: 'POST',
+        url: '/api/v1/certificates/',
+        payload: {
+          caId: testCaId,
+          subject: { commonName: `chain-${tag}.example.com`, organization: 'Test Organization', country: 'US' },
+          certificateType: 'server',
+          keyAlgorithm: 'RSA-2048',
+          validityDays: 30,
+          sanDns: [`chain-${tag}.example.com`],
+        },
+      });
+      expect(certRes.statusCode).toBe(201);
+      testCertId = JSON.parse(certRes.body).id;
+
+      const download = async (format: string) => {
+        const r = await server.inject({ method: 'GET', url: `/api/v1/certificates/${testCertId}/download?format=${format}` });
+        expect(r.statusCode).toBe(200);
+        return Buffer.from(JSON.parse(r.body).data, 'base64').toString('utf8');
+      };
+      const subjects = (pem: string) =>
+        (pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [])
+          .map((block) => new X509Certificate(block).subject);
+
+      const chain = await download('chain-pem');
+      expect(subjects(chain)).toEqual([
+        expect.stringContaining(`chain-${tag}.example.com`),
+        expect.stringContaining(`Chain Test CA ${tag}`),
+      ]);
+      expect(chain).not.toMatch(/PRIVATE KEY/);
+
+      const full = await download('full-pem');
+      expect(subjects(full)).toHaveLength(2);
+      expect(full).toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
+      // Order: certificate, private key, issuing CA.
+      expect(full.indexOf('PRIVATE KEY')).toBeGreaterThan(full.indexOf('END CERTIFICATE'));
+      expect(full.lastIndexOf('BEGIN CERTIFICATE')).toBeGreaterThan(full.indexOf('PRIVATE KEY'));
+    }, 60000);
   });
 
   describe('OpenAPI Documentation', () => {
