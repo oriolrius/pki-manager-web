@@ -1,6 +1,6 @@
 ---
 title: Certificate authorities
-summary: Create your own root certificate authorities. The key of each CA is made inside the KMS and stays there.
+summary: Create your own root certificate authorities. The key of each CA is made in OpenBao Transit, and OpenBao signs with it.
 group: x509
 order: 1
 image: img/ca-detail.png
@@ -24,8 +24,9 @@ links:
 
 ## How it works
 
-The backend asks the KMS to create the key pair and the self-signed certificate. The private key
-stays in the KMS. The database stores the certificate and the id of the key.
+The backend asks OpenBao Transit to create the key pair. Then the backend builds the self-signed
+certificate and Transit signs it with the new key. The database stores the certificate and a
+reference to the key: its name and its version in Transit.
 
 The CA certificate has the extensions that make it a CA: `basicConstraints` with `CA:TRUE` and
 `keyUsage` with certificate signing and CRL signing, both critical.
@@ -36,6 +37,7 @@ the list works from the first day.
 ## What it does not do
 
 - It makes root CAs only. There are no intermediate CAs.
-- CA keys are RSA. Certificates that the CA signs can use ECDSA keys.
+- CA keys are RSA (2048 or 4096 bits). Certificates that the CA signs can use ECDSA keys.
 - The CA key cannot be downloaded unless the server runs with `ALLOW_CA_KEY_EXPORT=true`. Then
-  only an admin can do it, and each export is written to the audit log.
+  only an admin can do it, and each export is written to the audit log. The export also needs a
+  CA key that was created as exportable in OpenBao: OpenBao refuses to export any other key.

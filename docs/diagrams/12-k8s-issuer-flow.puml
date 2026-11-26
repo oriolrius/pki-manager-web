@@ -6,7 +6,7 @@ rectangle "**Certificate**\n(you)" as cert <<file>>
 rectangle "**CertificateRequest**\n(cert-manager)" as cr <<file>>
 rectangle "**pki-manager-issuer**\n(controller + service token)" as iss <<machine>>
 rectangle "**PKI Manager**\nyour CA" as pki <<pki>>
-rectangle "**KMS**\nCA private key" as kms <<user>>
+rectangle "**OpenBao Transit**\nCA private key" as kms <<user>>
 cert --> cr
 cr --> iss
 iss --> pki : POST /api/v1/external/sign\n(Bearer service token)

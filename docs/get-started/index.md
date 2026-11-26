@@ -1,7 +1,7 @@
 # Start here
 
 PKI Manager is a self-hosted web application to run your own certificate authorities for X.509,
-SSH and Kubernetes. Private keys stay in a Cosmian KMS.
+SSH and Kubernetes. Private keys stay in OpenBao Transit.
 
 New here? Read these first. They need no install:
 

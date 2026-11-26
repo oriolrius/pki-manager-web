@@ -10,8 +10,8 @@ links:
     href: ../guides/mqtt.md
   - label: "Guide: revoke, end to end"
     href: ../guides/private-ca.md
-  - label: "Decision record: how the CRL is signed"
-    href: "../../backlog/decisions/decision-010 - CRL-Signing-Approach-Export-CA-Key-vs-KMIP-Sign.md"
+  - label: "Decision record: OpenBao Transit as the key store"
+    href: "../../backlog/decisions/decision-018 - Replace-Cosmian-KMS-with-a-KeyStore-abstraction-backed-by-OpenBao-Transit.md"
 ---
 
 ## What you can do
@@ -25,7 +25,7 @@ links:
 - A new CA has an empty CRL from the start.
 - Revoke a CA. All its active certificates become revoked with the reason `caCompromise`, in one
   database transaction. Then PKI Manager signs a new CRL of that CA that lists them. The response
-  field `crlGenerated` tells if the CRL was signed. When the KMS cannot sign at that moment, the
+  field `crlGenerated` tells if the CRL was signed. When OpenBao cannot sign at that moment, the
   CA stays revoked, and the next request for its CRL signs the list.
 
 ## How it works
@@ -34,8 +34,8 @@ The CRL lists the serial numbers of the revoked certificates of one CA, with the
 one. It is valid for 7 days. When a client asks for a list that is past that date, the backend
 signs a new one.
 
-To sign a CRL, the backend takes the key of the CA out of the KMS, signs in memory and discards
-the key. The decision record explains why.
+The backend builds the CRL and OpenBao Transit signs it with the key of the CA. The key of the CA
+does not leave OpenBao to sign a CRL.
 
 Revocation works only when the server that accepts the certificate reads the CRL. The Mosquitto
 guide shows the full path: revoke in PKI Manager, refresh the CRL file of the broker, and see the

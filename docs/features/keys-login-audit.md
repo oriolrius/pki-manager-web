@@ -1,6 +1,6 @@
 ---
 title: Keys, login and audit
-summary: Private keys live in a KMS, people log in with your identity provider, and each change is written to an audit log.
+summary: Private keys live in OpenBao Transit, people log in with your identity provider, and each change is written to an audit log.
 group: platform
 order: 8
 links:
@@ -16,8 +16,8 @@ links:
 
 ## What you can do
 
-- Keep every private key that PKI Manager makes in Cosmian KMS. The database has certificates and
-  key ids, not keys.
+- Keep every private key that PKI Manager makes in OpenBao Transit (the PKI Manager build of
+  OpenBao). The database has certificates and key references, not keys.
 - Let people log in with your identity provider through OIDC. The setup is tested with Keycloak.
 - Reserve the sensitive actions of the web UI for the `admin` role: create, revoke and delete a
   CA, revoke and delete a certificate, manage integrations, and manage the SSH CAs, zones and
@@ -30,9 +30,9 @@ links:
 The browser logs in with the authorization code flow and PKCE. There is no client secret in the
 browser. The backend checks each access token against the public keys of the identity provider.
 
-The key of a CA signs certificates inside the KMS. It leaves the KMS in two cases only: to sign a
-revocation list, in memory, and when an admin exports the CA as a keystore on a server that
-allows it (`ALLOW_CA_KEY_EXPORT=true`, off by default). [How it works](../how-it-works.md) has the
+The key of a CA signs certificates and revocation lists inside OpenBao. It leaves OpenBao in one
+case only: when an admin exports the CA as a keystore on a server that allows it
+(`ALLOW_CA_KEY_EXPORT=true`, off by default). [How it works](../how-it-works.md) has the
 full table.
 
 A password for an exported file is never part of the address (URL), so it does not stay in
@@ -42,7 +42,8 @@ browser history or in server logs.
 
 - It has no users and passwords of its own. Without an OIDC provider there is no login at all,
   which is for a test on your own machine only.
-- It does not use a hardware security module (HSM). Keys are in Cosmian KMS.
+- It does not use a hardware security module (HSM) for its keys. Transit keys are software keys
+  in the storage of OpenBao, encrypted by the OpenBao seal.
 - The web UI has no page for the audit log. Read it through the API.
 - It runs as one instance with one SQLite database. There is no cluster mode.
 - It has no telemetry and no analytics.

@@ -5,14 +5,14 @@ actor "Operator" as op
 rectangle "React SPA\n(web UI)" as spa <<machine>>
 rectangle "OIDC provider\n(optional)" as idp <<file>>
 rectangle "**Backend** (Fastify)\n/trpc · /api/v1 (REST + Swagger)\n/api/v1/external (integration tokens)" as be <<pki>>
-rectangle "Cosmian KMS\nprivate keys" as kms <<user>>
-database "SQLite\nmetadata, KMS key ids" as db
+rectangle "OpenBao (PKI Manager build)\nTransit: private keys, signing" as kms <<user>>
+database "SQLite\nmetadata, certificates,\nkey references" as db
 rectangle "Automation\ncert-manager issuer, SCEP,\nAnsible, scripts" as auto <<machine>>
 op --> spa
 spa --> idp : login (PKCE)
 spa --> be : tRPC + bearer JWT
 auto --> be : REST + token
-be --> kms : sign, create keys
+be --> kms : create keys, sign (HTTPS + token)
 be --> db
 be ..> idp : validate JWT (JWKS)
 @enduml
