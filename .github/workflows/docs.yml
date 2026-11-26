@@ -44,9 +44,7 @@ jobs:
           node-version-file: site/.nvmrc
           cache: npm
           cache-dependency-path: site/package-lock.json
-      - uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
-        with:
-          version: 9
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       # The API reference is generated from the backend source (scripts/openapi.mjs starts it briefly).
       - name: Install backend dependencies
         working-directory: backend

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
 import { ArrowLeft, FileText, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useToast } from '@/components/ui';
 
 export const Route = createFileRoute('/certificates/bulk')({
@@ -23,11 +23,11 @@ function BulkCertificates() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
   const toast = useToast();
-  const [formData, setFormData] = useState({
-    caId: '',
+  const [formData, setFormData] = useState(() => ({
+    caId: localStorage.getItem(STORAGE_KEY) ?? '',
     defaultValidityDays: 365,
     csvData: '',
-  });
+  }));
 
   const [results, setResults] = useState<{
     successful: number;
@@ -37,14 +37,6 @@ function BulkCertificates() {
 
   const casQuery = trpc.ca.list.useQuery({ limit: 100, offset: 0 });
   const bulkIssueMutation = trpc.certificate.bulkIssue.useMutation();
-
-  // Load CA ID from localStorage on mount
-  useEffect(() => {
-    const savedCaId = localStorage.getItem(STORAGE_KEY);
-    if (savedCaId) {
-      setFormData(prev => ({ ...prev, caId: savedCaId }));
-    }
-  }, []);
 
   // Update localStorage when CA selection changes
   const handleCaChange = (caId: string) => {

@@ -1,3 +1,4 @@
+import { useCurrentTime } from '@/lib/use-current-time';
 import type { RouterInputs } from '../lib/trpc';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
@@ -48,6 +49,7 @@ const DOWNLOAD_FORMATS = [
 ] as const;
 
 function CertificateDetail() {
+  const now = useCurrentTime();
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -485,7 +487,7 @@ function CertificateDetail() {
   const commonName = cnMatch ? cnMatch[1] : cert.subjectDn;
 
   // Calculate days until expiration
-  const daysUntilExpiry = Math.ceil((new Date(cert.notAfter).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const daysUntilExpiry = Math.ceil((new Date(cert.notAfter).getTime() - now) / (1000 * 60 * 60 * 24));
   const isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0;
   const isExpired = daysUntilExpiry <= 0;
 

@@ -1,3 +1,4 @@
+import { useCurrentTime } from '@/lib/use-current-time';
 import type { RouterInputs } from '../lib/trpc';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { trpc } from '@/lib/trpc';
@@ -31,6 +32,7 @@ const REVOCATION_REASONS = [
 ] as const;
 
 function CADetail() {
+  const now = useCurrentTime();
   const { id } = Route.useParams();
   const navigate = useNavigate();
   // Disable retries for CONFLICT errors (KMS inconsistency) - they won't resolve with retries
@@ -440,7 +442,7 @@ function CADetail() {
   const commonName = cnMatch ? cnMatch[1] : ca.subjectDn;
 
   // Calculate days until expiration
-  const daysUntilExpiry = Math.ceil((new Date(ca.notAfter).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const daysUntilExpiry = Math.ceil((new Date(ca.notAfter).getTime() - now) / (1000 * 60 * 60 * 24));
   const isExpiringSoon = daysUntilExpiry <= 30 && daysUntilExpiry > 0;
   const isExpired = daysUntilExpiry <= 0;
 

@@ -155,6 +155,9 @@ of the Dockerfiles (tag and digest) and `ansible/tests/e2e/requirements.txt`.
 - The commit prefix is `build(deps)`, or `ci(deps)` for the actions, so `cz bump` reads the commits.
 - The images of the Compose files (Cosmian KMS, Keycloak) are not in the list: change them by hand,
   after a test.
+- The application image and the Node.js types follow Node.js 22. The issuer builder follows Go
+  1.26. Dependabot still proposes patch and digest updates on these runtime lines.
+- Upgrade the ESLint 10 preset together with the ESLint engine and its TypeScript plugins.
 
 Handle a Dependabot pull request like any other:
 

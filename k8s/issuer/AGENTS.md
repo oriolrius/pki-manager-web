@@ -7,8 +7,8 @@ calling the PKI Manager backend REST API. See the root `AGENTS.md` for repo-wide
 
 ## What it is
 
-- Module `github.com/oriolrius/pki-manager-issuer`, Go 1.26.11. Deps: controller-runtime 0.20,
-  cert-manager 1.16 APIs, k8s 0.32.
+- Module `github.com/oriolrius/pki-manager-issuer`, Go 1.26.11. Deps: controller-runtime 0.24,
+  cert-manager 1.21 APIs, k8s 0.36.
 - CRDs in group `pki-manager.issuer.io/v1alpha1`: `Issuer` (namespaced) + `ClusterIssuer`
   (cluster-scoped), sharing `IssuerSpec`.
 - `main.go` runs three reconcilers: `IssuerReconciler` for `Issuer` and for `ClusterIssuer`,

@@ -35,6 +35,13 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: build(deps)
+    ignore:
+      # Keep the declarations on the Node.js runtime major.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # Upgrade the preset with the ESLint engine and its TypeScript plugins.
+      - dependency-name: "@eslint/js"
+        versions: ["10.x"]
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
@@ -78,7 +85,6 @@ updates:
   - package-ecosystem: docker
     directories:
       - /docker
-      - /k8s/issuer
       - /scep
       - /site
       - /ansible/tests/e2e
@@ -90,6 +96,27 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: build(deps)
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /k8s/issuer
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build(deps)
+    ignore:
+      # Keep issuer builder updates on the Go minor in go.mod.
+      - dependency-name: golang
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       docker-minor-patch:
         update-types: [minor, patch]
