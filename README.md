@@ -45,7 +45,9 @@ source code is public because it can be useful to someone else.
 | `krl-client/` | Program for SSH servers that fetches their revocation list (Go) |
 | `ansible/` | Playbook and end-to-end test of the SSH host certificate role |
 | `docker/` | Dockerfile and the Compose files of production |
-| `kms/`, `keycloak/` | Containers for local development |
+| `openbao/` | Fork image pin, Transit policies, server and Agent configuration |
+| `keycloak/` | OIDC provider for local development |
+| `kms/` | Legacy v3 key store for migration rehearsals |
 | `docs/` | All the documentation. The website is built from this folder |
 | `site/` | The website: layout and build scripts, with no text of its own |
 | `backlog/` | Tasks, decision records and specifications ([Backlog.md](https://backlog.md)) |

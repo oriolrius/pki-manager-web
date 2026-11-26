@@ -1,7 +1,6 @@
-# Cosmian KMS for development
+# Cosmian KMS for v3 recovery
 
-A Cosmian KMS container for local development of PKI Manager. `just dev` starts it. The backend
-finds it with `KMS_URL=http://localhost:42998` in `backend/.env`.
+Use this container only with a v3 backend, for example to inspect a restored v3 backup on an isolated host. The OpenBao edition uses the [OpenBao configuration](../docs/operations/openbao.md) and [development stack](../docs/development/setup.md).
 
 ## Files
 
@@ -33,7 +32,7 @@ file, check that `./data/kms.db` grows when you create a key.
 ## Usage
 
 ```bash
-docker compose up -d       # start (just dev does this for you)
+docker compose up -d       # start the v3 KMS on the recovery host
 docker compose logs -f kms
 docker compose restart kms # after a change to kms.toml
 docker compose down        # stop and remove the container; the keys stay in ./data
@@ -69,7 +68,7 @@ no longer exists.
 
 ## How PKI Manager uses it
 
-The backend talks to the KMS through `backend/src/kms/` (`client.ts` and `service.ts`): key pair
+The v3 backend talks to Cosmian for key pair
 generation, certificate signing, signing for SSH, public key retrieval and key destruction.
 [How it works](../docs/how-it-works.md) says where each key lives.
 
@@ -82,8 +81,7 @@ generation, certificate signing, signing for SSH, public key retrieval and key d
 
 ## Security
 
-This setup is for development: no authentication and plain HTTP on a host port. The production
-Compose file keeps the KMS on an internal network. See
+This setup is for development: no authentication and plain HTTP on a host port. Keep the recovery instance on an isolated host. See
 [Docker deployment](../docs/operations/deployment.md).
 
 - [Cosmian KMS documentation](https://docs.cosmian.com/)
