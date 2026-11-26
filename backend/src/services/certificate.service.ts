@@ -35,6 +35,27 @@ export async function kmsKeyUsedByOtherCertificate(
   return rows.length > 0;
 }
 
+/**
+ * Delete one certificate row. A renewal points at its original through
+ * `renewed_from_id` (a foreign key with no ON DELETE action), so SQLite refused
+ * to delete a renewed original (issue #117). Detach the renewals and delete the
+ * row in ONE synchronous better-sqlite3 transaction: both happen or neither.
+ * Callers run it BEFORE any side effect (KMS key destruction, success audit row),
+ * so a failed delete leaves nothing half done.
+ */
+export function deleteCertificateRow(
+  database: Pick<typeof import('../db/client.js').db, 'transaction'>,
+  certId: string,
+): void {
+  database.transaction((tx) => {
+    tx.update(certificates)
+      .set({ renewedFromId: null })
+      .where(eq(certificates.renewedFromId, certId))
+      .run();
+    tx.delete(certificates).where(eq(certificates.id, certId)).run();
+  });
+}
+
 export interface ListCertificatesParams {
   caId?: string;
   status?: 'active' | 'revoked' | 'expired';
@@ -1014,13 +1035,16 @@ export class CertificateService {
       // Determine subject DN
       let subjectDN;
       if (params.updateInfo && params.subject) {
+        // A field the request does not give keeps its original value: a
+        // renewal with only a new CN must not drop O, C, OU, ST and L.
+        const original = originalParsed.subject;
         subjectDN = {
-          CN: params.subject.commonName,
-          O: params.subject.organization,
-          OU: params.subject.organizationalUnit,
-          C: params.subject.country,
-          ST: params.subject.state,
-          L: params.subject.locality,
+          CN: params.subject.commonName ?? original.CN,
+          O: params.subject.organization ?? original.O,
+          OU: params.subject.organizationalUnit ?? original.OU,
+          C: params.subject.country ?? original.C,
+          ST: params.subject.state ?? original.ST,
+          L: params.subject.locality ?? original.L,
         };
       } else {
         subjectDN = originalParsed.subject;
@@ -1354,33 +1378,22 @@ export class CertificateService {
     }
 
     try {
-      // Create audit log entry BEFORE deletion
-      await ctx.db.insert(auditLog).values({
-        id: randomUUID(),
-        operation: 'certificate.delete',
-        entityType: 'certificate',
-        entityId: params.id,
-        status: 'success',
-        details: JSON.stringify({
-          caId: cert.caId,
-          serialNumber: cert.serialNumber,
-          certificateType: cert.certificateType,
-          status: cert.status,
-          destroyKey: params.destroyKey,
-          removeFromCrl: params.removeFromCrl,
-          revocationDate: cert.revocationDate?.toISOString(),
-          revocationReason: cert.revocationReason,
-        }),
-        ipAddress: ctx.ipAddress,
-      });
-
-      // Optional: Destroy KMS key if requested
-      let keyDestroyed = false;
       // A renewal with key reuse makes several certificates share one KMS key pair:
-      // never destroy a key that another certificate still uses.
+      // never destroy a key that another certificate still uses. Ask before the row goes.
       const keyStillUsed = cert.kmsKeyId
         ? await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, params.id)
         : false;
+
+      // 1. The row first (with its renewals detached). If this fails, no key is
+      //    destroyed and no success audit row is written.
+      deleteCertificateRow(ctx.db, params.id);
+      logger.info(
+        { certId: params.id, serialNumber: cert.serialNumber },
+        'Certificate deleted successfully'
+      );
+
+      // 2. Optional: destroy the KMS key (the certificate row is already gone).
+      let keyDestroyed = false;
       if (params.destroyKey && cert.kmsKeyId && keyStillUsed) {
         logger.info(
           { certId: params.id, kmsKeyId: cert.kmsKeyId },
@@ -1399,29 +1412,40 @@ export class CertificateService {
         } catch (error) {
           logger.warn(
             { error, certId: params.id, kmsKeyId: cert.kmsKeyId },
-            'Failed to destroy KMS key, continuing with certificate deletion'
+            'Failed to destroy KMS key after certificate deletion'
           );
         }
       }
-
-      // Delete certificate from database
-      await ctx.db
-        .delete(certificates)
-        .where(eq(certificates.id, params.id));
-
-      logger.info(
-        { certId: params.id, serialNumber: cert.serialNumber },
-        'Certificate deleted successfully'
-      );
 
       if (params.removeFromCrl) {
         logger.info({ caId: cert.caId }, 'CRL update requested (not yet implemented)');
       }
 
+      // 3. The success audit row, only after the delete really happened.
+      await ctx.db.insert(auditLog).values({
+        id: randomUUID(),
+        operation: 'certificate.delete',
+        entityType: 'certificate',
+        entityId: params.id,
+        status: 'success',
+        details: JSON.stringify({
+          caId: cert.caId,
+          serialNumber: cert.serialNumber,
+          certificateType: cert.certificateType,
+          status: cert.status,
+          destroyKey: params.destroyKey,
+          kmsKeyDestroyed: keyDestroyed,
+          removeFromCrl: params.removeFromCrl,
+          revocationDate: cert.revocationDate?.toISOString(),
+          revocationReason: cert.revocationReason,
+        }),
+        ipAddress: ctx.ipAddress,
+      });
+
       return {
         id: params.id,
         deleted: true,
-        kmsKeyDestroyed: params.destroyKey === true && cert.kmsKeyId !== null && keyDestroyed,
+        kmsKeyDestroyed: keyDestroyed,
       };
     } catch (error) {
       logger.error({ error, certId: params.id }, 'Failed to delete certificate');

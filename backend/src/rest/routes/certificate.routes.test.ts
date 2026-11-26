@@ -19,7 +19,7 @@ import { registerRestApi } from '../index.js';
 import { db } from '../../db/client.js';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { randomUUID } from 'crypto';
+import { randomUUID, X509Certificate } from 'crypto';
 import forge from 'node-forge';
 import { generateCertificate } from '../../crypto/x509.js';
 
@@ -631,6 +631,33 @@ describe('Certificate REST Endpoints', () => {
       }
     }, 15000);
 
+    // Issue #117: the renewal points at the original (renewed_from_id, a foreign key);
+    // deleting the original failed with "FOREIGN KEY constraint failed" and still
+    // wrote a success audit row.
+    it('should delete the original of a renewed certificate and detach the renewal', async () => {
+      const { auditLog } = await import('../../db/schema.js');
+      testCaId = await createTestCA();
+      testCertId = await createTestCertificate(testCaId, { status: 'revoked' });
+      testCertId2 = await createTestCertificate(testCaId, { status: 'active' });
+      await db.update(certificates).set({ renewedFromId: testCertId }).where(eq(certificates.id, testCertId2));
+
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/api/v1/certificates/${testCertId}?destroyKey=false`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({ id: testCertId, deleted: true, kmsKeyDestroyed: false });
+      expect(await db.select().from(certificates).where(eq(certificates.id, testCertId))).toHaveLength(0);
+      const renewal = await db.select().from(certificates).where(eq(certificates.id, testCertId2));
+      expect(renewal).toHaveLength(1);
+      expect(renewal[0].renewedFromId).toBeNull();
+
+      const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, testCertId));
+      const deletes = audit.filter((r) => r.operation === 'certificate.delete');
+      expect(deletes.map((r) => r.status)).toEqual(['success']);
+    }, 15000);
+
     it('should accept destroyKey query parameter', async () => {
       testCaId = await createTestCA();
       testCertId = await createTestCertificate(testCaId, { status: 'revoked' });
@@ -732,6 +759,111 @@ describe('Certificate REST Endpoints', () => {
       // Invalid enum value returns 400 (schema validation)
       expect(response.statusCode).toBe(400);
     });
+
+    // A renewal with updateInfo and only some subject fields lost the others
+    // (a new CN gave "CN=new" with no O or C).
+    it('should keep the original subject fields a renewal does not change (real KMS)', async (ctx) => {
+      const { isKmsAvailable } = await import('../../test/kms-helper.js');
+      if (!(await isKmsAvailable())) {
+        ctx.skip();
+        return;
+      }
+      const tag = randomUUID().slice(0, 8);
+      const caRes = await server.inject({
+        method: 'POST',
+        url: '/api/v1/cas/',
+        payload: {
+          subject: { commonName: `Renew Subject CA ${tag}`, organization: 'Test Organization', country: 'US' },
+          keyAlgorithm: 'RSA-2048',
+          validityYears: 1,
+        },
+      });
+      testCaId = JSON.parse(caRes.body).id;
+      const certRes = await server.inject({
+        method: 'POST',
+        url: '/api/v1/certificates/',
+        payload: {
+          caId: testCaId,
+          subject: { commonName: `old-${tag}.example.com`, organization: 'Test Organization', organizationalUnit: 'Ops', country: 'US' },
+          certificateType: 'server',
+          keyAlgorithm: 'RSA-2048',
+          validityDays: 30,
+          sanDns: [`old-${tag}.example.com`],
+        },
+      });
+      testCertId = JSON.parse(certRes.body).id;
+
+      const renew = await server.inject({
+        method: 'POST',
+        url: `/api/v1/certificates/${testCertId}/renew`,
+        payload: { updateInfo: true, subject: { commonName: `new-${tag}.example.com` }, sanDns: [`new-${tag}.example.com`], validityDays: 30 },
+      });
+      expect(renew.statusCode).toBe(201);
+      testCertId2 = JSON.parse(renew.body).id;
+      const renewed = await db.select().from(certificates).where(eq(certificates.id, testCertId2));
+      expect(renewed[0].subjectDn).toContain(`CN=new-${tag}.example.com`);
+      expect(renewed[0].subjectDn).toContain('O=Test Organization');
+      expect(renewed[0].subjectDn).toContain('OU=Ops');
+      expect(renewed[0].subjectDn).toContain('C=US');
+    }, 60000);
+
+    // Issue #118: chain-pem returned only the certificate, full-pem had no chain.
+    it('should put the issuing CA in chain-pem and full-pem (real KMS)', async (ctx) => {
+      const { isKmsAvailable } = await import('../../test/kms-helper.js');
+      if (!(await isKmsAvailable())) {
+        ctx.skip();
+        return;
+      }
+      const tag = randomUUID().slice(0, 8);
+      const caRes = await server.inject({
+        method: 'POST',
+        url: '/api/v1/cas/',
+        payload: {
+          subject: { commonName: `Chain Test CA ${tag}`, organization: 'Test Organization', country: 'US' },
+          keyAlgorithm: 'RSA-2048',
+          validityYears: 1,
+        },
+      });
+      expect(caRes.statusCode).toBe(201);
+      testCaId = JSON.parse(caRes.body).id;
+      const certRes = await server.inject({
+        method: 'POST',
+        url: '/api/v1/certificates/',
+        payload: {
+          caId: testCaId,
+          subject: { commonName: `chain-${tag}.example.com`, organization: 'Test Organization', country: 'US' },
+          certificateType: 'server',
+          keyAlgorithm: 'RSA-2048',
+          validityDays: 30,
+          sanDns: [`chain-${tag}.example.com`],
+        },
+      });
+      expect(certRes.statusCode).toBe(201);
+      testCertId = JSON.parse(certRes.body).id;
+
+      const download = async (format: string) => {
+        const r = await server.inject({ method: 'GET', url: `/api/v1/certificates/${testCertId}/download?format=${format}` });
+        expect(r.statusCode).toBe(200);
+        return Buffer.from(JSON.parse(r.body).data, 'base64').toString('utf8');
+      };
+      const subjects = (pem: string) =>
+        (pem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) ?? [])
+          .map((block) => new X509Certificate(block).subject);
+
+      const chain = await download('chain-pem');
+      expect(subjects(chain)).toEqual([
+        expect.stringContaining(`chain-${tag}.example.com`),
+        expect.stringContaining(`Chain Test CA ${tag}`),
+      ]);
+      expect(chain).not.toMatch(/PRIVATE KEY/);
+
+      const full = await download('full-pem');
+      expect(subjects(full)).toHaveLength(2);
+      expect(full).toMatch(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
+      // Order: certificate, private key, issuing CA.
+      expect(full.indexOf('PRIVATE KEY')).toBeGreaterThan(full.indexOf('END CERTIFICATE'));
+      expect(full.lastIndexOf('BEGIN CERTIFICATE')).toBeGreaterThan(full.indexOf('PRIVATE KEY'));
+    }, 60000);
   });
 
   describe('OpenAPI Documentation', () => {

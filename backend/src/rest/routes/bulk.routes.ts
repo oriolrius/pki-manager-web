@@ -20,7 +20,7 @@ import {
   generateJKSTruststore,
   JKSKeytoolError,
 } from '../../services/jks.service.js';
-import { buildCertificateExtensions, kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
+import { buildCertificateExtensions, deleteCertificateRow, kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { getCRLService } from '../../services/crl.service.js';
 import { convertCertificateFormat } from '../../crypto/x509.js';
@@ -1128,7 +1128,34 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           throw new Error('Certificate must be revoked or expired for more than 90 days before deletion');
         }
 
-        // Create audit log entry BEFORE deletion
+        // A key shared with another certificate (renewal with key reuse) stays.
+        const keyStillUsed = cert.kmsKeyId
+          ? await kmsKeyUsedByOtherCertificate(db, cert.kmsKeyId, cert.id)
+          : false;
+
+        // 1. The row first, with its renewals detached (issue #117). If this fails,
+        //    no key is destroyed and no success audit row is written.
+        deleteCertificateRow(db, certId);
+
+        // 2. Optional: destroy the KMS key.
+        let keyDestroyed = false;
+        if (destroyKey && cert.kmsKeyId && !keyStillUsed) {
+          try {
+            await kmsService.destroyKey(cert.kmsKeyId);
+            keyDestroyed = true;
+            logger.info(
+              { certId, kmsKeyId: cert.kmsKeyId },
+              'KMS key destroyed for deleted certificate (bulk REST)'
+            );
+          } catch (error) {
+            logger.warn(
+              { error, certId, kmsKeyId: cert.kmsKeyId },
+              'Failed to destroy KMS key after certificate deletion (bulk REST)'
+            );
+          }
+        }
+
+        // 3. The per-certificate success audit row, after the delete really happened.
         await db.insert(auditLog).values({
           id: randomUUID(),
           operation: 'certificate.bulkDelete',
@@ -1141,31 +1168,11 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             certificateType: cert.certificateType,
             status: cert.status,
             destroyKey: destroyKey,
+            kmsKeyDestroyed: keyDestroyed,
             removeFromCrl: removeFromCrl,
           }),
           ipAddress: request.ip,
         });
-
-        // Optional: Destroy KMS key if requested
-        if (destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(db, cert.kmsKeyId, cert.id))) {
-          try {
-            await kmsService.destroyKey(cert.kmsKeyId);
-            logger.info(
-              { certId, kmsKeyId: cert.kmsKeyId },
-              'KMS key destroyed for deleted certificate (bulk REST)'
-            );
-          } catch (error) {
-            logger.warn(
-              { error, certId, kmsKeyId: cert.kmsKeyId },
-              'Failed to destroy KMS key, continuing with certificate deletion (bulk REST)'
-            );
-          }
-        }
-
-        // Delete certificate from database
-        await db
-          .delete(certificates)
-          .where(eq(certificates.id, certId));
 
         logger.info(
           { certId, serialNumber: cert.serialNumber },

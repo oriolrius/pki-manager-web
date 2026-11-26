@@ -144,6 +144,32 @@ function sendError(
 }
 
 // Map service errors to HTTP responses
+/** PEM blocks joined with exactly one newline between them and one at the end. */
+function joinPem(...blocks: string[]): string {
+  return blocks.map((b) => b.trim()).join('\n') + '\n';
+}
+
+/**
+ * The issuing CA certificate (PEM), from the KMS. On failure it returns the
+ * error body (with the status code set on `reply`) for the handler to return.
+ */
+async function issuingCaPem(
+  caId: string,
+  reply: FastifyReply,
+): Promise<{ pem: string } | { error: ReturnType<typeof sendError> }> {
+  const ca = (
+    await db.select().from(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).limit(1)
+  )[0];
+  if (!ca) {
+    return { error: sendError(reply, 404, 'CA_NOT_FOUND', 'Issuing CA not found') };
+  }
+  try {
+    return { pem: await getKMSService().getCertificate(ca.kmsCertificateId, ca.id) };
+  } catch {
+    return { error: sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve the issuing CA certificate from KMS') };
+  }
+}
+
 function handleServiceError(error: unknown, reply: FastifyReply) {
   if (error instanceof CertificateNotFoundError) {
     return sendError(reply, 404, 'CERTIFICATE_NOT_FOUND', error.message);
@@ -863,12 +889,16 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           break;
         }
 
-        case 'chain-pem':
+        case 'chain-pem': {
+          // Certificate + issuing chain (the CA certificate), like the tRPC
+          // pem-chain format. It returned only the certificate before (#118).
+          const ca = await issuingCaPem(cert.caId, reply);
+          if ('error' in ca) return ca.error;
           mimeType = 'application/x-pem-file';
           filename = `${baseName}_chain.pem`;
-          // For now, just return the certificate (chain would need CA cert)
-          data = Buffer.from(cert.certificatePem).toString('base64');
+          data = Buffer.from(joinPem(cert.certificatePem, ca.pem)).toString('base64');
           break;
+        }
 
         case 'key-pem':
         case 'pkcs8-pem':
@@ -1048,15 +1078,17 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           }
         }
 
-        case 'full-pem':
-          // Full PEM: certificate + private key in one file
+        case 'full-pem': {
+          // Full PEM: certificate + private key + issuing chain in one file.
           if (!cert.kmsKeyId) {
             return sendError(reply, 404, 'KEY_NOT_FOUND', 'Certificate has no associated private key in KMS');
           }
+          const ca = await issuingCaPem(cert.caId, reply);
+          if ('error' in ca) return ca.error;
           try {
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
-            const fullPem = cert.certificatePem + '\n' + privateKeyPem;
+            const fullPem = joinPem(cert.certificatePem, privateKeyPem, ca.pem);
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_full.pem`;
             data = Buffer.from(fullPem).toString('base64');
@@ -1064,6 +1096,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;
+        }
 
         case 'full-der':
           // Full DER is essentially P12 format
