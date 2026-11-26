@@ -1035,13 +1035,16 @@ export class CertificateService {
       // Determine subject DN
       let subjectDN;
       if (params.updateInfo && params.subject) {
+        // A field the request does not give keeps its original value: a
+        // renewal with only a new CN must not drop O, C, OU, ST and L.
+        const original = originalParsed.subject;
         subjectDN = {
-          CN: params.subject.commonName,
-          O: params.subject.organization,
-          OU: params.subject.organizationalUnit,
-          C: params.subject.country,
-          ST: params.subject.state,
-          L: params.subject.locality,
+          CN: params.subject.commonName ?? original.CN,
+          O: params.subject.organization ?? original.O,
+          OU: params.subject.organizationalUnit ?? original.OU,
+          C: params.subject.country ?? original.C,
+          ST: params.subject.state ?? original.ST,
+          L: params.subject.locality ?? original.L,
         };
       } else {
         subjectDN = originalParsed.subject;
