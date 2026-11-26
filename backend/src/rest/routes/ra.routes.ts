@@ -9,7 +9,7 @@ const base64 = { type: 'string', minLength: 1, maxLength: 512, pattern: '^[A-Za-
 const bodies = {
   sign: { type: 'object', additionalProperties: false, required: ['digest'], properties: { digest: base64 } },
   decrypt: {
-    type: 'object', additionalProperties: false, required: ['data'],
+    type: 'object', additionalProperties: false, required: ['data', 'sessionKeyLength'],
     properties: {
       data: base64,
       sessionKeyLength: {

@@ -222,7 +222,7 @@ export class RAService {
     if (!usage?.digitalSignature || !usage.keyEncipherment || usage.keyCertSign || usage.cRLSign || parsed.keyUsage !== undefined) throw new RAError(502, 'Invalid RA key usage');
     const metadata = parseCertificate(pem, 'PEM');
     if (metadata.validity.notBefore > new Date() || metadata.validity.notAfter <= new Date() || metadata.validity.notAfter > ca.notAfter) throw new RAError(409, 'RA validity is outside issuing CA validity');
-    if (binding.certificatePem && new X509Certificate(binding.certificatePem).serialNumber === parsed.serialNumber) throw new RAError(409, 'KMS reused the RA serial; upgrade to a KMS version with fresh certificate serials (tested: 5.28.0)');
+    if (binding.certificatePem && new X509Certificate(binding.certificatePem).serialNumber === parsed.serialNumber) throw new RAError(409, 'The new RA certificate has the same serial number as the current certificate');
     if (binding.certificatePem && metadata.validity.notAfter <= new Date(new X509Certificate(binding.certificatePem).validTo)) throw new RAError(409, 'RA renewal does not extend validity');
     const previous = (JSON.parse(binding.previous) as Previous[]).filter(p => new Date(new X509Certificate(p.certificatePem).validTo) > new Date());
     if (binding.certificatePem && binding.certificateId) previous.unshift({ id: binding.certificateId, certificatePem: binding.certificatePem });

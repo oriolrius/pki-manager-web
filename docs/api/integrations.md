@@ -113,7 +113,7 @@ concurrent publication still needs coordination across backend replicas.
 Only an active `scep` integration can call `/api/v1/external/ra/state`,
 `ra/provision`, `ra/renew`, `ra/sign`, and `ra/decrypt`. Provision/renew take an
 empty JSON object. Sign accepts only a base64 SHA-256 `digest`; decrypt accepts
-only a base64 RSA-3072 `data` ciphertext and an optional `sessionKeyLength`, and
+only a base64 RSA-3072 `data` ciphertext and the required `sessionKeyLength`, and
 returns the CMS content-encryption key. The
 backend fixes algorithms and resolves its RA key from the integration and bound
 CA. Caller-selected key identifiers are rejected. State contains public
@@ -132,7 +132,7 @@ its key. A backend with no OpenBao RA configuration answers `503`.
 | Field | Required | Value |
 | --- | --- | --- |
 | `data` | yes | base64 RSA-3072 PKCS#1 v1.5 ciphertext of the CMS session key (384 bytes) |
-| `sessionKeyLength` | no | the JSON integer `16`, `24` or `32` |
+| `sessionKeyLength` | yes | the JSON integer `16`, `24` or `32` |
 
 The SCEP gateway reads the content cipher of each device envelope after it checks
 the CMS signature, and sends the key length of that cipher:
