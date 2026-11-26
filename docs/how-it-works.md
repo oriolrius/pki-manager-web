@@ -23,7 +23,7 @@ runs on SSH servers and fetches their revocation list.
 
 | Key | Where it is made | When it leaves OpenBao |
 |---|---|---|
-| Key of a certificate authority (CA) | In OpenBao Transit | To sign a revocation list: the backend exports it from Transit and holds it in memory for that call. To export the CA as a keystore: only on a server with `ALLOW_CA_KEY_EXPORT=true` (off by default), only by an admin, and each export is written to the audit log. OpenBao signs the certificates of the CA |
+| Key of a certificate authority (CA) | In OpenBao Transit | An admin can export a password-protected keystore if the CA key was created exportable and the server has `ALLOW_CA_KEY_EXPORT=true`. Each export is audited. Transit signs certificates and CRLs. |
 | Key of a certificate that you issue in the web UI or the API | In OpenBao Transit, as an exportable key | When someone downloads a file that contains the key (PEM key, PKCS#12, Java keystore) |
 | Key of a certificate that is requested with a CSR (Kubernetes, SCEP, your scripts) | By the requester | It is never in PKI Manager. PKI Manager sees only the CSR |
 | Key of an SSH CA | In OpenBao Transit, and it cannot be exported | Never. OpenBao signs each SSH certificate and each KRL |

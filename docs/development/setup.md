@@ -85,7 +85,7 @@ publishes it on `0.0.0.0:52082`: open it from Windows, from the LAN or from a ta
 
 Worktrees share one dev stack. OpenBao keeps its Raft data, TLS files, audit logs and dev
 credentials in `openbao/dev-state/` in the main checkout. The dev bootstrap keeps the unseal
-key and a root token there to restart this disposable store. The backend gets a scoped token.
+key and a root token there to restart this disposable store. The backend gets a scoped token. An early development checkout with existing dev shares in `openbao/state` reuses its original keys. `just openbao` prints the paths for the active instance.
 
 ### Check it
 

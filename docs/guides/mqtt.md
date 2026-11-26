@@ -34,7 +34,7 @@ Each PKI Manager cell is something that was run in this guide, or is written in
 | Task | easy-rsa (posts 1 to 3) | PKI Manager |
 |---|---|---|
 | Create the CA | `init-pki`, `build-ca` on your machine. The CA key is a file, protected by a passphrase. | **Create CA** in the UI. The key pair is made in OpenBao Transit. You type no CA passphrase. The CA is always a **root** CA. |
-| Where the CA key lives | `pki/private/ca.key` on disk. | In OpenBao Transit. The CA key leaves OpenBao in two cases only. The backend exports it to sign each CRL (in memory only; audit row `kms.get_private_key` in `crl.generate`). And, only if the server runs with `ALLOW_CA_KEY_EXPORT=true` (default `false`), an admin can download the CA as a PKCS#12/JKS keystore (audit row `ca.export_private_key`). OpenBao signs the certificates (audit row `kms.sign_certificate`). |
+| Where the CA key lives | `pki/private/ca.key` on disk. | In OpenBao Transit. OpenBao signs certificates and CRLs. An admin can download a PKCS#12 or JKS keystore if the CA key was created exportable and the server has `ALLOW_CA_KEY_EXPORT=true` (audit row `ca.export_private_key`). |
 | Server certificate | `gen-req` then `sign-req server`. You edit the SAN by hand. | **Issue Certificate**, type `Server`, DNS Names list. Key and certificate come from one form. |
 | Client certificate | `gen-req` then `sign-req client`. | Same form, type `Client`. |
 | CSR from another machine | `import-req` then `sign-req`. | External issuer API: an admin makes an integration with a token. The machine sends its CSR to `POST /api/v1/external/sign`. The key stays on the machine (step 6). |

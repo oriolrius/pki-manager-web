@@ -127,7 +127,11 @@ The end-to-end tests check role-based access control (RBAC) through the web UI, 
 They run against a local Docker environment or against a deployed instance. The workflow
 `e2e.yml` runs them on pull requests (see [E2E in CI](#e2e-in-ci)).
 
-### E2E Architecture
+#
+
+![Browser test stack with the backend on the OpenBao test network](../diagrams/svg/05-e2e-architecture.svg)
+
+## E2E Architecture
 
 Playwright drives the frontend from the host. The backend connects to the test OpenBao service
 over HTTPS on a separate Docker network. It reads the CA and the scoped token from a read-only mount.

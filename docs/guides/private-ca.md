@@ -63,8 +63,7 @@ The list has these CA formats:
 | `P12 Keystore`, `JKS Keystore` | CA certificate + **CA private key** | only if the server has `ALLOW_CA_KEY_EXPORT=true` (default `false`), for the `admin` role, with a password; every export is audited as `ca.export_private_key` |
 
 By default the keystore formats are hidden in the UI and the REST API answers `403 CA_KEY_EXPORT_DISABLED`.
-A CA private key leaves OpenBao in two cases only: to sign a CRL (in memory, never stored), and this
-audited admin keystore export.
+The CA key must have been created with export enabled to use either keystore format. OpenBao signs certificates and CRLs internally.
 
 ```bash
 openssl x509 -in ca.pem -noout -subject -issuer -dates -ext basicConstraints,keyUsage

@@ -1,18 +1,14 @@
 # Install PKI Manager and log in
-<!-- tested-with: 3.17.0+298b92d5 -->
+This guide covers a fresh installation of the OpenBao edition. For an existing v3 installation, keep the matching release configuration and backups while you rehearse the migration.
 
-This guide runs PKI Manager with Docker Compose and the published images. It takes about
-ten minutes. Every step below was run in a clean clone with a build of `main` at commit
-`298b92d5` (after release **3.17.0**). That run used images built from the commit, so it did not
-run `docker compose pull`.
-
-You get three containers:
+The production Compose stack has four long-running services.
 
 | Container | What it does |
 |---|---|
 | `pki-frontend` | Web UI (nginx). It also forwards `/trpc` and `/api` to the backend, so the browser needs only this URL. |
 | `pki-backend` | API, certificate logic, SQLite database in `pki/`. |
-| `pki-kms` | Cosmian KMS. It keeps every private key. It is on an internal network, not published to the host. |
+| `pki-openbao` | Holds the keys and signs on an internal TLS endpoint. |
+| `pki-openbao-agent` | Uses AppRole to deliver a scoped token to the backend. |
 
 ## 1. Get the Compose files
 
@@ -30,7 +26,7 @@ Open `.env` and set these values. The defaults work on `localhost`.
 
 | Variable | Set it to | Why |
 |---|---|---|
-| `IMAGE_TAG` | a release, for example `3.17.0` | `latest` changes under you; pin a version. |
+| `IMAGE_TAG` | the backend and frontend image tag for this checkout | `latest` changes under you; pin a version. |
 | `FRONTEND_EXTERNAL_PORT` / `BACKEND_EXTERNAL_PORT` | free ports (default `8080` / `3000`) | Host ports of the UI and the API. |
 | `CRL_DISTRIBUTION_URL` | a URL that **clients** can reach, ending in `/crl` | It is written into every certificate you issue, so set it before the first CA. |
 
@@ -48,16 +44,9 @@ sudo chown 1001:1001 ../pki
 > **Note:** if your shell uses `umask 077`, the files from `git clone` are readable only by
 > you, and nginx in the container answers `403` for `config.json`. Run `chmod 644 config.json`.
 
-## 4. Start it
+## 4. Start the key store and the application
 
-```bash
-docker compose pull
-docker compose up -d --no-build --wait
-```
-
-`--no-build` uses the published images (the Compose file can also build from source).
-`--wait` returns when all three containers are healthy. The backend runs its database
-migrations on every start.
+Follow the [OpenBao setup guide](../operations/openbao.md) from the repository root. It covers the pinned image, TLS files, first unseal and AppRole login. Start the backend and frontend after the Agent writes its token. The backend applies its SQLite migrations on startup.
 
 Check it:
 
@@ -152,5 +141,4 @@ Your name (top right) opens the user menu. The sun icon switches light and dark 
 docker compose down          # stop; the data stays on disk
 ```
 
-All data is in two folders next to `docker/`: `pki/` (database) and `kms/data/` (KMS keys).
-Back up both together. To start again from zero, stop the stack and delete both folders.
+Back up the SQLite database in `pki/` together with the OpenBao Raft state. Keep the unseal shares and TLS and AppRole credentials for recovery. Follow the [OpenBao backup and restore procedure](../operations/openbao.md).
