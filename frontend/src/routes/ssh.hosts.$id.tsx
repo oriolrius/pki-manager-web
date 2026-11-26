@@ -202,7 +202,7 @@ function SshHostDetail() {
               hint={
                 <>
                   <strong>Offboard</strong> (terminal): revokes the host's live certificates, retires its per-host KRL
-                  lineage, and destroys its KMS key. Use when decommissioning a host for good — it cannot be undone.
+                  lineage, and destroys its key in the key store. Use when decommissioning a host for good — it cannot be undone.
                 </>
               }
             >

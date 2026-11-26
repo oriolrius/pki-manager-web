@@ -433,7 +433,7 @@ function Certificates() {
       setProgressTitle('Generating Java KeyStore');
       setProgressSteps([
         { step: 'Creating Java KeyStore file', status: 'active' },
-        { step: `Exporting ${certCount} certificate(s) with private keys from KMS`, status: 'pending' },
+        { step: `Exporting ${certCount} certificate(s) with private keys from the key store`, status: 'pending' },
         { step: 'Building keystore with keytool', status: 'pending' },
         { step: 'Preparing download', status: 'pending' },
       ]);
@@ -461,7 +461,7 @@ function Certificates() {
       setProgressTitle('Creating Docker Volume TAR');
       setProgressSteps([
         { step: 'Creating TAR archive', status: 'active' },
-        { step: `Exporting ${certCount} certificate(s) with private keys from KMS`, status: 'pending' },
+        { step: `Exporting ${certCount} certificate(s) with private keys from the key store`, status: 'pending' },
         { step: 'Collecting CA certificates for chain', status: 'pending' },
         { step: 'Building Docker volume structure', status: 'pending' },
         { step: 'Preparing download', status: 'pending' },

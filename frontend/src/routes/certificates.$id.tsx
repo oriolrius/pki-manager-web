@@ -8,6 +8,7 @@ import { ExportPasswordField } from '@/components/ExportPasswordField';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft, faDownload, faRotate, faCircleXmark, faTrash, faCalendar, faShield, faKey, faDatabase, faAward } from '@fortawesome/free-solid-svg-icons';
 import { useToast, useConfirm } from '@/components/ui';
+import { KEY_STORE_NAME, NO_LOCAL_KEY_NOTE, hasLocalPrivateKey } from '@/lib/key-store';
 
 export const Route = createFileRoute('/certificates/$id')({
   component: CertificateDetail,
@@ -54,7 +55,7 @@ function CertificateDetail() {
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
-  // Disable retries for CONFLICT errors (KMS inconsistency) - they won't resolve with retries
+  // Disable retries for CONFLICT errors (database and key store disagree) - they won't resolve with retries
   const certQuery = trpc.certificate.getById.useQuery({ id }, {
     retry: (failureCount, error) => {
       // Don't retry CONFLICT errors - they indicate data inconsistency, not transient failures
@@ -207,7 +208,7 @@ function CertificateDetail() {
     try {
       const data = await renewMutation.mutateAsync({
         id,
-        generateNewKey: !renewKeepKey,
+        generateNewKey: !(renewKeepKey && certQuery.data && hasLocalPrivateKey(certQuery.data)),
         revokeOriginal: renewRevokeOld,
       });
       setShowRenewDialog(false);
@@ -276,16 +277,16 @@ function CertificateDetail() {
   }
 
   if (certQuery.isError) {
-    // KMS inconsistency is now properly returned as CONFLICT (HTTP 409) from the backend
+    // A database record whose stored certificate data cannot be read comes back as CONFLICT (HTTP 409)
     // IMPORTANT: Check CONFLICT first, before NOT_FOUND, because error message may contain "not found"
-    const isKmsInconsistency = certQuery.error.data?.code === 'CONFLICT';
-    const isNotFound = !isKmsInconsistency && (
+    const isStoreInconsistency = certQuery.error.data?.code === 'CONFLICT';
+    const isNotFound = !isStoreInconsistency && (
       certQuery.error.data?.code === 'NOT_FOUND' ||
       certQuery.error.message.toLowerCase().includes('not found')
     );
 
-    // KMS/Database inconsistency error - Certificate exists in DB but not in KMS
-    if (isKmsInconsistency) {
+    // Inconsistency: the record exists in the database, but its stored certificate data cannot be read
+    if (isStoreInconsistency) {
       // Extract metadata from error cause (sent by backend)
       const data = certQuery.error.data;
       const errorCause = (data && 'cause' in data ? data.cause : undefined) as {
@@ -328,7 +329,7 @@ function CertificateDetail() {
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
                     This will permanently remove the certificate record from the database.
-                    The certificate data in KMS (if any) will not be affected.
+                    Keys in the key store (if any) are not changed.
                   </p>
                   <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md p-3">
                     <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
@@ -369,22 +370,22 @@ function CertificateDetail() {
 
           <div className="text-center space-y-2">
             <div className="text-5xl text-orange-500">409</div>
-            <h2 className="text-xl font-semibold text-destructive">Certificate Not Found in KMS</h2>
+            <h2 className="text-xl font-semibold text-destructive">Certificate Data Not Available</h2>
           </div>
 
           <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 space-y-3">
             <p className="text-sm">
-              <strong>Problem:</strong> This certificate exists in the application database but could not
-              be retrieved from the Key Management System (KMS).
+              <strong>Problem:</strong> This certificate exists in the application database but its stored
+              certificate data or key could not be read.
             </p>
             <p className="text-sm text-muted-foreground">
               This can happen when:
             </p>
             <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-              <li>The certificate was deleted directly from the KMS</li>
-              <li>The KMS database was restored from a backup without the certificate</li>
+              <li>The key or certificate object was deleted directly from the key store</li>
+              <li>The key store or the database was restored from a backup that does not match the other</li>
               <li>There was a partial failure during certificate issuance</li>
-              <li>The KMS is temporarily unavailable</li>
+              <li>The key store is sealed or temporarily unavailable</li>
             </ul>
           </div>
 
@@ -409,14 +410,14 @@ function CertificateDetail() {
               )}
               {errorCause?.kmsCertificateId && (
                 <div>
-                  <span className="text-muted-foreground">KMS Certificate ID:</span>
+                  <span className="text-muted-foreground">Stored object ID:</span>
                   <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded break-all">{errorCause.kmsCertificateId}</code>
                 </div>
               )}
             </div>
             <div className="pt-2 border-t border-muted">
               <p className="text-xs text-muted-foreground">
-                <strong>KMS Error:</strong> {certQuery.error.message}
+                <strong>Error:</strong> {certQuery.error.message}
               </p>
             </div>
           </div>
@@ -485,6 +486,9 @@ function CertificateDetail() {
   }
 
   const cert = certQuery.data;
+  const localKey = hasLocalPrivateKey(cert);
+  // A CSR-only record has no private key: offer only the certificate formats.
+  const availableFormats = localKey ? DOWNLOAD_FORMATS : DOWNLOAD_FORMATS.filter(f => !f.hasPrivateKey);
 
   // Extract CN from Subject DN
   const cnMatch = cert.subjectDn.match(/CN=([^,]+)/);
@@ -547,7 +551,7 @@ function CertificateDetail() {
                       onChange={(e) => setDownloadFormat(e.target.value as typeof downloadFormat)}
                       className="w-full px-3 py-2 border rounded-md bg-background"
                     >
-                      {DOWNLOAD_FORMATS.map((format) => (
+                      {availableFormats.map((format) => (
                         <option key={format.value} value={format.value}>
                           {format.label}
                         </option>
@@ -788,14 +792,17 @@ function CertificateDetail() {
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"
-                  checked={renewKeepKey}
+                  checked={renewKeepKey && localKey}
+                  disabled={!localKey}
                   onChange={(e) => setRenewKeepKey(e.target.checked)}
                   className="mt-1"
                 />
                 <span>
                   Keep the current key pair (same public key)
                   <span className="block text-xs text-muted-foreground">
-                    Only for certificates less than 90 days old. Otherwise a new key is created.
+                    {localKey
+                      ? 'Only for certificates less than 90 days old. Otherwise a new key is created.'
+                      : 'Not available: PKI Manager has no private key for this certificate (it was signed from a CSR).'}
                   </span>
                 </span>
               </label>
@@ -1115,19 +1122,19 @@ function CertificateDetail() {
             </div>
           </div>
 
-          {/* KMS Storage Information */}
+          {/* Key storage information */}
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
             <FontAwesomeIcon icon={faDatabase} className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
               <h3 className="text-sm font-semibold mb-2">Storage Location</h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-                <div>
-                  <span className="text-muted-foreground text-xs">KMS Provider:</span>
-                  <p className="font-mono">Cosmian KMS</p>
+                <div className="col-span-2" data-testid="cert-key-storage">
+                  <span className="text-muted-foreground text-xs">Private key:</span>
+                  <p className={localKey ? 'font-mono' : 'text-xs'}>{localKey ? KEY_STORE_NAME : NO_LOCAL_KEY_NOTE}</p>
                 </div>
-                {cert.kmsKeyId && (
+                {localKey && (
                   <div className="col-span-2">
-                    <span className="text-muted-foreground text-xs">KMS Key ID:</span>
+                    <span className="text-muted-foreground text-xs">Key reference:</span>
                     <p className="font-mono text-xs break-all">{cert.kmsKeyId}</p>
                   </div>
                 )}
