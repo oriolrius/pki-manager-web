@@ -93,6 +93,7 @@ interface DeleteCertificateQuery {
 
 interface DownloadCertificateQuery {
   format: string;
+  legacy?: boolean;
   password?: string;
   encryptPrivateKey?: boolean;
   includeChain?: boolean;
@@ -780,6 +781,11 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             ],
             description: 'Download format',
           },
+          legacy: {
+            type: 'boolean',
+            default: false,
+            description: 'Use SHA-1 and 3DES for PKCS#12 downloads to older clients.',
+          },
           password: {
             type: 'string',
             deprecated: true,
@@ -933,6 +939,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
 
             // Create PKCS#12 via openssl (supports RSA + EC; node-forge cannot encode EC keys).
             const p12Buffer = await createPkcs12Bundle({
+              legacy: request.query.legacy,
               certPem: cert.certificatePem!,
               privateKeyPem,
               password: password!,

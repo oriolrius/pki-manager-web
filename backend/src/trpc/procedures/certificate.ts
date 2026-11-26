@@ -1104,6 +1104,7 @@ export const certificateRouter = router({
                   // PKCS12 requires a password, use empty string if encryption is disabled
                   const password = input.encryptPrivateKey ? input.password! : '';
                   const p12Buffer = await createPkcs12Bundle({
+                    legacy: input.legacy,
                     certPem: certificatePem,
                     privateKeyPem,
                     chainPems: [caCertificatePem],
@@ -1234,6 +1235,7 @@ export const certificateRouter = router({
             // Create PKCS#12 via openssl (supports RSA + EC).
             const password = input.encryptPrivateKey ? input.password! : '';
             const p12Buffer = await createPkcs12Bundle({
+              legacy: input.legacy,
               certPem: certificatePem,
               privateKeyPem,
               chainPems: [caCertificatePem],
@@ -2568,6 +2570,7 @@ export const certificateRouter = router({
             // openssl supports RSA + EC (node-forge cannot encode EC keys).
             const pkcs12Password = encryptKey ? password! : '';
             const p12Buffer = await createPkcs12Bundle({
+              legacy: input.legacy,
               certPem: certificatePem,
               privateKeyPem,
               chainPems: [caCertificatePem],

@@ -57,7 +57,9 @@ function CADetail() {
   const [selectedReason, setSelectedReason] = useState<RouterInputs['ca']['revoke']['reason']>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [legacy, setLegacy] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<'pem' | 'crt' | 'der' | 'cer' | 'p12-truststore' | 'p12-keystore' | 'jks-truststore' | 'jks-keystore'>('pem');
+  const supportsLegacy = selectedFormat.startsWith('p12-');
   const [downloadPassword, setDownloadPassword] = useState(generateExportPassword);
   const [isDownloading, setIsDownloading] = useState(false);
   const [lastExport, setLastExport] = useState<{ format: string; password: string } | null>(null);
@@ -88,7 +90,7 @@ function CADetail() {
 
   // Download URL. It never carries the export password: URLs end up in browser
   // history and proxy/server logs. The password goes in the X-Export-Password header.
-  const getDownloadUrl = (format: string) => `${apiBaseUrl}/api/v1/cas/${id}/download?format=${format}`;
+  const getDownloadUrl = (format: string) => `${apiBaseUrl}/api/v1/cas/${id}/download?format=${format}${legacy && format.startsWith('p12-') ? '&legacy=true' : ''}`;
 
   // Displayed and copied URLs are password-free.
   const downloadUrls = {
@@ -573,6 +575,12 @@ function CADetail() {
               </optgroup>
             )}
           </select>
+          {supportsLegacy && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={legacy} onChange={e => setLegacy(e.target.checked)} />
+              Legacy compatibility (SHA-1 and 3DES)
+            </label>
+          )}
           {!keyExportAllowed && (
             <p className="text-xs text-muted-foreground" data-testid="ca-key-export-note">{keyExportNote}</p>
           )}

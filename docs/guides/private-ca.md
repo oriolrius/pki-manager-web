@@ -297,19 +297,23 @@ the serial). Rename them `portal.p12`, `portal-key.zip` and `portal.jks`.
 
 ### Check: PKCS#12
 
+PKCS#12 exports use PBES2 with AES-256-CBC, PBKDF2-HMAC-SHA256, and a SHA-256 MAC.
+For an older client that requires 3DES and SHA-1, select **Legacy compatibility**.
+For REST downloads of certificates and CAs, add `legacy=true` to the query.
+For bulk downloads, set `"legacy": true` in the JSON request body.
+
 ```bash
 openssl pkcs12 -in portal.p12 -passin pass:Acme-Export-1 -info -noout
 openssl pkcs12 -in portal.p12 -passin pass:Acme-Export-1 -nokeys -clcerts | openssl x509 -noout -subject -serial
 ```
 
 ```text
-MAC: sha1, Iteration 2048
-MAC length: 20, salt length: 8
-PKCS7 Encrypted data: pbeWithSHA1And3-KeyTripleDES-CBC, Iteration 2048
+MAC: sha256, Iteration 2048
+PKCS7 Encrypted data: PBES2, PBKDF2, AES-256-CBC, Iteration 2048, PRF hmacWithSHA256
 Certificate bag
 Certificate bag
 PKCS7 Data
-Shrouded Keybag: pbeWithSHA1And3-KeyTripleDES-CBC, Iteration 2048
+Shrouded Keybag: PBES2, PBKDF2, AES-256-CBC, Iteration 2048, PRF hmacWithSHA256
 
 subject=CN = portal.acme.example, OU = Web Platform, C = ES, ST = Barcelona, L = Barcelona, O = Acme Example Ltd
 serial=291D4370A05BAA6DAC883EB617B3C23F74597775

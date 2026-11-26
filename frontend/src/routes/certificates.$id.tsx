@@ -73,7 +73,9 @@ function CertificateDetail() {
   const [selectedReason, setSelectedReason] = useState<RouterInputs['certificate']['revoke']['reason']>('unspecified');
   const [revokeDetails, setRevokeDetails] = useState('');
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [legacy, setLegacy] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<NonNullable<RouterInputs['certificate']['download']['format']>>('pem');
+  const supportsLegacy = ['pkcs12', 'p12', 'pfx', 'all'].includes(downloadFormat);
   const [downloadPassword, setDownloadPassword] = useState(generateExportPassword);
   const [lastExport, setLastExport] = useState<{ filename: string; password: string } | null>(null);
   const [encryptPrivateKey, setEncryptPrivateKey] = useState(true);
@@ -94,6 +96,7 @@ function CertificateDetail() {
 
   const handleDownload = () => {
     setDownloadPassword(generateExportPassword());
+    setLegacy(false);
     setShowDownloadDialog(true);
   };
 
@@ -130,6 +133,7 @@ function CertificateDetail() {
       const result = await utils.certificate.download.fetch({
         id,
         format: downloadFormat,
+        ...(supportsLegacy && legacy && { legacy: true }),
         password: (selectedFormat?.requiresPassword || (selectedFormat?.hasPrivateKey && encryptPrivateKey)) ? downloadPassword : undefined,
         encryptPrivateKey: selectedFormat?.hasPrivateKey ? (selectedFormat.requiresPassword || encryptPrivateKey) : undefined,
       });
@@ -551,6 +555,12 @@ function CertificateDetail() {
                     </select>
                   </div>
 
+                  {supportsLegacy && (
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={legacy} onChange={e => setLegacy(e.target.checked)} />
+                      Legacy compatibility (SHA-1 and 3DES)
+                    </label>
+                  )}
                   {selectedFormat?.hasPrivateKey && (
                     <div className="space-y-3">
                       {!selectedFormat.requiresPassword && <div className="flex items-center gap-2">

@@ -78,6 +78,8 @@ pem / crt   Public certificate, PEM text (this is CA.crt)
 der / cer   Public certificate, DER binary
 ```
 
+For PKCS#12 encryption settings, see [Check PKCS#12](private-ca.md#check-pkcs12).
+
 The selector also offers PKCS#12 and JKS **truststore** formats (public certificate only, for Java clients) and **keystore** formats. The PKCS#12 and JKS formats are password-protected; the UI requires a password of at least 8 characters. The keystore formats embed the CA private key and must never be distributed to client devices — see the warning in section 2.1.
 
 ### 2.2.2 REST API (authenticated)
