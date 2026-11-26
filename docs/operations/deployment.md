@@ -1,18 +1,17 @@
 # Docker deployment
 
-Reference for running the published images in production. For a first install, follow
-[Install PKI Manager and log in](../get-started/install.md): it is shorter and every step was run.
-To build the images from source, see [CI and releases](../development/ci.md).
+Choose the procedure that matches the backend image and its Compose file.
+
+| Installation | Key store | Procedure |
+|---|---|---|
+| OpenBao candidate, fresh installation | PKI Manager OpenBao fork with three Transit mounts | [Prepare, initialize and operate OpenBao](openbao.md), then use the proxy and OIDC settings below. Build the application images from the candidate checkout. |
+| PKI Manager v3 release | Cosmian KMS | Use the matching v3 release checkout and the [v3 installation guide](../get-started/install.md). The v3 commands below use the Compose file in that checkout. |
+
+For an existing v3 installation, retain both databases and test migration against a copy before any cutover. Starting a new key store does not recover v3 keys. For image builds, see [CI and releases](../development/ci.md).
 
 ## Overview
 
-PKI Manager uses Docker for containerized deployment with the following components:
-
-- **Backend**: Fastify + tRPC API server (Node.js 22 Alpine)
-- **Frontend**: React SPA served by Nginx (Alpine)
-- **KMS**: Cosmian Key Management System (official image)
-
-All images are published exclusively to **GitHub Container Registry (ghcr.io)**.
+Both deployments run the Fastify backend and an nginx frontend. The backend image includes the SQLite migration tools. The OpenBao candidate also runs the OpenBao server and its AppRole Agent. The v3 stack runs the Cosmian service.
 
 > Deploying the **SSH Certificate Manager** to real servers? See the SSH guides:
 > [concept](../ssh/concept.md) · [host & client setup](../ssh/setup.md) ·
@@ -24,11 +23,13 @@ All images are published exclusively to **GitHub Container Registry (ghcr.io)**.
 - Docker 20.10+ and Docker Compose 2.0+
 - (Optional) `.env` file for custom configuration
 
-## Production Deployment
+## Production deployment
 
-### Step 1: Prepare Environment
+### Step 1: Prepare the environment
 
-Create a `.env` file with production values:
+For the OpenBao candidate, configure `docker/.env` and the key store using [Operate the OpenBao key store](openbao.md). Configure the public CRL URL and browser settings below for either deployment.
+
+For **v3 only**, use the following example in `docker/.env` from the matching v3 release checkout:
 
 ```bash
 # Image: a release tag (tags have no leading "v"). "latest" changes under you.
@@ -69,18 +70,19 @@ When the browser calls the API on another origin (for example the UI on `:8080` 
 `:3000`), set `FRONTEND_URL` to the origin of the UI. See
 [Browser origins (`FRONTEND_URL`)](#browser-origins-frontend_url).
 
-### Step 2: Pull Images from GHCR
+### Step 2: Pull the v3 release images
 
-The images are public: no login is needed.
+For a published v3 release, run this from its `docker/` directory. The release images are public.
 
 ```bash
 docker compose pull
 ```
 
-### Step 3: Deploy
+### Step 3: Start the matching stack
 
 ```bash
-# Start services from the published images
+# v3 release checkout, from docker/
+# The OpenBao candidate has a separate initialization and unseal procedure.
 docker compose up -d --no-build --wait
 
 # Verify health
@@ -421,7 +423,7 @@ the headers.
 
 ### Required Variables
 
-None! The stack runs with sensible defaults. However, you should customize for production.
+The OpenBao candidate requires `OPENBAO_IMAGE`, TLS material and a configured AppRole. See [Operate the OpenBao key store](openbao.md). The v3 Compose file has defaults for a local Cosmian service.
 
 ### Available Variables
 
@@ -435,12 +437,12 @@ See [docker/.env.example](../../docker/.env.example) for full list. Key variable
 | `NODE_ENV` | `production` | Node environment |
 | `FRONTEND_URL` | _(empty)_ | Browser origins allowed to call the API (CORS). Empty allows every origin ([details](#browser-origins-frontend_url)) |
 | `DATABASE_PATH` | `/app/backend/data/pki.db` | Database file path (in container) |
-| `SCEP_RA_KEY_PROVIDER` | `cosmian` | Provider for new SCEP RA keys. See [OpenBao connection and token settings](../../scep/README.md#ra-key-in-openbao-opt-in). |
-| `KMS_URL` | `http://kms:9998` | KMS service URL |
-| `KMS_API_KEY` | _(empty)_ | Optional KMS authentication |
+| `OPENBAO_IMAGE` | Set in the deployment environment | Candidate only. Verified fork image reference. |
+| `KMS_URL` | `http://kms:9998` | v3 only. Cosmian endpoint. |
+| `KMS_API_KEY` | _(empty)_ | v3 only. Optional Cosmian credential. |
 | `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |
 | `TRUST_PROXY` | _(empty)_ | Reverse proxies allowed to set the client IP ([details](#client-ips-behind-a-reverse-proxy-trust_proxy)) |
-| `ALLOW_CA_KEY_EXPORT` | `false` | When `true`, an `admin` may download a CA as a PKCS#12/JKS keystore (contains the CA private key); each export is audited as `ca.export_private_key`. When `false`, `GET /api/v1/cas/{id}/download?format=p12-keystore\|jks-keystore` returns `403 CA_KEY_EXPORT_DISABLED` and the UI hides those formats. A CA key also leaves the KMS, in memory only, to sign CRLs (decision-010). |
+| `ALLOW_CA_KEY_EXPORT` | `false` | Enable audited PKCS#12/JKS CA keystore downloads for administrators. With OpenBao, set it before creating a CA that requires export. An existing non-exportable key stays non-exportable. CRL signing runs inside OpenBao. |
 | `OIDC_DISCOVERY_BASE_URL` | _(empty)_ | Base URL to fetch the OIDC discovery document and the JWKS when the backend cannot reach `OIDC_ISSUER` ([OIDC login](oidc.md)) |
 | `ALLOW_UNAUTHENTICATED_SSH_CA` | `false` | Allow the SSH CA operations with OIDC off. Local tests only |
 | `SSH_ECIES_ENABLED` | `false` | Serve the ECIES-encrypted per-host KRL to `krl-client` |
@@ -461,7 +463,7 @@ services:
       - KRL_VALID_FOR_SECONDS=3600
 ```
 
-The KMS runs in config-file mode (`COSMIAN_KMS_CONF`): it ignores its environment variables.
+**v3 only.** Cosmian runs in config-file mode (`COSMIAN_KMS_CONF`): it ignores its environment variables.
 Set its port and log level (`[http] port`, `[logging] rust_log`) in `kms/kms.toml`. If you change
 the port, change `KMS_URL` too. The Compose file does not publish the KMS port.
 
@@ -476,18 +478,7 @@ reads its part from `docker/config.json`. Both are described in one place:
 
 ### Secrets Management
 
-**For production**, use Docker secrets or environment variable injection:
-
-The backend reads `KMS_API_KEY` from its environment only (`*_FILE` variables are
-not supported), so inject it from your secret store into the environment:
-
-```yaml
-# docker-compose.override.yml
-services:
-  backend:
-    environment:
-      - KMS_API_KEY=${KMS_API_KEY}
-```
+The OpenBao candidate reads the runtime token from a read-only directory shared with the Agent. Follow the [AppRole setup and rotation procedure](openbao.md). For v3 with Cosmian authentication, inject `KMS_API_KEY` into the backend environment from your secret store.
 
 ## Published images
 
@@ -533,38 +524,23 @@ docker inspect pki-backend --format='{{.State.Health.Status}}'
 ```bash
 docker compose logs backend
 docker compose logs frontend
-docker compose logs kms
+docker compose logs openbao openbao-agent  # OpenBao candidate
+# In a v3 checkout: docker compose logs kms
 ```
 
 ### Database Issues
 
-**Problem**: Database locked or corrupted
+Check backend logs, disk space and ownership of `pki/` (UID 1001). Stop writers before copying or restoring SQLite. Preserve the original database and use its [matching key store backup](#backup-and-restore).
 
-**Solution**:
-```bash
-# Stop services
-docker compose down
+### Key store connection issues
 
-# Remove the bind-mounted data directory (⚠️ deletes data)
-rm -rf ../pki
+For the OpenBao candidate, run `docker compose exec openbao bao status`. Unseal if required. Inspect `docker compose logs openbao-agent` for TLS, permission and AppRole errors. See the [OpenBao runbook](openbao.md) for the token file check.
 
-# Restart
-docker compose up -d
-```
+For v3, check Cosmian in the v3 release checkout.
 
-### KMS Connection Issues
-
-**Problem**: Backend cannot connect to KMS
-
-**Check network**:
-```bash
-docker compose exec backend ping kms
-docker compose exec backend wget -qO- http://kms:9998/health
-```
-
-**Verify KMS is healthy**:
 ```bash
 docker compose ps kms
+docker compose exec backend wget -qO- http://kms:9998/health
 ```
 
 ### Port Conflicts
@@ -583,7 +559,7 @@ FRONTEND_EXTERNAL_PORT=8081
 - [ ] Set `NODE_ENV=production`
 - [ ] Set `CRL_DISTRIBUTION_URL` to a URL that clients can reach, before the first CA
 - [ ] Set `apiUrl` in `docker/config.json` to the public API URL
-- [ ] Set strong `KMS_API_KEY`
+- [ ] Verify Agent login and token permissions on the OpenBao candidate. For v3, configure access to Cosmian.
 - [ ] Configure OIDC authentication (see [OIDC login](oidc.md))
 - [ ] Use HTTPS with reverse proxy
 - [ ] Configure firewall rules
@@ -621,9 +597,11 @@ installation or the `docker/docker-compose.scep.yml` overlay for the full stack.
 - Read the [release notes](../../CHANGELOG.md) before each upgrade. A release that needs a manual step says so.
 - The backend applies the database migrations when it starts. Make a [backup](#backup-and-restore) first.
 - Runbooks for the upgrades that need care: [migration 0009 (SSH zones)](migration-0009.md),
-  [migration 0010 (integrations)](migration-0010.md) and the KMS upgrade below.
+  [migration 0010 (integrations)](migration-0010.md) and the v3 Cosmian upgrade below.
 
 ### KMS upgrade: backup before recreating the container
+
+**PKI Manager v3 with Cosmian only.**
 
 **Do not pull/recreate the KMS before locating and backing up its database.**
 The historical `/root/cosmian-kms` mount may not contain the actual SQLite files.
@@ -655,7 +633,7 @@ from that still-existing container; a new empty volume does not recover CA keys.
    the matching PKI backend database backup as well.
 3. Copy the backup into a **new staging data directory/volume**, preserving file
    ownership and permissions. Test 5.28 against that copy first. Do not point it
-   at the only copy of your 5.12 DB. The full-stack Compose now maps `../kms/data`
+   at the only copy of your 5.12 DB. The v3 Compose file for 5.28 maps `../kms/data`
    to `/cosmian-kms/sqlite-data`, mounts `../kms/kms.toml` at
    `/etc/cosmian/kms.toml`, and sets `COSMIAN_KMS_CONF` to that file, matching the
    configuration-file approach of `kms/docker-compose.yml`. For another data
@@ -674,7 +652,9 @@ from that still-existing container; a new empty volume does not recover CA keys.
 
 ## Backup and Restore
 
-All state is in two folders next to `docker/`:
+For the OpenBao candidate, [back up and restore SQLite and Raft together](openbao.md#back-up-and-restore-sqlite-and-raft-together).
+
+**v3 with Cosmian only.** Verify the location of the KMS database using the preceding upgrade procedure. For v3 installations with the standard bind mounts, the folders next to `docker/` are:
 
 | Folder | Content |
 |---|---|
@@ -684,7 +664,7 @@ All state is in two folders next to `docker/`:
 Back up both together. The database holds the ids of keys that exist only in the KMS, so one
 folder without the other is not a complete backup.
 
-### Backup
+### v3 backup
 
 Stop the stack first. The database uses write-ahead logging (WAL): a copy of `pki.db` taken
 while the backend runs can be incomplete.
@@ -699,7 +679,7 @@ docker compose start
 
 The archive contains the CA private keys. Keep it as safe as the KMS itself.
 
-### Restore
+### v3 restore
 
 Restore both folders from the same archive, with the stack stopped:
 
@@ -716,7 +696,7 @@ docker compose up -d --no-build --wait
 
 ### Health Checks
 
-The backend and frontend containers have health checks. The KMS container has none in this Compose file.
+The backend and frontend containers have HTTP health checks. For OpenBao, also inspect the seal status and verify a signing operation.
 
 ```bash
 # Check overall health
@@ -725,7 +705,7 @@ docker compose ps
 # Test endpoints
 curl http://localhost:3000/health  # Backend
 curl http://localhost:8080/health  # Frontend
-docker compose exec backend wget -qO- http://kms:9998/health  # KMS (not published to the host)
+docker compose exec openbao bao status  # OpenBao candidate, internal TLS endpoint
 ```
 
 ### Logs
