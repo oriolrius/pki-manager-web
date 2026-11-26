@@ -5,7 +5,8 @@ them). Do not add `CLAUDE.md` files: Claude Code ignores every `AGENTS.md` when 
 
 PKI Manager is a self-hosted web application to run your own certificate authorities: root CAs,
 X.509 issue/renew/revoke, CRLs, an SSH CA, a cert-manager external issuer for Kubernetes and an
-optional SCEP gateway. Private keys live in a **Cosmian KMS**; metadata in SQLite.
+optional SCEP gateway. Private keys live in **OpenBao Transit** (the PKI Manager build of OpenBao,
+fork branch `pki-manager`, pinned in `openbao/image.env`); metadata in SQLite.
 
 It is a personal project of its author, with no commercial interest. Never write marketing claims
 about it: say what it does, how, and what it does not do.
@@ -96,8 +97,10 @@ ACs must be **outcome-oriented and testable** ("User can log in"), not implement
 - The backend (Fastify) has four API surfaces: `/trpc` (typed, internal to the web UI), `/api/v1`
   (REST, Swagger at `/api/docs`), `/api/v1/external` (integration tokens: Kubernetes issuer, SCEP
   gateway, scripts) and `/api/v1/external/ssh` (SSH fleet tokens).
-- `services/` hold the logic. Both APIs delegate to them: crypto (node-forge), Cosmian KMS
-  (KMIP over HTTP, private keys), SQLite (Drizzle).
+- `services/` hold the logic. Both APIs delegate to them: crypto (node-forge, plus the local
+  X.509 builder in `crypto/`), OpenBao Transit (`openbao/`: HTTPS clients for the X.509, SSH CA and
+  SCEP RA keys), SQLite (Drizzle). The backend builds certificates, CRLs and SSH certificates;
+  Transit signs them. decision-018 and doc-012 explain the cutover from Cosmian KMS.
 - `k8s/issuer` (Go) sends each CSR to `POST /api/v1/external/sign`. One integration token is bound
   to one CA.
 - **OIDC is optional**: with no `OIDC_ISSUER`/`OIDC_AUDIENCE`, the management API has no login.
@@ -150,7 +153,8 @@ issuer uses `make` from `k8s/issuer/`.
   regenerates `routeTree.gen.ts`.
 - **DB change**: edit `backend/src/db/schema.ts` → `pnpm db:generate && pnpm db:migrate`.
 - Write an `audit_log` row for every state-changing operation (success and failure).
-- Never persist private keys outside the Cosmian KMS — the DB stores only KMS ids.
+- Never persist private keys outside OpenBao — the DB stores only key references. SSH CA and SCEP
+  RA keys are non-exportable; X.509 keys leave OpenBao only through the audited export formats.
 - Run each workspace's `typecheck`, not just `build`: the frontend `build:docker` is relaxed
   (`strict: false`), so a green Docker build is not a clean typecheck.
 

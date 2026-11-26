@@ -1,7 +1,7 @@
 # PKI Manager
 
 > A self-hosted web application to run your own certificate authorities for X.509 and SSH.
-> Private keys are made and kept in a KMS.
+> Private keys are made and kept in OpenBao Transit (a build of OpenBao with a small SCEP patch set).
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/website-pki--manager.oriolrius.cat-FF6600.svg)](https://pki-manager.oriolrius.cat/)
@@ -38,7 +38,7 @@ source code is public because it can be useful to someone else.
 
 | Folder | Content |
 |---|---|
-| `backend/` | API server: REST and tRPC, certificate logic, KMS client, SQLite database |
+| `backend/` | API server: REST and tRPC, certificate logic, OpenBao Transit clients, SQLite database |
 | `frontend/` | Web UI (React) |
 | `k8s/issuer/` | cert-manager external issuer for Kubernetes (Go, with its Helm chart) |
 | `scep/` | Optional SCEP gateway for device enrollment (Go) |
