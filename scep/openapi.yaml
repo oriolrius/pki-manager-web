@@ -69,6 +69,9 @@ paths:
         The envelope content cipher must be AES-128-CBC, AES-256-CBC, AES-128-GCM,
         AES-256-GCM or DES-EDE3-CBC; any other cipher gets a signed failure with
         failInfo badAlg.
+        AES-GCM support applies to CMS EnvelopedData. The gateway rejects
+        AuthEnvelopedData (RFC 5083), including the AES-GCM envelopes that
+        OpenSSL CMS generates.
       parameters:
         - name: operation
           in: query
