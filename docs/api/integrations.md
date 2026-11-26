@@ -113,11 +113,59 @@ concurrent publication still needs coordination across backend replicas.
 Only an active `scep` integration can call `/api/v1/external/ra/state`,
 `ra/provision`, `ra/renew`, `ra/sign`, and `ra/decrypt`. Provision/renew take an
 empty JSON object. Sign accepts only a base64 SHA-256 `digest`; decrypt accepts
-only a base64 RSA-3072 `data` ciphertext and returns an AES content key. The
+only a base64 RSA-3072 `data` ciphertext and an optional `sessionKeyLength`, and
+returns the CMS content-encryption key. The
 backend fixes algorithms and resolves its RA key from the integration and bound
 CA. Caller-selected key identifiers are rejected. State contains public
 certificates only. Private keys are Sensitive and stay in KMS; gateways need no
 KMS connectivity or credentials.
+
+#### RA decrypt: CMS session key length
+
+`POST /api/v1/external/ra/decrypt` body:
+
+| Field | Required | Value |
+| --- | --- | --- |
+| `data` | yes | base64 RSA-3072 PKCS#1 v1.5 ciphertext of the CMS session key (384 bytes) |
+| `sessionKeyLength` | no | the JSON integer `16`, `24` or `32` |
+
+The SCEP gateway reads the content cipher of each device envelope after it checks
+the CMS signature, and sends the key length of that cipher:
+
+| Envelope content cipher | `sessionKeyLength` |
+| --- | --- |
+| AES-128-CBC, AES-128-GCM | `16` |
+| DES-EDE3-CBC (3DES) | `24` |
+| AES-256-CBC, AES-256-GCM | `32` |
+
+The gateway refuses every other content cipher (for example DES-CBC or
+AES-192) with a signed `CertRep` failure (`badAlg`), and it sends no RA request
+for it. Its startup self-test sends `32`.
+
+- With `sessionKeyLength`, the unwrapped key must have exactly that length.
+- Without it (gateways older than this change), the backend accepts a key of 16,
+  24 or 32 bytes, as before.
+- The field takes only a JSON integer. A string such as `"16"`, another number,
+  `null` or an unknown field gives `400 BAD_REQUEST` before the audit row and
+  before KMS work.
+- A KMS decryption error and a key of the wrong length give the same response:
+  `502` with `{"error":{"code":"RA_OPERATION_FAILED","message":"RA decryption failed"}}`.
+  The audit row records only the phase, the status code and the error code, never
+  the ciphertext, the key or its length.
+
+The KMS request does not change: the backend asks Cosmian KMS for an RSA PKCS#1
+v1.5 decryption and checks the length of the result.
+
+**Upgrade order: backend first.** A backend older than this change rejects the
+unknown `sessionKeyLength` field with `400`, so a new gateway against an old
+backend fails its startup self-test and does not start. An old gateway against a
+new backend keeps working, because the field is optional.
+
+1. Upgrade the backend. Check that the running gateway still enrolls.
+2. Upgrade the SCEP gateway. It now checks the startup self-test with
+   `sessionKeyLength: 32`.
+
+To roll back, roll back the gateway first, then the backend.
 
 RA operations check integration/CA ownership and active status on every request.
 Revoked RA certificates cannot sign, decrypt, or renew. Integration revocation

@@ -27,18 +27,29 @@ func TestRemoteRAUsesOnlyScopedBackendOperations(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("missing integration token")
 		}
-		var input map[string][]byte
+		var input map[string]json.RawMessage
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			t.Error(err)
 		}
-		if len(input) != 1 {
-			t.Error("unexpected operation selectors")
+		field := func(name string) []byte {
+			var value []byte
+			if err := json.Unmarshal(input[name], &value); err != nil {
+				t.Error(err)
+			}
+			return value
 		}
 		var output []byte
 		if strings.HasSuffix(r.URL.Path, "/sign") {
-			output, err = rsa.SignPKCS1v15(rand.Reader, private, crypto.SHA256, input["digest"])
+			if len(input) != 1 {
+				t.Error("unexpected operation selectors")
+			}
+			output, err = rsa.SignPKCS1v15(rand.Reader, private, crypto.SHA256, field("digest"))
 		} else if strings.HasSuffix(r.URL.Path, "/decrypt") {
-			output, err = rsa.DecryptPKCS1v15(rand.Reader, private, input["data"])
+			// The startup self-test asks for the exact AES-256 session key length.
+			if len(input) != 2 || string(input["sessionKeyLength"]) != "32" {
+				t.Errorf("unexpected decrypt fields: %v", input)
+			}
+			output, err = rsa.DecryptPKCS1v15(rand.Reader, private, field("data"))
 		} else {
 			t.Error("unexpected path")
 		}

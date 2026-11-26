@@ -30,6 +30,15 @@ export class RAError extends Error {
   constructor(public statusCode: number, message: string) { super(message); }
 }
 
+/** CMS session key lengths of the content ciphers that the SCEP gateway accepts. */
+export const SESSION_KEY_LENGTHS = [16, 24, 32] as const;
+export type SessionKeyLength = (typeof SESSION_KEY_LENGTHS)[number];
+export function isSessionKeyLength(value: unknown): value is SessionKeyLength {
+  return typeof value === 'number' && (SESSION_KEY_LENGTHS as readonly number[]).includes(value);
+}
+// One error for every decryption failure: KMS errors and length mismatches look the same.
+const decryptionFailed = () => new RAError(502, 'RA decryption failed');
+
 export class RAService {
   private async authority(identity: Identity) {
     if (identity.kind !== 'scep') throw new RAError(403, 'RA operations require a SCEP integration');
@@ -163,15 +172,37 @@ export class RAService {
     ]);
     return Buffer.from(value(result, 'SignatureData'), 'hex');
   }
-  async decrypt(identity: Identity, ciphertext: Buffer) {
+  /**
+   * Unwraps a CMS session key with the RA key.
+   *
+   * `sessionKeyLength` is the key length of the envelope's content cipher (16, 24
+   * or 32 bytes), which the SCEP gateway reads from the verified envelope. When
+   * it is given, the plaintext must have exactly that length. When it is omitted
+   * (older gateways), any of 16, 24 or 32 bytes is accepted, as before.
+   *
+   * Every failure after the input checks (KMS error, missing response field,
+   * wrong plaintext length) gives the same error, so the caller cannot tell a
+   * padding failure from a length mismatch.
+   */
+  async decrypt(identity: Identity, ciphertext: Buffer, sessionKeyLength?: number) {
     const binding = await this.active(identity);
     if (ciphertext.length !== 384) throw new RAError(400, 'RSA-3072 ciphertext required');
-    const result = await getKMSService().performRAOperation('Decrypt', [text('UniqueIdentifier', binding.keyId!),
-      { tag: 'CryptographicParameters', value: [enumeration('CryptographicAlgorithm', 'RSA'), enumeration('PaddingMethod', 'PKCS1v15')] },
-      { tag: 'Data', type: 'ByteString', value: ciphertext.toString('hex') },
-    ]);
-    const plaintext = Buffer.from(value(result, 'Data'), 'hex');
-    if (![16, 24, 32].includes(plaintext.length)) throw new RAError(400, 'Invalid CMS AES key');
+    if (sessionKeyLength !== undefined && !isSessionKeyLength(sessionKeyLength)) throw new RAError(400, 'sessionKeyLength must be 16, 24 or 32');
+    let plaintext: Buffer;
+    try {
+      const result = await getKMSService().performRAOperation('Decrypt', [text('UniqueIdentifier', binding.keyId!),
+        { tag: 'CryptographicParameters', value: [enumeration('CryptographicAlgorithm', 'RSA'), enumeration('PaddingMethod', 'PKCS1v15')] },
+        { tag: 'Data', type: 'ByteString', value: ciphertext.toString('hex') },
+      ]);
+      plaintext = Buffer.from(value(result, 'Data'), 'hex');
+    } catch {
+      throw decryptionFailed();
+    }
+    const valid = sessionKeyLength === undefined ? isSessionKeyLength(plaintext.length) : plaintext.length === sessionKeyLength;
+    if (!valid) {
+      plaintext.fill(0);
+      throw decryptionFailed();
+    }
     return plaintext;
   }
 }

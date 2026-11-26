@@ -22,6 +22,7 @@ scheme for external issuance. The gateway `/scep` protocol runs on its own serve
 | Legacy GET `PKIOperation&message=<URL-encoded base64>` | Supported within HTTP header limits |
 | Initial `PKCSReq` | Immediate signed/encrypted `CertRep` success or failure |
 | `RenewalReq` / `UpdateReq` | Active, service-owned old signer plus shared challenge or fresh MDM validation |
+| Request envelopes | RSA PKCS#1 v1.5 key transport; content cipher AES-128/256-CBC, AES-128/256-GCM or 3DES-CBC, DER or BER. Other ciphers get a signed `badAlg` failure before any RA decryption ([session key length](../docs/api/integrations.md#ra-decrypt-cms-session-key-length)) |
 | Response cryptography | SHA-256/RSA PKCS#1 signatures; AES-256-CBC envelopes |
 | Device keys | RSA, 2048–8192 bits; signer and CSR must use the same key |
 | CSR identity | Nonempty CN, maximum 128 bytes; managed modes support DNS, IP, email, URI and Microsoft UPN SANs |

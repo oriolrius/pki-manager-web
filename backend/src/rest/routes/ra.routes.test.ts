@@ -107,6 +107,49 @@ describe('backend-owned RA boundary', () => {
     expect(rows.some(r => r.operation === 'scep.ra.sign' && r.status === 'success')).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(digest);
   });
+  it('enforces the CMS session key length when the gateway sends it and keeps the legacy check when it does not', async () => {
+    const [binding] = await db.select().from(integrationRAs).where(eq(integrationRAs.integrationId, first.id));
+    const data = Buffer.alloc(384, 5).toString('base64');
+    const decryptReturns = (length: number) => operation.mockImplementationOnce(async () => field('Response', [field('Data', Buffer.alloc(length, 3).toString('hex'))]));
+    for (const length of [16, 24, 32]) {
+      operation.mockClear(); decryptReturns(length);
+      const exact = await request(first.token, 'decrypt', { data, sessionKeyLength: length });
+      expect(exact.statusCode, exact.body).toBe(200);
+      expect(Buffer.from(exact.json().data, 'base64').length).toBe(length);
+      // The key identity comes from the integration binding, never from the request.
+      expect(operation.mock.calls.at(-1)?.[1]).toContainEqual(expect.objectContaining({ tag: 'UniqueIdentifier', value: binding.keyId }));
+      decryptReturns(length);
+      expect((await request(first.token, 'decrypt', { data })).statusCode).toBe(200);
+    }
+    decryptReturns(32);
+    const mismatch = await request(first.token, 'decrypt', { data, sessionKeyLength: 16 });
+    operation.mockRejectedValueOnce(new Error('KMS: PKCS#1 decryption error'));
+    const kmsFailure = await request(first.token, 'decrypt', { data, sessionKeyLength: 16 });
+    decryptReturns(8);
+    const legacyInvalid = await request(first.token, 'decrypt', { data });
+    // A length mismatch, a KMS failure and an invalid legacy key give the same response.
+    for (const response of [mismatch, kmsFailure, legacyInvalid]) {
+      expect(response.statusCode).toBe(502);
+      expect(response.json()).toEqual({ error: { code: 'RA_OPERATION_FAILED', message: 'RA decryption failed' } });
+    }
+    const rows = await db.select().from(auditLog).where(eq(auditLog.entityId, first.id));
+    const decryptRows = rows.filter(r => r.operation === 'scep.ra.decrypt');
+    expect(decryptRows.filter(r => r.status === 'failure').map(r => JSON.parse(r.details!))).toContainEqual({ phase: 'failed', statusCode: 502, code: 'RA_OPERATION_FAILED' });
+    expect(JSON.stringify(rows)).not.toContain(data);
+    expect(JSON.stringify(rows)).not.toContain(Buffer.alloc(16, 3).toString('base64'));
+  });
+  it('accepts sessionKeyLength only as the JSON integer 16, 24 or 32, before audit and KMS', async () => {
+    const data = Buffer.alloc(384).toString('base64');
+    const before = (await db.select().from(auditLog).where(eq(auditLog.operation, 'scep.ra.decrypt'))).length;
+    for (const sessionKeyLength of ['16', '0x10', 16.5, 8, 0, 64, -16, null, true, [16], { length: 16 }]) {
+      const response = await request(first.token, 'decrypt', { data, sessionKeyLength });
+      expect(response.statusCode, JSON.stringify(sessionKeyLength)).toBe(400);
+      expect(response.json().error.code).toBe('BAD_REQUEST');
+    }
+    expect((await request(first.token, 'sign', { digest: Buffer.alloc(32).toString('base64'), sessionKeyLength: 32 })).statusCode).toBe(400);
+    expect(operation).not.toHaveBeenCalled();
+    expect((await db.select().from(auditLog).where(eq(auditLog.operation, 'scep.ra.decrypt'))).length).toBe(before);
+  });
   it('rejects algorithm overrides, malformed sizes and invalid tokens before cryptography', async () => {
     expect((await request(first.token, 'sign', { digest: 'AA==' })).statusCode).toBe(400);
     expect((await request(first.token, 'decrypt', { data: 'AA==' })).statusCode).toBe(400);

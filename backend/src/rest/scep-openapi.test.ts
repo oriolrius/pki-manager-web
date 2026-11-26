@@ -13,5 +13,7 @@ describe('standalone SCEP protocol specification', () => {
       required: true, content: { 'application/x-pki-message': { schema: { format: 'binary' } } },
     });
     expect(gateway.paths?.['/scep']?.post?.responses?.['200']?.description).toContain('pkiStatus');
+    const post = gateway.paths?.['/scep']?.post?.description ?? '';
+    for (const cipher of ['AES-128-CBC', 'AES-256-CBC', 'AES-128-GCM', 'AES-256-GCM', 'DES-EDE3-CBC', 'badAlg']) expect(post).toContain(cipher);
   });
 });
