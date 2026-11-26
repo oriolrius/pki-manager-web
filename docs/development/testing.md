@@ -20,6 +20,25 @@ Run one workspace with `pnpm test` (or `pnpm test:watch`) inside `backend/` or `
 Run each workspace's `typecheck`, not only `build`: the frontend Docker build is relaxed, so a
 green image build is not a clean type check.
 
+Local backend runs skip live key-store tests when `OPENBAO_ADDR` is unset. To run those
+tests with the same scoped OpenBao token as CI, start a disposable instance from the repository
+root. Run these commands in Bash:
+
+```bash
+bash scripts/openbao-test.sh up unit
+(
+  set -a
+  source <(bash scripts/openbao-test.sh env unit)
+  set +a
+  OPENBAO_TEST_REQUIRED=1 pnpm --dir backend test
+)
+bash scripts/openbao-test.sh down unit
+```
+
+The helper creates a TLS certificate, starts the pinned fork on a free loopback port and
+configures its Transit mounts. It prints file paths for the CA and token. Cleanup removes the
+test instance and its state.
+
 The Go components have their own tests. Run `go test ./...` in `k8s/issuer/`, `scep/` or `krl-client/`.
 
 ## Fuzzing
@@ -78,7 +97,7 @@ are Vitest tests, so `just test` and the **Backend Tests** job run them.
 | File (under `backend/src/`) | Functions | Rule |
 |---|---|---|
 | `crypto/validation.property.test.ts` | the CN, DNS name and IP address validators | an accepted value follows the [rules for names](../guides/private-ca.md#rules-for-names-and-validity); a value that follows them is accepted |
-| `services/certificate-extensions.property.test.ts` | `buildCertificateExtensions` | a SAN value cannot add a line or a SAN entry to the extension text for the KMS |
+| `services/certificate-extensions.property.test.ts` | `buildCertificateExtensions` | a SAN value cannot add a line or a SAN entry to the certificate extension text |
 | `crypto/dn.property.test.ts` | `formatDN`, `parseDN`, `validateDN` | parse after format gives the same DN: a value cannot add a field |
 | `rest/routes/external-csr.property.test.ts` | the CSR parser of `POST /api/v1/external/sign`, `crypto/csr.ts` | an Error for text that is not a CSR; a changed CSR is refused; PEM to DER to PEM gives the same CSR |
 | `crypto/ssh/ssh.property.test.ts` | the OpenSSH public key parser, the wire format, the ECIES envelope | a key or `SshPublicKeyError`; write then read gives the same value; a changed envelope is refused |
@@ -110,7 +129,8 @@ They run against a local Docker environment or against a deployed instance. The 
 
 ### E2E Architecture
 
-![E2E stack: Playwright on the host drives frontend, backend and Keycloak containers; backend uses the KMS](../diagrams/svg/05-e2e-architecture.svg)
+Playwright drives the frontend from the host. The backend connects to the test OpenBao service
+over HTTPS on a separate Docker network. It reads the CA and the scoped token from a read-only mount.
 
 The backend uses `OIDC_DISCOVERY_BASE_URL` to fetch OIDC configuration from the Docker network (`keycloak:8080`) while validating tokens against the issuer URL that browsers use (`localhost:58180`).
 
@@ -123,28 +143,33 @@ The `docker-compose.e2e.yml` provides a complete isolated environment for testin
 docker build --target backend -t ghcr.io/oriolrius/pki-manager-web/backend:e2e -f docker/Dockerfile .
 docker build --target frontend -t ghcr.io/oriolrius/pki-manager-web/frontend:e2e -f docker/Dockerfile .
 
-# 2. Start the E2E environment (Keycloak with the test users, KMS, backend, frontend)
-#    and wait until every service is healthy (~60-90 seconds for Keycloak)
+# 2. Prepare OpenBao and export the settings for the backend container (Bash)
+bash scripts/openbao-test.sh up rbac
+set -a
+source <(bash scripts/openbao-test.sh client rbac)
+set +a
+
+# 3. Start Keycloak, the backend and the frontend
 IMAGE_TAG=e2e docker compose -f docker/docker-compose.e2e.yml up -d --wait
 
-# 3. Run the RBAC tests
+# 4. Run the RBAC tests
 pnpm playwright test tests/e2e-rbac.spec.ts --reporter=list
 
-# 4. Cleanup when done
+# 5. Remove the RBAC stack, then the OpenBao test instance
 docker compose -f docker/docker-compose.e2e.yml down -v
+bash scripts/openbao-test.sh down rbac
 ```
 
-Without `IMAGE_TAG`, Compose uses the published `latest` images. The stack uses the same
-Cosmian KMS version and `kms/kms.toml` as `docker/docker-compose.yml`, and the same Keycloak
-version as the dev stack. The containers read the mounted files (`kms/kms.toml`,
-`docker/keycloak-e2e-realm.json`, `docker/config.e2e.json`): with a checkout made under
-`umask 077`, make them world-readable first (`chmod a+r`).
+Without `IMAGE_TAG`, Compose uses the published `latest` backend and frontend images.
+The E2E stack reads its Keycloak realm from `docker/keycloak-e2e-realm.json` and its
+frontend settings from `docker/config.e2e.json`. Both files must be readable by their container
+users. The OpenBao helper prepares the backend token for uid 1001.
 
 ### E2E in CI
 
 The workflow `.github/workflows/e2e.yml` runs these steps on each pull request to `main` that
-changes the backend, the frontend, `docker/`, `tests/` or the Playwright configuration, and on
-manual dispatch. It builds the two images from the commit, starts the stack, and runs
+changes the backend, frontend, Docker stack, OpenBao configuration or helper scripts, tests,
+Playwright configuration or workspace dependencies. It also supports manual dispatch. It builds the two images from the commit, starts the stack, and runs
 `tests/e2e-rbac.spec.ts`. When the tests fail, it uploads `playwright-report/` and
 `test-results/` as the artifact `playwright-report`.
 
@@ -167,7 +192,7 @@ The E2E environment includes pre-configured test users in Keycloak:
 | Frontend | http://localhost:58080 | PKI Manager UI |
 | Backend API | http://localhost:53000 | tRPC API |
 | Keycloak | http://localhost:58180 | Identity Provider (admin/admin for Keycloak console) |
-| KMS | Internal only | Cosmian Key Management System |
+| OpenBao | `https://openbao:8200` inside Docker | Test Transit key store |
 
 ### Tests against a deployed instance
 
@@ -212,10 +237,10 @@ The `pki-e2e` realm is automatically imported when starting the E2E Docker envir
 | Keycloak Console | http://localhost:58180 | admin / admin |
 | OIDC Discovery | http://localhost:58180/realms/pki-e2e/.well-known/openid-configuration | - |
 
-### Versions in the end-to-end stack
+### Image versions
 
-`docker/docker-compose.e2e.yml` pins its own images: Keycloak `26.0.5` and Cosmian KMS `5.12.0`.
-The production Compose file and the dev stack use KMS `5.28.0`.
+`docker/docker-compose.e2e.yml` pins Keycloak. `openbao/image.env` selects the OpenBao
+fork revision. `scripts/openbao-image.sh ensure` resolves its container image.
 
 ### Test users on a deployed instance
 

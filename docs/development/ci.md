@@ -18,27 +18,27 @@ checkout. Operators use the published images instead: see [Docker deployment](..
    commands below from the `docker/` directory (or add
    `-f docker/docker-compose.yml` from the repository root).
 
-2. **Create `.env` file** (optional, uses defaults if not present):
+2. Copy `.env.example` to `.env`. Set `IMAGE_TAG` to a local tag for the build.
+3. Prepare the OpenBao image, TLS files, persistent storage and AppRole credentials. Follow
+   the [OpenBao operations guide](../operations/openbao.md). The Compose stack reads the
+   image reference from `OPENBAO_IMAGE`.
+4. Create the backend data folder so the container user can write to it.
+
    ```bash
-   cp .env.example .env
-   # Edit .env with your preferred settings
+   mkdir -p ../pki
+   sudo chown 1001:1001 ../pki
    ```
 
-3. **Create the backend data folder** (the backend runs as uid 1001; a folder that Docker
-   creates is owned by root and the backend fails with `SqliteError: unable to open database file`):
+5. Build the backend and frontend from your checkout, then start the stack.
+
    ```bash
-   mkdir -p ../pki && sudo chown 1001:1001 ../pki
+   docker compose build backend frontend
+   docker compose up -d
    ```
 
-4. **Build and start all services** (`--build` builds the images from your checkout instead of pulling them):
-   ```bash
-   docker compose up --build
-   ```
-
-5. **Access the application**:
-   - Frontend: http://localhost:8080
-   - Backend API: http://localhost:3000
-   - KMS: not published to the host (internal `kms-internal` network only)
+The frontend listens on `http://localhost:8080` and the backend on `http://localhost:3000`
+with the default ports. The backend and OpenBao Agent reach OpenBao on the
+`keystore-internal` network.
 
 ### Build one image
 
@@ -67,12 +67,12 @@ cd backend && pnpm typecheck
 
 | Workflow | File | Runs on | What it does |
 |---|---|---|---|
-| Test | `test.yml` | push and pull request to `main` that touch `backend/`, `frontend/`, `package.json` or `pnpm-lock.yaml` | Backend tests, type check and lint of backend and frontend |
+| Test | `test.yml` | push and pull request to `main` that touch `backend/`, `frontend/`, `package.json` or `pnpm-lock.yaml` | Backend tests with the OpenBao fork and a scoped token. Type check and lint of backend and frontend |
 | Docker Build and Publish | `docker-build.yml` | push to `main`, tags `v*.*.*`, pull requests | Builds the backend and frontend images (`linux/amd64`), checks the security headers of the frontend image (`docker/check-security-headers.sh`), publishes the images to `ghcr.io`, attests the build, scans with Trivy |
 | SCEP | `scep.yml` | changes under `scep/`, tags `v*.*.*` | Tests the SCEP gateway and publishes its image |
 | k8s-issuer | `k8s-issuer.yml` | changes under `k8s/issuer/`, tags `v*.*.*` | Tests the issuer, publishes its image, signs it with cosign, makes an SBOM |
 | krl-client | `krl-client.yml` | changes under `krl-client/`, tags `v*.*.*` | Tests the KRL client; on a tag, attaches the signed binary, its SBOM and its SLSA provenance to the release |
-| E2E | `e2e.yml` | pull requests to `main` that touch the backend, frontend, `docker/` or `tests/`; manual | Builds the images, starts `docker/docker-compose.e2e.yml`, runs the Playwright RBAC tests (see [E2E in CI](testing.md#e2e-in-ci)) |
+| E2E | `e2e.yml` | pull requests to `main` that touch the backend, frontend, Docker or OpenBao fixtures, tests or their configuration; manual | Builds the images, starts `docker/docker-compose.e2e.yml`, runs the Playwright RBAC tests (see [E2E in CI](testing.md#e2e-in-ci)) |
 | Ansible e2e | `ansible-e2e.yml` | changes to `ansible/`, the SSH routes and services, `krl-client/` | End-to-end test of the SSH host role in Docker |
 | Fuzz | `fuzz.yml` | push and pull request that touch `scep/`, `krl-client/` or `k8s/issuer/`; every Monday; manual | Runs each Go fuzz target for 30 s (5 minutes on Monday) and, on Monday, the backend property tests with more cases (see [Fuzzing](testing.md#fuzzing)) |
 | Security | `security.yml` | push and pull request to `main` | Secret scan (gitleaks) |
@@ -153,8 +153,8 @@ of the Dockerfiles (tag and digest) and `ansible/tests/e2e/requirements.txt`.
 - A new version must be 7 days old before Dependabot proposes it (`cooldown`). A security update
   does not wait.
 - The commit prefix is `build(deps)`, or `ci(deps)` for the actions, so `cz bump` reads the commits.
-- The images of the Compose files (Cosmian KMS, Keycloak) are not in the list: change them by hand,
-  after a test.
+- Update the Keycloak Compose image and the OpenBao fork pin in `openbao/image.env` by hand.
+  Run the backend integration tests and the RBAC stack with each new version.
 - The application image and the Node.js types follow Node.js 22. The issuer builder follows Go
   1.26. Dependabot still proposes patch and digest updates on these runtime lines.
 - Upgrade the ESLint 10 preset together with the ESLint engine and its TypeScript plugins.
