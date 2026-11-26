@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - 'openbao/**'
+      - 'scripts/openbao-*.sh'
       - 'backend/**'
       - 'frontend/**'
       - 'package.json'
@@ -14,6 +16,8 @@ on:
     branches:
       - main
     paths:
+      - 'openbao/**'
+      - 'scripts/openbao-*.sh'
       - 'backend/**'
       - 'frontend/**'
       - 'package.json'

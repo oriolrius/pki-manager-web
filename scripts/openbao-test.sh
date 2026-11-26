@@ -3,6 +3,7 @@
 #
 #   up [NAME]     start an isolated instance (own Compose project, container, free port,
 #                 state dir), bootstrap it in dev/test mode, print its backend settings
+#   client [NAME] prepare the token and CA for a backend container (uid 1001), print its Compose settings
 #   env [NAME]    print the settings again: OPENBAO_ADDR, OPENBAO_CACERT, OPENBAO_TOKEN_FILE
 #   check [NAME]  run openbao/scripts/check-backend-token.sh against it
 #   down [NAME]   remove the containers and the state
@@ -48,9 +49,25 @@ case "$CMD" in
     compose run --rm -T bootstrap dev >&2
     print_env
     ;;
+  client)
+    mkdir -p "$STATE/client"
+    chmod 0711 "$STATE/client"
+    compose run --rm -T --user 0 --volume "$STATE/client:/client" --entrypoint /bin/sh bootstrap -ec '
+      umask 077
+      cp /openbao/secrets/backend-token /client/token.tmp
+      chown 1001:1001 /client/token.tmp
+      chmod 0400 /client/token.tmp
+      mv /client/token.tmp /client/backend-token
+      cp /openbao/tls/ca.pem /client/ca.pem
+      chmod 0444 /client/ca.pem
+    ' >&2
+    echo "OPENBAO_TEST_CLIENT_DIR=$STATE/client"
+    echo "OPENBAO_TEST_NETWORK=${PROJECT}_default"
+    ;;
   env) print_env ;;
   check)
-    env $(print_env) CHECK_RA="${CHECK_RA:-1}" bash "$REPO/openbao/scripts/check-backend-token.sh" >&2
+    mapfile -t settings < <(print_env)
+    env "${settings[@]}" CHECK_RA="${CHECK_RA:-1}" bash "$REPO/openbao/scripts/check-backend-token.sh" >&2
     ;;
   down)
     if [ -d "$STATE" ]; then

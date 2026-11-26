@@ -1,22 +1,24 @@
 # Demo stack for the documentation screenshots.
 # It runs the real docker/docker-compose.yml (the published images) with this overlay:
-# own names, ports and volumes (nothing touches kms/data or pki/), plus Keycloak with fake users.
-# Use scripts/demo.sh, not this file directly.
+# own names, ports and volumes (separate from the deployment data), plus Keycloak with fake users.
+# Use site/demo/demo.sh, not this file directly.
 services:
-  kms:
-    container_name: pki-demo-kms
-    volumes:
-      - demo-kms:/cosmian-kms/sqlite-data
+  openbao:
+    profiles: [production]
+  openbao-agent:
+    profiles: [production]
   backend:
     container_name: pki-demo-backend
-    volumes:
+    volumes: !override
       - demo-pki:/app/backend/data
+      - ${OPENBAO_TEST_CLIENT_DIR:?}:/run/openbao:ro
     environment:
+      - OPENBAO_TOKEN_FILE=/run/openbao/backend-token
       - OIDC_ISSUER=http://localhost:47381/realms/pki-demo
       - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-demo
       - OIDC_AUDIENCE=pki-web
       - OIDC_ROLES_CLAIM=realm_access.roles
-    depends_on:
+    depends_on: !override
       keycloak:
         condition: service_healthy
   frontend:
@@ -48,9 +50,11 @@ services:
       start_period: 20s
 
 networks:
+  keystore-internal: !override
+    external: true
+    name: ${OPENBAO_TEST_NETWORK:?}
   pki-network:
     name: pki-demo-network
 
 volumes:
-  demo-kms:
   demo-pki:

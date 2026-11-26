@@ -38,3 +38,9 @@ docker/scep-secrets/
 
 # CodeGraph index (local to each checkout)
 .codegraph/
+
+# OpenBao state: dev stack (unseal key, root token), test instances, E2E TLS. Never commit.
+openbao/state/
+openbao/dev-state/
+.openbao-test/
+docker/.e2e/

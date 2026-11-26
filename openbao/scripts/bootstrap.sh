@@ -177,10 +177,14 @@ cmd_approle_credentials() {
   admin_token
   d="$SECRETS_DIR/approle"
   mkdir -p "$d"
-  bao read -field=role_id "auth/approle/role/$ROLE/role-id" > "$d/role-id"
-  bao write -f -field=secret_id "auth/approle/role/$ROLE/secret-id" > "$d/secret-id.tmp"
-  mv "$d/secret-id.tmp" "$d/secret-id"
-  log "role-id and a new secret-id written to $d (the Agent removes the secret-id after login)"
+  tmp="$(mktemp -d "$d/.login.XXXXXX")"
+  trap 'rm -rf "$tmp"' EXIT
+  bao read -field=role_id "auth/approle/role/$ROLE/role-id" > "$tmp/role-id"
+  bao write -f -field=secret_id "auth/approle/role/$ROLE/secret-id" > "$tmp/secret-id"
+  chmod 0400 "$tmp/role-id" "$tmp/secret-id"
+  mv "$tmp/role-id" "$d/role-id"
+  mv "$tmp/secret-id" "$d/secret-id"
+  log "role-id and a new secret-id written to $d for Agent login and restart"
 }
 
 cmd_status() {

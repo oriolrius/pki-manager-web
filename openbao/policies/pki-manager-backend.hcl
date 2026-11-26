@@ -55,3 +55,8 @@ path "pki-manager-ssh/keys/+" {
 path "pki-manager-ssh/sign/+/sha2-256" {
   capabilities = ["update"]
 }
+
+# The Agent renews only the token obtained from its own AppRole login.
+path "auth/token/renew-self" {
+  capabilities = ["update"]
+}

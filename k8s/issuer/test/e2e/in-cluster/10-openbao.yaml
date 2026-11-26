@@ -1,0 +1,53 @@
+# Disposable kind test installation. The bootstrap credentials stay in this pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbao
+  namespace: pki-manager
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: openbao }
+  template:
+    metadata:
+      labels: { app: openbao }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { runAsUser: 1000, runAsGroup: 1000, fsGroup: 1000 }
+      containers:
+        - name: openbao
+          image: pki-manager-openbao:e2e
+          imagePullPolicy: Never
+          env:
+            - { name: BAO_ADDR, value: 'https://openbao:8200' }
+            - { name: BAO_API_ADDR, value: 'https://openbao:8200' }
+            - { name: BAO_CLUSTER_ADDR, value: 'https://openbao:8201' }
+            - { name: BAO_CACERT, value: /openbao/tls/ca.pem }
+            - { name: PKI_MANAGER_OPENBAO_DEV, value: '1' }
+          ports:
+            - { name: https, containerPort: 8200 }
+          volumeMounts:
+            - { name: config, mountPath: /openbao/config, readOnly: true }
+            - { name: scripts, mountPath: /openbao/scripts, readOnly: true }
+            - { name: policies, mountPath: /openbao/policies, readOnly: true }
+            - { name: tls, mountPath: /openbao/tls, readOnly: true }
+            - { name: secrets, mountPath: /openbao/secrets }
+            - { name: raft, mountPath: /openbao/data }
+            - { name: logs, mountPath: /openbao/logs }
+      volumes:
+        - { name: config, configMap: { name: openbao-config } }
+        - { name: scripts, configMap: { name: openbao-bootstrap } }
+        - { name: policies, configMap: { name: openbao-policies } }
+        - { name: tls, secret: { secretName: openbao-server-tls, defaultMode: 0440 } }
+        - { name: secrets, persistentVolumeClaim: { claimName: openbao-test-bootstrap } }
+        - { name: raft, persistentVolumeClaim: { claimName: openbao-test-raft } }
+        - { name: logs, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: openbao, namespace: pki-manager }
+spec:
+  selector: { app: openbao }
+  ports:
+    - { name: https, port: 8200, targetPort: https }

@@ -15,12 +15,12 @@ services:
     user: "${OPENBAO_UID:-1000}:${OPENBAO_GID:-1000}"
     ports:
       # OPENBAO_PORT empty = a free port (test stacks; read it with `docker compose port`).
-      - "${OPENBAO_BIND:-0.0.0.0}:${OPENBAO_PORT-42996}:8200"
+      - "${OPENBAO_BIND:-127.0.0.1}:${OPENBAO_PORT-42996}:8200"
     volumes:
       - ./config:/openbao/config:ro
-      - ${OPENBAO_STATE_DIR:-./state}/data:/openbao/data
-      - ${OPENBAO_STATE_DIR:-./state}/logs:/openbao/logs
-      - ${OPENBAO_STATE_DIR:-./state}/tls:/openbao/tls:ro
+      - ${OPENBAO_STATE_DIR:-./dev-state}/data:/openbao/data
+      - ${OPENBAO_STATE_DIR:-./dev-state}/logs:/openbao/logs
+      - ${OPENBAO_STATE_DIR:-./dev-state}/tls:/openbao/tls:ro
     environment:
       BAO_API_ADDR: https://openbao:8200
       BAO_CLUSTER_ADDR: https://openbao:8201
@@ -48,8 +48,8 @@ services:
     volumes:
       - ./scripts:/openbao/scripts:ro
       - ./policies:/openbao/policies:ro
-      - ${OPENBAO_STATE_DIR:-./state}/tls:/openbao/tls:ro
-      - ${OPENBAO_STATE_DIR:-./state}/secrets:/openbao/secrets
+      - ${OPENBAO_STATE_DIR:-./dev-state}/tls:/openbao/tls:ro
+      - ${OPENBAO_STATE_DIR:-./dev-state}/secrets:/openbao/secrets
     depends_on:
       openbao:
         condition: service_started

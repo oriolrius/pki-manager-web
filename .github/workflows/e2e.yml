@@ -1,7 +1,7 @@
 name: E2E
 
 # Playwright RBAC tests (tests/e2e-rbac.spec.ts) against the Compose stack of
-# docker/docker-compose.e2e.yml: Keycloak (realm pki-e2e), Cosmian KMS, and the
+# docker/docker-compose.e2e.yml: Keycloak (realm pki-e2e), OpenBao, and the
 # backend and frontend images built from this commit.
 
 on:
@@ -12,7 +12,8 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'docker/**'
-      - 'kms/kms.toml'
+      - 'openbao/**'
+      - 'scripts/openbao-*.sh'
       - 'tests/**'
       - 'playwright.config.ts'
       - 'package.json'
@@ -65,6 +66,11 @@ jobs:
           docker build -f docker/Dockerfile --target frontend \
             -t "ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG}" .
 
+      - name: Prepare the OpenBao backend credentials
+        run: |
+          bash scripts/openbao-test.sh up rbac
+          bash scripts/openbao-test.sh client rbac >> "$GITHUB_ENV"
+
       - name: Start the E2E stack
         run: docker compose -f docker/docker-compose.e2e.yml up -d --wait --wait-timeout 300
 
@@ -87,4 +93,6 @@ jobs:
 
       - name: Stop the E2E stack
         if: always()
-        run: docker compose -f docker/docker-compose.e2e.yml down -v
+        run: |
+          if [[ -n "${OPENBAO_TEST_NETWORK:-}" ]]; then docker compose -f docker/docker-compose.e2e.yml down -v; fi
+          bash scripts/openbao-test.sh down rbac

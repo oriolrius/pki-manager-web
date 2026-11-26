@@ -1,35 +1,26 @@
-# ANS-10 dockerized e2e stack: backend + KMS (not Ansible-managed) plus two
+# ANS-10 dockerized e2e stack: backend + OpenBao (not Ansible-managed) plus two
 # managed-host containers (Y=public-cron/ed25519, Z=ecies/ecdsa) and a client.
 # All on one network; backend is published to the host so the WSL controller and
 # the containers reach it at the SAME base URL (http://<host-ip>:<port>).
 name: ssh-host-cert-e2e
 
 services:
-  # Match the dev/deployment KMS pin and explicit persistent-config schema.
-  # Same-key SCEP RA renewal needs fresh certificate serials (KMS 5.28.0).
-  # Test data stays in tmpfs; production upgrades require backup and staging.
-  kms:
-    image: ghcr.io/cosmian/kms:5.28.0
-    environment:
-      - RUST_LOG=info
-      - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
-    volumes:
-      - ../../../kms/kms.toml:/etc/cosmian/kms.toml:ro
-    tmpfs:
-      - /tmp
-      - /cosmian-kms/sqlite-data
-
   backend:
     build:
       context: ../../..
       dockerfile: docker/Dockerfile
       target: backend
+    volumes:
+      - ${OPENBAO_TEST_CLIENT_DIR:?run the e2e harness}:/run/openbao:ro
+    networks: [default, keystore]
     environment:
       - NODE_ENV=production
       - PORT=3000
       - HOST=0.0.0.0
       - DATABASE_PATH=/tmp/pki-e2e.db
-      - KMS_URL=http://kms:9998
+      - OPENBAO_ADDR=https://openbao:8200
+      - OPENBAO_TOKEN_FILE=/run/openbao/backend-token
+      - OPENBAO_CACERT=/run/openbao/ca.pem
       # e2e feature flags: encrypted-KRL path + public per-host KRL serving.
       - SSH_ECIES_ENABLED=true
       - SSH_HOST_KRL_PUBLIC=true
@@ -38,9 +29,6 @@ services:
       - ALLOW_UNAUTHENTICATED_SSH_CA=true
     ports:
       - "${E2E_BACKEND_PORT:-43000}:3000"
-    depends_on:
-      kms:
-        condition: service_started
     tmpfs:
       - /tmp
 
@@ -73,3 +61,9 @@ services:
     command: ["sleep", "infinity"]
     volumes:
       - ./_artifacts:/artifacts
+
+
+networks:
+  keystore:
+    external: true
+    name: ${OPENBAO_TEST_NETWORK:?run the e2e harness}

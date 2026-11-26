@@ -2,7 +2,7 @@
 #
 # The dev stack is mprocs (backend + frontend, mprocs.yaml) in the tmux session
 # `dev-pki-manager`, the Backlog.md web UI in the tmux session `backlog-pki-manager`, and
-# KMS and Keycloak in docker. `just dev` and `just backlog` always RESTART, so you never
+# OpenBao (the key store, PKI Manager fork) and Keycloak in docker. `just dev` and `just backlog` always RESTART, so you never
 # talk to an old process. Only this repository's processes are stopped.
 set shell := ["bash", "-uc"]
 
@@ -43,13 +43,17 @@ urls:
 logs proc="" lines="80":
     @bash scripts/dev-session.sh logs {{proc}} {{lines}}
 
-# Stop the dev processes (KMS and Keycloak keep running, so the next start is fast)
+# Stop the dev processes (OpenBao and Keycloak keep running, so the next start is fast)
 stop:
     @bash scripts/dev-session.sh stop
 
-# Stop everything: dev processes, KMS and Keycloak (containers and data are kept)
+# Stop everything: dev processes, OpenBao and Keycloak (containers and data are kept)
 down:
     @bash scripts/dev-session.sh down
+
+# Start or unseal only the dev OpenBao and print the backend settings (OPENBAO_*)
+openbao:
+    @bash scripts/dev-session.sh openbao
 
 alias ps := status
 alias kill := stop
@@ -71,6 +75,14 @@ lint:
 # Build backend and frontend
 build:
     pnpm -r build
+
+# Image of the pinned OpenBao fork: ensure (pull or build once) | build | verify
+openbao-image cmd="ensure":
+    @bash scripts/openbao-image.sh {{cmd}}
+
+# Throw-away OpenBao for tests: just openbao-test up|env|check|down [name]
+openbao-test cmd="up" name="test":
+    @bash scripts/openbao-test.sh {{cmd}} {{name}}
 
 # Apply the database migrations to the dev database
 db-migrate:

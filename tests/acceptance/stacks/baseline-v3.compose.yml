@@ -1,0 +1,75 @@
+# Release acceptance: disposable PKI Manager 3.x stack with Cosmian KMS (the v3 baseline).
+# tests/acceptance/stacks/compose.sh starts it. Do not run it by hand.
+# Test data only: OIDC is off, the SSH CA accepts unauthenticated calls, no host bind mounts.
+# Named volumes hold all state, so the generic backup/restore check can copy them.
+services:
+  kms:
+    image: ghcr.io/cosmian/kms:${KMS_IMAGE_TAG:-5.28.0}
+    environment:
+      - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
+    volumes:
+      - ${ACCEPT_RUN_DIR:?}/kms.toml:/etc/cosmian/kms.toml:ro
+      - kms-data:/cosmian-kms/sqlite-data
+    tmpfs:
+      - /tmp
+    networks: [internal]
+
+  backend:
+    image: ${ACCEPT_BACKEND_IMAGE:-ghcr.io/oriolrius/pki-manager-web/backend:3.19.1}
+    depends_on:
+      kms:
+        condition: service_started
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/app/backend/data/pki.db
+      - KMS_URL=http://kms:9998
+      - CRL_DISTRIBUTION_URL=http://localhost:${ACCEPT_API_PORT:?}/crl
+      - FRONTEND_URL=http://localhost:${ACCEPT_UI_PORT:?}
+      - ALLOW_UNAUTHENTICATED_SSH_CA=true
+      - ALLOW_CA_KEY_EXPORT=false
+      - SSH_HOST_KRL_SERVE=true
+      - SSH_HOST_KRL_PUBLIC=true
+    volumes:
+      - pki-data:/app/backend/data
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:${ACCEPT_API_PORT:?}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+    networks: [internal, public]
+
+  frontend:
+    image: ${ACCEPT_FRONTEND_IMAGE:-ghcr.io/oriolrius/pki-manager-web/frontend:3.19.1}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ${ACCEPT_RUN_DIR:?}/config.json:/usr/share/nginx/html/config.json:ro
+    tmpfs:
+      - /var/cache/nginx:uid=1001,gid=1001
+      - /var/run:uid=1001,gid=1001
+      - /var/log/nginx:uid=1001,gid=1001
+    ports:
+      - "127.0.0.1:${ACCEPT_UI_PORT:?}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    networks: [public]
+
+networks:
+  internal:
+    internal: true
+  public: {}
+
+volumes:
+  kms-data:
+  pki-data:
