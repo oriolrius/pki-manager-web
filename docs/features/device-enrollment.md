@@ -29,8 +29,9 @@ The gateway holds no keys and cannot reach the KMS. It talks to the backend with
 bound to one CA.
 
 SCEP needs a registration authority (RA) key to sign and decrypt the messages of the devices. That
-key is made in the KMS, and the KMS does the signing and the decryption. The RA certificate is
-renewed automatically before it expires.
+key is made in the KMS, and the KMS does the signing and the decryption. As an opt-in, the backend
+can keep the RA key of new RA bindings in OpenBao instead (the PKI Manager fork of OpenBao); the CA
+key stays in the KMS. The RA certificate is renewed automatically before it expires.
 
 Each request is checked: the key of the device, the name in the request, and the permission to
 enroll. Then the backend signs the certificate with the key of the CA.

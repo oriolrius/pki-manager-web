@@ -162,8 +162,13 @@ export const integrations = sqliteTable(
 export const integrationRAs = sqliteTable('integration_ras', {
   integrationId: text('integration_id').primaryKey().references(() => integrations.id, { onDelete: 'restrict' }),
   caId: text('ca_id').notNull().references(() => certificateAuthorities.id, { onDelete: 'restrict' }),
+  // Where the RA private key lives. Fixed when the key is first recorded:
+  // 'cosmian' (KMIP ids in key_id/public_key_id) or 'openbao' (Transit key name
+  // in key_id, the fixed Transit key version in key_version, public_key_id NULL).
+  keyProvider: text('key_provider', { enum: ['cosmian', 'openbao'] }).notNull().default('cosmian'),
   keyId: text('key_id'),
   publicKeyId: text('public_key_id'),
+  keyVersion: integer('key_version'),
   certificateId: text('certificate_id'),
   certificatePem: text('certificate_pem'),
   previous: text('previous').notNull().default('[]'),

@@ -10,8 +10,9 @@ import { registerSshExternalRoutes } from './rest/routes/ssh-external.routes.js'
 import { externalRoutes } from './rest/routes/external.routes.js';
 import { publicCrlRoutes } from './rest/routes/public-crl.routes.js';
 import { db } from './db/client.js';
-import { certificateAuthorities } from './db/schema.js';
+import { certificateAuthorities, integrationRAs } from './db/schema.js';
 import { eq } from 'drizzle-orm';
+import { checkOpenBaoRAConfig } from './openbao/ra-transit.js';
 import { initializeOIDC } from './lib/oidc.js';
 import { installAuditActorContext } from './lib/audit-actor.js';
 import { parseTrustProxy } from './lib/trust-proxy.js';
@@ -174,6 +175,17 @@ const start = async () => {
   try {
     // Initialize OIDC configuration (validates env vars and fetches JWKS if enabled)
     await initializeOIDC();
+
+    // SCEP RA key provider (cosmian default, openbao opt-in): fail fast on bad settings.
+    // A database without migration 0016 (or without integration_ras) has no OpenBao binding.
+    let openBaoBindings = 0;
+    try {
+      openBaoBindings = (await db.select({ id: integrationRAs.integrationId }).from(integrationRAs).where(eq(integrationRAs.keyProvider, 'openbao'))).length;
+    } catch (error) {
+      if (!/no such (table|column)/.test(String(error))) throw error;
+    }
+    const raProvider = checkOpenBaoRAConfig(openBaoBindings);
+    if (raProvider === 'openbao' || openBaoBindings > 0) console.log(`SCEP RA keys: new bindings use ${raProvider}; ${openBaoBindings} binding(s) use OpenBao`);
 
     const port = parseInt(process.env.PORT || '3000', 10);
     const host = process.env.HOST || '0.0.0.0';

@@ -134,7 +134,7 @@ describe('backend-owned RA boundary', () => {
     }
     const rows = await db.select().from(auditLog).where(eq(auditLog.entityId, first.id));
     const decryptRows = rows.filter(r => r.operation === 'scep.ra.decrypt');
-    expect(decryptRows.filter(r => r.status === 'failure').map(r => JSON.parse(r.details!))).toContainEqual({ phase: 'failed', statusCode: 502, code: 'RA_OPERATION_FAILED' });
+    expect(decryptRows.filter(r => r.status === 'failure').map(r => JSON.parse(r.details!))).toContainEqual({ phase: 'failed', statusCode: 502, code: 'RA_OPERATION_FAILED', provider: 'cosmian' });
     expect(JSON.stringify(rows)).not.toContain(data);
     expect(JSON.stringify(rows)).not.toContain(Buffer.alloc(16, 3).toString('base64'));
   });

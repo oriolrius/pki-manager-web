@@ -168,6 +168,77 @@ clients must rediscover GetCACert before enrollment. Retire old RA certificates
 through the administrative UI once their recipients no longer need them. Keep
 orphan/failed-provisioning cleanup an explicit operator task.
 
+## RA key in OpenBao (opt-in)
+
+By default the backend keeps the RA key in Cosmian KMS. The backend can keep the
+RA key of **new** RA bindings in an OpenBao Transit mount instead. This needs the
+PKI Manager OpenBao fork (`oriolrius/openbao`, branch `pki-manager`, tested at
+`0e3024e`): stock OpenBao has no RSA PKCS#1 v1.5 key transport, which SCEP
+clients use for the CMS session key. The gateway does not change: it still calls
+`/api/v1/external/ra/*` and has no OpenBao settings.
+
+What changes and what does not:
+
+| Operation | Cosmian binding (default) | OpenBao binding |
+| --- | --- | --- |
+| RA key pair | Cosmian, Sensitive RSA-3072 | OpenBao Transit `rsa-3072`, `exportable=false`, `allow_plaintext_backup=false`, `allow_pkcs1v15_session_key=true` |
+| `ra/sign` | Cosmian `Sign` | Transit `sign/<key>/sha2-256`, pre-hashed, PKCS#1 v1.5, fixed `key_version`; the backend checks the signature with the RA certificate key |
+| `ra/decrypt` | Cosmian `Decrypt` | fork `session-key/pkcs1v15/<key>`, fixed `key_version`; `sessionKeyLength` is **required** |
+| RA certificate (provision and renewal) | Cosmian `Certify` of the Cosmian public key | Cosmian `Certify` in CSR mode, of a CSR that OpenBao signs |
+| Issuing CA key, device certificates, CRLs | Cosmian | **Cosmian** (no change) |
+
+The provider is fixed for a binding when the backend records its first key id.
+Existing bindings stay on Cosmian, whatever `SCEP_RA_KEY_PROVIDER` says later.
+The backend generates the Transit key name (`scep-ra-<uuid>`) and records it, with
+key version `1`, before it creates the key, so a retry after a lost response reads
+the same key. RA renewal uses the same key and version and never creates a key.
+Before every provisioning or renewal the backend reads the key and refuses it
+(`502`) when it is exportable, allows plaintext backup or deletion, is not
+`rsa-3072`, has no opt-in, or no longer has the bound version. The RA certificate
+row has no `kmsKeyId`, so certificate delete, renew and export code never sends
+the Transit key name to Cosmian.
+
+Backend settings:
+
+| Variable | Default / requirement |
+| --- | --- |
+| `SCEP_RA_KEY_PROVIDER` | `cosmian` (default) or `openbao`; applies to new RA bindings |
+| `OPENBAO_ADDR` | Required for OpenBao: `https://host:port` only; plain HTTP is refused |
+| `OPENBAO_CACERT` | PEM file of the CA that signs the OpenBao TLS certificate; when set, it is the only trust anchor |
+| `OPENBAO_TOKEN_FILE` | Required for OpenBao: absolute path. Read on every call, so an OpenBao Agent can rotate the token |
+| `OPENBAO_RA_MOUNT` | `pki-manager-ra` (Transit mount path) |
+| `OPENBAO_NAMESPACE` | Optional `X-Vault-Namespace` |
+| `OPENBAO_TIMEOUT_MS` | `10000`; allowed 1000–60000 |
+
+The backend checks these settings at startup when `SCEP_RA_KEY_PROVIDER=openbao`,
+when `OPENBAO_ADDR` is set, or when one binding already uses OpenBao, and does not
+start when they are invalid. Keep the OpenBao settings while any binding uses
+OpenBao, also after you set the provider back to `cosmian`.
+
+OpenBao setup: one Transit mount for RA keys, and a token with this policy only
+(no `default` policy). `+` matches one path segment, so `keys/<name>/config`,
+`rotate`, `trim`, `export/`, `backup/`, `decrypt/` and key deletion stay denied:
+
+```hcl
+path "pki-manager-ra/keys/+" { capabilities = ["create", "update", "read"] }
+path "pki-manager-ra/sign/+/sha2-256" { capabilities = ["update"] }
+path "pki-manager-ra/session-key/pkcs1v15/+" { capabilities = ["update"] }
+```
+
+A token without the `default` policy cannot renew itself: use an OpenBao Agent
+(auto-auth with a token sink file) or renew the periodic token from outside.
+
+Failures: an OpenBao error or a response that fails a check gives `502`
+(`RA key operation failed`, or `RA decryption failed` for decrypt); missing
+OpenBao settings give `503`. The OpenBao error text goes to the backend log only.
+The fork never reports a padding failure: for a bad ciphertext it returns a
+deterministic fallback key, and the CMS decryption in the gateway fails as for
+any wrong key. The `scep.ra.*` audit rows record the `provider` of the binding.
+
+Rollout: an OpenBao binding needs a gateway that sends `sessionKeyLength`
+(the same release). Back up the backend database, Cosmian KMS and OpenBao
+storage together. There is no move of an existing RA key between providers.
+
 ## Configuration
 
 | Variable | Default / requirement |
@@ -205,6 +276,7 @@ variable is set:
 | `TestLiveBackendRABoundary` | `SCEP_TEST_BACKEND_URL`, `SCEP_TEST_TOKEN_FILE` | backend-mediated RA signatures/decryption; caller key IDs rejected |
 | `TestLiveManagedProfileWithKMS` | `SCEP_TEST_BACKEND_URL`, `SCEP_TEST_TOKEN_FILE` | managed SANs, key-rotating renewal and revocation (MDM approval is a test double) |
 | `TestLiveEnrollment` | `SCEP_TEST_SERVER_URL`, `SCEP_TEST_CHALLENGE_FILE` | black-box enrollment through a running gateway |
+| `TestLiveEnrollmentAndRenewal` | `SCEP_TEST_SERVER_URL`, `SCEP_TEST_CHALLENGE_FILE` | black-box `PKCSReq` and key-rotating `RenewalReq` through a running gateway, for AES-128/256 CBC/GCM envelopes (16- and 32-byte session keys) |
 
 `SCEP_TEST_TOKEN_FILE` holds the `scep` integration token. The RA is read from the
 backend, so no RA state file is needed. Against an isolated backend/KMS:
@@ -214,7 +286,10 @@ SCEP_TEST_BACKEND_URL=http://127.0.0.1:52081 \
 SCEP_TEST_TOKEN_FILE=/secure/test-token go test -run 'TestLive(BackendRABoundary|ManagedProfileWithKMS)' -v
 ```
 
-Live tests create real certificates; use an isolated CA.
+Live tests create real certificates; use an isolated CA. The same live tests
+pass with an OpenBao-bound RA (see above): the backend chooses the provider, the
+tests do not change. The client library cannot send 3DES envelopes, so the
+24-byte session key has unit tests only.
 Live Intune/device acceptance remains a deployment-specific check.
 
 ## Other MDM providers

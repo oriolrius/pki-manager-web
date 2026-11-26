@@ -117,8 +117,11 @@ only a base64 RSA-3072 `data` ciphertext and an optional `sessionKeyLength`, and
 returns the CMS content-encryption key. The
 backend fixes algorithms and resolves its RA key from the integration and bound
 CA. Caller-selected key identifiers are rejected. State contains public
-certificates only. Private keys are Sensitive and stay in KMS; gateways need no
-KMS connectivity or credentials.
+certificates only. Private keys are Sensitive and stay in the key store: Cosmian
+KMS by default, or an OpenBao Transit mount for bindings made with
+`SCEP_RA_KEY_PROVIDER=openbao` ([RA key in OpenBao](../../scep/README.md#ra-key-in-openbao-opt-in)).
+Gateways need no KMS or OpenBao connectivity or credentials. The audit rows of
+these calls record the `provider` of the binding (`cosmian` or `openbao`).
 
 #### RA decrypt: CMS session key length
 
@@ -144,7 +147,8 @@ for it. Its startup self-test sends `32`.
 
 - With `sessionKeyLength`, the unwrapped key must have exactly that length.
 - Without it (gateways older than this change), the backend accepts a key of 16,
-  24 or 32 bytes, as before.
+  24 or 32 bytes, as before. An OpenBao-bound RA requires it: without it the
+  backend answers `400` and sends no OpenBao request.
 - The field takes only a JSON integer. A string such as `"16"`, another number,
   `null` or an unknown field gives `400 BAD_REQUEST` before the audit row and
   before KMS work.
@@ -153,8 +157,10 @@ for it. Its startup self-test sends `32`.
   The audit row records only the phase, the status code and the error code, never
   the ciphertext, the key or its length.
 
-The KMS request does not change: the backend asks Cosmian KMS for an RSA PKCS#1
-v1.5 decryption and checks the length of the result.
+For a Cosmian binding the KMS request does not change: the backend asks Cosmian
+KMS for an RSA PKCS#1 v1.5 decryption and checks the length of the result. For an
+OpenBao binding the backend sends the length to the fork operation, which returns
+a key of exactly that length, and checks the length again.
 
 **Upgrade order: backend first.** A backend older than this change rejects the
 unknown `sessionKeyLength` field with `400`, so a new gateway against an old

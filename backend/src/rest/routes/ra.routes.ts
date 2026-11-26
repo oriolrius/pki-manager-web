@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { auditLog } from '../../db/schema.js';
-import { RAError, RAService, SESSION_KEY_LENGTHS, isSessionKeyLength } from '../../services/ra.service.js';
+import { RAError, RAService, SESSION_KEY_LENGTHS, isSessionKeyLength, type RAOperationContext } from '../../services/ra.service.js';
 
 const base64 = { type: 'string', minLength: 1, maxLength: 512, pattern: '^[A-Za-z0-9+/]+={0,2}$' } as const;
 const bodies = {
@@ -55,18 +55,20 @@ export async function raRoutes(app: FastifyInstance) {
           status: 'failure', ipAddress: req.ip, details: JSON.stringify({ phase: 'started' }),
         });
         req.externalAudited = true;
+        // The service records the key provider of the binding (cosmian/openbao) for the audit row.
+        const context: RAOperationContext = {};
         try {
           let result;
-          if (op === 'state') result = await service.state(identity);
-          else if (op === 'provision') result = await service.provision(identity);
-          else if (op === 'renew') result = await service.renew(identity);
-          else if (op === 'sign') result = { data: (await service.sign(identity, Buffer.from(req.body.digest!, 'base64'))).toString('base64') };
-          else result = { data: (await service.decrypt(identity, Buffer.from(req.body.data!, 'base64'), req.body.sessionKeyLength)).toString('base64') };
-          await db.update(auditLog).set({ status: 'success', details: JSON.stringify({ phase: 'completed' }) }).where(eq(auditLog.id, id));
+          if (op === 'state') result = await service.state(identity, context);
+          else if (op === 'provision') result = await service.provision(identity, context);
+          else if (op === 'renew') result = await service.renew(identity, context);
+          else if (op === 'sign') result = { data: (await service.sign(identity, Buffer.from(req.body.digest!, 'base64'), context)).toString('base64') };
+          else result = { data: (await service.decrypt(identity, Buffer.from(req.body.data!, 'base64'), req.body.sessionKeyLength, context)).toString('base64') };
+          await db.update(auditLog).set({ status: 'success', details: JSON.stringify({ phase: 'completed', ...(context.provider ? { provider: context.provider } : {}) }) }).where(eq(auditLog.id, id));
           return result;
         } catch (error) {
           const code = error instanceof RAError ? error.statusCode : 502;
-          await db.update(auditLog).set({ details: JSON.stringify({ phase: 'failed', statusCode: code, code: 'RA_OPERATION_FAILED' }) }).where(eq(auditLog.id, id));
+          await db.update(auditLog).set({ details: JSON.stringify({ phase: 'failed', statusCode: code, code: 'RA_OPERATION_FAILED', ...(context.provider ? { provider: context.provider } : {}) }) }).where(eq(auditLog.id, id));
           return reply.code(code).send({ error: { code: 'RA_OPERATION_FAILED', message: error instanceof RAError ? error.message : 'RA KMS operation failed' } });
         }
       },
