@@ -1,3 +1,26 @@
+## v3.19.1 (2026-11-26)
+
+**Delete a renewed certificate's original, chain in the PEM downloads, partial renew subject**
+
+Three certificate fixes found while testing the CLI and the Ansible collection against 3.19.0.
+
+### Upgrade notes
+
+- `GET /certificates/{id}/download?format=chain-pem` now returns certificate + issuing CA (it
+  returned only the certificate), and `full-pem` returns certificate + private key + issuing CA (it
+  had no chain). A script that used `full-pem` as a "fullchain" file must use `chain-pem`:
+  `full-pem` has the private key.
+- A certificate that was renewed can now be deleted after it is revoked. Its renewals stay; their
+  link to the deleted original is cleared.
+- A renewal with `updateInfo` and only some subject fields keeps the other fields (before, a new
+  CN alone gave `CN=<new>` with no O or C).
+
+### Fix
+
+- **certificates**: keep the subject fields a renewal does not change
+- **rest**: put the issuing CA in chain-pem and full-pem downloads (#118)
+- **certificates**: delete the original of a renewed certificate (#117)
+
 ## v3.19.0 (2026-11-26)
 
 **PKCS#12 with AES-256 by default, REST responses keep every field**

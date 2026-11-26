@@ -2,9 +2,11 @@
 id: decision-018
 title: 018 - Replace Cosmian KMS with a KeyStore abstraction backed by OpenBao Transit
 date: '2026-11-24T17:09:00Z'
-status: Proposed
+status: Accepted
 ---
 ## Context
+
+The following assessment predates acceptance. The implementation plan below governs delivery.
 
 PKI Manager keeps every private key (and, today, every certificate) in a **Cosmian KMS**
 (now "Eviden KMS"), spoken to as KMIP 2.1 JSON over HTTP (`backend/src/kms/`). We like its
@@ -199,96 +201,37 @@ code or a spike · **D** = vendor docs/README, not tested by us · **?** = not v
 | A. Build X.509 certs | `Certify` | ❌ | Build TBS locally (node-forge), sign via `KeyStore.sign` |
 | B. Store certs | KMS objects | ❌ | `certificate_pem` in SQLite (new column on CAs, backfill certs) |
 | C. Generate RSA/ECDSA keys | ✅ | ✅ | — |
-| D. Export leaf / CA keys | ✅ | ✅ only if `exportable=true` | Leaf keys exportable; **decide** whether CA keystore export stays |
+| D. Export leaf / CA keys | ✅ | ✅ only if `exportable=true` | Preserve authorized leaf and CA exports. |
 | E. Sign CRL | export + local sign | ✅ `sign` prehashed | CA key no longer leaves the store (improvement) |
 | F. Non-exportable SSH CA, DER ECDSA | ✅ | ✅ | `crypto/ssh/sign.ts` DER→r‖s unchanged |
 | G. SCEP RA sign | ✅ | ✅ pkcs1v15 prehashed | — |
-| G. SCEP RA decrypt PKCS#1 v1.5 | ✅ | ❌ | RA key `exportable=true`, decrypt in backend memory (or PKCS#11 adapter) |
+| G. SCEP RA decrypt PKCS#1 v1.5 | ✅ | ❌ | Add the session-key operation to the fork. Keep the RA key non-exportable. |
 | H. Links / revoke / destroy | ✅ | ⚠️ | Links in DB; destroy = delete |
 | Auth to the key store | none in prod | ✅ AppRole | New secret: AppRole role/secret id |
 | Licence fits k5 prod | ❌ probably not | ✅ | — |
 
 ## Decision
 
-**Proposed** (not yet accepted):
+Accepted on 2026-11-26. Replace Cosmian with the PKI Manager fork of OpenBao.
+Use existing Transit operations for key management and signing. Add the missing
+SCEP session-key operation in the fork. Keep the RA private key inside OpenBao.
+PKI Manager owns certificate construction, CRLs, certificate storage and links.
 
-1. **Phase 0 — remove Cosmian from the domain** (worth doing even if we keep Cosmian):
-   - Add `backend/src/keystore/` with a provider-neutral interface:
-     ```ts
-     export type KeyAlg = 'RSA-2048'|'RSA-3072'|'RSA-4096'|'ECDSA-P256'|'ECDSA-P384';
-     export interface KeyStore {
-       createKey(o: { alg: KeyAlg; exportable: boolean; label: string }): Promise<{ keyRef: string }>;
-       getPublicKeySpki(keyRef: string): Promise<Buffer>;                 // DER SPKI
-       sign(keyRef: string, tbs: Buffer, o: { hash: 'sha256'|'sha384' }): Promise<Buffer>; // RSA PKCS1v15 | ECDSA DER
-       decryptRsaPkcs1v15?(keyRef: string, ct: Buffer): Promise<Buffer>;  // SCEP RA only
-       exportPrivateKeyPkcs8(keyRef: string): Promise<string>;            // throws if not exportable
-       destroy(keyRef: string): Promise<void>;
-     }
-     ```
-   - **Build certificates locally.** `forge.pki.certificateToAsn1` uses `cert.tbsCertificate` and
-     `cert.signature` (`node-forge/lib/x509.js:2536`), so signing can be async and remote:
-     ```ts
-     const tbs = forge.pki.getTBSCertificate(cert);
-     const tbsDer = Buffer.from(forge.asn1.toDer(tbs).getBytes(), 'binary');
-     cert.tbsCertificate = tbs;
-     cert.signatureOid = forge.pki.oids[sigAlg]; // sha256WithRSAEncryption | ecdsa-with-SHA256
-     cert.signature = (await keyStore.sign(caKeyRef, tbsDer, { hash: 'sha256' })).toString('binary');
-     const pem = forge.pki.certificateToPem(cert);
-     ```
-     `buildCertificateExtensions()` returns forge extensions instead of OpenSSL text; CSR mode
-     copies SAN/KU/EKU from the CSR (Cosmian does this today); serials from
-     `generateSerialNumber` (`crypto/keys.ts:149`) — also removes the 5.24 serial-reuse bug.
-   - **CRL**: replace `nodeCrypto.sign(sigInfo.hash, tbsDer, keyObject)` (`crypto/crl.ts:223`)
-     with `await keyStore.sign(...)`.
-   - **Schema**: add `certificate_authorities.certificate_pem`; backfill
-     `certificates.certificate_pem`; make `kms_certificate_id` nullable (legacy); rename
-     `kms_key_id` → `key_ref` (keep a compat column during migration). Replace every
-     `getCertificate()` with a DB read.
-   - Move duplicated issuance/renewal logic from `trpc/procedures/certificate.ts` and
-     `rest/routes/bulk.routes.ts` into `certificate.service` (AGENTS.md convention), else every
-     change is made three times.
-   - Delete dead ECIES KMS code.
-2. **Phase 1 — adapters**, chosen by `KEYSTORE=cosmian|openbao`:
-   - `CosmianKeyStore` wraps the current `KMSClient` (used during migration only).
-   - `OpenBaoKeyStore`: HTTP to `/v1/transit/...`, AppRole login, `keyRef` = Transit key name.
-     New CA keys use `exportable=false`; leaf keys and the SCEP RA key use `exportable=true`.
-   - Optional later: `Pkcs11KeyStore` (YubiHSM 2 / Nitrokey) for hardware-backed keys.
-3. **Phase 2 — production migration** (k5, 49 KMS objects):
-   - X.509 CA and leaf keys are exportable → KMIP `Get` PKCS#8 → OpenBao `import` (RSA-OAEP
-     wrapped with the Transit wrapping key). Imported CA keys are then marked non-exportable.
-   - SSH CA keys are `Sensitive=true` → **cannot be exported** → rotate them with the existing
-     `ssh-ca.service` rotation (successor + overlap) and redistribute trust to hosts. (Wrapped
-     export of sensitive keys from Cosmian is not verified.)
-   - Copy all certificate PEMs from the KMS into SQLite.
-   - Keep the Cosmian container stopped as rollback until the new store is proven.
-4. **First step**: a spike (`backend/src/keystore/spike-openbao.ts`) against OpenBao 2.7.3:
-   RSA + ECDSA import, `prehashed` PKCS#1 v1.5 and ECDSA DER signatures, `openssl verify` of a
-   locally built cert and CRL, AppRole auth.
+The fork retains MPL-2.0 for covered source. Separate original downstream files use
+Apache-2.0. Preserve existing PKI Manager features, including authorized CA and
+leaf exports. A later change to export policy requires a separate decision.
 
 ## Consequences
 
-- **Licence risk removed**; no vendor lock-in on certificate building (A) and storage (B).
-- **Security improves**: the store gets authentication (AppRole), an audit device, encrypted
-  storage and sealing; CRL signing no longer exports the CA key; X.509 CA keys can become
-  non-exportable for the first time.
-- **Feature loss**: if CA keys become non-exportable, CA PKCS#12/JKS keystore export stops
-  working (needs a product decision). SCEP RA decrypt runs in backend memory (RA key only,
-  ≤ 90-day cert, not a CA key). No FIPS 140-3 claim.
-- **HSM caveat**: OpenBao External Keys (PKCS#11) do not offer RSA PKCS#1 v1.5; HSM-backed RSA
-  CAs would need RSA-PSS or a direct `Pkcs11KeyStore`. ECDSA is fine.
-- **Cost**: Phase 0 is the large part (rewrite of A and B, schema migration, de-duplication).
-  Rough estimate 2–3 weeks total. SSH CA rotation needs host trust redistribution.
-- E2E/test stacks change: `docker/docker-compose.e2e.yml` (`cosmian/kms:5.12.0`) and
-  `k8s/issuer/test/e2e/in-cluster/10-kms.yaml` (`cosmian/kms:latest`) move to OpenBao dev mode.
-- decision-002 (Cosmian integration) and decision-010 (CRL signing) become superseded once
-  this is accepted; decision-011 keeps its `signRaw` seam, now behind `KeyStore.sign`.
+The fork needs its own release and update process. PKI Manager needs a gateway
+change, an adapter, a certificate backfill and a verified migration for each key
+class. Keep Cosmian in service until the fork passes the live application suites
+and a restore rehearsal. Acceptance of this decision records the direction.
+It does not record a production cutover.
 
-## Open questions
-
-- Is `pki.joor.net` "offered to third parties" under the BUSL grant? (Affects urgency.)
-- Keep CA keystore (PKCS#12/JKS) export as a feature, or drop it for non-exportable CA keys?
-- SCEP RA decrypt: in-memory (exportable RA key) or a PKCS#11 token?
-- OpenBao deployment on k5: single node Raft + static/Shamir seal, or auto-unseal?
+See the [implementation plan](../docs/doc-012%20-%20OpenBao-fork-and-PKI-Manager-migration-plan.md) for the source references, tests,
+cutover criteria and rollback limits. The comparison above records the options
+assessed before acceptance, including alternatives for SCEP that the fork replaces.
 
 ## Sources
 
