@@ -96,6 +96,15 @@ The frontend image is built with it; without it the default is `http://localhost
 These rules keep a change of someone else's code from entering a build without a review. To report a
 vulnerability, read the [security policy](../../SECURITY.md).
 
+Two OpenSSF checks show the state of these rules in the README:
+
+- [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/oriolrius/pki-manager-web):
+  automatic, from `scorecard.yml`.
+- [OpenSSF Best Practices](https://www.bestpractices.dev/projects/17126), level *passing*: a
+  self-assessment by the maintainer, with a justification for each criterion. When a change makes
+  an answer false (for example a new tool, or a check that stops running), update the answer on
+  that page in the same week.
+
 ### Token permissions
 
 Each workflow starts with `permissions: contents: read` (`scorecard.yml` with `permissions: {}`).

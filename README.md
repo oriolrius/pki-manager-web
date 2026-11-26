@@ -6,6 +6,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/website-pki--manager.oriolrius.cat-FF6600.svg)](https://pki-manager.oriolrius.cat/)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/oriolrius/pki-manager-web/badge)](https://scorecard.dev/viewer/?uri=github.com/oriolrius/pki-manager-web)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/17126/badge)](https://www.bestpractices.dev/projects/17126)
 
 **Website: <https://pki-manager.oriolrius.cat/>**. It says what PKI Manager does, how it
 works and how to use it. This file does not repeat it.
