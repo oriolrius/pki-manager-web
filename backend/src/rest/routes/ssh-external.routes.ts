@@ -105,6 +105,7 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       return null;
     }
     if (!rateLimitOk(`ssh-ext:${verified.id}`, tokenRequestsPerMinute, 60_000)) {
+      reply.header('Retry-After', '60');
       err(reply, 429, 'RATE_LIMITED', 'too many requests for this token');
       return null;
     }
@@ -409,7 +410,10 @@ export function registerSshExternalRoutes(server: FastifyInstance): void {
       },
     },
   }, async (req, reply) => {
-    if (!rateLimitOk(`ecies-krl:${req.ip}`, 120, 60_000)) return err(reply, 429, 'RATE_LIMITED', 'too many requests');
+    if (!rateLimitOk(`ecies-krl:${req.ip}`, 120, 60_000)) {
+      reply.header('Retry-After', '60');
+      return err(reply, 429, 'RATE_LIMITED', 'too many requests');
+    }
     if (!eciesEnabled()) return err(reply, 501, 'NOT_IMPLEMENTED', 'the ECIES KRL path is disabled (set SSH_ECIES_ENABLED=true)');
     const hostId = req.body?.host_id;
     if (!hostId || !isValidHostId(hostId)) return err(reply, 400, 'VALIDATION_ERROR', 'host_id required in body');

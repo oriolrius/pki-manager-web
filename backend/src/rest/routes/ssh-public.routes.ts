@@ -39,7 +39,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
   // ETag/If-None-Match/304 + lazy-regen + last-good fallback are new here.
   server.get('/krl/:caId.bin', { schema: { hide: true } }, async (req, reply) => {
     if (!rateLimitOk(`krl:${req.ip}`, 120, 60_000)) {
-      reply.code(429);
+      reply.header('Retry-After', '60').code(429);
       return 'rate limited\n';
     }
     const { caId } = req.params as { caId: string };
@@ -117,7 +117,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
       return 'per-host KRL public serving is disabled (SSH_HOST_KRL_PUBLIC)\n';
     }
     if (!rateLimitOk(`krlh:${req.ip}`, 120, 60_000)) {
-      reply.code(429);
+      reply.header('Retry-After', '60').code(429);
       return 'rate limited\n';
     }
     const { hostId } = req.params as { hostId: string };
@@ -151,7 +151,7 @@ export function registerSshPublicRoutes(server: FastifyInstance): void {
       return { error: { code: 'DISABLED', message: 'per-host KRL public serving is disabled (SSH_HOST_KRL_PUBLIC)' } };
     }
     if (!rateLimitOk(`krlh:${req.ip}`, 120, 60_000)) {
-      reply.code(429);
+      reply.header('Retry-After', '60').code(429);
       return { error: { code: 'RATE_LIMITED', message: 'rate limited' } };
     }
     const { hostId } = req.params as { hostId: string };
