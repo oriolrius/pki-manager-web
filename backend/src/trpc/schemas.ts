@@ -193,6 +193,7 @@ export const downloadCertificateSchema = z.object({
     'docker-volume', // TAR file for Docker volume import
     'all',      // All formats in one ZIP file
   ]).default('pem'),
+  legacy: z.boolean().optional(),
   password: z.string().min(8).optional(), // Optional, used when encryptPrivateKey is true
   encryptPrivateKey: z.boolean().default(true), // Whether to encrypt private key with password
   alias: z.string().optional(), // Alias for JKS keystore (defaults to certificate CN)
@@ -257,6 +258,7 @@ export const bulkDownloadCertificatesSchema = z.object({
     'docker-volume', // TAR file for Docker volume import
     'all',       // All formats in one zip
   ]).default('pem'),
+  legacy: z.boolean().optional(),
   password: z.string().min(8).optional(), // Optional, used when encryptPrivateKey is true
   encryptPrivateKey: z.boolean().default(true), // Whether to encrypt private key with password
 }).refine((data) => {

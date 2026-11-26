@@ -17,6 +17,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify from 'fastify';
+import { spawnSync } from 'node:child_process';
+import { createPrivateKey, X509Certificate } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import forge from 'node-forge';
@@ -349,7 +351,7 @@ describe('Certificate Download - KMS Integration', () => {
   });
 
   describe('PKCS#12 Bundle Downloads', () => {
-    it('should download PKCS#12 bundle (p12) with matching certificate and key', async (ctx) => {
+    it.for([false, true])('exports a matching certificate and key (legacy=%s)', async (legacy, ctx) => {
       if (!kmsAvailable) {
         ctx.skip();
         return;
@@ -357,7 +359,8 @@ describe('Certificate Download - KMS Integration', () => {
 
       const response = await server.inject({
         method: 'GET',
-        url: `/api/v1/certificates/${testCertId}/download?format=p12&password=testpassword123`,
+        url: `/api/v1/certificates/${testCertId}/download?format=p12${legacy ? '&legacy=true' : ''}`,
+        headers: { 'x-export-password': 'testpassword123' },
       });
 
       expect(response.statusCode).toBe(200);
@@ -366,33 +369,27 @@ describe('Certificate Download - KMS Integration', () => {
       expect(body.mimeType).toBe('application/x-pkcs12');
       expect(body.filename).toContain('.p12');
 
-      // Decode and verify it's a valid PKCS#12 structure
-      const p12Der = forge.util.decode64(body.data);
-      const p12Asn1 = forge.asn1.fromDer(p12Der);
-      const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, 'testpassword123');
+      const input = Buffer.from(body.data, 'base64');
+      const args = ['pkcs12', '-passin', 'pass:testpassword123'];
+      const info = spawnSync('openssl', [...args, '-info', '-noout'], { input, encoding: 'utf8' });
+      expect(info.status, info.stderr).toBe(0);
+      const pbe = legacy ? 'pbeWithSHA1And3-KeyTripleDES-CBC' : 'PBES2, PBKDF2, AES-256-CBC';
+      expect(info.stderr).toContain(`MAC: ${legacy ? 'sha1' : 'sha256'},`);
+      expect(info.stderr).toContain(`PKCS7 Encrypted data: ${pbe}`);
+      expect(info.stderr).toContain(`Shrouded Keybag: ${pbe}`);
+      if (legacy) {
+        const asn1 = forge.asn1.fromDer(input.toString('binary'));
+        expect(forge.pkcs12.pkcs12FromAsn1(asn1, 'testpassword123').safeContents.length).toBeGreaterThan(0);
+      } else {
+        expect(info.stderr.match(/PRF hmacWithSHA256/g)).toHaveLength(2);
+      }
 
-      // Verify it contains certificate and key
-      const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-      const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
-
-      expect(certBags[forge.pki.oids.certBag]).toBeDefined();
-      expect(certBags[forge.pki.oids.certBag]!.length).toBeGreaterThan(0);
-      expect(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]).toBeDefined();
-      expect(keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]!.length).toBeGreaterThan(0);
-
-      // CRITICAL: Verify that certificate and private key modulus match
-      // This validates the fix for GitHub issue #1: key mismatch in P12/JKS downloads
-      const cert = certBags[forge.pki.oids.certBag]![0].cert!;
-      const privateKey = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]![0].key as forge.pki.rsa.PrivateKey;
-
-      // Get modulus from certificate's public key and from private key
-      const certModulus = (cert.publicKey as forge.pki.rsa.PublicKey).n.toString(16);
-      const keyModulus = privateKey.n.toString(16);
-
-      // The modulus must match - this is the core validation that the key pair is correct
-      expect(certModulus).toBe(keyModulus);
-
-      console.log('✅ p12 format download works with matching certificate and key modulus');
+      // Regression for #1: check the actual exported leaf against the exported private key.
+      const leaf = spawnSync('openssl', [...args, '-clcerts', '-nokeys'], { input });
+      const key = spawnSync('openssl', [...args, '-nocerts', '-nodes'], { input });
+      expect(leaf.status).toBe(0);
+      expect(key.status).toBe(0);
+      expect(new X509Certificate(leaf.stdout).checkPrivateKey(createPrivateKey(key.stdout))).toBe(true);
     });
 
     it('should download PKCS#12 bundle (pfx alias)', async (ctx) => {

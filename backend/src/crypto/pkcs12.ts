@@ -2,10 +2,8 @@
  * PKCS#12 (.p12/.pfx) bundle creation.
  *
  * Uses the `openssl` CLI rather than node-forge so that BOTH RSA and ECDSA certificates can be
- * exported (node-forge's pkcs12 cannot encode EC keys). Legacy PBE algorithms (PBE-SHA1-3DES +
- * SHA-1 MAC, via the OpenSSL 3 `-legacy` provider) are used so the output stays readable by
- * node-forge, `keytool` (for JKS conversion), and older clients — matching the previous
- * node-forge output's algorithms.
+ * exported (node-forge cannot encode EC keys). OpenSSL 3 uses PBES2 with AES-256-CBC,
+ * PBKDF2-HMAC-SHA256 and a SHA-256 MAC by default.
  */
 
 import { execFile } from 'node:child_process';
@@ -24,8 +22,10 @@ const withPassword = (password: string) => ({ env: { ...process.env, [PASS_ENV]:
 export interface Pkcs12Input {
   /** Leaf certificate (PEM). */
   certPem: string;
-  /** Leaf private key (PEM, PKCS#8 or PKCS#1). */
-  privateKeyPem: string;
+  /** Leaf private key (PKCS#8 or PKCS#1 PEM), or null for a CA truststore. */
+  privateKeyPem: string | null;
+  /** Enable SHA-1 and 3DES for older clients. */
+  legacy?: boolean;
   /** Optional CA chain certificates (PEM) to include. */
   chainPems?: string[];
   /** Bundle password (may be empty). */
@@ -44,30 +44,28 @@ export async function createPkcs12Bundle(input: Pkcs12Input): Promise<Buffer> {
     const keyPath = join(dir, 'key.pem');
     const certPath = join(dir, 'cert.pem');
     const outPath = join(dir, 'out.p12');
-    await writeFile(keyPath, input.privateKeyPem);
     await writeFile(certPath, input.certPem);
 
     const args = [
       'pkcs12',
       '-export',
-      '-inkey',
-      keyPath,
       '-in',
       certPath,
       '-out',
       outPath,
       '-passout',
       `env:${PASS_ENV}`,
-      // Legacy PBE keeps the bundle readable by node-forge / keytool / older clients.
-      '-keypbe',
-      'PBE-SHA1-3DES',
-      '-certpbe',
-      'PBE-SHA1-3DES',
-      '-macalg',
-      'sha1',
-      '-legacy',
     ];
-    if (input.friendlyName) {
+    if (input.privateKeyPem !== null) {
+      await writeFile(keyPath, input.privateKeyPem);
+      args.push('-inkey', keyPath);
+    } else {
+      args.push('-nokeys');
+    }
+    if (input.legacy) {
+      args.push('-legacy', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1');
+    }
+    if (input.privateKeyPem !== null && input.friendlyName) {
       args.push('-name', input.friendlyName);
     }
     if (input.chainPems && input.chainPems.length > 0) {
@@ -77,6 +75,14 @@ export async function createPkcs12Bundle(input: Pkcs12Input): Promise<Buffer> {
     }
 
     await execFileAsync('openssl', args, withPassword(input.password));
+    if (input.privateKeyPem === null) {
+      // Java needs a trustedCertEntry. Import into the existing PKCS#12 so keytool
+      // preserves its encryption profile and accepts existing short REST passwords.
+      await execFileAsync('keytool', [
+        '-importcert', '-noprompt', '-alias', input.friendlyName || 'ca', '-file', certPath,
+        '-keystore', outPath, '-storetype', 'PKCS12', '-storepass:env', PASS_ENV,
+      ], withPassword(input.password));
+    }
     return await readFile(outPath);
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});

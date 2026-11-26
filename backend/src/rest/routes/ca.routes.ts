@@ -1,6 +1,6 @@
 import { resolveExportPassword, exportPasswordHeaderSchema, deprecatedPasswordQueryDescription } from '../export-password.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import forge from 'node-forge';
+import { createPkcs12Bundle } from '../../crypto/pkcs12.js';
 import { db } from '../../db/client.js';
 import { getKMSService } from '../../kms/service.js';
 import {
@@ -85,6 +85,7 @@ interface GenerateCRLBody {
 
 interface DownloadCAQuery {
   format: string;
+  legacy?: boolean;
   password?: string;
 }
 
@@ -861,6 +862,11 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
             ],
             description: 'Download format',
           },
+          legacy: {
+            type: 'boolean',
+            default: false,
+            description: 'Use SHA-1 and 3DES for PKCS#12 downloads to older clients.',
+          },
           password: {
             type: 'string',
             deprecated: true,
@@ -956,24 +962,16 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
 
         case 'p12-truststore': {
           // PKCS#12 truststore: CA certificate only (no private key)
-          const forgeCert = forge.pki.certificateFromPem(certificatePem);
-          const truststorePassword = password || 'changeit';
-
-          // Create PKCS#12 with only certificate (null for private key)
-          const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
-            null, // No private key
-            [forgeCert],
-            truststorePassword,
-            {
-              algorithm: '3des',
-              friendlyName: commonName,
-            }
-          );
-
-          const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+          const bundle = await createPkcs12Bundle({
+            certPem: certificatePem,
+            privateKeyPem: null,
+            password: password || 'changeit',
+            legacy: request.query.legacy,
+            friendlyName: commonName,
+          });
           mimeType = 'application/x-pkcs12';
           filename = `${commonName}-${serialShort}-truststore.p12`;
-          data = forge.util.encode64(p12Der);
+          data = bundle.toString('base64');
           break;
         }
 
@@ -985,24 +983,16 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           }
 
           const privateKeyPem = await kmsService.getPrivateKey(ca.kmsKeyId, ca.id);
-          const forgeCert = forge.pki.certificateFromPem(certificatePem);
-          const forgePrivateKey = forge.pki.privateKeyFromPem(privateKeyPem);
-
-          // Create PKCS#12 with certificate and private key
-          const p12Asn1 = forge.pkcs12.toPkcs12Asn1(
-            forgePrivateKey,
-            [forgeCert],
-            password!,
-            {
-              algorithm: '3des',
-              friendlyName: commonName,
-            }
-          );
-
-          const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+          const bundle = await createPkcs12Bundle({
+            certPem: certificatePem,
+            privateKeyPem,
+            password: password!,
+            legacy: request.query.legacy,
+            friendlyName: commonName,
+          });
           mimeType = 'application/x-pkcs12';
           filename = `${commonName}-${serialShort}-keystore.p12`;
-          data = forge.util.encode64(p12Der);
+          data = bundle.toString('base64');
           break;
         }
 

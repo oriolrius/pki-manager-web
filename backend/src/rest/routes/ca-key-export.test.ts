@@ -7,6 +7,7 @@
  *
  * Uses a real KMS (skipped when it is not available).
  */
+import { spawnSync } from 'node:child_process';
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -119,6 +120,20 @@ describe('CA private key export control', () => {
       const res = await download(format);
       expect(res.statusCode, format).toBe(200);
     }
+  });
+
+  it.for([false, true])('exports only the CA certificate in a PKCS#12 truststore (legacy=%s)', async (legacy, ctx) => {
+    if (!kmsAvailable) return ctx.skip();
+    const res = await download(legacy ? 'p12-truststore&legacy=true' : 'p12-truststore');
+    expect(res.statusCode).toBe(200);
+    const result = spawnSync('openssl', ['pkcs12', '-info', '-noout', '-passin', 'pass:Export-Pass-123'], {
+      input: Buffer.from(res.json().data, 'base64'), encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain(`MAC: ${legacy ? 'sha1' : 'sha256'},`);
+    expect(result.stderr).toContain(legacy ? 'pbeWithSHA1And3-KeyTripleDES-CBC' : 'PBES2, PBKDF2, AES-256-CBC');
+    expect(result.stderr.match(/Certificate bag/g)).toHaveLength(1);
+    expect(result.stderr).not.toMatch(/keybag/i);
   });
 
   it.each(['p12-keystore', 'jks-keystore'])('lets an admin export %s when enabled and audits success', async (format) => {

@@ -61,3 +61,16 @@ it('always uses the generated password for JKS even after disabling optional enc
     id: 'leaf', format: 'jks-keystore', password, encryptPrivateKey: true,
   })));
 });
+
+it('sends legacy compatibility only after the user selects it', async () => {
+  const Page = Route.options.component as ComponentType;
+  render(<Page />);
+  fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  fireEvent.change(screen.getByLabelText('Format'), { target: { value: 'pfx' } });
+  const legacy = screen.getByLabelText(/Legacy compatibility/);
+  expect(legacy).not.toBeChecked();
+  fireEvent.click(legacy);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Download' })[0]);
+  fireEvent.click(screen.getByRole('button', { name: 'I Understand, Download' }));
+  await waitFor(() => expect(download).toHaveBeenCalledWith(expect.objectContaining({ format: 'pfx', legacy: true })));
+});

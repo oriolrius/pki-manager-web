@@ -121,7 +121,9 @@ function Certificates() {
     callback: () => void;
   } | null>(null);
   const [showBulkDownloadDialog, setShowBulkDownloadDialog] = useState(false);
+  const [legacy, setLegacy] = useState(false);
   const [bulkDownloadFormat, setBulkDownloadFormat] = useState<NonNullable<RouterInputs['certificate']['bulkDownload']['format']>>('pem');
+  const supportsLegacy = ['pkcs12', 'p12', 'pfx', 'all'].includes(bulkDownloadFormat);
   const [bulkDownloadPassword, setBulkDownloadPassword] = useState('');
   const [bulkEncryptPrivateKey, setBulkEncryptPrivateKey] = useState(true);
   const [showBulkPrivateKeyWarning, setShowBulkPrivateKeyWarning] = useState(false);
@@ -301,6 +303,7 @@ function Certificates() {
     {
       certificateIds: Array.from(selectedCertificates),
       format: bulkDownloadFormat,
+      ...(supportsLegacy && legacy && { legacy: true }),
       password: bulkDownloadPassword || undefined,
       encryptPrivateKey: bulkEncryptPrivateKey,
     },
@@ -382,6 +385,7 @@ function Certificates() {
   };
 
   const handleBulkDownload = () => {
+    setLegacy(false);
     setShowBulkDownloadDialog(true);
   };
 
@@ -683,6 +687,12 @@ function Certificates() {
                     </select>
                   </div>
 
+                  {supportsLegacy && (
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={legacy} onChange={e => setLegacy(e.target.checked)} />
+                      Legacy compatibility (SHA-1 and 3DES)
+                    </label>
+                  )}
                   {DOWNLOAD_FORMATS.find(f => f.value === bulkDownloadFormat)?.hasPrivateKey && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">

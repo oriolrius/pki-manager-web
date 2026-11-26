@@ -56,6 +56,7 @@ interface BulkDeleteBody {
 interface BulkDownloadBody {
   certificateIds: string[];
   format?: string;
+  legacy?: boolean;
   password?: string;
   encryptPrivateKey?: boolean;
 }
@@ -1240,6 +1241,11 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             default: 'pem',
             description: 'Download format',
           },
+          legacy: {
+            type: 'boolean',
+            default: false,
+            description: 'Use SHA-1 and 3DES for PKCS#12 downloads to older clients.',
+          },
           password: {
             type: 'string',
             minLength: 8,
@@ -1396,6 +1402,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
           // openssl supports RSA + EC (node-forge cannot encode EC keys).
           const pkcs12Password = encryptPrivateKey ? password! : '';
           const p12Buffer = await createPkcs12Bundle({
+            legacy: request.body.legacy,
             certPem: certificatePem,
             privateKeyPem,
             chainPems: [caCertificatePem],
