@@ -29,14 +29,6 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
 
-    services:
-      # Cosmian KMS service for integration tests
-      # Note: No health check - we'll manually wait for KMS to be ready
-      kms:
-        image: ghcr.io/cosmian/kms:latest
-        ports:
-          - 42998:9998
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -70,26 +62,18 @@ jobs:
         working-directory: ./backend
         run: pnpm db:migrate
 
-      - name: Wait for KMS to be ready
-        run: |
-          echo "Waiting for KMS to be fully ready..."
-          for i in {1..30}; do
-            if curl -sf http://localhost:42998/version > /dev/null 2>&1; then
-              echo "KMS is ready!"
-              curl -s http://localhost:42998/version
-              exit 0
-            fi
-            echo "Attempt $i: KMS not ready yet, waiting..."
-            sleep 2
-          done
-          echo "KMS failed to start"
-          exit 1
+      - name: Start the OpenBao fork with scoped credentials
+        run: bash scripts/openbao-test.sh up ci >> "$GITHUB_ENV"
 
       - name: Run tests
         working-directory: ./backend
         run: pnpm test
         env:
-          KMS_URL: http://localhost:42998
+          OPENBAO_TEST_REQUIRED: '1'
+
+      - name: Stop the OpenBao test stack
+        if: always()
+        run: bash scripts/openbao-test.sh down ci
 
       - name: Upload coverage reports
         if: always()

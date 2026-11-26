@@ -49,7 +49,8 @@ COPY backend/package.json ./backend/
 RUN pnpm install --frozen-lockfile
 
 # Copy backend source
-COPY backend/ ./backend/
+COPY backend/tsconfig.json backend/tsconfig.prod.json ./backend/
+COPY backend/src/ ./backend/src/
 
 # Build backend
 WORKDIR /app/backend

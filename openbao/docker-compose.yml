@@ -1,0 +1,55 @@
+# DEV ONLY: OpenBao for the PKI Manager dev stack (`just dev` starts it).
+#
+# Real server mode (Raft storage, TLS, file audit), so dev behaves like production,
+# with dev shortcuts that production never uses: ONE unseal key and the root token kept
+# in state/secrets, and a long-lived backend token instead of AppRole + Agent.
+# State (Raft data, audit log, TLS, secrets) is in OPENBAO_STATE_DIR, git-ignored.
+# Guide: docs/development/setup.md
+name: pki-manager-openbao
+
+services:
+  openbao:
+    image: ${OPENBAO_IMAGE:?run scripts/openbao-image.sh (just dev does)}
+    container_name: ${OPENBAO_CONTAINER:-pki-manager-openbao}
+    restart: unless-stopped
+    user: "${OPENBAO_UID:-1000}:${OPENBAO_GID:-1000}"
+    ports:
+      # OPENBAO_PORT empty = a free port (test stacks; read it with `docker compose port`).
+      - "${OPENBAO_BIND:-0.0.0.0}:${OPENBAO_PORT-42996}:8200"
+    volumes:
+      - ./config:/openbao/config:ro
+      - ${OPENBAO_STATE_DIR:-./state}/data:/openbao/data
+      - ${OPENBAO_STATE_DIR:-./state}/logs:/openbao/logs
+      - ${OPENBAO_STATE_DIR:-./state}/tls:/openbao/tls:ro
+    environment:
+      BAO_API_ADDR: https://openbao:8200
+      BAO_CLUSTER_ADDR: https://openbao:8201
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      # The API answers: `bao status` exits 0 (unsealed) or 2 (sealed, not initialized),
+      # 1 only when it cannot reach the server. Sealed is "healthy" here: unseal is a step.
+      test: ["CMD-SHELL", "bao status -address=https://127.0.0.1:8200 -ca-cert=/openbao/tls/ca.pem >/dev/null 2>&1; test $$? -ne 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 2s
+
+  # One-shot: `docker compose run --rm bootstrap dev` (see scripts/bootstrap.sh).
+  bootstrap:
+    image: ${OPENBAO_IMAGE:?run scripts/openbao-image.sh}
+    profiles: [bootstrap]
+    user: "${OPENBAO_UID:-1000}:${OPENBAO_GID:-1000}"
+    entrypoint: ["/bin/sh", "/openbao/scripts/bootstrap.sh"]
+    environment:
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /openbao/tls/ca.pem
+      PKI_MANAGER_OPENBAO_DEV: "1"
+    volumes:
+      - ./scripts:/openbao/scripts:ro
+      - ./policies:/openbao/policies:ro
+      - ${OPENBAO_STATE_DIR:-./state}/tls:/openbao/tls:ro
+      - ${OPENBAO_STATE_DIR:-./state}/secrets:/openbao/secrets
+    depends_on:
+      openbao:
+        condition: service_started
