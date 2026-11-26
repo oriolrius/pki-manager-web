@@ -1,3 +1,31 @@
+## v3.19.0 (2026-11-26)
+
+**PKCS#12 with AES-256 by default, REST responses keep every field**
+
+PKCS#12 exports (`p12`, `pfx`, CA keystores and truststores, bulk downloads) now use AES-256-CBC
+with PBKDF2-HMAC-SHA256 and a SHA-256 MAC instead of 3DES and SHA-1. The REST API now sends the
+object fields that it used to send as `{}`. The dependencies are on their current versions
+(Dependabot updates of the actions, pino 10, react-hooks 7, the Go modules).
+
+### Upgrade notes
+
+- A client that cannot read AES-256 PKCS#12 (old Java, Windows 7/2008, old embedded stacks) must
+  ask for the old format: the **Legacy compatibility** option in the download dialog, or
+  `legacy=true` (query parameter of `GET /certificates/{id}/download` and `GET /cas/{id}/download`,
+  body field of `POST /certificates/bulk/download`). JKS conversion is not affected.
+- REST clients now get the content of `subject`, `issuer`, `extensions`, `keyUsage`,
+  `basicConstraints`, `renewedTo`, the audit `details` and `metadata`, and the report `summary`.
+  Before, these fields were always empty objects. The web UI (tRPC) was not affected.
+- The 429 answers of the SSH fleet and KRL routes now send `Retry-After: 60`.
+
+### Feat
+
+- **export**: use AES-256 for PKCS#12 by default
+
+### Fix
+
+- **rest**: stop dropping object fields from API responses
+
 ## v3.18.0 (2026-11-25)
 
 **Security fix, OpenSSF hardening, dependency upgrades**
