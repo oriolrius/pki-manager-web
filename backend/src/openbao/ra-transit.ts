@@ -123,6 +123,8 @@ export function assertKeyName(name: string): void {
 export function checkRAKeyPolicy(data: unknown, version: number): KeyObject {
   if (!isObject(data)) throw new OpenBaoResponseError('key response has no data');
   if (data.type !== 'rsa-3072') throw new OpenBaoResponseError('RA key must be rsa-3072');
+  if (data.imported_key === true) throw new OpenBaoResponseError('RA provisioning requires a generated key');
+  if (data.soft_deleted === true) throw new OpenBaoResponseError('RA key is soft-deleted');
   if (data.exportable !== false) throw new OpenBaoResponseError('RA key must not be exportable');
   if (data.allow_plaintext_backup !== false) throw new OpenBaoResponseError('RA key must not allow plaintext backup');
   if (data.allow_pkcs1v15_session_key !== true) throw new OpenBaoResponseError('RA key is not opted in to PKCS#1 v1.5 session-key transport');

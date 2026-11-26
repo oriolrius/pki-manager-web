@@ -225,6 +225,12 @@ path "pki-manager-ra/sign/+/sha2-256" { capabilities = ["update"] }
 path "pki-manager-ra/session-key/pkcs1v15/+" { capabilities = ["update"] }
 ```
 
+Use a dedicated Transit mount. The backend token can use every eligible RA key
+in that mount. The backend restricts each gateway token to its integration's RA.
+The backend checks key settings at provisioning and certificate renewal.
+An administrator's changes between checks can therefore go undetected until renewal.
+Configure an audit device in the OpenBao server configuration.
+
 A token without the `default` policy cannot renew itself: use an OpenBao Agent
 (auto-auth with a token sink file) or renew the periodic token from outside.
 

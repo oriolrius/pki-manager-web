@@ -10,7 +10,7 @@ import { IntegrationService } from '../../services/integration.service.js';
 import { OpenBaoError, verifyDigestSignature } from '../../openbao/ra-transit.js';
 
 // Cosmian stays the issuing CA backend; the RA key goes to a fake OpenBao Transit
-// with a real RSA-3072 key (the live fork run is in docs/scep/openbao-ra.md).
+// with a real RSA-3072 key (the live fork run is in scep/README.md#ra-key-in-openbao-opt-in).
 const { operation, signCertificate, getCertificate, transit } = vi.hoisted(() => ({
   operation: vi.fn(), signCertificate: vi.fn(), getCertificate: vi.fn(),
   transit: { readKey: vi.fn(), ensureKey: vi.fn(), signDigest: vi.fn(), unwrapSessionKey: vi.fn() },

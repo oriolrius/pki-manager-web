@@ -435,6 +435,7 @@ See [docker/.env.example](../../docker/.env.example) for full list. Key variable
 | `NODE_ENV` | `production` | Node environment |
 | `FRONTEND_URL` | _(empty)_ | Browser origins allowed to call the API (CORS). Empty allows every origin ([details](#browser-origins-frontend_url)) |
 | `DATABASE_PATH` | `/app/backend/data/pki.db` | Database file path (in container) |
+| `SCEP_RA_KEY_PROVIDER` | `cosmian` | Provider for new SCEP RA keys. See [OpenBao connection and token settings](../../scep/README.md#ra-key-in-openbao-opt-in). |
 | `KMS_URL` | `http://kms:9998` | KMS service URL |
 | `KMS_API_KEY` | _(empty)_ | Optional KMS authentication |
 | `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |

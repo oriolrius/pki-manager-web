@@ -118,7 +118,7 @@ describe('OpenBao RA Transit client', () => {
 
   it('refuses a key whose policy allows export, backup, deletion or lacks the opt-in', async () => {
     for (const policy of [{ exportable: true }, { allow_plaintext_backup: true }, { allow_pkcs1v15_session_key: false }, { deletion_allowed: true },
-      { type: 'rsa-2048' }, { derived: true }, { min_decryption_version: 2 }, { min_available_version: 2 }, { latest_version: 0 }, { keys: {} }]) {
+      { imported_key: true }, { soft_deleted: true }, { type: 'rsa-2048' }, { derived: true }, { min_decryption_version: 2 }, { min_available_version: 2 }, { latest_version: 0 }, { keys: {} }]) {
       tamper.policy = policy;
       await expect(transit.readKey(name, 1), JSON.stringify(policy)).rejects.toThrow(OpenBaoResponseError);
     }

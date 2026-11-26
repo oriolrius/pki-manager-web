@@ -15,7 +15,7 @@ const bodies = {
       sessionKeyLength: {
         type: 'integer', enum: [...SESSION_KEY_LENGTHS],
         description: 'CMS session key length in bytes of the envelope content cipher (16: AES-128, 24: 3DES, 32: AES-256). '
-          + 'When given, the unwrapped key must have exactly this length. When omitted, 16, 24 or 32 bytes are accepted. '
+          + 'When given, the unwrapped key must have exactly this length. OpenBao bindings require this field. Legacy Cosmian bindings accept 16, 24 or 32 bytes when it is omitted. '
           + 'A JSON integer only: a string such as "16" is rejected.',
       },
     },
