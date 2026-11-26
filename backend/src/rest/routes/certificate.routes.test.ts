@@ -631,6 +631,33 @@ describe('Certificate REST Endpoints', () => {
       }
     }, 15000);
 
+    // Issue #117: the renewal points at the original (renewed_from_id, a foreign key);
+    // deleting the original failed with "FOREIGN KEY constraint failed" and still
+    // wrote a success audit row.
+    it('should delete the original of a renewed certificate and detach the renewal', async () => {
+      const { auditLog } = await import('../../db/schema.js');
+      testCaId = await createTestCA();
+      testCertId = await createTestCertificate(testCaId, { status: 'revoked' });
+      testCertId2 = await createTestCertificate(testCaId, { status: 'active' });
+      await db.update(certificates).set({ renewedFromId: testCertId }).where(eq(certificates.id, testCertId2));
+
+      const response = await server.inject({
+        method: 'DELETE',
+        url: `/api/v1/certificates/${testCertId}?destroyKey=false`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({ id: testCertId, deleted: true, kmsKeyDestroyed: false });
+      expect(await db.select().from(certificates).where(eq(certificates.id, testCertId))).toHaveLength(0);
+      const renewal = await db.select().from(certificates).where(eq(certificates.id, testCertId2));
+      expect(renewal).toHaveLength(1);
+      expect(renewal[0].renewedFromId).toBeNull();
+
+      const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, testCertId));
+      const deletes = audit.filter((r) => r.operation === 'certificate.delete');
+      expect(deletes.map((r) => r.status)).toEqual(['success']);
+    }, 15000);
+
     it('should accept destroyKey query parameter', async () => {
       testCaId = await createTestCA();
       testCertId = await createTestCertificate(testCaId, { status: 'revoked' });

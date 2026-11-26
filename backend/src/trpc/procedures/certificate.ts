@@ -33,7 +33,9 @@ import {
   CertificateRevokedError,
   CertificateKeyReuseError,
   CertificateOperationError,
+  CertificateNotDeletableError,
   buildCertificateExtensions,
+  deleteCertificateRow,
 } from '../../services/certificate.service.js';
 import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
@@ -811,123 +813,25 @@ export const certificateRouter = router({
     .input(deleteCertificateSchema)
     .mutation(async ({ ctx, input }) => {
       const { TRPCError } = await import('@trpc/server');
-      const { randomUUID } = await import('crypto');
-      const { certificates, auditLog } = await import('../../db/schema.js');
-      const { getKMSService } = await import('../../kms/service.js');
-      const { logger } = await import('../../lib/logger.js');
-      const { eq } = await import('drizzle-orm');
 
-      // Fetch certificate from database
-      const certResult = await ctx.db
-        .select()
-        .from(certificates)
-        .where(eq(certificates.id, input.id))
-        .limit(1);
-
-      if (!certResult || certResult.length === 0) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: `Certificate with ID ${input.id} not found`,
-        });
-      }
-
-      const cert = certResult[0];
-
-      // Validation: Certificate must be revoked or expired > 90 days
-      // Skip validation when forceDelete is true (e.g., for orphaned records with missing KMS data)
-      if (!input.forceDelete) {
-        const now = new Date();
-        const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-
-        const isRevoked = cert.status === 'revoked';
-        const isExpiredOverNinetyDays = cert.notAfter < ninetyDaysAgo;
-
-        if (!isRevoked && !isExpiredOverNinetyDays) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Certificate must be revoked or expired for more than 90 days before deletion',
-          });
-        }
-      }
-
+      // One implementation for both APIs: the service deletes the row (with its
+      // renewals detached) before the KMS key and the success audit row.
+      const certificateService = new CertificateService();
+      const serviceCtx = { db: ctx.db, ipAddress: ctx.req.ip };
       try {
-        // Create audit log entry BEFORE deletion
-        await ctx.db.insert(auditLog).values({
-          id: randomUUID(),
-          operation: 'certificate.delete',
-          entityType: 'certificate',
-          entityId: input.id,
-          status: 'success',
-          details: JSON.stringify({
-            caId: cert.caId,
-            serialNumber: cert.serialNumber,
-            certificateType: cert.certificateType,
-            status: cert.status,
-            destroyKey: input.destroyKey,
-            removeFromCrl: input.removeFromCrl,
-            forceDelete: input.forceDelete,
-            revocationDate: cert.revocationDate?.toISOString(),
-            revocationReason: cert.revocationReason,
-          }),
-          ipAddress: ctx.req.ip,
-        });
-
-        // Optional: Destroy KMS key if requested
-        if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
-          try {
-            const kmsService = getKMSService();
-            await kmsService.destroyKey(cert.kmsKeyId);
-            logger.info(
-              { certId: input.id, kmsKeyId: cert.kmsKeyId },
-              'KMS key destroyed for deleted certificate'
-            );
-          } catch (error) {
-            logger.warn(
-              { error, certId: input.id, kmsKeyId: cert.kmsKeyId },
-              'Failed to destroy KMS key, continuing with certificate deletion'
-            );
-            // Continue with deletion even if KMS key destruction fails
-          }
-        }
-
-        // Delete certificate from database
-        await ctx.db
-          .delete(certificates)
-          .where(eq(certificates.id, input.id));
-
-        logger.info(
-          { certId: input.id, serialNumber: cert.serialNumber },
-          'Certificate deleted successfully'
-        );
-
-        // TODO: Optional removal from CRL (will be implemented in task-022)
-        if (input.removeFromCrl) {
-          logger.info({ caId: cert.caId }, 'CRL update requested (not yet implemented)');
-        }
-
-        return {
+        return await certificateService.delete(serviceCtx, {
           id: input.id,
-          deleted: true,
-          kmsKeyDestroyed: input.destroyKey && cert.kmsKeyId !== null,
-        };
-      } catch (error) {
-        logger.error({ error, certId: input.id }, 'Failed to delete certificate');
-
-        // Log failure to audit log
-        await ctx.db.insert(auditLog).values({
-          id: randomUUID(),
-          operation: 'certificate.delete',
-          entityType: 'certificate',
-          entityId: input.id,
-          status: 'failure',
-          details: JSON.stringify({
-            error: error instanceof Error ? error.message : String(error),
-            caId: cert.caId,
-            serialNumber: cert.serialNumber,
-          }),
-          ipAddress: ctx.req.ip,
+          destroyKey: input.destroyKey,
+          removeFromCrl: input.removeFromCrl,
+          forceDelete: input.forceDelete,
         });
-
+      } catch (error) {
+        if (error instanceof CertificateNotFoundError) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: error.message });
+        }
+        if (error instanceof CertificateNotDeletableError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
+        }
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to delete certificate: ${error instanceof Error ? error.message : String(error)}`,
@@ -2318,7 +2222,35 @@ export const certificateRouter = router({
             throw new Error('Certificate must be revoked or expired for more than 90 days before deletion');
           }
 
-          // Create audit log entry BEFORE deletion
+          // A key shared with another certificate (renewal with key reuse) stays.
+          const keyStillUsed = cert.kmsKeyId
+            ? await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id)
+            : false;
+
+          // 1. The row first, with its renewals detached (issue #117). If this fails,
+          //    no key is destroyed and no success audit row is written.
+          deleteCertificateRow(ctx.db, certId);
+
+          // 2. Optional: destroy the KMS key.
+          let keyDestroyed = false;
+          if (input.destroyKey && cert.kmsKeyId && !keyStillUsed) {
+            try {
+              const kmsService = getKMSService();
+              await kmsService.destroyKey(cert.kmsKeyId);
+              keyDestroyed = true;
+              logger.info(
+                { certId, kmsKeyId: cert.kmsKeyId },
+                'KMS key destroyed for deleted certificate (bulk)'
+              );
+            } catch (error) {
+              logger.warn(
+                { error, certId, kmsKeyId: cert.kmsKeyId },
+                'Failed to destroy KMS key after certificate deletion (bulk)'
+              );
+            }
+          }
+
+          // 3. The per-certificate success audit row, after the delete really happened.
           await ctx.db.insert(auditLog).values({
             id: randomUUID(),
             operation: 'certificate.bulkDelete',
@@ -2331,32 +2263,11 @@ export const certificateRouter = router({
               certificateType: cert.certificateType,
               status: cert.status,
               destroyKey: input.destroyKey,
+              kmsKeyDestroyed: keyDestroyed,
               removeFromCrl: input.removeFromCrl,
             }),
             ipAddress: ctx.req.ip,
           });
-
-          // Optional: Destroy KMS key if requested
-          if (input.destroyKey && cert.kmsKeyId && !(await kmsKeyUsedByOtherCertificate(ctx.db, cert.kmsKeyId, cert.id))) {
-            try {
-              const kmsService = getKMSService();
-              await kmsService.destroyKey(cert.kmsKeyId);
-              logger.info(
-                { certId, kmsKeyId: cert.kmsKeyId },
-                'KMS key destroyed for deleted certificate (bulk)'
-              );
-            } catch (error) {
-              logger.warn(
-                { error, certId, kmsKeyId: cert.kmsKeyId },
-                'Failed to destroy KMS key, continuing with certificate deletion (bulk)'
-              );
-            }
-          }
-
-          // Delete certificate from database
-          await ctx.db
-            .delete(certificates)
-            .where(eq(certificates.id, certId));
 
           logger.info(
             { certId, serialNumber: cert.serialNumber },
