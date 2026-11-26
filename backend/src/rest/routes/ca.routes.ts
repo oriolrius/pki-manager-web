@@ -374,9 +374,9 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             id: { type: 'string', format: 'uuid' },
-            subject: { type: 'object' },
+            subject: { type: 'object', additionalProperties: true },
             subjectDn: { type: 'string' },
-            issuer: { type: 'object' },
+            issuer: { type: 'object', additionalProperties: true },
             issuerDn: { type: 'string' },
             serialNumber: { type: 'string' },
             keyAlgorithm: { type: 'string' },
@@ -384,7 +384,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
             notAfter: { type: 'string', format: 'date-time' },
             validityStatus: { type: 'string', enum: ['valid', 'expired', 'not_yet_valid'] },
             status: { type: 'string', enum: ['active', 'revoked', 'expired'] },
-            extensions: { type: 'object' },
+            extensions: { type: 'object', additionalProperties: true },
             fingerprints: {
               type: 'object',
               properties: {
