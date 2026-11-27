@@ -10,7 +10,7 @@
  * a file and never logged, a root token is refused.
  */
 import { request as httpsRequest, Agent } from 'node:https';
-import { readFileSync, createWriteStream } from 'node:fs';
+import { readFileSync, createWriteStream, existsSync, renameSync, rmSync } from 'node:fs';
 import { createPublicKey } from 'node:crypto';
 import { MigrationError } from './util.ts';
 
@@ -88,7 +88,7 @@ export class OpenBaoClient implements TargetStore {
     return token;
   }
 
-  private raw(method: 'GET' | 'POST' | 'LIST', path: string, body?: Json, sink?: NodeJS.WritableStream): Promise<{ status: number; data: Buffer }> {
+  private raw(method: 'GET' | 'POST' | 'LIST', path: string, body?: Json, sink?: () => NodeJS.WritableStream): Promise<{ status: number; data: Buffer }> {
     const headers: Record<string, string> = { 'X-Vault-Token': this.token(), 'X-Vault-Request': 'true' };
     if (this.namespace) headers['X-Vault-Namespace'] = this.namespace;
     const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
@@ -98,8 +98,11 @@ export class OpenBaoClient implements TargetStore {
       const req = httpsRequest(url, { method, headers, agent: this.agent, timeout: this.timeoutMs }, res => {
         const status = res.statusCode ?? 0;
         if (sink && status === 200) {
-          res.pipe(sink);
-          sink.on('finish', () => resolve({ status, data: Buffer.alloc(0) }));
+          // The sink is opened only after a 200, so a refused request leaves no file.
+          const out = sink();
+          out.on('error', e => reject(new OpenBaoHttpError(status, path, String(e))));
+          res.pipe(out);
+          out.on('finish', () => resolve({ status, data: Buffer.alloc(0) }));
           res.on('error', e => reject(new OpenBaoHttpError(status, path, String(e))));
           return;
         }
@@ -204,8 +207,19 @@ export class OpenBaoClient implements TargetStore {
   }
 
   async raftSnapshot(destPath: string) {
-    const out = createWriteStream(destPath, { flags: 'wx', mode: 0o600 });
-    const { status, data } = await this.raw('GET', 'sys/storage/raft/snapshot', undefined, out);
-    if (status !== 200) { out.destroy(); throw new OpenBaoHttpError(status, 'sys/storage/raft/snapshot', data.toString('utf8')); }
+    if (existsSync(destPath)) throw new MigrationError('BACKUP_EXISTS', `refusing to overwrite ${destPath}`);
+    const partial = `${destPath}.partial`;
+    try {
+      const { status, data } = await this.raw('GET', 'sys/storage/raft/snapshot', undefined, () => createWriteStream(partial, { flags: 'wx', mode: 0o600 }));
+      if (status !== 200) {
+        let detail = data.toString('utf8');
+        try { const j = JSON.parse(detail) as { errors?: unknown }; if (Array.isArray(j.errors)) detail = j.errors.join('; '); } catch { /* not JSON */ }
+        throw new OpenBaoHttpError(status, 'sys/storage/raft/snapshot', `${detail}${status === 403 ? ' (use an operator token with read on sys/storage/raft/snapshot)' : ''}`);
+      }
+      renameSync(partial, destPath);
+    } finally {
+      rmSync(partial, { force: true });
+    }
   }
+
 }

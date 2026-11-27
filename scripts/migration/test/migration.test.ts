@@ -314,6 +314,14 @@ test('offline backup pair: digests, integrity, tamper detection', async () => {
   assert.ok(existsSync(join(out, 'backup.json')) && JSON.parse(readFileSync(join(out, 'backup.json'), 'utf8')).format);
 });
 
+test('a refused snapshot leaves no half backup', async () => {
+  const s = await setup();
+  s.store.raftSnapshot = async () => { throw new MigrationError('OPENBAO_ERROR', 'HTTP 403'); };
+  const out = join(s.dir, 'backup-denied');
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: out, label: 'denied', store: s.store }), /403/);
+  assert.equal(existsSync(out), false);
+});
+
 test('default mounts follow the backend', () => {
   assert.deepEqual(DEFAULT_MOUNTS, { x509: 'pki-manager', ssh: 'pki-manager-ssh', ra: 'pki-manager-ra' });
 });

@@ -172,6 +172,15 @@ deny "$RUN/bao/secrets/ra.token" pki-manager-ra/wrapping_key
 deny "$RUN/bao/secrets/backend.token" pki-manager-ra/keys/probe
 deny "$RUN/bao/secrets/ra.token" pki-manager/keys/probe
 ok "runtime tokens: no import path (wrapping_key 403); X.509/SSH and RA identities do not cross (403)"
+# The migration policy closes the import parameters: an exportable SSH key is refused by the
+# policy (403); the same call with the allowed values passes the policy and Transit rejects
+# the dummy ciphertext (an error that is not 403, and no key is created).
+imp() { curl -s -o /dev/null -w '%{http_code}' --cacert "$RUN/bao/tls/ca.pem" -H "X-Vault-Token: $(cat "$RUN/bao/secrets/migration.token")" \
+  -X POST "https://127.0.0.1:$BAO_PORT/v1/pki-manager-ssh/keys/policy-probe/import" -d "{\"ciphertext\":\"AAAA\",\"hash_function\":\"SHA256\",\"type\":\"ecdsa-p256\",\"exportable\":$1,\"allow_plaintext_backup\":false,\"allow_rotation\":false}"; }
+c1=$(imp true); c2=$(imp false)
+[ "$c1" = 403 ] && [ "$c2" != 403 ] && [ "${c2:0:1}" != 2 ] || die "migration policy import limits: exportable=true -> $c1 (want 403), exportable=false -> $c2 (want a Transit error)"
+[ "$(http "$RUN/bao/secrets/migration.token" pki-manager-ssh/keys/policy-probe)" = 404 ] || die "the probe created a key"
+ok "migration policy: exportable SSH import refused (403); allowed parameters pass the policy (Transit $c2 on a dummy ciphertext, no key)"
 unset BAO_TOKEN
 BADDR="https://127.0.0.1:$BAO_PORT"; CACERT="$RUN/bao/tls/ca.pem"
 MT=(--openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/migration.token")
@@ -213,6 +222,9 @@ ok "migration token revoked after the run (HTTP 403)"
 log "OpenBao audit log: $(grep -c '"type":"request"' "$RUN/bao/logs/audit.log") requests recorded"
 
 # ───────────────────────── 5. backup, Cosmian off, restore, verify ─────────────────────────
+set +e; migrate backup --db "$TGT" --out-dir "$RUN/backup-denied" --label "wrong token" --openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/migration.token" >/dev/null 2>>"$EVIDENCE"; rc=$?; set -e
+[ $rc -ne 0 ] && [ ! -e "$RUN/backup-denied" ] || die "backup with the (revoked) migration token did not fail cleanly"
+ok "backup with the migration token fails and leaves no partial backup"
 migrate backup --db "$TGT" --out-dir "$RUN/backup-v4" --label "migrated pair" --openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/operator.token" >/dev/null
 migrate check-backup --dir "$RUN/backup-v4" | tee -a "$EVIDENCE"
 docker stop "$P-kms" >/dev/null

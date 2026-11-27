@@ -107,6 +107,14 @@ the migration token as described in
 is [scripts/migration/policies/pki-manager-migration.hcl](../../scripts/migration/policies/pki-manager-migration.hcl).
 The runtime backend token cannot import keys. The preflight refuses a root token.
 
+The policy closes the import parameters: SSH and RA keys can only be imported non-exportable,
+with fixed types (`ecdsa-p256`, `rsa-3072`), no key gets plaintext backup or rotation, and the
+RA key must opt in to the session-key operation. It has no export, backup, delete, Raft
+snapshot or RA session-key right. It does have `sign` on the three mounts, for the post-import
+challenge, and Transit cannot limit that to the imported names: while the token lives it can
+sign with any key there, including existing runtime keys. Issue it for one migration window
+only and revoke it as soon as `verify` passes.
+
 The examples use these options (environment variables `OPENBAO_ADDR`, `OPENBAO_CACERT`,
 `OPENBAO_TOKEN_FILE` and `KMS_URL` work too):
 
@@ -221,7 +229,8 @@ pki-migrate backup --db "$W/target/pki.db" --out-dir "$W/backup-v4" --label "mig
 ```
 
 The token for the Raft snapshot needs `read` on `sys/storage/raft/snapshot` (an operator
-token, not the migration token). The snapshot is encrypted with the OpenBao keyring: restore
+token, not the migration token). When the snapshot is refused, `backup` removes the directory
+it created: a database without its snapshot is not a backup pair. The snapshot is encrypted with the OpenBao keyring: restore
 needs the unseal keys of the cluster that took it. Keep the database and the snapshot of one
 backup together: one without the other loses keys or rows.
 

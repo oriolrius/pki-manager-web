@@ -7,7 +7,7 @@
  * encrypted by OpenBao's barrier: it is useless without the unseal keys of the
  * cluster it came from, which are NOT part of this backup.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TargetStore } from './openbao.ts';
 import { backupTo, fileSha256, integrityOk, openReadOnly } from './sqlite.ts';
@@ -25,14 +25,20 @@ export async function backupPair(o: { dbPath: string; outDir: string; label: str
   if (existsSync(o.outDir)) throw new MigrationError('BACKUP_EXISTS', `refusing to write into existing ${o.outDir}`);
   mkdirSync(o.outDir, { recursive: true, mode: 0o700 });
   const files: Record<string, string> = {};
-  files['pki.db'] = await backupTo(o.dbPath, join(o.outDir, 'pki.db'));
   let openbao: BackupRecord['openbao'];
-  if (o.store) {
-    const h = await o.store.health();
-    if (!h.initialized || h.sealed) throw new MigrationError('OPENBAO_SEALED', 'OpenBao must be unsealed to take a snapshot');
-    await o.store.raftSnapshot(join(o.outDir, 'openbao.snap'));
-    files['openbao.snap'] = fileSha256(join(o.outDir, 'openbao.snap'));
-    openbao = { version: h.version };
+  try {
+    files['pki.db'] = await backupTo(o.dbPath, join(o.outDir, 'pki.db'));
+    if (o.store) {
+      const h = await o.store.health();
+      if (!h.initialized || h.sealed) throw new MigrationError('OPENBAO_SEALED', 'OpenBao must be unsealed to take a snapshot');
+      await o.store.raftSnapshot(join(o.outDir, 'openbao.snap'));
+      files['openbao.snap'] = fileSha256(join(o.outDir, 'openbao.snap'));
+      openbao = { version: h.version };
+    }
+  } catch (error) {
+    // Half a pair is not a backup: remove the directory this call created.
+    rmSync(o.outDir, { recursive: true, force: true });
+    throw error;
   }
   const record: BackupRecord = { format: 'pki-manager-migration-backup/1', createdAt: isoNow(), label: o.label, files, openbao };
   writeFileSync(join(o.outDir, 'backup.json'), JSON.stringify(record, null, 2), { mode: 0o600 });
