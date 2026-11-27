@@ -11,7 +11,7 @@ summary: The parts of PKI Manager, where each private key lives, and what happen
 |---|---|
 | Web UI | The pages that you use in the browser. An nginx container serves them and passes API calls to the backend |
 | Backend | The API and all certificate logic. It checks each request, builds the certificates and has OpenBao sign them, signs the revocation lists, and writes the audit log |
-| OpenBao | The PKI Manager build of OpenBao. Its Transit secrets engine makes and keeps the private keys, and signs with them. It keeps the X.509 keys, the SSH CA keys and the SCEP RA keys |
+| OpenBao | The PKI Manager fork of OpenBao ([why a fork](about.md#the-key-store-my-fork-of-openbao-not-the-standard-openbao)). Its Transit secrets engine makes and keeps the private keys, and signs with them. It keeps the X.509 keys, the SSH CA keys and the SCEP RA keys |
 | Database | One SQLite file: CAs, certificates, the references of the keys in OpenBao, SSH data and the audit log. It has no private keys |
 | Identity provider | Optional. Logs people in through OIDC, for example Keycloak |
 

@@ -17,7 +17,8 @@ links:
 ## What you can do
 
 - Keep every private key that PKI Manager makes in OpenBao Transit (the PKI Manager build of
-  OpenBao). The database has certificates and key references, not keys.
+  OpenBao, see [the key store](../about.md#the-key-store-my-fork-of-openbao-not-the-standard-openbao)).
+  The database has certificates and key references, not keys. Cosmian KMS is no longer used.
 - Let people log in with your identity provider through OIDC. The setup is tested with Keycloak.
 - Reserve the sensitive actions of the web UI for the `admin` role: create, revoke and delete a
   CA, revoke and delete a certificate, manage integrations, and manage the SSH CAs, zones and

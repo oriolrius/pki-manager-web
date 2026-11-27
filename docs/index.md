@@ -1,6 +1,6 @@
 ---
 title: Run your own certificate authorities
-summary: PKI Manager is a self-hosted web application for X.509 and SSH certificates. You create a certificate authority, issue and revoke certificates in a browser, and let Kubernetes, devices and scripts request certificates by themselves. Private keys are made and kept in a key management system.
+summary: PKI Manager is a self-hosted web application for X.509 and SSH certificates. You create a certificate authority, issue and revoke certificates in a browser, and let Kubernetes, devices and scripts request certificates by themselves. Private keys are made and kept in OpenBao, in a fork that adds the one function PKI Manager needs and standard OpenBao lacks. Cosmian KMS is no longer used.
 image: features/img/dashboard.png
 imageAlt: Dashboard of PKI Manager with counters for CAs, certificates and SSH, and a table of the certificates that expire next
 ---
