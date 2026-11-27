@@ -19,6 +19,9 @@ The SCEP gateway is deployed separately.
 
 ### KMS version for SCEP RA renewal
 
+This section is for v3 (Cosmian KMS) only. v4 keeps the RA key in OpenBao and builds every
+certificate itself, with a fresh random serial.
+
 SCEP RA renewal with a retained key requires KMS 5.28.0: 5.24 derives
 the certificate serial from the public key and therefore reuses it on renewal.
 The backend refuses serial collisions. 5.28 generates fresh random serials.

@@ -463,6 +463,25 @@ Effects on devices and requests:
 [scripts/migration/rehearsal/rehearse-ra-reprovision.sh](../../scripts/migration/rehearsal/rehearse-ra-reprovision.sh)
 runs this path end to end with synthetic data: see [Rehearsal](#rehearsal).
 
+## A real run
+
+On 2026-11-27 the procedure above ran on the author's own v3.19.1 installation (Cosmian 5.28.0)
+into v4.0.0 with the fork image `2.7.3-pki-manager.2`, in one write freeze of about 10 minutes:
+
+- inventory: 23 keys (20 SSH CA, 2 X.509 CA, 1 SCEP RA), 21 of them Sensitive, 0 blockers and one
+  `RA_CERTIFICATE_ALIAS` warning;
+- `apply`: 23 keys imported wrapped, 22 rows changed; the second run printed `"noOp": true`;
+- `verify --cutover --ra-session-check`: 109 checks, 0 failed, `raUnwrapped: 1`,
+  `cosmianRequired=false`;
+- after the start: the read-only API check (CA PEMs, CRLs, SSH trust files, counts) was identical to
+  the v3 output; a new certificate under a v3 CA verified with `openssl verify`, its revocation
+  appeared in a new CRL that verified; an SSH certificate of a migrated CA was accepted by `sshd`;
+  a real SCEP enrollment (`TestLiveEnrollment`) passed.
+
+Two details of that run: `--confirm` takes the first 16 hex characters of the manifest digest, and
+in the approval `keys` is an object keyed by the source key id, while the manifest marks a Sensitive
+key in `keys[].attributes.sensitive`.
+
 ## Rehearsal
 
 [scripts/migration/rehearsal/rehearse.sh](../../scripts/migration/rehearsal/rehearse.sh) runs

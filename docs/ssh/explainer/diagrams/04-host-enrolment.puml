@@ -5,7 +5,7 @@ autonumber "<b>0."
 actor "Operator" as op
 participant "Server\nweb1" as srv
 participant "PKI Manager" as pki
-participant "KMS" as kms #54595F
+participant "OpenBao" as kms #54595F
 participant "Laptop" as lap
 
 op -> srv : ""cat /etc/ssh/ssh_host_ecdsa_key.pub""
