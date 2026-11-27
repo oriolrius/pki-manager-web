@@ -1,3 +1,65 @@
+## v4.0.0 (2026-11-27)
+
+**OpenBao replaces Cosmian as the runtime key store**
+
+PKI Manager 4 uses the PKI Manager fork of OpenBao for X.509 issuance, CRLs, SSH and SCEP. The backend and the SCEP registration authority use separate credentials. The application keeps its certificate and revocation records in SQLite.
+
+### Upgrade from 3.x
+
+- Stop the v3 writers and make a SQLite backup with the migration tool. Rehearse on a copy. Inventory the keys, approve their disposition and verify the cutover against the frozen source. Keep the original installation available for recovery until you accept v4 writes.
+- Transfer eligible keys with wrapped export and import. A non-transferable key needs an explicit rotation or reprovisioning plan. If the SCEP RA needs a new key, refresh GetCACert on devices and update any MDM profile that pins the old RA certificate.
+- Upgrade the backend and the SCEP gateway together. Configure the two OpenBao credentials before starting SCEP.
+- Back up SQLite and OpenBao together with writers stopped. On recovery, restore the two files from the same checked backup directory and verify them before starting the backend.
+- The OpenSSL executable remains necessary for PKCS#12 downloads that include a private key. This preserves mixed-case names and compatibility with legacy passwords.
+
+See the [v4 migration guide](https://github.com/oriolrius/pki-manager-web/blob/v4.0.0/docs/operations/openbao-migration.md) and the [OpenBao operations guide](https://github.com/oriolrius/pki-manager-web/blob/v4.0.0/docs/operations/openbao.md).
+
+### Feat
+
+- **openbao**: give the SCEP RA its own scoped credential
+- **migration**: add the v3 migration guide and the disposable rehearsal
+- **migration**: add the OpenBao policy of the migration identity
+- **openbao**: separate the migration identity from the runtime token
+- **migration**: add the offline v3 to OpenBao migration tool
+- **keystore**: run X.509, CRL, SSH and SCEP on OpenBao Transit
+- **keystore**: add the keystore_objects table for OpenBao key references
+- **scep**: keep the RA key of new bindings in OpenBao (opt-in)
+- **scep**: pass the CMS session key length to RA decryption
+
+### Fix
+
+- **scep**: omit an expired RA certificate from renewal overlap
+- **crl**: use the verified CRL when its issuer has expired
+- **migration**: clear the live RA overlap when the RA key is replaced
+- **migration**: refuse incomplete records and overlapping Raft snapshots
+- **migration**: bind restored SQLite and OpenBao to one backup with a pair marker
+- **crl**: wait for concurrent revocation before deleting the certificate
+- **crl**: keep deleted pending revocations and serve unchanged CRLs without a scan
+- **migration**: check every owned key against the v4 runtime policy in the pair check
+- **migration**: verify the status and approver of migration audit entries
+- **migration**: safe drop-key, RA reprovision and CA key link repair
+- **migration**: check each key against the v4 runtime policy of its purpose
+- **scep**: retry RA provisioning when its credential becomes available
+- **migration**: bind a frozen source, reconcile every table, verify restores from the database
+- **crl**: publish one ordered CRL per CA and recover stale CRLs after outages
+- **migration**: accept an inventory with no certificate PEMs to transfer
+- **migration**: check offline material and certificate PEMs before any import
+- **keystore**: map key store outages and refusals to safe API errors
+- **docker**: give backend files fixed modes in the build stage
+- **migration**: leave no half backup when the snapshot is refused
+- **migration**: close the import parameters of the migration policy
+- **export**: drop the openssl CLI from PKCS#8, JKS and truststore exports
+- **ssh**: recheck SSH CA import invariants atomically with the insert
+- **scep**: require the CMS key length in the v4 API contract
+- **docker**: read backend files as the configured runtime user
+- **frontend**: describe what SSH host offboarding does after the OpenBao cutover
+- **frontend**: name OpenBao Transit as the key store and stop key claims on CSR-only records
+- **scep**: verify RA key origin and document Transit permissions
+
+### Refactor
+
+- **docker**: keep only the migration run as the build-time check
+
 ## v3.19.1 (2026-11-26)
 
 **Delete a renewed certificate's original, chain in the PEM downloads, partial renew subject**

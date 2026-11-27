@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T09:36:00Z'
+updated_date: '2026-11-27T10:01:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -21,8 +21,8 @@ Deliver decision-018 and doc-012. Release the next major only after migration, r
 <!-- AC:BEGIN -->
 - [x] #1 X.509, CRL, SSH and SCEP operate against OpenBao with Cosmian disconnected.
 - [x] #2 Existing installations can rehearse migration, reconcile identities and restore their data.
-- [ ] #3 Development, tests, deployment and current product documentation use the fork and clients retain their supported operations.
-- [ ] #4 Independent review and required release checks pass on the release candidate.
+- [x] #3 Development, tests, deployment and current product documentation use the fork and clients retain their supported operations.
+- [x] #4 Independent review and required release checks pass on the release candidate.
 - [ ] #5 A major GitHub release and its required installable artifacts are published and verified.
 <!-- AC:END -->
 
@@ -82,4 +82,6 @@ At runtime commit 0ca54bf2 the v3.19.1 SCEP reprovision rehearsal passed all 18 
 Independent SCEP review on clean 0ca54bf2 repeated the 18-step rehearsal with the real fork. The restored gateway enrolled twice with Cosmian stopped. Two later same-key renewals preserved usable overlap and separate integrations retained isolated RA keys. Both legacy certificates received signed failures. The frozen-source migration, reconciliation and paired recovery criterion is complete.
 
 Clean runtime 0ca54bf2 passed all 1,125 backend tests in 119 files against the signed fork. All 166 frontend tests passed. In strict product acceptance, 171 passed and the SCEP suite failed its zero-skips check. The new stale-RA test needs a fixture that was supplied in the separate passing migration rehearsal but absent from the standard stack. ACCEPT_BUILD=1 also exits early on clean source; the tester built the images using the same targets. Final release remains gated on a clean strict rerun after both harness fixes. Ansible, real kind, SSH login and backup/restore passed in this run.
+
+Final independent acceptance on clean commit 285c866f passed all 172 checks with zero failures and zero skips on the signed OpenBao fork, with Cosmian absent. This includes the CLI at 0818bd11, Ansible at 9de7349, real Kubernetes issuance, SCEP, SSH, X.509, and restore. All 28 GitHub checks passed on the same commit. PR #120 merged. Verify the published release artifacts before closing this task.
 <!-- SECTION:NOTES:END -->
