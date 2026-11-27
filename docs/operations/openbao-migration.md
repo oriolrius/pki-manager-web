@@ -411,8 +411,10 @@ v3.19.1 backend, Cosmian 5.28.0 and the OpenBao fork from `scripts/openbao-image
    and RA tokens. Use the migrated keys, connect to a test SSH server that presents a new
    host certificate, then provision the RA of a new SCEP integration. The SSH client
    checks the host certificate against the original v3 host CA.
+7. Take a second backup after these writes. Verify this pair, then check that restoring the
+   older Raft snapshot alongside the later database reports the missing keys.
 
-The synthetic rehearsal ran on 2026-11-27 from commit `27b62288` with separate X.509/SSH
+The synthetic rehearsal ran on 2026-11-27 from commit `ff096d11` with separate X.509/SSH
 and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b2`.
 
 | Check | Result |
@@ -421,7 +423,8 @@ and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b
 | `apply` with a crash after import 2 | exit 75, no database change |
 | `apply` resume | 8 imported, 1 adopted, 1 already verified; 21 `keystore_objects` rows, 5 rows changed, 5 PEMs filled, 31 audit rows |
 | Third `apply` | no-op: nothing imported, 0 rows, 0 audit rows |
-| `verify --cutover` (migrated, then restored pair, Cosmian stopped) | 78 checks, 0 failed, cutover ready, RA session key recovered |
+| `verify --cutover` (migrated, then restored pair, Cosmian stopped) | 94 checks passed on each run. The verifier reconciled 80 rows and recovered the RA session key. |
+| Later database and older Raft snapshot | Restore verification refused the pair. The snapshot lacked the new X.509 leaf key and the new RA key. |
 | Runtime tokens on the import path, across X.509/SSH and RA mounts / migration token after revoke | HTTP 403 / HTTP 403 |
 | X.509 with Cosmian stopped | The CA certificate matched v3. The original CA verified the new CRL. The backend issued a leaf, renewed a certificate with its existing key and signed an external CSR. The exported leaf and CA private keys matched their certificates. |
 | SSH with Cosmian stopped | An OpenSSH client that trusted the original v3 host CA completed a connection to a server presenting the new host certificate. |

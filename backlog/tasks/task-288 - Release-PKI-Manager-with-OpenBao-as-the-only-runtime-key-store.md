@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T08:20:00Z'
+updated_date: '2026-11-27T08:39:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -66,4 +66,6 @@ On clean commit 4fda0bbb the v3.19.1 rehearsal passed with synthetic data. All 1
 Independent migration review on c309a137 found release blockers. Cutover can omit source reconciliation, the source digest misses WAL-only changes, and restore verification misses keys created after the source manifest. Retired/shared SSH drop-key, Transit policy parity, an existing RA with a mismatched certificate, offline public certificate material and rotation of a non-transferable RA also need corrections. An operator must be able to detect a lost revocation and a mismatched Raft/SQLite pair before release. Positive rehearsal alone does not close AC2. Runtime error correction d3feda02 passed 1091 live tests, including 503 and Retry-After on OpenBao outages. The rehearsal at 27b62288 passed 78 checks twice, connected a real OpenSSH client with the original v3 host CA, exercised a newly provisioned RA and refused an occupied operator port without stopping its listener. The new diagnostics API is being synchronized with the CLI.
 
 Offline migration and CLI validation. At 0ab3dfd8, a clean synthetic v3.19.1 run passed 79 checks. All 10 keys transferred with Cosmian stopped. A system-call trace showed zero connections to its port. Incomplete and changed certificate bundles stopped apply before any key import or target database change. The v4 backend also issued and renewed X.509 certificates, signed a CRL and an SSH host certificate, and signed and recovered an RA session key on custom mounts with separate runtime credentials. At ff2e1df6 an empty inventory reads back its own empty certificate bundle. All 19 migration tests and typecheck passed. The CLI at 2577d7bc covers 108 API operations, including key-store diagnostics. All 65 CLI tests passed. Independent review and the remaining cutover and restore corrections are in progress.
+
+At ff096d11 all 43 migration tests passed. On synthetic v3.19.1 data the signed fork passed 94 cutover checks twice (10 keys, 80 rows). A complete later backup passed; earlier Raft with later SQLite failed as intended. Independent review reproduced a release blocker in the other direction: earlier SQLite + later Raft accepted and lost X.509 and SSH revocations. A second reviewer verified 200 concurrent revocations and ordered CRLs across six processes, but found a serial lost when a revoked certificate is deleted during an outage, and full synchronous scans on unchanged public CRL downloads. Hold the major until fixes and independent checks pass. The split RA roles and offline CLI/material review passed; new regression checks cover immediate SCEP retry after credential recovery and an SSH-only migration with an empty certificate bundle.
 <!-- SECTION:NOTES:END -->
