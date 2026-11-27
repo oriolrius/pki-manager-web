@@ -58,7 +58,7 @@ source code is public because it can be useful to someone else.
 
 ```bash
 just setup    # dependencies, .env files, dev database
-just dev      # KMS, Keycloak, backend, frontend and the task board
+just dev      # OpenBao, Keycloak, backend, frontend and the task board
 ```
 
 Then open <http://localhost:52080> and log in as `admin` / `admin`. The details are in
