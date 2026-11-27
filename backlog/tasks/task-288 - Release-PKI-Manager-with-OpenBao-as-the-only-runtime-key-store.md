@@ -1,11 +1,11 @@
 ---
 id: TASK-288
 title: Release PKI Manager with OpenBao as the only runtime key store
-status: In Progress
+status: Done
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T10:01:00Z'
+updated_date: '2026-11-27T10:24:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -23,7 +23,7 @@ Deliver decision-018 and doc-012. Release the next major only after migration, r
 - [x] #2 Existing installations can rehearse migration, reconcile identities and restore their data.
 - [x] #3 Development, tests, deployment and current product documentation use the fork and clients retain their supported operations.
 - [x] #4 Independent review and required release checks pass on the release candidate.
-- [ ] #5 A major GitHub release and its required installable artifacts are published and verified.
+- [x] #5 A major GitHub release and its required installable artifacts are published and verified.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -84,4 +84,10 @@ Independent SCEP review on clean 0ca54bf2 repeated the 18-step rehearsal with th
 Clean runtime 0ca54bf2 passed all 1,125 backend tests in 119 files against the signed fork. All 166 frontend tests passed. In strict product acceptance, 171 passed and the SCEP suite failed its zero-skips check. The new stale-RA test needs a fixture that was supplied in the separate passing migration rehearsal but absent from the standard stack. ACCEPT_BUILD=1 also exits early on clean source; the tester built the images using the same targets. Final release remains gated on a clean strict rerun after both harness fixes. Ansible, real kind, SSH login and backup/restore passed in this run.
 
 Final independent acceptance on clean commit 285c866f passed all 172 checks with zero failures and zero skips on the signed OpenBao fork, with Cosmian absent. This includes the CLI at 0818bd11, Ansible at 9de7349, real Kubernetes issuance, SCEP, SSH, X.509, and restore. All 28 GitHub checks passed on the same commit. PR #120 merged. Verify the published release artifacts before closing this task.
+
+PKI Manager v4.0.0 is public at 6d37f9d1. The six krl-client release files passed verification. The Linux binary matches checksums.txt, its cosign signature and its SLSA provenance for the web v4.0.0 tag. The companion CLI v1.1.0 release has 16 files. All 15 payload checksums and all 16 GitHub artifact attestations match its annotated tag at ae47eca5. The x86-64 and i686 binaries reported the correct release version. CLI publication run 45978825260 passed all seven jobs.
+
+The published 4.0.0 backend and frontend attestations identify release commit 6d37f9d1 and the tagged docker-build workflow. The independently checked GHCR index digests are backend sha256:e154c3ca75749590f166746c6bde8cf60e5b6433dfe7ca4e5babaeb98ec27864, frontend sha256:4f9707bb3da20ee22752017ea1bfd9064fc55b3b249dfc92524af1be7dac14d2 and SCEP sha256:d20a513b99ee5deca7bcf27ee5e8cd3f246ce08d2b79203851b091582aac9820. The SCEP linux/amd64 image labels match 4.0.0 and its source commit. Ansible PR 13 passed all six checks and merged after the integration job passed with the published backend and OpenBao (run 45978982182).
+
+Verified the release-tag cosign signature on the issuer index sha256:7b5e87cb0e384331d58f1652b56c39f56822ead889a0cd879ecdea58d82b842d (linux/amd64 and linux/arm64). The issuer workflow 45978588132 published an SPDX 2.3 SBOM listing 78 packages. The isolated local deployment rehearsal used the release image digests and synthetic v3 data. Both SCEP migration paths passed: 46 gate cases with mixed RA keys and 65 when all RA keys needed replacement, including live enrollment with the replacement key. No production system or device was migrated.
 <!-- SECTION:NOTES:END -->
