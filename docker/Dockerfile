@@ -56,6 +56,14 @@ COPY backend/src/ ./backend/src/
 WORKDIR /app/backend
 RUN pnpm build
 
+# Give the shipped trees fixed modes here (directories 755, files 644), so the runtime
+# stage copies them unchanged. Do not use a symbolic COPY --chmod (u=rwX,...) on a folder:
+# BuildKit v0.20.2 (Docker 28.0.4, GitHub-hosted runners) applies X only to the top folder
+# and leaves nested folders (migrations/meta) at 644, so the non-root user cannot enter
+# them. A checkout made with umask 077 also gives 600 files and 700 folders.
+RUN find dist src/db/migrations -type d -exec chmod 755 {} + && \
+    find dist src/db/migrations -type f -exec chmod 644 {} +
+
 ################################################################################
 # Build Frontend - pnpm with the workspace lock file (same as the backend)
 ################################################################################
@@ -130,8 +138,9 @@ COPY --from=build-backend --chown=nodejs:nodejs --chmod=644 /app/backend/src/cry
 RUN java -m jdk.compiler/com.sun.tools.javac.Main -d /app/backend/dist/crypto /app/backend/dist/crypto/KeyStoreExport.java && \
     chmod 644 /app/backend/dist/crypto/KeyStoreExport.class
 
-# Copy database migrations (SQL files not copied by TypeScript)
-COPY --from=build-backend --chown=nodejs:nodejs --chmod=u=rwX,go=rX /app/backend/src/db/migrations ./backend/dist/db/migrations
+# Copy database migrations (SQL files and meta/_journal.json, not copied by TypeScript).
+# The modes come from the build-backend stage, see there.
+COPY --from=build-backend --chown=nodejs:nodejs /app/backend/src/db/migrations ./backend/dist/db/migrations
 
 # Copy entrypoint script
 COPY --chown=nodejs:nodejs --chmod=755 docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -142,6 +151,12 @@ RUN mkdir -p /app/backend/data && \
 
 # Switch to non-root user
 USER nodejs
+
+# Build-time checks as the runtime user: every folder of backend/dist can be entered and
+# read and every file read, and the migrations apply to an empty database. A packaging
+# error then fails the image build, not the first container start.
+RUN node -e "const fs=require('fs'),path=require('path'),{R_OK,X_OK}=fs.constants;(function walk(d){fs.accessSync(d,R_OK|X_OK);for(const e of fs.readdirSync(d,{withFileTypes:true})){const f=path.join(d,e.name);if(e.isDirectory())walk(f);else fs.accessSync(f,R_OK)}})('/app/backend/dist')" && \
+    DATABASE_PATH=:memory: node /app/backend/dist/db/migrate.js
 
 # Set environment variables with production defaults.
 # NODE_OPTIONS=--use-openssl-ca makes Node verify outbound TLS (KMS, OIDC discovery/JWKS)
