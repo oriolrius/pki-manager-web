@@ -206,9 +206,13 @@ func TestLiveManagedProfileWithKMS(t *testing.T) {
 // RA certificate again (GetCACert). No certificate is issued.
 func TestLiveEnrollmentStaleRA(t *testing.T) {
 	endpoint := os.Getenv("SCEP_TEST_SERVER_URL")
-	stalePEM, _ := os.ReadFile(os.Getenv("SCEP_TEST_STALE_RA_FILE"))
-	if endpoint == "" || len(stalePEM) == 0 {
+	path := os.Getenv("SCEP_TEST_STALE_RA_FILE")
+	if endpoint == "" || path == "" {
 		t.Skip("SCEP_TEST_SERVER_URL or SCEP_TEST_STALE_RA_FILE is not set")
+	}
+	stalePEM, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
 	stale, err := parsePEMCerts(string(stalePEM))
 	if err != nil {

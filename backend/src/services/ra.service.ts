@@ -248,11 +248,11 @@ export class RAService {
     // Only unexpired certificates of this key stay in the overlap list (a first provisioning
     // after a key replacement starts with none of the old key's).
     const stored = JSON.parse(binding.previous || '[]') as Previous[];
+    if (binding.certificatePem && binding.certificateId) stored.unshift({ id: binding.certificateId, certificatePem: binding.certificatePem });
     const previous = sameKeyOverlap(stored, pem);
     if (previous.length !== stored.filter(p => { try { return new Date(new X509Certificate(p.certificatePem).validTo) > new Date(); } catch { return true; } }).length) {
       logger.warn({ integrationId: identity.id }, 'RA overlap list held certificates of another key; they are not kept (the certificate rows stay)');
     }
-    if (binding.certificatePem && binding.certificateId) previous.unshift({ id: binding.certificateId, certificatePem: binding.certificatePem });
     const updated = { certificateId: id, certificatePem: pem, previous: JSON.stringify(previous) };
     // Publish the certificate record and its binding atomically. Only the lease
     // owner can change the active RA; KMS key IDs never cross the HTTP boundary.

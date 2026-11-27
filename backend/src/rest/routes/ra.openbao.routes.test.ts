@@ -203,6 +203,17 @@ describe('OpenBao-bound SCEP RA', () => {
       expect(renewed.statusCode, renewed.body).toBe(200);
       expect(renewed.json().previousCertificatesPem).toEqual([aging]);
       expect((JSON.parse((await bindingOf(reset.id)).previous) as { certificatePem: string }[]).map(p => p.certificatePem)).toEqual([aging]);
+
+      // A gateway that was offline can renew after expiry. Keep only the usable overlap.
+      const latest = await bindingOf(reset.id);
+      const expiredAt = new Date(Date.now() - 86400e3);
+      const expiredPem = issueFrom(pub, before, expiredAt);
+      await db.update(integrationRAs).set({ certificatePem: expiredPem }).where(eq(integrationRAs.integrationId, reset.id));
+      await db.update(certificates).set({ certificatePem: expiredPem, notBefore: before, notAfter: expiredAt }).where(eq(certificates.id, latest.certificateId!));
+      const recovered = await request(reset.token, 'renew');
+      expect(recovered.statusCode, recovered.body).toBe(200);
+      const overlaps = JSON.parse((await bindingOf(reset.id)).previous) as { certificatePem: string }[];
+      expect(overlaps.map(p => p.certificatePem)).toEqual([aging]);
     } finally {
       await db.delete(integrationRAs).where(eq(integrationRAs.integrationId, reset.id));
       await db.delete(certificates).where(eq(certificates.integrationId, reset.id));
