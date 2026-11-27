@@ -1,4 +1,5 @@
 import { resolveExportPassword, exportPasswordHeaderSchema, deprecatedPasswordQueryDescription } from '../export-password.js';
+import { keyStoreErrorBody } from '../key-store-errors.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { createPkcs12Bundle } from '../../crypto/pkcs12.js';
 import { db } from '../../db/client.js';
@@ -17,6 +18,7 @@ import {
   CRLNotFoundError,
   CRLInvalidCAStatusError,
   CRLOperationError,
+  CRLPublicationBusyError,
 } from '../../services/crl.service.js';
 import {
   getCertificateService,
@@ -135,6 +137,8 @@ function sendError(
 
 // Map service errors to HTTP responses
 function handleServiceError(error: unknown, reply: FastifyReply) {
+  const keyStore = keyStoreErrorBody(reply, error);
+  if (keyStore) return keyStore;
   if (error instanceof CANotFoundError) {
     return sendError(reply, 404, 'CA_NOT_FOUND', error.message);
   }
@@ -158,6 +162,11 @@ function handleServiceError(error: unknown, reply: FastifyReply) {
   }
   if (error instanceof CRLInvalidCAStatusError) {
     return sendError(reply, 409, 'INVALID_CA_STATUS', error.message);
+  }
+  if (error instanceof CRLPublicationBusyError) {
+    // Another publication holds the CA: retry after its lease or retry time (1-30 s).
+    reply.header('Retry-After', String(error.retryAfterSeconds));
+    return sendError(reply, 503, 'CRL_PUBLICATION_BUSY', error.message);
   }
   if (error instanceof CRLOperationError) {
     return sendError(reply, 500, 'CRL_OPERATION_FAILED', error.message);
@@ -341,6 +350,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         },
         400: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -464,6 +474,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -517,6 +528,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -797,6 +809,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -888,6 +901,8 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         403: errorResponseSchema,
         404: errorResponseSchema,
         500: errorResponseSchema,
+        409: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {

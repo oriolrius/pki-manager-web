@@ -13,9 +13,9 @@ name: Docs site
 on:
   push:
     branches: [main]
-    paths: ['docs/**', 'site/**', '**/*.md', '!backlog/tasks/**', '!backlog/archive/**', '!backlog/milestones/**', 'backend/src/**', 'package.json', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', '**/*.md', '!backlog/tasks/**', '!backlog/archive/**', '!backlog/milestones/**', 'backend/src/**', 'openbao/**', 'scripts/openbao-*.sh', 'package.json', '.github/workflows/docs.yml']
   pull_request:
-    paths: ['docs/**', 'site/**', '**/*.md', '!backlog/tasks/**', '!backlog/archive/**', '!backlog/milestones/**', 'backend/src/**', 'package.json', '.github/workflows/docs.yml']
+    paths: ['docs/**', 'site/**', '**/*.md', '!backlog/tasks/**', '!backlog/archive/**', '!backlog/milestones/**', 'backend/src/**', 'openbao/**', 'scripts/openbao-*.sh', 'package.json', '.github/workflows/docs.yml']
   workflow_dispatch:
 
 permissions:
@@ -59,13 +59,13 @@ jobs:
           path: site/dist
           retention-days: 7
 
-  # Every runnable example of the API how-to must work against a real stack (published images).
+  # Every runnable example of the API how-to must work against a stack built from the checked-out source.
   examples:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Start the demo stack
-        run: site/demo/demo.sh up
+        run: DEMO_BUILD=1 site/demo/demo.sh up
       - name: Run the API how-to examples
         run: site/demo/doc-examples.sh docs/api/how-to.md
       - name: Stop the demo stack

@@ -1,4 +1,5 @@
 import { router, protectedProcedure } from '../init.js';
+import { KeyStoreTrpcCause, throwIfKeyStoreError } from '../key-store-errors.js';
 import {
   generateCrlSchema,
   getCrlSchema,
@@ -11,10 +12,12 @@ import {
   CRLNotFoundError,
   CRLInvalidCAStatusError,
   CRLOperationError,
+  CRLPublicationBusyError,
 } from '../../services/crl.service.js';
 
 // Helper to map service errors to tRPC errors
 function mapServiceError(error: unknown): never {
+  throwIfKeyStoreError(error);
   if (error instanceof CRLCANotFoundError) {
     throw new TRPCError({
       code: 'NOT_FOUND',
@@ -31,6 +34,14 @@ function mapServiceError(error: unknown): never {
     throw new TRPCError({
       code: 'BAD_REQUEST',
       message: error.message,
+    });
+  }
+  if (error instanceof CRLPublicationBusyError) {
+    // 503 with Retry-After (tRPC responseMeta reads the cause): retry after the other publication.
+    throw new TRPCError({
+      code: 'SERVICE_UNAVAILABLE',
+      message: error.message,
+      cause: new KeyStoreTrpcCause('CRL_PUBLICATION_BUSY', error.retryAfterSeconds),
     });
   }
   if (error instanceof CRLOperationError) {

@@ -4,7 +4,7 @@ summary: Issue, renew and download certificates for servers, clients, email and 
 group: x509
 order: 2
 image: img/certificate-detail.png
-imageAlt: Detail page of a server certificate with its validity, subject alternative names, issuing CA and the KMS key id
+imageAlt: Detail page of a server certificate with its validity, subject alternative names, issuing CA and the reference of its key
 links:
   - label: "Guide: build a private CA and issue certificates"
     href: ../guides/private-ca.md
@@ -46,11 +46,13 @@ turns yellow, and with 7 days or less turns red.
 
 ## How it works
 
-The KMS makes the key pair and signs the certificate with the key of the CA. The database stores
-the certificate and the id of its key in the KMS.
+OpenBao Transit makes the key pair of the certificate. The backend builds the certificate, and
+Transit signs it with the key of the CA. The database stores the certificate and a reference to
+its key in Transit.
 
-When someone downloads a format that contains the private key, the backend reads the key from the
-KMS at that moment and builds the file.
+The key of an issued certificate is exportable in Transit, so that you can download it. When
+someone downloads a format that contains the private key, the backend exports the key from Transit
+at that moment and builds the file.
 
 To keep the private key on your own machine, do not use this page: send a certificate signing
 request (CSR) through the API. See [Automation and API](automation-api.md).

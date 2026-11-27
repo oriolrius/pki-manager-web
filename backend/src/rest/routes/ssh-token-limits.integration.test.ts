@@ -26,9 +26,10 @@ import {
 } from '../../services/ssh-fleet-token.service.js';
 import { getSshPrincipalService } from '../../services/ssh-principal.service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
-import { getKMSService } from '../../kms/service.js';
+import { isOpenBaoSshAvailable } from '../../test/openbao-ssh.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const ctx = { db, ipAddress: null };
 const tokens = getSshFleetTokenService();
 const WEEK = 7 * 24 * 3600;
@@ -158,7 +159,7 @@ describe('TASK-247 — mint with limits and refusals (no KMS)', () => {
   });
 });
 
-describe.skipIf(!KMS)('TASK-247 — limited token signs with min(default, max) (KMS)', () => {
+describe.skipIf(!OPENBAO)('TASK-247 — limited token signs with min(default, max) (KMS)', () => {
   let ext: FastifyInstance;
   let userCa: Pick<SshCaDto, 'id'>;
   let createdCa: boolean;
@@ -190,8 +191,7 @@ describe.skipIf(!KMS)('TASK-247 — limited token signs with min(default, max) (
     await db.delete(sshFleetTokens).where(eq(sshFleetTokens.id, minted.record.id));
     await db.delete(sshPrincipals).where(eq(sshPrincipals.name, 'tl-kms-deploy'));
     if (createdCa) {
-      const [row] = await db.select().from(sshCas).where(eq(sshCas.id, userCa.id));
-      try { await getKMSService().destroyKeyPair(row.kmsKeyId, row.kmsPublicKeyId); } catch { /* */ }
+      // The Transit key stays in OpenBao: SSH CA keys are not deletable.
       await db.delete(sshCas).where(eq(sshCas.id, userCa.id));
     }
     if (work) rmSync(work, { recursive: true, force: true });

@@ -1,4 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
+import { keyStoreErrorBody } from '../key-store-errors.js';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import forge from 'node-forge';
 import { db } from '../../db/client.js';
@@ -256,6 +257,9 @@ export async function externalRoutes(fastify: FastifyInstance) {
     if (error.validation) {
       return reply.code(400).send({ error: { code: 'BAD_REQUEST', message: error.message } });
     }
+    // Key store errors: 503 KEY_STORE_UNAVAILABLE (retry), 409 KEY_MIGRATION_REQUIRED, ...
+    const keyStore = keyStoreErrorBody(reply, error);
+    if (keyStore) return reply.send(keyStore);
     return reply.send(error);
   });
 
@@ -353,7 +357,7 @@ export async function externalRoutes(fastify: FastifyInstance) {
       security: [{ integrationToken: [] }],
       summary: 'Sign a CSR with the integration CA (idempotent on requestUid)',
       body: signBodySchema,
-      response: { 200: externalSignResponse },
+      response: { 200: externalSignResponse, 503: errorResponse },
     },
   }, async (req, reply) => {
     const body = req.body;
@@ -554,6 +558,8 @@ export async function externalRoutes(fastify: FastifyInstance) {
         }),
         ipAddress: req.ip,
       });
+      const keyStore = keyStoreErrorBody(reply, err);
+      if (keyStore) return reply.send(keyStore);
       return reply.code(500).send({
         error: {
           code: 'SIGN_FAILED',

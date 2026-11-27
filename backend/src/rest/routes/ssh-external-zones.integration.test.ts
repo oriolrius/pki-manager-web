@@ -19,26 +19,24 @@ import {
   sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals,
   sshFleetTokens, sshIdempotency,
 } from '../../db/schema.js';
-import { getKMSService } from '../../kms/service.js';
+import { isOpenBaoSshAvailable } from '../../test/openbao-ssh.js';
 import { getSshZoneService } from '../../services/ssh-zone.service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
 import { getSshFleetTokenService } from '../../services/ssh-fleet-token.service.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const ctx = { db, ipAddress: null };
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
   await db.delete(zones).where(ne(zones.name, 'default'));
 }
 
-describe.skipIf(!KMS)('ZONE-09 external API zone scoping (A2)', () => {
+describe.skipIf(!OPENBAO)('ZONE-09 external API zone scoping (A2)', () => {
   let app: FastifyInstance;
   let work: string;
   let prodToken: string;

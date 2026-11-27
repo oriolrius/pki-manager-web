@@ -27,7 +27,7 @@ import {
   sshHostKrls,
   sshHostBlocks,
 } from '../db/schema.js';
-import { getKMSService } from '../kms/service.js';
+import { isOpenBaoSshAvailable } from '../test/openbao-ssh.js';
 import { getSshZoneService, SshZoneAmbiguousError } from './ssh-zone.service.js';
 import { getSshCaService, SshCaExistsError } from './ssh-ca.service.js';
 import { getSshHostService } from './ssh-host.service.js';
@@ -37,19 +37,11 @@ import { getSshBlockService } from './ssh-block.service.js';
 import { getSshKrlService } from './ssh-krl.service.js';
 import { getSshHostKrlService } from './ssh-host-krl.service.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const ctx = { db, ipAddress: null };
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) {
-    try {
-      await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId);
-    } catch {
-      /* best effort */
-    }
-  }
   for (const t of [sshHostKrls, sshHostBlocks, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -60,7 +52,7 @@ async function wipe() {
 
 const keygen = (args: string[]) => execFileSync('ssh-keygen', args, { stdio: 'pipe' });
 
-describe.skipIf(!KMS)('SSH zones — multi-zone trust boundary (ZONE-02..05)', () => {
+describe.skipIf(!OPENBAO)('SSH zones — multi-zone trust boundary (ZONE-02..05)', () => {
   let work: string;
   let prod: SshZoneDto;
   let staging: SshZoneDto;

@@ -4,6 +4,7 @@ import { ArrowLeft, Info } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/components/ui';
 import { ZonePicker } from '@/components/ssh/ZonePicker';
+import { KEY_STORE_NAME } from '@/lib/key-store';
 
 export const Route = createFileRoute('/ssh/cas/new')({
   component: NewSshCa,
@@ -59,7 +60,7 @@ function NewSshCa() {
         <div className="p-6 border-b">
           <h1 className="text-2xl font-bold">Create SSH Certificate Authority</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Generates a non-exportable ECDSA nistp256 key in Cosmian KMS and registers it as an SSH CA.
+            Generates a non-exportable ECDSA nistp256 key in {KEY_STORE_NAME} and registers it as an SSH CA.
           </p>
         </div>
 
@@ -99,7 +100,7 @@ function NewSshCa() {
           <div className="flex items-start gap-2 text-xs text-muted-foreground p-3 rounded-md bg-primary/10 border border-primary/20">
             <Info className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
             <span>
-              SSH CAs are <strong>ECDSA nistp256 only</strong>. The private key never leaves the KMS. Only one active CA
+              SSH CAs are <strong>ECDSA nistp256 only</strong>. The private key never leaves the key store. Only one active CA
               per type is allowed.
             </span>
           </div>

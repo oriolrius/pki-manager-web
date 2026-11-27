@@ -1,9 +1,9 @@
 # SCEP device enrollment and MDM gateway
 
-Optional SCEP endpoint for **RSA client/device certificates**, backed by
-PKI Manager and Cosmian KMS. It uses the Smallstep SCEP/CMS libraries, not a custom
-ASN.1 protocol implementation. No OIDC login is required on the device: enrollment
-uses an encrypted PKCS#10 `challengePassword`. Choose shared challenges for generic
+The SCEP gateway enrolls **RSA client and device certificates** through PKI Manager.
+OpenBao Transit holds the registration authority (RA) and issuing CA keys. The gateway
+uses the Smallstep SCEP/CMS libraries. Devices authenticate with an encrypted PKCS#10
+`challengePassword`. Choose shared challenges for generic
 clients, native Intune validation for managed devices, or a trusted MDM validation
 webhook. See [Intune device profiles and tenant setup](docs/intune.md).
 
@@ -22,6 +22,7 @@ scheme for external issuance. The gateway `/scep` protocol runs on its own serve
 | Legacy GET `PKIOperation&message=<URL-encoded base64>` | Supported within HTTP header limits |
 | Initial `PKCSReq` | Immediate signed/encrypted `CertRep` success or failure |
 | `RenewalReq` / `UpdateReq` | Active, service-owned old signer plus shared challenge or fresh MDM validation |
+| Request envelopes | RSA PKCS#1 v1.5 key transport; content cipher AES-128/256-CBC, AES-128/256-GCM or 3DES-CBC, DER or BER. Other ciphers get a signed `badAlg` failure before any RA decryption ([session key length](../docs/api/integrations.md#ra-decrypt-cms-session-key-length)) |
 | Response cryptography | SHA-256/RSA PKCS#1 signatures; AES-256-CBC envelopes |
 | Device keys | RSA, 2048–8192 bits; signer and CSR must use the same key |
 | CSR identity | Nonempty CN, maximum 128 bytes; managed modes support DNS, IP, email, URI and Microsoft UPN SANs |
@@ -36,32 +37,22 @@ never falls back to the shared challenge. It targets the commercial Microsoft
 cloud. This is not Windows NDES and does not require an AD CS private key export.
 
 The device profile is EAP-TLS client authentication, not server certificates or
-ECDSA. Protocol, CMS/OpenSSL, KMS/backend, and mocked Intune contract tests run
+ECDSA. Protocol, CMS/OpenSSL, backend RA and mocked Intune contract tests run
 locally. Live Intune tenant enrollment and physical Windows/Apple/Android device
 interoperability still require deployment acceptance testing; they are not
 claimed as completed or Microsoft certification.
 
 ## Architecture and authorization
 
-The backend must have integrations (migration 0010, PKI Manager 3.15.0 or newer).
-Create an active CA and a dedicated **SCEP / MDM** integration under
-**Operations → Integrations**, then give its CA-bound service token to the gateway.
-Devices receive only the challenge and CA trust.
+Use a v4 backend and gateway from the same release. Create an active CA and a dedicated
+**SCEP / MDM** integration under **Operations → Integrations**. Give its CA-bound
+service token to the gateway. Devices receive the challenge and CA trust.
 
-The gateway communicates exclusively with the existing backend. It has **no KMS
-client, KMS credentials, private keys, or KMS object identifiers**. The backend
-provisions a Sensitive RSA-3072 RA key and fixes its CA, subject, extensions and
-algorithms. `/api/v1/external/ra/*` resolves the key from the authenticated
-integration; callers cannot select another key. Every RA operation checks the
-integration/CA/RA state and persists audit intent before contacting KMS.
-
-`ra.json` contains public certificates only. Backend database migrations retain
-the authoritative RA binding and provisioning/renewal leases. Back up the backend
-DB and KMS together. Interrupted provisioning retains a 15-minute backend lease. After expiry,
-provisioning reuses recorded keys; if no key was recorded, allocation can retry.
-An ambiguous lost KMS response can leave an orphan: reconcile KMS objects against
-the integration audit trail.
-Deleting gateway state does not create another RA.
+The gateway calls the backend. The backend selects the RA from the authenticated
+integration, checks its CA and records the requested RA operation in the audit log.
+The gateway has no OpenBao credentials. `ra.json` holds public certificate metadata.
+SQLite holds the RA binding and its provisioning and renewal leases. Keep a matching
+backup of the database and OpenBao storage. See [OpenBao operations](../docs/operations/openbao.md).
 
 RA renewal runs on startup and hourly, during the last third of its lifetime.
 It uses the same backend-owned key and publishes new public metadata atomically;
@@ -93,13 +84,12 @@ protected from integration-token revocation.
 ## Docker / Arcane: one additional container
 
 Use one existing Compose project and its existing `.env`. Add this service,
-network membership, and volume to your Compose. Use the image tag of a release
-(3.15.0 or newer), the same as your backend.
+network membership, and volume to your Compose. Set `IMAGE_TAG` to the v4 release used by the backend.
 
 ```yaml
 services:
   scep:
-    image: ghcr.io/oriolrius/pki-manager-web/scep:${IMAGE_TAG:-latest}
+    image: ghcr.io/oriolrius/pki-manager-web/scep:${IMAGE_TAG:?Set the backend release tag}
     restart: unless-stopped
     command: [serve]
     user: "10001:10001"
@@ -132,12 +122,9 @@ only if your reverse proxy requires it. Do not expose backend RA endpoints to
 devices. Secret files are also supported through `SCEP_BACKEND_TOKEN_FILE` and
 `SCEP_CHALLENGE_FILE` (set either value or file, never both).
 
-Keep KMS on a **separate internal network shared only with the backend**. Attach
-the backend to both that network and `pki-network`; attach the gateway only to
-`pki-network`. The full stack in `docker/docker-compose.yml` implements this.
-For an existing installation remove all `SCEP_KMS_*` settings and KMS secret
-mounts, and separate the networks accordingly. KMS credentials belong only in the
-backend configuration. No additional backend container or `.env` is needed.
+Attach the gateway to `pki-network`. The backend and the OpenBao Agent use the
+private key-store network. Set the OpenBao address and credentials on the backend
+and Agent as described in [OpenBao operations](../docs/operations/openbao.md).
 
 Existing-installation template: `scep/compose.yml` with
 `scep/compose.env.example`. Full-stack overlay:
@@ -148,24 +135,44 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.scep.yml --
 
 Create `docker/scep-secrets/backend-token` and `challenge` before using templates,
 with ownership/read permission for UID 10001. Use a cryptographically random
-32–256-byte challenge, e.g. `openssl rand -hex 32`. No KMS secret file is needed.
+32–256-byte challenge, for example `openssl rand -hex 32`.
 `serve` provisions automatically in Compose; manual `command: [provision]` is
 optional and idempotent against the backend binding.
 
-Cosmian KMS **5.28.0** is pinned and tested. Before upgrading an existing 5.12
-installation, follow [the KMS backup/migration runbook](../docs/operations/deployment.md#kms-upgrade-backup-before-recreating-the-container).
-KMS 5.24 reuses serials for the same key and cannot support safe RA renewal;
-5.28 generates fresh serials. The explicit config mounts `/cosmian-kms/sqlite-data` and is selected with
-`COSMIAN_KMS_CONF`; mounting an unrelated directory does not persist keys.
+## RA key in OpenBao
 
-### Migration from the earlier direct-KMS gateway
+1. On first provisioning, the backend records a generated key name and version in SQLite
+   before it creates the RSA-3072 key in Transit. The key policy permits PKCS#1 v1.5
+   session-key transport and denies private-key export, plaintext backup and deletion.
+   A retry after the 15-minute provisioning lease expires reuses the recorded name.
+2. The RA key signs a PKCS#10 request. The backend builds the RA certificate, and Transit
+   signs it with the issuing CA. Renewal keeps the bound RA key and version and checks the
+   public key against the previous certificate.
+3. The gateway calls `ra/sign` with a SHA-256 digest. For `ra/decrypt`, it reads the
+   content cipher from the verified CMS envelope and sends the corresponding
+   `sessionKeyLength`. The backend calls the fork's session-key endpoint with the bound key
+   version. See the [backend RA API](../docs/api/integrations.md#backend-owned-scep-ra)
+   for request fields, supported lengths and errors.
 
-Back up the backend database, KMS data, and old public RA metadata. Deploy the
-new backend first, then the gateway. Existing gateway key IDs are **never adopted
-from a file or request**. The backend provisions a new, integration-bound RA;
-clients must rediscover GetCACert before enrollment. Retire old RA certificates
-through the administrative UI once their recipients no longer need them. Keep
-orphan/failed-provisioning cleanup an explicit operator task.
+The backend uses the dedicated Transit mount `pki-manager-ra` by default, with its own
+credential: the AppRole `pki-manager-ra`, delivered by the Compose service `openbao-agent-ra`
+(profile `scep`) to the backend `OPENBAO_RA_TOKEN_FILE`. The X.509/SSH backend token has no
+right on the RA mount, and the RA token has none on the X.509 and SSH mounts. Without the RA
+credential, the RA endpoints answer 503. The configuration, AppRoles and policies live with the
+OpenBao deployment ([OpenBao operations](../docs/operations/openbao.md)). Omit the obsolete
+`SCEP_RA_KEY_PROVIDER` setting on v4.
+
+### Upgrade a v3 binding
+
+Keep matching backups of the v3 backend database, its key store and the public RA
+metadata. A binding that still references a Cosmian key returns HTTP 409 with
+`RA_KEY_MIGRATION_REQUIRED` when the backend checks that binding. Reinstalling the gateway
+or replacing `ra.json` cannot transfer the key. Complete the key migration and verify the RA
+public key and certificate chain before resuming enrollment. A key that requires rotation
+needs a replacement RA and client trust checks. See [OpenBao operations](../docs/operations/openbao.md).
+
+Use the matching v4 gateway. A gateway that omits `sessionKeyLength` receives HTTP 400
+from the backend on decryption.
 
 ## Configuration
 
@@ -204,16 +211,18 @@ variable is set:
 | `TestLiveBackendRABoundary` | `SCEP_TEST_BACKEND_URL`, `SCEP_TEST_TOKEN_FILE` | backend-mediated RA signatures/decryption; caller key IDs rejected |
 | `TestLiveManagedProfileWithKMS` | `SCEP_TEST_BACKEND_URL`, `SCEP_TEST_TOKEN_FILE` | managed SANs, key-rotating renewal and revocation (MDM approval is a test double) |
 | `TestLiveEnrollment` | `SCEP_TEST_SERVER_URL`, `SCEP_TEST_CHALLENGE_FILE` | black-box enrollment through a running gateway |
+| `TestLiveEnrollmentAndRenewal` | `SCEP_TEST_SERVER_URL`, `SCEP_TEST_CHALLENGE_FILE` | black-box `PKCSReq` and key-rotating `RenewalReq` through a running gateway, for AES-128/256 CBC/GCM envelopes (16- and 32-byte session keys) |
 
 `SCEP_TEST_TOKEN_FILE` holds the `scep` integration token. The RA is read from the
-backend, so no RA state file is needed. Against an isolated backend/KMS:
+backend, so no RA state file is needed. Run against a disposable backend and OpenBao instance:
 
 ```sh
 SCEP_TEST_BACKEND_URL=http://127.0.0.1:52081 \
 SCEP_TEST_TOKEN_FILE=/secure/test-token go test -run 'TestLive(BackendRABoundary|ManagedProfileWithKMS)' -v
 ```
 
-Live tests create real certificates; use an isolated CA.
+Live tests create real certificates. Use an isolated CA. The live renewal test covers
+AES-128 and AES-256. The CMS parser tests cover the 24-byte 3DES key size.
 Live Intune/device acceptance remains a deployment-specific check.
 
 ## Other MDM providers
@@ -254,7 +263,7 @@ location = /scep {
 Tune these example limits for the enrollment fleet. Ensure the proxy sees trusted
 source addresses, and prevent direct access to the published gateway port. These
 limits apply to discovery too in this simple example; discovery itself no longer
-uses backend or KMS resources. The backend separately bounds anonymous rejection
+calls the backend or OpenBao. The backend separately bounds anonymous rejection
 audit rows; that does not replace ingress rate limiting. Non-loopback backend
 URLs must use HTTPS, including on Docker networks, so proxy configuration cannot
 expose service tokens in plaintext.

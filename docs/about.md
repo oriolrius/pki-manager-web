@@ -44,7 +44,12 @@ I publish the source code because it can be useful to someone else. That is the 
 
 ## What it is built on
 
-PKI Manager keeps private keys in [Cosmian KMS](https://github.com/Cosmian/kms). It uses an OIDC
+PKI Manager keeps private keys in a build of [OpenBao](https://openbao.org) with a small patch set
+for SCEP. The source is the
+[`pki-manager` branch of my fork](https://github.com/oriolrius/openbao/tree/pki-manager), and
+its licence terms are in
+[DOWNSTREAM-LICENSING.md](https://github.com/oriolrius/openbao/blob/pki-manager/DOWNSTREAM-LICENSING.md).
+Versions before the OpenBao cutover used [Cosmian KMS](https://github.com/Cosmian/kms). It uses an OIDC
 provider such as [Keycloak](https://www.keycloak.org) for login, and its Kubernetes issuer works
 with [cert-manager](https://cert-manager.io). These are separate projects with their own licences.
 PKI Manager is not affiliated with them.

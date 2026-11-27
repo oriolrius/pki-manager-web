@@ -6,17 +6,39 @@
  *   GET /crl/:caId.crl  -> PEM  (application/x-pem-file)
  *   GET /crl/:caId.der  -> DER  (application/pkix-crl)
  *
- * Serves the latest signed CRL, lazily regenerating it (best-effort) when it has passed
- * nextUpdate so distributed CRLs stay fresh.
+ * Serves the newest signed CRL. Before it serves, it makes the CRL current (best-effort,
+ * `CRLService.refreshForDistribution`): it publishes a new CRL when the CA has none, when the
+ * newest one has an empty PEM (issue #48) or has passed nextUpdate, or when it does not list the
+ * revocations of the database (for example after a revocation while OpenBao was sealed). When
+ * the signing fails, it serves the CRL it has, with a short cache time.
+ *
+ * In a listening server, the plugin also runs the background CRL reconciliation
+ * (`services/crl-reconciler.ts`), which publishes pending CRLs when nobody downloads them, also
+ * after a restart. `inject()` and `ready()` do not start it.
  */
 
 import type { FastifyInstance } from 'fastify';
-import { eq, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { certificateAuthorities, crls } from '../../db/schema.js';
-import { getCRLService } from '../../services/crl.service.js';
+import { certificateAuthorities } from '../../db/schema.js';
+import { CRL_PENDING_MAX_AGE_SECONDS, getCRLService } from '../../services/crl.service.js';
+import { startCrlReconciler, type CrlReconciler } from '../../services/crl-reconciler.js';
 
-export async function publicCrlRoutes(fastify: FastifyInstance): Promise<void> {
+export interface PublicCrlRoutesOptions {
+  /** Timing of the background CRL reconciliation (tests); false: do not run it. */
+  reconciler?: false | { initialDelayMs?: number; intervalMs?: number };
+}
+
+export async function publicCrlRoutes(fastify: FastifyInstance, options: PublicCrlRoutesOptions = {}): Promise<void> {
+  let reconciler: CrlReconciler | null = null;
+  fastify.addHook('onListen', async () => {
+    if (options.reconciler === false) return;
+    reconciler = startCrlReconciler({ ctx: { db, ipAddress: null }, log: fastify.log, ...options.reconciler });
+  });
+  fastify.addHook('onClose', async () => {
+    reconciler?.stop();
+  });
+
   fastify.get('/crl/:caId.:format', { schema: { hide: true } }, async (req, reply) => {
     const { caId, format } = req.params as { caId: string; format: string };
 
@@ -39,39 +61,15 @@ export async function publicCrlRoutes(fastify: FastifyInstance): Promise<void> {
         return { error: `CA with ID ${caId} not found` };
       }
 
-      // Get latest CRL for this CA
-      let latestCrl = await db
-        .select()
-        .from(crls)
-        .where(eq(crls.caId, caId))
-        .orderBy(desc(crls.crlNumber))
-        .limit(1);
+      // Make the CRL current before it is served (best-effort, see the header). A CA that has
+      // no CRL yet gets its first, empty CRL now.
+      const publication = await getCRLService().refreshForDistribution({ db, ipAddress: req.ip }, caId);
+      const crl = publication.crl;
 
-      // On-demand refresh: if the newest CRL has passed its nextUpdate, regenerate a fresh
-      // one (with an incremented crlNumber) before serving (best-effort; falls back to the
-      // stale CRL if the KMS/signing is unavailable).
-      // A CA that has no CRL yet (created before initial-CRL generation, or generation failed
-      // at creation) gets its first, empty CRL generated now; numbering starts at 1.
-      // A newest row with an empty PEM (written by CA revocation before issue #48 was fixed)
-      // is also replaced by a signed CRL.
-      if (latestCrl.length === 0 || !latestCrl[0].crlPem || new Date() > latestCrl[0].nextUpdate) {
-        const refreshed = await getCRLService().regenerateForCa({ db, ipAddress: req.ip }, caId);
-        if (refreshed) {
-          latestCrl = await db
-            .select()
-            .from(crls)
-            .where(eq(crls.caId, caId))
-            .orderBy(desc(crls.crlNumber))
-            .limit(1);
-        }
-      }
-
-      if (!latestCrl || latestCrl.length === 0) {
+      if (!crl) {
         reply.code(404);
         return { error: `No CRL available for CA ${caId}` };
       }
-
-      const crl = latestCrl[0];
 
       // A signed CRL must have PEM content; an empty one indicates a generation problem.
       if (!crl.crlPem) {
@@ -103,9 +101,11 @@ export async function publicCrlRoutes(fastify: FastifyInstance): Promise<void> {
       reply.header('Last-Modified', crl.thisUpdate.toUTCString());
       reply.header('Expires', crl.nextUpdate.toUTCString());
 
-      // Calculate Cache-Control max-age based on time until nextUpdate
+      // Cache-Control max-age: the time until nextUpdate. A pending CRL (it does not list the
+      // database state yet) gets a short one, so that caches fetch the next CRL soon.
       const now = new Date();
-      const maxAge = Math.max(0, Math.floor((crl.nextUpdate.getTime() - now.getTime()) / 1000));
+      let maxAge = Math.max(0, Math.floor((crl.nextUpdate.getTime() - now.getTime()) / 1000));
+      if (publication.status === 'pending') maxAge = Math.min(maxAge, CRL_PENDING_MAX_AGE_SECONDS);
       reply.header('Cache-Control', `public, max-age=${maxAge}`);
 
       return content;

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ANS-10: dockerized ssh_host_cert e2e (containers-as-hosts).
 #
-# One command: stands up backend+KMS, applies the role to a public-cron host
+# One command: stands up backend+OpenBao, applies the role to a public-cron host
 # and an ecies host (both ecdsa — host keys are ecdsa-sha2-nistp256 only), asserts
 # idempotence, then drives
 # real ssh from a client container — cert login with no TOFU, principal RBAC,
 # and per-host revocation narrowing on BOTH KRL channels.
 #
-# Skips cleanly (exit 0) when docker/KMS is unavailable (AC#6).
+# Skips cleanly (exit 0) when Docker/OpenBao is unavailable (AC#6).
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -18,9 +18,9 @@ HOST_IP=$(hostname -I | awk '{print $1}')
 BASE="http://${HOST_IP}:${PORT}"
 DC="docker compose"
 
-# In CI (E2E_STRICT=1) a "skip" is a real failure — docker/KMS ARE available on
+# In CI (E2E_STRICT=1) a "skip" is a real failure — Docker/OpenBao ARE available on
 # the runner, so any skip there means something actually broke. Locally, skip is
-# a graceful no-op when docker/KMS is unavailable.
+# a graceful no-op when Docker/OpenBao is unavailable.
 skip() { if [ "${E2E_STRICT:-0}" = "1" ]; then echo "FAIL(strict): $*"; exit 1; fi; echo "SKIP: $*"; exit 0; }
 fail() { echo "FAIL: $*"; exit 1; }
 ok()   { echo "PASS: $*"; }
@@ -28,7 +28,7 @@ ok()   { echo "PASS: $*"; }
 command -v docker >/dev/null 2>&1 || skip "docker not installed"
 docker info >/dev/null 2>&1 || skip "docker daemon not reachable"
 
-cleanup() { $DC down -v --remove-orphans >/dev/null 2>&1 || true; }
+cleanup() { $DC down -v --remove-orphans >/dev/null 2>&1 || true; bash "$REPO/scripts/openbao-test.sh" down ssh-e2e >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 # --- krl-client static binary (built via make; the role get_url's it) ---
@@ -60,8 +60,12 @@ ok "oriolrius.pki_manager + community.docker collections installed"
 mkdir -p _artifacts
 rm -f _artifacts/* 2>/dev/null || true
 
-echo "==> building + starting stack (backend+KMS+hosts+client)"
-$DC up -d --build || skip "compose up failed (docker/KMS unavailable)"
+echo "==> building + starting stack (backend+OpenBao+hosts+client)"
+bash "$REPO/scripts/openbao-test.sh" up ssh-e2e >/dev/null || fail "OpenBao test instance did not start"
+settings="$(bash "$REPO/scripts/openbao-test.sh" client ssh-e2e)" || fail "OpenBao client settings unavailable"
+while IFS= read -r line; do export "$line"; done <<< "$settings"
+
+$DC up -d --build || skip "compose up failed (Docker/OpenBao unavailable)"
 
 echo "==> waiting for backend health at $BASE/health"
 code=000

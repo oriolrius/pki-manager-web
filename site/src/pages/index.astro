@@ -65,15 +65,15 @@ const { Content } = await render(home);
   <section class="section tinted">
     <div class="wrap how">
       <figure class="diagram">
-        <img src={`${base}/diagrams/01-architecture.svg`} alt="The web UI and automation call the backend. The backend keeps private keys in Cosmian KMS and metadata in SQLite. Login uses an optional OIDC provider" loading="lazy" width="557" height="503" />
+        <img src={`${base}/diagrams/01-architecture.svg`} alt="The web UI and automation call the backend. The backend keeps private keys in OpenBao Transit and metadata in SQLite. Login uses an optional OIDC provider" loading="lazy" width="630" height="520" />
       </figure>
       <div>
         <h2>{how.data.title}</h2>
         <p class="section-lead">{how.data.summary}</p>
         <ul class="facts-list">
-          <li>The KMS makes the private keys and signs the certificates.</li>
-          <li>The database has certificates and key ids. It has no private keys.</li>
-          <li>You run three containers with Docker Compose. All data is in two folders.</li>
+          <li>OpenBao Transit makes the private keys and signs the certificates.</li>
+          <li>The database has certificates and key references. It has no private keys.</li>
+          <li>You run three containers: web UI, backend and OpenBao. Back up the database and OpenBao together.</li>
         </ul>
         <div class="actions">
           <a class="button plain" href={url('how-it-works')}>Read how it works</a>

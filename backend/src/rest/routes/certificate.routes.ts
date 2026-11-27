@@ -1,4 +1,5 @@
 import { resolveExportPassword, exportPasswordHeaderSchema, deprecatedPasswordQueryDescription } from '../export-password.js';
+import { keyStoreErrorBody } from '../key-store-errors.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { eq } from 'drizzle-orm';
@@ -165,12 +166,14 @@ async function issuingCaPem(
   }
   try {
     return { pem: await getKMSService().getCertificate(ca.kmsCertificateId, ca.id) };
-  } catch {
-    return { error: sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve the issuing CA certificate from KMS') };
+  } catch (error) {
+    return { error: keyStoreErrorBody(reply, error) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve the issuing CA certificate from KMS') };
   }
 }
 
 function handleServiceError(error: unknown, reply: FastifyReply) {
+  const keyStore = keyStoreErrorBody(reply, error);
+  if (keyStore) return keyStore;
   if (error instanceof CertificateNotFoundError) {
     return sendError(reply, 404, 'CERTIFICATE_NOT_FOUND', error.message);
   }
@@ -449,6 +452,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -623,6 +627,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -696,6 +701,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -752,6 +758,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -842,6 +849,9 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
         400: errorResponseSchema,
         404: errorResponseSchema,
         500: errorResponseSchema,
+        403: errorResponseSchema,
+        409: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -912,8 +922,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pem-file';
             filename = `${baseName}.key`;
             data = Buffer.from(privateKeyPem).toString('base64');
-          } catch {
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
+          } catch (error) {
+            return keyStoreErrorBody(reply, error) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;
 
@@ -934,8 +944,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/pkcs8';
             filename = `${baseName}.key`;
             data = keyBase64;
-          } catch {
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
+          } catch (error) {
+            return keyStoreErrorBody(reply, error) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;
 
@@ -947,13 +957,13 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           try {
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
-            // Encrypt with password via openssl (supports RSA + EC).
+            // Encrypt with password via Node crypto (supports RSA + EC).
             const encryptedPem = await encryptPrivateKeyPem(privateKeyPem, password!);
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_encrypted.key`;
             data = Buffer.from(encryptedPem).toString('base64');
-          } catch {
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve or encrypt private key');
+          } catch (error) {
+            return keyStoreErrorBody(reply, error) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve or encrypt private key');
           }
           break;
 
@@ -967,11 +977,19 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
 
+            const chainPems: string[] = [];
+            if (request.query.includeChain !== false) {
+              const issuer = await issuingCaPem(cert.caId, reply);
+              if ('error' in issuer) return issuer.error;
+              chainPems.push(issuer.pem);
+            }
+
             // Create PKCS#12 via openssl (supports RSA + EC; node-forge cannot encode EC keys).
             const p12Buffer = await createPkcs12Bundle({
               legacy: request.query.legacy,
               certPem: cert.certificatePem!,
               privateKeyPem,
+              chainPems,
               password: password!,
               friendlyName: cert.subjectDn,
             });
@@ -979,8 +997,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pkcs12';
             filename = `${baseName}.p12`;
             data = p12Buffer.toString('base64');
-          } catch {
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to create P12 bundle');
+          } catch (error) {
+            return keyStoreErrorBody(reply, error) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to create P12 bundle');
           }
           break;
 
@@ -1032,7 +1050,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             if (jksError instanceof JKSKeytoolError) {
               return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
             }
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to create JKS keystore');
+            return keyStoreErrorBody(reply, jksError) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to create JKS keystore');
           }
         }
 
@@ -1074,7 +1092,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             if (jksError instanceof JKSKeytoolError) {
               return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
             }
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to create JKS truststore');
+            return keyStoreErrorBody(reply, jksError) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to create JKS truststore');
           }
         }
 
@@ -1092,8 +1110,8 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_full.pem`;
             data = Buffer.from(fullPem).toString('base64');
-          } catch {
-            return sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
+          } catch (error) {
+            return keyStoreErrorBody(reply, error) ?? sendError(reply, 500, 'KMS_ERROR', 'Failed to retrieve private key from KMS');
           }
           break;
         }

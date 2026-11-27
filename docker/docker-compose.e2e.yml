@@ -4,6 +4,8 @@
 # simulating a production deployment with OIDC authentication via Keycloak.
 #
 # Usage:
+#   bash scripts/openbao-test.sh up rbac
+#   set -a; source <(bash scripts/openbao-test.sh client rbac); set +a
 #   docker compose -f docker/docker-compose.e2e.yml up -d
 #   pnpm playwright test tests/e2e-rbac.spec.ts
 #   docker compose -f docker/docker-compose.e2e.yml down
@@ -18,7 +20,7 @@
 #   - Frontend: http://localhost:58080
 #   - Backend API: http://localhost:53000
 #   - Keycloak: http://localhost:58180
-#   - KMS: internal-only (no host port)
+#   - OpenBao: isolated test instance
 
 services:
   # Keycloak Identity Provider
@@ -49,31 +51,17 @@ services:
       retries: 15
       start_period: 90s
 
-  # Cosmian KMS
-  kms:
-    # Same version and config-file mode as docker/docker-compose.yml.
-    image: ghcr.io/cosmian/kms:5.28.0
-    container_name: pki-e2e-kms
-    restart: unless-stopped
-    networks:
-      - pki-e2e-network
-    volumes:
-      - kms-data:/cosmian-kms/sqlite-data
-      - ../kms/kms.toml:/etc/cosmian/kms.toml:ro
-    environment:
-      - COSMIAN_KMS_CONF=/etc/cosmian/kms.toml
-    tmpfs:
-      - /tmp
-
   # Backend API
   backend:
-    image: ghcr.io/oriolrius/pki-manager-web/backend:${IMAGE_TAG:-latest}
+    image: ${ACCEPT_BACKEND_IMAGE:-ghcr.io/oriolrius/pki-manager-web/backend:${IMAGE_TAG:-latest}}
     container_name: pki-e2e-backend
     restart: unless-stopped
     networks:
       - pki-e2e-network
+      - keystore
     volumes:
       - backend-data:/app/backend/data
+      - ${OPENBAO_TEST_CLIENT_DIR:?run scripts/openbao-test.sh client rbac}:/run/openbao:ro
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -81,7 +69,9 @@ services:
       - LOG_LEVEL=info
       - FRONTEND_URL=http://localhost:58080
       - DATABASE_PATH=/app/backend/data/pki.db
-      - KMS_URL=http://kms:9998
+      - OPENBAO_ADDR=https://openbao:8200
+      - OPENBAO_TOKEN_FILE=/run/openbao/backend-token
+      - OPENBAO_CACERT=/run/openbao/ca.pem
       - CRL_DISTRIBUTION_URL=http://localhost:53000/crl
       # OIDC Configuration - Keycloak
       # The issuer must match what Keycloak puts in tokens (localhost:58180)
@@ -93,8 +83,6 @@ services:
     ports:
       - "53000:3000"
     depends_on:
-      kms:
-        condition: service_started
       keycloak:
         condition: service_healthy
     healthcheck:
@@ -106,7 +94,7 @@ services:
 
   # Frontend UI
   frontend:
-    image: ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG:-latest}
+    image: ${ACCEPT_FRONTEND_IMAGE:-ghcr.io/oriolrius/pki-manager-web/frontend:${IMAGE_TAG:-latest}}
     container_name: pki-e2e-frontend
     restart: unless-stopped
     networks:
@@ -126,10 +114,12 @@ services:
       start_period: 10s
 
 networks:
+  keystore:
+    external: true
+    name: ${OPENBAO_TEST_NETWORK:?run scripts/openbao-test.sh client rbac}
   pki-e2e-network:
     name: pki-e2e-network
     driver: bridge
 
 volumes:
-  kms-data:
   backend-data:

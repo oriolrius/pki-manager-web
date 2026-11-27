@@ -1,4 +1,5 @@
 import { router, protectedProcedure, adminProcedure } from '../init.js';
+import { throwIfKeyStoreError } from '../key-store-errors.js';
 import {
   listCasSchema,
   getCaSchema,
@@ -43,6 +44,8 @@ function mapServiceError(error: unknown): never {
       },
     });
   }
+  // After the inconsistency check: that CONFLICT keeps its KMS_INCONSISTENCY details.
+  throwIfKeyStoreError(error);
   if (error instanceof CAAlreadyRevokedError) {
     throw new TRPCError({
       code: 'BAD_REQUEST',

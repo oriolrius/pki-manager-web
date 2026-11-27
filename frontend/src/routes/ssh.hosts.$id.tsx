@@ -201,8 +201,8 @@ function SshHostDetail() {
               align="right"
               hint={
                 <>
-                  <strong>Offboard</strong> (terminal): revokes the host's live certificates, retires its per-host KRL
-                  lineage, and destroys its KMS key. Use when decommissioning a host for good — it cannot be undone.
+                  <strong>Offboard</strong> (terminal): revokes the host's live certificates (they go into the KRL), removes its
+                  principal mappings and marks the host offboarded. The host key stays on the server. Use when decommissioning a host for good — it cannot be undone.
                 </>
               }
             >

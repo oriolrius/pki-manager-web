@@ -1,0 +1,11 @@
+{
+  "name": "pki-manager-migration",
+  "private": true,
+  "type": "module",
+  "description": "Offline v3 (Cosmian) to OpenBao migration tool. Not part of the runtime. Guide: docs/operations/openbao-migration.md",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
+    "typecheck": "../../backend/node_modules/.bin/tsc -p tsconfig.json"
+  }
+}

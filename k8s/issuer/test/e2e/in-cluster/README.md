@@ -1,8 +1,9 @@
 # Full In-Cluster E2E
 
-Deploys PKI Manager backend + Cosmian KMS + cert-manager + the external issuer chart entirely inside a kind cluster.
+This fixture runs PKI Manager, the OpenBao fork, cert-manager and the external issuer inside a disposable kind cluster.
 
 ## Prerequisites
+
 - `kind`, `kubectl`, `helm`, `docker`, `openssl`, `jq`
 - Adequate inotify limits. Running kind (especially alongside another kind cluster) can
   exhaust the host default and crash kube-proxy/coredns with `too many open files`
@@ -20,38 +21,36 @@ Deploys PKI Manager backend + Cosmian KMS + cert-manager + the external issuer c
 make e2e-in-cluster
 ```
 
-This:
-1. Creates kind cluster (`kindest/node:v1.31.2`)
-2. Builds + loads `pki-manager-backend:e2e`, `pki-manager-issuer:e2e`, and pulls `ghcr.io/cosmian/kms:latest`
-3. Applies namespace + KMS Deployment/Service + PKI Manager backend Deployment/Service/PVC
-4. Runs DB migrations inside the backend pod
-5. Installs cert-manager v1.16.2
-6. Installs the issuer Helm chart
+Run the target from `k8s/issuer/`. It performs these steps:
 
-The backend signs CSRs via the KMS (the CA private key stays in the KMS), so no on-disk
-CA cert/key is mounted — the CA is created in-cluster during bootstrap below.
+1. Create the kind cluster. The Makefile selects the Kubernetes node image.
+2. Build and load the backend and issuer images. Load the pinned fork as `pki-manager-openbao:e2e`.
+3. Deploy OpenBao in the `pki-manager` namespace. The fixture creates TLS credentials and
+   persistent claims for Raft and bootstrap data. It initializes and unseals this test instance.
+4. Deploy the backend. It reads the scoped X.509/SSH token from Secret `pki-manager-backend-token`
+   and the TLS CA from ConfigMap `openbao-client-ca`. Run the database migrations. The test has
+   no SCEP RA credential (`OPENBAO_RA_TOKEN_FILE` unset): the issuer path needs none.
+5. Install cert-manager and the issuer Helm chart.
+
+The next steps create the signing CA and issue a certificate. The issuer sends the CSR to
+`http://pki-manager-backend.pki-manager.svc.cluster.local:3000`. Only the backend calls
+OpenBao at `https://openbao:8200`.
 
 ## Bootstrap CA + cluster token (post-install)
 
 ```bash
-# Create CA
-kubectl -n pki-manager run -i --rm -q --restart=Never --image=curlimages/curl bootstrap -- sh -c "
-  curl -s -X POST http://pki-manager-backend:3000/trpc/ca.create \
-    -H 'Content-Type: application/json' \
-    -d '{\"subject\":{\"commonName\":\"e2e-ca\",\"organization\":\"Test\",\"country\":\"ES\"},\"keyAlgorithm\":\"RSA-2048\",\"validityYears\":5}'
-" > /tmp/ca.json
-CA_ID=$(jq -r '.result.data.id' /tmp/ca.json)
+# Create the CA and read its ID.
+CA_ID=$(kubectl -n pki-manager run -i --rm -q --restart=Never --image=curlimages/curl bootstrap --command -- \
+  curl -fsS http://pki-manager-backend:3000/trpc/ca.create -H 'Content-Type: application/json' \
+  -d '{"subject":{"commonName":"e2e-ca","organization":"Test","country":"ES"},"keyAlgorithm":"RSA-2048","validityYears":5}' | jq -er '.result.data.id')
 
-# Register cluster (returns one-time token)
-kubectl -n pki-manager run -i --rm -q --restart=Never --image=curlimages/curl regcluster -- sh -c "
-  curl -s -X POST http://pki-manager-backend:3000/trpc/cluster.register \
-    -H 'Content-Type: application/json' \
-    -d '{\"name\":\"in-cluster-e2e\",\"caId\":\"'$CA_ID'\"}'
-" > /tmp/reg.json
-TOKEN=$(jq -r '.result.data.token' /tmp/reg.json)
+# Register the Kubernetes integration and read its one-time token.
+TOKEN=$(kubectl -n pki-manager run -i --rm -q --restart=Never --image=curlimages/curl regcluster --command -- \
+  curl -fsS http://pki-manager-backend:3000/trpc/cluster.register -H 'Content-Type: application/json' \
+  -d "$(jq -nc --arg ca "$CA_ID" '{name:"in-cluster-e2e",caId:$ca}')" | jq -er '.result.data.token')
 
 # Apply ClusterIssuer + Secret
-cat <<EOF | kubectl apply -f -
+cat <<EOF | kubectl apply --server-side -f -
 apiVersion: v1
 kind: Secret
 metadata: { name: pki-manager-token, namespace: pki-manager-issuer }
@@ -89,31 +88,26 @@ EOF
 # (approver.enabled=true, default) granting cert-manager's controller the `approve` verb on
 # our signers, so the CertificateRequest is approved + issued without a manual patch.
 
-# Verify
-kubectl get certificate,cr -n default
+# Wait for issuance and inspect the leaf and its issuer.
+kubectl wait --for=condition=Ready --timeout=180s certificate/in-cluster-tls
+kubectl get certificate,certificaterequest -n default
 kubectl get secret in-cluster-tls -n default -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject -issuer -ext subjectAltName
 ```
 
-## Network topology
+## Check the chain and the leaf key
 
+Run in Bash after the certificate becomes ready.
+
+```bash
+set -o pipefail
+tls_field() {
+  kubectl -n default get secret in-cluster-tls -o json | jq -er --arg f "$1" '.data[$f]' | base64 -d
+}
+
+openssl verify -CAfile <(tls_field ca.crt) <(tls_field tls.crt)
+diff <(tls_field tls.crt | openssl x509 -noout -pubkey) <(tls_field tls.key | openssl pkey -pubout)
 ```
-kind cluster
-├── ns: pki-manager
-│   ├── cosmian-kms       Service :9998 → Pod :9998
-│   └── pki-manager-backend Service :3000 → Pod :3000  (volume: PVC /data)
-├── ns: cert-manager       (cert-manager 1.16.2)
-└── ns: pki-manager-issuer (Helm chart, controller talks to ClusterIssuer.spec.url)
-```
 
-The issuer controller resolves `pki-manager-backend.pki-manager.svc.cluster.local:3000` purely via in-cluster DNS — no host network involvement.
-
-## Verified outputs (2026-06-29, KMS-signed path)
-
-- ClusterIssuer: `Ready=True, Reason=Verified`
-- CertificateRequest: single CR `Approved=True (reason cert-manager.io)` **with no manual
-  patch** (the chart's approver RBAC auto-approves), `Ready=True, Reason=Issued`
-- Issued cert signed by the KMS-held CA (`issuer=CN=e2e-ca`); SAN + serverAuth/clientAuth EKU
-  copied from the CSR; `basicConstraints critical CA:FALSE`
-- Secret: `tls.crt` public key == `tls.key` (sha256 match) — the CSR's own key was preserved
-  (the KMS did not regenerate it)
-- Chain verifies: `openssl verify -CAfile ca.crt tls.crt` → OK
+The first check verifies the certificate against the integration CA. The second compares the
+public key of the certificate with the public part of the key that cert-manager generated.
+Remove the fixture with `make kind-down`.

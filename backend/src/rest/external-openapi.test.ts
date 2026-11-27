@@ -50,4 +50,19 @@ describe('integration API documentation', () => {
     expect(spec.info.description).toContain('/trpc/integration.*');
   });
 
+  it('documents the required CMS session key length of RA decryption as a strict integer enum', () => {
+    expect(spec.paths?.['/external/ra/decrypt']?.post?.security).toEqual([{ integrationToken: [] }]);
+    expect(spec.paths?.['/external/ra/decrypt']?.post?.requestBody).toMatchObject({
+      content: { 'application/json': { schema: {
+        additionalProperties: false, required: ['data', 'sessionKeyLength'],
+        properties: { data: { type: 'string' }, sessionKeyLength: { type: 'integer', enum: [16, 24, 32] } },
+      } } },
+    });
+    expect(spec.paths?.['/external/ra/sign']?.post?.requestBody).toMatchObject({
+      content: { 'application/json': { schema: { required: ['digest'], properties: { digest: { type: 'string' } } } } },
+    });
+    const sign = spec.paths?.['/external/ra/sign']?.post?.requestBody as OpenAPIV3_1.RequestBodyObject;
+    expect(Object.keys((sign.content['application/json'].schema as OpenAPIV3_1.SchemaObject).properties ?? {})).toEqual(['digest']);
+  });
+
 });

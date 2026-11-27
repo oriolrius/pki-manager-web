@@ -10,6 +10,7 @@ import { findForgeExtension, parseCertificate } from '../crypto/x509.js';
 import { logger } from '../lib/logger.js';
 import type { DistinguishedName } from '../crypto/types.js';
 import type { ServiceContext } from './types.js';
+import { isKeyStoreUnavailable } from '../keystore/errors.js';
 
 // Types for CA Service inputs and outputs
 export interface ListCAsParams {
@@ -245,6 +246,8 @@ export class CAService {
         caRecord.id
       );
     } catch (kmsError) {
+      // An unavailable key store is an outage, not an inconsistency: 503 KEY_STORE_UNAVAILABLE.
+      if (isKeyStoreUnavailable(kmsError)) throw kmsError;
       // CA exists in DB but certificate not found in KMS - data inconsistency
       logger.warn(
         { caId: id, kmsCertificateId: caRecord.kmsCertificateId, error: kmsError },
@@ -257,7 +260,8 @@ export class CAService {
           kmsCertificateId: caRecord.kmsCertificateId,
           subjectDn: caRecord.subjectDn,
           serialNumber: caRecord.serialNumber,
-        }
+        },
+        { cause: kmsError }
       );
     }
 
@@ -795,9 +799,11 @@ export class CAKmsInconsistencyError extends Error {
       kmsCertificateId?: string;
       subjectDn?: string;
       serialNumber?: string;
-    }
+    },
+    /** The key store error; a legacy (un-migrated) id maps to 409 KEY_MIGRATION_REQUIRED at the REST edge. */
+    options?: { cause?: unknown }
   ) {
-    super(`CA ${caId} exists in database but certificate not found in KMS: ${kmsError}`);
+    super(`CA ${caId} exists in database but certificate not found in KMS: ${kmsError}`, options);
     this.name = 'CAKmsInconsistencyError';
   }
 }

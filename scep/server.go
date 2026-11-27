@@ -198,8 +198,8 @@ func (g *gateway) certRep(msg *scep.PKIMessage, signer *x509.Certificate, issued
 }
 func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 	// Bound attacker-controlled public key sizes before expensive signature checks.
-	p7, err := pkcs7.Parse(data)
-	if err != nil {
+	var p7 *pkcs7.PKCS7
+	if err := decodeSafely(func() (err error) { p7, err = pkcs7.Parse(data); return err }); err != nil {
 		return nil, err
 	}
 	signer := p7.GetOnlySigner()
@@ -211,8 +211,8 @@ func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 		return nil, errors.New("unsupported signer key")
 	}
 	// smallstep verifies CMS signed attributes/message digest/signature before decryption.
-	msg, err := scep.ParsePKIMessage(data)
-	if err != nil {
+	var msg *scep.PKIMessage
+	if err := decodeSafely(func() (err error) { msg, err = scep.ParsePKIMessage(data); return err }); err != nil {
 		return nil, err
 	}
 	if len(msg.SenderNonce) < 16 || len(msg.SenderNonce) > 32 || len(msg.TransactionID) == 0 || len(msg.TransactionID) > 128 {
@@ -223,7 +223,22 @@ func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 		slog.Warn("scep.enroll", "status", "rejected", "reason", "unsupported_message_type")
 		return g.certRep(msg, signer, nil, scep.BadRequest)
 	}
-	err = msg.DecryptPKIEnvelope(g.ra, g.decryptor)
+	// The signature over the envelope is verified. Read its content cipher and
+	// refuse an unsupported one before any RA decryption request.
+	keyLength, err := envelopeSessionKeyLength(p7.Content)
+	if err != nil {
+		if errors.Is(err, errUnsupportedContentCipher) {
+			slog.Warn("scep.enroll", "status", "rejected", "reason", "unsupported_content_cipher")
+			return g.certRep(msg, signer, nil, scep.BadAlg)
+		}
+		slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_envelope")
+		return g.certRep(msg, signer, nil, scep.BadRequest)
+	}
+	decryptor := sessionDecrypter(g.decryptor, keyLength)
+	decrypt := func(ra *x509.Certificate) error {
+		return decodeSafely(func() error { return msg.DecryptPKIEnvelope(ra, decryptor) })
+	}
+	err = decrypt(g.ra)
 	for _, previous := range g.previousRA {
 		if err == nil {
 			break
@@ -235,7 +250,7 @@ func (g *gateway) enroll(ctx context.Context, data []byte) ([]byte, error) {
 		if !ok || checker.Active(ctx, previous) != nil {
 			continue
 		}
-		err = msg.DecryptPKIEnvelope(previous, g.decryptor)
+		err = decrypt(previous)
 	}
 	if err != nil {
 		slog.Warn("scep.enroll", "status", "rejected", "reason", "invalid_envelope")

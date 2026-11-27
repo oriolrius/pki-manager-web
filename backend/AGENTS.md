@@ -1,8 +1,8 @@
 # Backend — `@pki-manager/backend`
 
 Fastify 5 (ESM, Node ≥22) server exposing **two parallel APIs** over one shared service
-layer, doing X.509 PKI via `node-forge` + a **Cosmian KMS**, with metadata in SQLite
-(Drizzle + better-sqlite3). See the root `AGENTS.md` for repo-wide rules.
+layer. The backend builds X.509 certificates and CRLs and signs them with **OpenBao Transit**.
+SQLite holds metadata and public certificates (Drizzle + better-sqlite3). See the root `AGENTS.md` for repo-wide rules.
 
 ## Commands
 
@@ -28,7 +28,7 @@ imports (ESM).
 - **tRPC** (`src/trpc/`) at `/trpc` — routers: `ca, certificate, crl, audit, domain, search, dashboard, cluster, health`.
 - **Public** server routes: `GET /health`, `GET /cas/:caId.:fmt`, `GET /crl/:caId.:fmt`.
 
-Flow: **route/procedure → service (`src/services/*`) → crypto / KMS / db.** Both API layers
+Flow: **route/procedure → service (`src/services/*`) → crypto / OpenBao / db.** Both API layers
 call the *same* singleton services — put business logic in services, not routes. Services
 throw typed errors (`CANotFoundError`, …); the edge maps them to tRPC/HTTP codes.
 
@@ -44,18 +44,24 @@ throw typed errors (`CANotFoundError`, …); the edge maps them to tRPC/HTTP cod
   prefix, compared SHA-256 + `timingSafeEqual` (the `schema.ts` "argon2" comment is wrong).
   Each cluster is scoped to one CA.
 
-## KMS & crypto
+## Key storage and signing
 
-`src/kms/` (`KMSService`→`KMSClient`) speaks **KMIP 2.1 as JSON over HTTP POST to
-`<KMS_URL>/kmip/2_1`**. Private keys live in the KMS; the DB stores only
-`kmsCertificateId`/`kmsKeyId`. `src/crypto/` is pure node-forge (X.509/CSR/CRL/DN/keys);
-algorithms RSA-2048/4096, ECDSA-P256/P384.
+- X.509 routes use `src/kms/service.ts` (`KMSService`), which delegates to
+  `src/keystore/x509-store.ts`. It keeps the existing API fields and `kms.*` audit operation
+  names. New key operations record `provider: openbao`.
+- `src/openbao/x509-transit.ts` creates RSA or EC keys and sends signing requests to the
+  pinned key version. Public CA and leaf certificates live in SQLite. CA key export depends
+  on `ALLOW_CA_KEY_EXPORT`, the key's creation policy and the OpenBao token policy.
+- SSH CAs use `src/openbao/ssh-transit.ts`. SCEP RA bindings use `src/openbao/ra-transit.ts`.
+  Both keep non-exportable keys. RA decryption uses the fork's
+  `session-key/pkcs1v15` endpoint with the expected CMS key size.
 
 ## Data model — `src/db/schema.ts`
 
 SQLite (Drizzle; WAL + `foreign_keys=ON`; path `DATABASE_PATH`, default `./data/pki.db`).
-Tables: `certificate_authorities`, `certificates` (CA FK; `source_type` manual|k8s;
-`certificate_pem` cache for offline-signed), `clusters`, `crls`, `audit_log`.
+X.509 records use `kms_*` columns to link to `keystore_objects`. This table stores the public
+certificate PEM, key links, Transit mount, name, version and public key. Other tables include
+`integrations`, `crls` and `audit_log`.
 DB change: edit `schema.ts` → `pnpm db:generate` → `pnpm db:migrate`; never hand-edit the
 generated migration metadata (`src/db/migrations/meta`). New SSH data paths must stay zone-scoped.
 
@@ -73,28 +79,51 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
 
 ## Gotchas
 
-- **KMS is a hard dependency** for almost all CA/cert paths; unreachable → most ops fail
-  (`CAKmsInconsistencyError`). `getKMSService()` defaults `KMS_URL` to `http://localhost:42998`.
-- KMS `certify` modes: pass a `publicKeyId` to certify a KMS-held key (CA creation, manual
-  issuance); pass a `csr` + `preserveCsrKey` to sign a CSR's **own** public key (the external
-  `/sign` path — the CA key stays in the KMS). The CSR goes in the KMIP `CertificateRequestValue`
-  field and Cosmian copies the CSR's SAN/keyUsage/EKU, so don't re-supply those in `x509Extensions`
-  (would duplicate). See `src/kms/spike-csr-certify.ts` and TASK-109.22.
-- **CRL signing**: CRLs are real, signed X.509 v2 (RFC 5280) — `crl.service` exports the CA
-  key (`getPrivateKey`) and signs with node `crypto` (Cosmian has no usable KMIP Sign for
-  RSA/ECDSA; see `backlog/decisions/decision-010`). Revoking via tRPC/REST/external `/revoke`
-  auto-regenerates the CA CRL; the public `/crl/:caId.crl|.der` serves it and lazily refreshes
-  past `nextUpdate`. Issued certs carry a CDP when `CRL_DISTRIBUTION_URL` is set.
-- CA `kmsKeyId` may be missing from the Certify response (certify-from-subject generates the
-  keypair server-side); it is resolved from the cert's KMIP `PrivateKeyLink`
-  (`getCertificatePrivateKeyId`). Needed for CRL signing and PKCS#12/key export.
-- Renewal with `generateNewKey:false` re-certifies the existing KMS key pair (public key id resolved via KMIP `PublicKeyLink`, `getPublicKeyIdForPrivateKey`); key reuse rejected for certs ≥90 days old. `revokeOriginal` revokes the old cert (superseded) and writes a `certificate.revoke` audit row.
-- Tests are Vitest **single-fork, `fileParallelism:false`** (SQLite races); KMS integration
-  tests auto-start/skip via `src/test/kms-helper.ts`. CORS allows the origins in `FRONTEND_URL`
-  (comma-separated, `src/lib/cors-origins.ts`); unset allows every origin.
+- Start the dev key store with `just openbao` at the repository root. `just dev` passes
+  its TLS and token file settings to the backend. Key operations require an unsealed server
+  and a valid scoped token. Legacy Cosmian SSH CA and RA references require migration.
+- X.509 CA creation generates a key in Transit. Manual issuance can use an existing public key
+  reference. For external issuance, `signCertificate` with `csr` and `preserveCsrKey: true`
+  retains the CSR's public key. The backend verifies the CSR and builds the certificate.
+  See [CSR signing](../docs/guides/k8s-csr-signing.md).
+- `crl.service.ts` builds the X.509 v2 CRL and passes its signed data to `KMSService.signData`.
+  Transit signs it with the CA key. It publishes one CRL at a time per CA: a lease on the
+  `crl_publication` row, the Transit request with no transaction open, then a compare-and-set
+  insert (lease + next number) in a short IMMEDIATE transaction. Never hold a SQLite write lock
+  over a network call. The holder renews the lease every 5 s (30 s lease). Each CRL keeps the
+  entries of the one before it, plus `crl_deleted_revocations` (written by `deleteCertificateRow`
+  in the delete transaction); `crl_entry_removals` is the only way out. Migration 0019 triggers
+  bump `crl_publication.change_generation` on every write that can change the entries; a check
+  that finds the CRL current records `verified_generation` + `verified_crl_id`, and a matching
+  pair skips the full read (`verifiedRow`). A new write path needs no extra code, but a new table
+  that feeds the CRL needs a trigger. `regenerateForCa` publishes only when the newest CRL is not current;
+  `generate` always makes a new number. The public route `/crl/:caId.crl|.der` and the background
+  job (`crl-reconciler.ts`, started on `onListen` by the route plugin) publish what an outage
+  left pending. Rows from before migration 0018 can share a number (NULL `entries_sha256`):
+  never renumber or delete them.
+- Renewal with `generateNewKey: false` resolves the key link in `keystore_objects`.
+  The service rejects key reuse for certificates at least 90 days old. `revokeOriginal`
+  revokes the original certificate as superseded and writes a `certificate.revoke` audit row.
+- Vitest uses one fork with `fileParallelism: false` for SQLite. For live tests start the
+  isolated fixture with `scripts/openbao-test.sh` at the repository root. Set
+  `OPENBAO_TEST_REQUIRED=1` for a run that requires the fixture. See
+  [Testing](../docs/development/testing.md#unit-tests-and-checks).
+- Key exports (`src/crypto/pkcs12.ts`): an encrypted PKCS#8 key uses Node crypto. JKS stores
+  and PKCS#12 truststores use the Java KeyStore API through `KeyStoreExport.java` (needs
+  `java`; the image compiles it, a source checkout runs it in source-file mode). Only a PKCS#12
+  bundle with a private key runs the `openssl` CLI: Java lowercases its friendlyName and
+  encodes non-ASCII passwords wrongly for legacy 3DES. A legacy PKCS#12 truststore therefore
+  rejects a non-ASCII password. `src/crypto/keystore-export.test.ts` runs without `openssl`.
+- CORS reads the comma-separated origins in `FRONTEND_URL` through `src/lib/cors-origins.ts`.
+  An unset value permits every origin.
 
-## Env
+## Environment
 
-`PORT` (3000) · `HOST` · `DATABASE_PATH` · `KMS_URL` · `KMS_API_KEY?` · `TRUST_PROXY?` · `FRONTEND_URL?` · `OIDC_ISSUER` ·
-`OIDC_AUDIENCE` · `OIDC_ROLES_SOURCE` · `OIDC_ROLES_CLAIM` · `OIDC_DISCOVERY_BASE_URL`. See `.env.example`.
-(The old `EXTERNAL_ISSUER_CA_*` offline-signing vars were removed — `/sign` signs via the KMS.)
+Configure the TLS address in `OPENBAO_ADDR`, the trusted CA file in `OPENBAO_CACERT`,
+the X.509/SSH token file in `OPENBAO_TOKEN_FILE` (policy `pki-manager-backend`) and the SCEP RA
+token file in `OPENBAO_RA_TOKEN_FILE` (policy `pki-manager-ra`). Only `openbao/ra-transit.ts`
+reads the RA token; it refuses the same file as `OPENBAO_TOKEN_FILE`, and without it the RA
+operations answer 503 while the rest of the backend works. Never give one token both policies.
+The X.509, SSH and RA clients use `OPENBAO_TRANSIT_MOUNT`, `OPENBAO_SSH_MOUNT` and
+`OPENBAO_RA_MOUNT`, respectively.
+See `.env.example` for server, database, OIDC and proxy settings.

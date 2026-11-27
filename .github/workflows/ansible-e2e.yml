@@ -1,7 +1,7 @@
 name: Ansible e2e
 
 # Dockerized containers-as-hosts e2e for the ssh_host_cert role (via the
-# published oriolrius.pki_manager collection). Brings up its own backend+KMS,
+# published oriolrius.pki_manager collection). Brings up its own backend+OpenBao,
 # applies the role to two managed-host containers, and asserts idempotence +
 # real ssh login + principal RBAC + revocation on both KRL channels.
 on:
@@ -9,6 +9,9 @@ on:
     branches: [main]
     paths:
       - 'ansible/**'
+      - 'openbao/**'
+      - 'scripts/openbao-*.sh'
+      - 'backend/src/openbao/ssh-transit.ts'
       - 'backend/src/rest/routes/ssh**'
       - 'backend/src/services/ssh**'
       - 'krl-client/**'
@@ -17,6 +20,9 @@ on:
     branches: [main]
     paths:
       - 'ansible/**'
+      - 'openbao/**'
+      - 'scripts/openbao-*.sh'
+      - 'backend/src/openbao/ssh-transit.ts'
       - 'backend/src/rest/routes/ssh**'
       - 'backend/src/services/ssh**'
       - 'krl-client/**'

@@ -26,7 +26,7 @@ links:
 
 ## How it works
 
-![cert-manager creates a certificate request, the issuer sends the CSR to PKI Manager, and PKI Manager signs it with the CA key in the KMS](../diagrams/svg/12-k8s-issuer-flow.svg)
+![cert-manager creates a certificate request, the issuer sends the CSR to PKI Manager, and PKI Manager signs it with the CA key in OpenBao Transit](../diagrams/svg/12-k8s-issuer-flow.svg)
 
 In PKI Manager you create an integration of type Kubernetes. It gives a token that works for one
 CA only. The token goes into a Kubernetes Secret.

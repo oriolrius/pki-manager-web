@@ -15,8 +15,9 @@
 #   status   session, ports and OIDC mode                             (just status)
 #   urls     where to open each service                               (just urls)
 #   logs     last lines of the process logs: logs [name] [lines]      (just logs)
-#   stop     stop the processes; KMS and Keycloak keep running        (just stop)
-#   down     stop + the docker dependencies (KMS, Keycloak)           (just down)
+#   stop     stop the processes; OpenBao and Keycloak keep running    (just stop)
+#   down     stop + the docker dependencies (OpenBao, Keycloak)       (just down)
+#   openbao  restart nothing; (re)start OpenBao, unseal it, print its env (just openbao)
 #
 # Two rules that keep other projects safe:
 #   - a process is never matched by name (every project runs its own mprocs, node, vite);
@@ -24,7 +25,8 @@
 #     or one of its git worktrees. A port held from anywhere else stops the start.
 #
 # Worktrees of this repository share ONE stack: same session name, same ports, and the
-# docker dependencies always run from the main checkout, so the KMS data stays in one place.
+# docker dependencies keep their state in the main checkout (openbao/dev-state), so the OpenBao
+# data, unseal key and backend token stay in one place for every worktree.
 #
 set -euo pipefail
 
@@ -52,6 +54,18 @@ PORTS=("$FRONTEND_PORT" "$BACKEND_PORT" "${BL_PORTS[@]}")
 
 # OIDC issuer from backend/.env (empty when the line is commented out = login off).
 OIDC_ISSUER="$(env_value OIDC_ISSUER)"
+
+# OpenBao (PKI Manager fork) for the dev stack: openbao/docker-compose.yml, state in the main
+# checkout. DEV ONLY: one unseal key and the root token sit in openbao/dev-state/secrets.
+OPENBAO_PORT=42996
+OPENBAO_SRC_DIR="$REPO/openbao"
+OPENBAO_STATE_DIR="${OPENBAO_DEV_STATE_DIR:-$MAIN/openbao/dev-state}"
+# Early OpenBao development checkouts kept the dev shares and Raft state here.
+# Reuse those keys unless the operator explicitly selects a new dev instance.
+if [[ -z "${OPENBAO_DEV_STATE_DIR:-}" && ! -e "$OPENBAO_STATE_DIR" &&
+      -s "$MAIN/openbao/state/secrets/dev-unseal-key" && -s "$MAIN/openbao/state/secrets/dev-root-token" ]]; then
+  OPENBAO_STATE_DIR="$MAIN/openbao/state"
+fi
 
 usage() { grep -E '^#   [a-z]+ ' "${BASH_SOURCE[0]}" | sed 's/^#   //' >&2; exit 2; }
 
@@ -197,17 +211,47 @@ start_backlog() {
   fi
 }
 
-# Start the docker dependencies before mprocs: the KMS always, and the dev Keycloak
-# when OIDC login is on (the default dev posture). They run from the MAIN checkout.
+# docker compose for the dev OpenBao (compose files of OPENBAO_SRC_DIR, state of MAIN).
+openbao_compose() {
+  OPENBAO_IMAGE="$OPENBAO_IMAGE" OPENBAO_STATE_DIR="$OPENBAO_STATE_DIR" OPENBAO_PORT="$OPENBAO_PORT" \
+  OPENBAO_UID="$(id -u)" OPENBAO_GID="$(id -g)" \
+    docker compose -p pki-manager-openbao --project-directory "$OPENBAO_SRC_DIR" \
+      -f "$OPENBAO_SRC_DIR/docker-compose.yml" "$@"
+}
+
+# Start the dev OpenBao: image of the pinned fork commit (built once), dev TLS, Raft
+# storage, then init (first run), unseal and configure it and write the backend token.
+# Idempotent. Sets OPENBAO_ENV: the backend settings that mprocs gets.
+ensure_openbao() {
+  need openssl
+  OPENBAO_IMAGE="$(bash "$REPO/scripts/openbao-image.sh" ensure)"
+  mkdir -p "$OPENBAO_STATE_DIR"/{data,logs,tls,secrets}
+  bash "$OPENBAO_SRC_DIR/scripts/dev-tls.sh" "$OPENBAO_STATE_DIR/tls"
+  openbao_compose up -d --wait --wait-timeout 120 --quiet-pull openbao >&2
+  openbao_compose run --rm -T bootstrap dev >&2
+  [ -s "$OPENBAO_STATE_DIR/secrets/backend-token" ] && [ -s "$OPENBAO_STATE_DIR/secrets/ra-token" ] \
+    || { echo "error: OpenBao bootstrap failed — see 'docker logs pki-manager-openbao'" >&2; exit 1; }
+  OPENBAO_ENV=(
+    "OPENBAO_ADDR=https://localhost:$OPENBAO_PORT"
+    "OPENBAO_CACERT=$OPENBAO_STATE_DIR/tls/ca.pem"
+    "OPENBAO_TOKEN_FILE=$OPENBAO_STATE_DIR/secrets/backend-token"
+    "OPENBAO_RA_TOKEN_FILE=$OPENBAO_STATE_DIR/secrets/ra-token"
+  )
+}
+
+# Start the docker dependencies before mprocs: OpenBao always, the dev Keycloak when OIDC
+# login is on (the default dev posture).
 # Idempotent: `docker compose up -d` does nothing for a running container.
 ensure_infra() {
+  OPENBAO_ENV=()
   if ! command -v docker >/dev/null 2>&1; then
-    echo "warning: docker not found — start kms/ (and keycloak/) yourself" >&2
+    echo "warning: docker not found — start openbao/ (and keycloak/) yourself" >&2
     return 0
   fi
-  local dirs=(kms) d i
+  ensure_openbao
+  local dirs=() d i
   [[ "$OIDC_ISSUER" == http://localhost:42997/* ]] && dirs+=(keycloak)
-  for d in "${dirs[@]}"; do
+  for d in ${dirs[@]+"${dirs[@]}"}; do
     docker compose --project-directory "$MAIN/$d" -f "$MAIN/$d/docker-compose.yml" up -d --quiet-pull 2>&1 \
       | grep -vE '^\s*(Container .* (Running|Started)|$)' || true
   done
@@ -230,7 +274,7 @@ print_urls() {
   echo "  Web UI    http://localhost:$FRONTEND_PORT"
   echo "  API       http://localhost:$BACKEND_PORT/api/docs"
   echo "  Backlog   http://localhost:$BACKLOG_PORT  (all interfaces: http://<this host>:$BACKLOG_PORT)"
-  echo "  KMS       http://localhost:42998"
+  echo "  OpenBao   https://localhost:$OPENBAO_PORT  (CA: $OPENBAO_STATE_DIR/tls/ca.pem; dev root token: $OPENBAO_STATE_DIR/secrets/dev-root-token)"
   if [ -n "$OIDC_ISSUER" ]; then
     echo "  OIDC      $OIDC_ISSUER"
   else
@@ -269,9 +313,12 @@ restart)
 
   # Created detached, so it works with or without a TTY. mprocs gets a real PTY from
   # tmux, so it never fails with "Stdin is not a tty". Each process also writes
-  # .dev-logs/<name>.log (just logs).
+  # .dev-logs/<name>.log (just logs). The OpenBao settings go into the session
+  # environment; the process environment wins over backend/.env (node --env-file).
   mkdir -p "$REPO/.dev-logs"
-  tmux new-session -d -s "$SESSION" -c "$REPO" -x 200 -y 50 \
+  envs=()
+  for e in ${OPENBAO_ENV[@]+"${OPENBAO_ENV[@]}"}; do envs+=(-e "$e"); done
+  tmux new-session -d -s "$SESSION" -c "$REPO" -x 200 -y 50 ${envs[@]+"${envs[@]}"} \
     "mprocs --log-dir .dev-logs --log-mode truncate; printf '\n[dev stack stopped] press Enter to close this tmux session...'; read -r _"
   tmux set-environment -t "=$SESSION" DEV_REPO "$REPO"
   start_backlog
@@ -366,7 +413,7 @@ stop)
   for e in ${THEIRS[@]+"${THEIRS[@]}"}; do
     echo "  left port ${e%%:*} alone — it belongs to another project"
   done
-  echo "dev stack stopped (KMS and Keycloak still running — 'just down' stops them too)."
+  echo "dev stack stopped (OpenBao and Keycloak still running — 'just down' stops them too)."
   ;;
 
 down)
@@ -374,12 +421,18 @@ down)
   # `stop`, not `down`: containers and data are kept, and a stopped container with
   # `restart: unless-stopped` stays stopped until the next `just dev`.
   if command -v docker >/dev/null 2>&1; then
-    for d in keycloak kms; do
-      docker compose --project-directory "$MAIN/$d" -f "$MAIN/$d/docker-compose.yml" stop 2>&1 \
-        | grep -E 'Stopped' | sed 's/^ */  /' || true
-    done
+    docker compose --project-directory "$MAIN/keycloak" -f "$MAIN/keycloak/docker-compose.yml" stop
+    docker stop pki-manager-openbao 2>/dev/null | sed 's/^/  stopped /' || true
   fi
-  echo "dev stack down: processes, KMS and Keycloak stopped."
+  echo "dev stack down: processes, OpenBao and Keycloak stopped (OpenBao seals; the next 'just dev' unseals it)."
+  ;;
+
+openbao)
+  # Start (or unseal) only the dev OpenBao and print the backend settings, e.g. for a
+  # backend started by hand: eval "$(just openbao | grep ^OPENBAO_)".
+  need docker
+  ensure_openbao
+  printf '%s\n' "${OPENBAO_ENV[@]}"
   ;;
 
 *)

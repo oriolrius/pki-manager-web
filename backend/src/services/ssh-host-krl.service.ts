@@ -26,7 +26,7 @@ import { randomUUID } from 'crypto';
 import { eq, and, desc, inArray, ne, gt } from 'drizzle-orm';
 import { sshCas, sshCertificates, sshRevocations, sshHosts, sshHostBlocks, sshHostKrls } from '../db/schema.js';
 import { allocateKrlNumber } from '../db/krl-seq.js';
-import { getKMSService } from '../kms/service.js';
+import { signWithSshCa } from './ssh-ca-key.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
@@ -185,7 +185,7 @@ export class SshHostKrlService {
     let signature: Buffer | null = null;
     let signError: string | null = null;
     try {
-      signature = await getKMSService().signRaw(signingCa.kmsKeyId, blob, { entityId: signingCa.id });
+      signature = await signWithSshCa(signingCa, blob, { purpose: 'host-krl', ctx });
     } catch (e) {
       signError = errorMessage(e) ?? String(e);
       logger.warn({ hostId, caId: signingCa.id, error: signError }, 'per-host KRL signing failed; persisting unsigned row');

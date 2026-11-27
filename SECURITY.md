@@ -64,10 +64,13 @@ In scope: the code and the published artifacts of this repository.
   `ghcr.io/oriolrius/pki-manager-issuer`, and the release binaries.
 - The Compose files and the Helm chart, when their defaults make an installation unsafe.
 - The GitHub Actions workflows of this repository.
+- The downstream patches of the PKI Manager build of OpenBao (the `pki-manager` branch of
+  [oriolrius/openbao](https://github.com/oriolrius/openbao/tree/pki-manager)), and the OpenBao
+  policies and configuration in this repository.
 
 Out of scope:
 
-- Vulnerabilities of other projects (Cosmian KMS, Keycloak, cert-manager, nginx, Node.js, Go).
+- Vulnerabilities of other projects (upstream OpenBao, Keycloak, cert-manager, nginx, Node.js, Go).
   Report them to those projects. Tell the maintainer here when PKI Manager must change the
   version that it ships or how it uses them.
 - The development and demo stacks (`just dev`, `just demo`): they use known passwords on

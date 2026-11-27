@@ -66,7 +66,7 @@ CA_ID=$(curl -s -X POST "$API/api/v1/cas/" \
 echo "CA: $CA_ID"
 ```
 
-The CA key pair is made in the KMS. `keyAlgorithm` is `RSA-2048` or `RSA-4096`.
+The CA key pair is made in OpenBao Transit. `keyAlgorithm` is `RSA-2048` or `RSA-4096`.
 
 ## 3. Issue a server certificate
 
@@ -86,7 +86,7 @@ echo "certificate: $CERT_ID"
 ```
 
 `certificateType` is `server`, `client`, `dual`, `code_signing` or `email`. The key pair is
-made in the KMS too. Put the common name in `sanDns` as well: clients check the SAN, not the CN.
+made in OpenBao Transit too. Put the common name in `sanDns` as well: clients check the SAN, not the CN.
 
 ## 4. Download it
 

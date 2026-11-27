@@ -4,6 +4,7 @@ import type { Context, AuthenticatedContext } from './context.js';
 import { authMiddlewareHandler } from './middleware/auth.js';
 import { isOIDCEnabled } from '../lib/oidc.js';
 import { logger } from '../lib/logger.js';
+import { KeyStoreTrpcCause, throwIfKeyStoreError } from './key-store-errors.js';
 
 /**
  * Strip server internals (stack trace) from a tRPC error shape. Evaluated per
@@ -34,13 +35,27 @@ const t = initTRPC.context<Context>().meta<OpenApiMeta>().create({
           error.code === 'BAD_REQUEST' && error.cause
             ? error.cause
             : null,
+        // Stable application code of a key store error (KEY_STORE_UNAVAILABLE, KEY_MIGRATION_REQUIRED, ...).
+        ...(error.cause instanceof KeyStoreTrpcCause ? { appCode: error.cause.appCode } : {}),
       },
     }, error);
   },
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
+
+/**
+ * Every procedure: a key store error that a procedure lets through (raw, or as the `cause` of
+ * its own error) leaves as 503 / 409 / 403 instead of a generic 500 (`key-store-errors.ts`).
+ */
+const keyStoreErrorMiddleware = t.middleware(async ({ next }) => {
+  const result = await next();
+  if (!result.ok) throwIfKeyStoreError(result.error);
+  return result;
+});
+const baseProcedure = t.procedure.use(keyStoreErrorMiddleware);
+
+export const publicProcedure = baseProcedure;
 
 // Logging middleware
 const loggingMiddleware = t.middleware(async ({ path, type, next }) => {
@@ -54,7 +69,7 @@ const loggingMiddleware = t.middleware(async ({ path, type, next }) => {
 });
 
 // Public procedure with logging
-export const loggedProcedure = t.procedure.use(loggingMiddleware);
+export const loggedProcedure = baseProcedure.use(loggingMiddleware);
 
 /**
  * Authentication middleware - validates JWT and adds user to context
@@ -76,7 +91,7 @@ const authMiddleware = t.middleware(authMiddlewareHandler);
  *   });
  * ```
  */
-export const protectedProcedure = t.procedure.use(authMiddleware);
+export const protectedProcedure = baseProcedure.use(authMiddleware);
 
 /**
  * Admin role middleware - requires 'admin' role

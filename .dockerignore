@@ -4,3 +4,12 @@ scep/data/
 scep/.env
 scep/.env.*
 scep/scep-server
+
+# Local key stores and credentials
+.openbao-test/
+openbao/state/
+openbao/dev-state/
+kms/data/
+pki/
+backend/data/
+**/.env

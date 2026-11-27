@@ -22,6 +22,8 @@ spec:
     metadata:
       labels: { app: pki-manager-backend }
     spec:
+      automountServiceAccountToken: false
+      securityContext: { fsGroup: 1001 }
       containers:
         - name: backend
           image: pki-manager-backend:e2e
@@ -30,8 +32,9 @@ spec:
             - containerPort: 3000
               name: http
           env:
-            - name: KMS_URL
-              value: http://cosmian-kms:9998
+            - { name: OPENBAO_ADDR, value: 'https://openbao:8200' }
+            - { name: OPENBAO_CACERT, value: /run/ca/ca.pem }
+            - { name: OPENBAO_TOKEN_FILE, value: /run/token/backend-token }
             - name: DATABASE_PATH
               value: /data/pki.db
             - name: PORT
@@ -39,6 +42,8 @@ spec:
             - name: HOST
               value: "0.0.0.0"
           volumeMounts:
+            - { name: ca, mountPath: /run/ca, readOnly: true }
+            - { name: token, mountPath: /run/token, readOnly: true }
             - name: data
               mountPath: /data
           readinessProbe:
@@ -53,6 +58,8 @@ spec:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 1, memory: 512Mi }
       volumes:
+        - { name: ca, configMap: { name: openbao-client-ca } }
+        - { name: token, secret: { secretName: pki-manager-backend-token, defaultMode: 0440 } }
         - name: data
           persistentVolumeClaim:
             claimName: pki-manager-data

@@ -25,15 +25,17 @@ links:
 
 ## How it works
 
-The gateway holds no keys and cannot reach the KMS. It talks to the backend with a token that is
+The gateway holds no keys and cannot reach OpenBao. It talks to the backend with a token that is
 bound to one CA.
 
 SCEP needs a registration authority (RA) key to sign and decrypt the messages of the devices. That
-key is made in the KMS, and the KMS does the signing and the decryption. The RA certificate is
-renewed automatically before it expires.
+key is an RSA-3072 key in OpenBao Transit, and it cannot be exported. OpenBao signs the replies
+and unwraps the session key of each request. This unwrap is an operation of the PKI Manager build
+of OpenBao; stock OpenBao does not have it. The RA certificate is renewed automatically before it
+expires.
 
 Each request is checked: the key of the device, the name in the request, and the permission to
-enroll. Then the backend signs the certificate with the key of the CA.
+enroll. Then the backend builds the certificate, and OpenBao signs it with the key of the CA.
 
 ## What it does not do
 

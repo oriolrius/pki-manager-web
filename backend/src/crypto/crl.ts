@@ -2,11 +2,12 @@
  * Certificate Revocation List (CRL) generation utilities
  *
  * Produces RFC 5280 X.509 v2 CRLs. The TBSCertList is built with node-forge's ASN.1
- * primitives (forge has no native CRL support) and signed with Node's `crypto` module,
- * which signs reliably for both RSA (PKCS#1 v1.5) and ECDSA (DER signature) keys — unlike
- * node-forge, whose EC signing is unreliable.
+ * primitives (forge has no native CRL support). The CRL service signs it in the key store
+ * (`generateCRLWithSigner`, OpenBao Transit); `generateCRL` signs with a local key (tests).
  */
 import { findForgeExtension } from './x509.js';
+import { pemToDer } from './der.js';
+import { parseCertificateDer } from './x509-builder.js';
 
 import * as nodeCrypto from 'node:crypto';
 import forge from 'node-forge';
@@ -22,6 +23,7 @@ const { Class, Type } = asn1;
 const OID_CRL_NUMBER = '2.5.29.20';
 const OID_CRL_REASON = '2.5.29.21';
 const OID_AUTHORITY_KEY_IDENTIFIER = '2.5.29.35';
+const OID_SUBJECT_KEY_IDENTIFIER = '2.5.29.14';
 
 /** Signature AlgorithmIdentifier metadata, keyed by our SignatureAlgorithm union. */
 interface SigAlgInfo {
@@ -138,124 +140,165 @@ function authorityKeyIdentifierExtension(issuerCertificatePem?: string): forge.a
   }
 }
 
+/** Signs the DER TBSCertList; returns RSA PKCS#1 v1.5 or ECDSA DER signature bytes. */
+export type CRLSigner = (tbsDer: Buffer, hash: 'sha256' | 'sha384' | 'sha512') => Promise<Buffer>;
+
+type TbsParams = Omit<CRLParams, 'signingKey'>;
+
+/** Issuer Name as the CA certificate has it (raw DER, RSA or ECDSA CA), or from the DN fields. */
+function issuerNameAsn1(params: TbsParams): forge.asn1.Asn1 {
+  if (params.issuerCertificate) {
+    const parsed = parseCertificateDer(pemToDer(params.issuerCertificate, 'CERTIFICATE'));
+    return asn1.fromDer(forge.util.createBuffer(parsed.subjectName.toString('binary')));
+  }
+  return forge.pki.distinguishedNameToAsn1({ attributes: dnToForgeAttributes(params.issuer) });
+}
+
+/** AKI from the CA certificate's SubjectKeyIdentifier; null when it has none. */
+function akiFromIssuer(issuerCertificatePem?: string): forge.asn1.Asn1 | null {
+  if (!issuerCertificatePem) return null;
+  try {
+    const parsed = parseCertificateDer(pemToDer(issuerCertificatePem, 'CERTIFICATE'));
+    if (!parsed.extensions.some((e) => e.oid === OID_SUBJECT_KEY_IDENTIFIER)) return null;
+    const keyId = asn1.create(Class.CONTEXT_SPECIFIC, 0, false, parsed.keyId.toString('binary'));
+    const akiValue = asn1.toDer(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, [keyId])).getBytes();
+    return extension(OID_AUTHORITY_KEY_IDENTIFIER, akiValue);
+  } catch (error) {
+    logger.warn({ error }, 'Could not derive AKI from issuer certificate; omitting from CRL');
+    return authorityKeyIdentifierExtension(issuerCertificatePem);
+  }
+}
+
+function buildTbsCertList(params: TbsParams): { tbsCertList: forge.asn1.Asn1; tbsDer: Buffer; sigInfo: SigAlgInfo; sigAlgName: SignatureAlgorithm; crlNumber: number } {
+  const validation = validateDN(params.issuer);
+  if (!validation.valid) {
+    throw new Error(`Invalid issuer DN: ${validation.errors.join(', ')}`);
+  }
+  // The CRL issuer must byte-match the CA's subject (openssl/clients associate them by it).
+  const issuerName = issuerNameAsn1(params);
+  const thisUpdate = params.thisUpdate || new Date();
+  const nextUpdate = params.nextUpdate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const crlNumber = params.crlNumber ?? 1;
+
+  const sigAlgName: SignatureAlgorithm = params.signatureAlgorithm || 'SHA256-RSA';
+  const sigInfo = SIG_ALGS[sigAlgName];
+  if (!sigInfo) {
+    throw new Error(`Unsupported signature algorithm: ${sigAlgName}`);
+  }
+
+  // --- revokedCertificates SEQUENCE OF ---
+  const revokedCertificates: forge.asn1.Asn1[] = [];
+  for (const entry of params.revokedCertificates) {
+    const entryChildren: forge.asn1.Asn1[] = [
+      asn1.create(Class.UNIVERSAL, Type.INTEGER, false, serialIntegerValue(entry.serialNumber)),
+      timeAsn1(entry.revocationDate),
+    ];
+    const reasonExt = reasonExtension(entry.reason);
+    if (reasonExt) {
+      // crlEntryExtensions ::= Extensions (a bare SEQUENCE OF Extension)
+      entryChildren.push(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, [reasonExt]));
+    }
+    revokedCertificates.push(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, entryChildren));
+  }
+
+  // --- crlExtensions [0] EXPLICIT (cRLNumber, optional AKI) ---
+  const crlExtensions: forge.asn1.Asn1[] = [crlNumberExtension(crlNumber)];
+  const akiExt = akiFromIssuer(params.issuerCertificate);
+  if (akiExt) crlExtensions.push(akiExt);
+
+  // --- TBSCertList ---
+  const tbsChildren: forge.asn1.Asn1[] = [
+    // version v2 (INTEGER 1) — present because we emit crlExtensions
+    asn1.create(Class.UNIVERSAL, Type.INTEGER, false, asn1.integerToDer(1).getBytes()),
+    algorithmIdentifier(sigInfo),
+    issuerName,
+    timeAsn1(thisUpdate),
+    timeAsn1(nextUpdate),
+  ];
+  if (revokedCertificates.length > 0) {
+    tbsChildren.push(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, revokedCertificates));
+  }
+  tbsChildren.push(
+    asn1.create(Class.CONTEXT_SPECIFIC, 0, true, [
+      asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, crlExtensions),
+    ]),
+  );
+
+  const tbsCertList = asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, tbsChildren);
+  const tbsDer = Buffer.from(asn1.toDer(tbsCertList).getBytes(), 'binary');
+  return { tbsCertList, tbsDer, sigInfo, sigAlgName, crlNumber };
+}
+
+function finishCRL(params: TbsParams, built: ReturnType<typeof buildTbsCertList>, signature: Buffer): GeneratedCRL {
+  const signatureBits = String.fromCharCode(0x00) + signature.toString('binary');
+  // CertificateList ::= SEQUENCE { tbsCertList, signatureAlgorithm, signatureValue }
+  const crlAsn1 = asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, [
+    built.tbsCertList,
+    algorithmIdentifier(built.sigInfo),
+    asn1.create(Class.UNIVERSAL, Type.BITSTRING, false, signatureBits),
+  ]);
+  const derBytes = asn1.toDer(crlAsn1).getBytes();
+  const der = forge.util.encode64(derBytes);
+  const pem = `-----BEGIN X509 CRL-----\n${der.match(/.{1,64}/g)?.join('\n')}\n-----END X509 CRL-----`;
+  logger.info(
+    {
+      issuer: formatDN(params.issuer),
+      crlNumber: built.crlNumber,
+      revokedCount: params.revokedCertificates.length,
+      signatureAlgorithm: built.sigAlgName,
+      thisUpdate: params.thisUpdate,
+      nextUpdate: params.nextUpdate,
+    },
+    'CRL generated',
+  );
+  return { pem, der, crlNumber: built.crlNumber, revokedCount: params.revokedCertificates.length };
+}
+
 /**
- * Generate a signed X.509 v2 Certificate Revocation List.
+ * Generate a signed X.509 v2 Certificate Revocation List with a local private key.
  *
  * The CA private key (PEM, PKCS#8) is supplied in `params.signingKey`. Pass
  * `params.issuerCertificate` (PEM) to embed an authorityKeyIdentifier matching the CA's SKI.
+ * The CRL service signs in the key store instead (`generateCRLWithSigner`).
  */
 export function generateCRL(params: CRLParams): GeneratedCRL {
   try {
-    const validation = validateDN(params.issuer);
-    if (!validation.valid) {
-      throw new Error(`Invalid issuer DN: ${validation.errors.join(', ')}`);
-    }
-
-    // Build the issuer Name. When the CA certificate is supplied, copy its subject DN
-    // verbatim so the CRL issuer byte-matches the CA's subject (required for openssl/clients
-    // to associate the CRL with its issuer). Otherwise re-encode from the DN fields.
-    let issuerNameAsn1: forge.asn1.Asn1;
-    if (params.issuerCertificate) {
-      const caCert = forge.pki.certificateFromPem(params.issuerCertificate);
-      issuerNameAsn1 = forge.pki.distinguishedNameToAsn1(caCert.subject);
-    } else {
-      issuerNameAsn1 = forge.pki.distinguishedNameToAsn1({ attributes: dnToForgeAttributes(params.issuer) });
-    }
-    const thisUpdate = params.thisUpdate || new Date();
-    const nextUpdate = params.nextUpdate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const crlNumber = params.crlNumber ?? 1;
-
-    // Resolve the signature algorithm and validate it against the actual key type.
-    const sigAlgName: SignatureAlgorithm = params.signatureAlgorithm || 'SHA256-RSA';
-    const sigInfo = SIG_ALGS[sigAlgName];
-    if (!sigInfo) {
-      throw new Error(`Unsupported signature algorithm: ${sigAlgName}`);
-    }
+    const built = buildTbsCertList(params);
     const keyObject = nodeCrypto.createPrivateKey(params.signingKey);
-    if (keyObject.asymmetricKeyType !== sigInfo.keyType) {
+    if (keyObject.asymmetricKeyType !== built.sigInfo.keyType) {
       throw new Error(
-        `Signature algorithm ${sigAlgName} expects a ${sigInfo.keyType} key but the signing key is ${keyObject.asymmetricKeyType}`,
+        `Signature algorithm ${built.sigAlgName} expects a ${built.sigInfo.keyType} key but the signing key is ${keyObject.asymmetricKeyType}`,
       );
     }
-
-    // --- revokedCertificates SEQUENCE OF ---
-    const revokedCertificates: forge.asn1.Asn1[] = [];
-    for (const entry of params.revokedCertificates) {
-      const entryChildren: forge.asn1.Asn1[] = [
-        asn1.create(Class.UNIVERSAL, Type.INTEGER, false, serialIntegerValue(entry.serialNumber)),
-        timeAsn1(entry.revocationDate),
-      ];
-      const reasonExt = reasonExtension(entry.reason);
-      if (reasonExt) {
-        // crlEntryExtensions ::= Extensions (a bare SEQUENCE OF Extension)
-        entryChildren.push(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, [reasonExt]));
-      }
-      revokedCertificates.push(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, entryChildren));
-    }
-
-    // --- crlExtensions [0] EXPLICIT (cRLNumber, optional AKI) ---
-    const crlExtensions: forge.asn1.Asn1[] = [crlNumberExtension(crlNumber)];
-    const akiExt = authorityKeyIdentifierExtension(params.issuerCertificate);
-    if (akiExt) crlExtensions.push(akiExt);
-
-    // --- TBSCertList ---
-    const tbsChildren: forge.asn1.Asn1[] = [
-      // version v2 (INTEGER 1) — present because we emit crlExtensions
-      asn1.create(Class.UNIVERSAL, Type.INTEGER, false, asn1.integerToDer(1).getBytes()),
-      algorithmIdentifier(sigInfo),
-      issuerNameAsn1,
-      timeAsn1(thisUpdate),
-      timeAsn1(nextUpdate),
-    ];
-    if (revokedCertificates.length > 0) {
-      tbsChildren.push(asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, revokedCertificates));
-    }
-    // crlExtensions [0] EXPLICIT Extensions
-    tbsChildren.push(
-      asn1.create(Class.CONTEXT_SPECIFIC, 0, true, [
-        asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, crlExtensions),
-      ]),
-    );
-
-    const tbsCertList = asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, tbsChildren);
-    const tbsDer = Buffer.from(asn1.toDer(tbsCertList).getBytes(), 'binary');
-
-    // --- Sign the TBSCertList with Node crypto (RSA PKCS#1 v1.5 or ECDSA DER) ---
-    const signature = nodeCrypto.sign(sigInfo.hash, tbsDer, keyObject);
-    const signatureBits = String.fromCharCode(0x00) + signature.toString('binary');
-
-    // --- CertificateList ::= SEQUENCE { tbsCertList, signatureAlgorithm, signatureValue } ---
-    const crlAsn1 = asn1.create(Class.UNIVERSAL, Type.SEQUENCE, true, [
-      tbsCertList,
-      algorithmIdentifier(sigInfo),
-      asn1.create(Class.UNIVERSAL, Type.BITSTRING, false, signatureBits),
-    ]);
-
-    const derBytes = asn1.toDer(crlAsn1).getBytes();
-    const der = forge.util.encode64(derBytes);
-    const pem = `-----BEGIN X509 CRL-----\n${der.match(/.{1,64}/g)?.join('\n')}\n-----END X509 CRL-----`;
-
-    logger.info(
-      {
-        issuer: formatDN(params.issuer),
-        crlNumber,
-        revokedCount: params.revokedCertificates.length,
-        signatureAlgorithm: sigAlgName,
-        thisUpdate,
-        nextUpdate,
-      },
-      'CRL generated',
-    );
-
-    return {
-      pem,
-      der,
-      crlNumber,
-      revokedCount: params.revokedCertificates.length,
-    };
+    const signature = nodeCrypto.sign(built.sigInfo.hash, built.tbsDer, keyObject);
+    return finishCRL(params, built, signature);
   } catch (error) {
     logger.error({ error }, 'Failed to generate CRL');
-    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
+}
+
+/**
+ * Generate a CRL signed by a remote signer (the CA key stays in the key store). The issuer
+ * certificate is required: its subject is the CRL issuer, its key checks the signature.
+ */
+export async function generateCRLWithSigner(params: TbsParams & { issuerCertificate: string; signer: CRLSigner }): Promise<GeneratedCRL> {
+  try {
+    const built = buildTbsCertList(params);
+    const issuerKey = new nodeCrypto.X509Certificate(params.issuerCertificate).publicKey;
+    if (issuerKey.asymmetricKeyType !== built.sigInfo.keyType) {
+      throw new Error(
+        `Signature algorithm ${built.sigAlgName} expects a ${built.sigInfo.keyType} key but the CA key is ${issuerKey.asymmetricKeyType}`,
+      );
+    }
+    const signature = await params.signer(built.tbsDer, built.sigInfo.hash);
+    if (!nodeCrypto.verify(built.sigInfo.hash, built.tbsDer, issuerKey, signature)) {
+      throw new Error('the CRL signature does not verify with the CA public key');
+    }
+    return finishCRL(params, built, signature);
+  } catch (error) {
+    logger.error({ error }, 'Failed to generate CRL');
+    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 
@@ -377,7 +420,7 @@ export function parseCRL(data: string, format: CertificateFormat = 'PEM'): Parse
  * 0x00 sign-padding byte (added by DER INTEGER encoding when the high bit is set) — but never
  * a significant leading-zero nibble. Keeps full-byte hex so "0a1b2c" stays "0a1b2c".
  */
-function normalizeSerialHex(hex: string): string {
+export function normalizeSerialHex(hex: string): string {
   let h = hex.toLowerCase().replace(/[:\s]/g, '');
   if (h.length % 2 !== 0) h = '0' + h;
   while (h.length > 2 && h.startsWith('00')) h = h.slice(2);

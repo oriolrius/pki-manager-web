@@ -1,4 +1,6 @@
 import type { Readable } from 'node:stream';
+import { throwIfKeyStoreError } from '../key-store-errors.js';
+import { isKeyStoreUnavailable } from '../../keystore/errors.js';
 import { kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../init.js';
@@ -40,7 +42,7 @@ import {
 import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { findForgeExtension, convertCertificateFormat } from '../../crypto/x509.js';
-import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
+import { createJavaKeyStore, createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { X509Certificate, createHash } from 'node:crypto';
 
 export const certificateRouter = router({
@@ -603,6 +605,7 @@ export const certificateRouter = router({
         if (error instanceof CertificateCANotActiveError || error instanceof CertificateCAExpiredError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
         }
+        throwIfKeyStoreError(error);
         if (error instanceof CertificateOperationError) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
@@ -664,6 +667,7 @@ export const certificateRouter = router({
         if (error instanceof CertificateCANotActiveError || error instanceof CertificateCAExpiredError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
         }
+        throwIfKeyStoreError(error);
         if (error instanceof CertificateOperationError) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
@@ -802,6 +806,8 @@ export const certificateRouter = router({
           ipAddress: ctx.req.ip,
         });
 
+        throwIfKeyStoreError(error);
+
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to revoke certificate: ${error instanceof Error ? error.message : String(error)}`,
@@ -832,6 +838,7 @@ export const certificateRouter = router({
         if (error instanceof CertificateNotDeletableError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
         }
+        throwIfKeyStoreError(error);
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to delete certificate: ${error instanceof Error ? error.message : String(error)}`,
@@ -971,7 +978,7 @@ export const certificateRouter = router({
                   // Add certificate as .pem file
                   zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
 
-                  // Add private key as .priv file (encrypted or unencrypted; openssl handles RSA + EC)
+                  // Add private key as .priv file (encrypted or unencrypted; Node crypto handles RSA + EC)
                   if (input.encryptPrivateKey && input.password) {
                     const encryptedKeyPem = await encryptPrivateKeyPem(privateKeyPem, input.password);
                     zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
@@ -1027,6 +1034,8 @@ export const certificateRouter = router({
               const fileName = `${commonName}-${serialShort}.${fileExtension}`;
               zip.file(fileName, fileContent);
             } catch (error) {
+              // An unavailable key store fails the whole download (503), not one file.
+              if (isKeyStoreUnavailable(error)) throw error;
               logger.warn({ certId: input.id, format, error }, 'Failed to generate format for certificate');
             }
           }
@@ -1083,7 +1092,7 @@ export const certificateRouter = router({
             // Add certificate as .pem file
             zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
 
-            // Add private key as .priv file (encrypted or unencrypted; openssl handles RSA + EC)
+            // Add private key as .priv file (encrypted or unencrypted; Node crypto handles RSA + EC)
             if (input.encryptPrivateKey && input.password) {
               const encryptedKeyPem = await encryptPrivateKeyPem(privateKeyPem, input.password);
               zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
@@ -1261,7 +1270,7 @@ export const certificateRouter = router({
             const outputStream = new PassThrough();
             tarPack.pipe(outputStream);
 
-            // Prepare private key (encrypted or unencrypted; openssl handles RSA + EC)
+            // Prepare private key (encrypted or unencrypted; Node crypto handles RSA + EC)
             let keyContent: string;
             if (input.encryptPrivateKey && input.password) {
               keyContent = await encryptPrivateKeyPem(privateKeyPem, input.password);
@@ -1352,6 +1361,8 @@ export const certificateRouter = router({
         if (error instanceof TRPCError) {
           throw error;
         }
+
+        throwIfKeyStoreError(error);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -2194,6 +2205,8 @@ export const certificateRouter = router({
 
       let successful = 0;
       let failed = 0;
+      /** CAs whose CRL leaves out a serial on request (removeFromCrl): published after the loop. */
+      const removedFromCrl = new Set<string>();
 
       // Process each certificate
       for (const certId of input.certificateIds) {
@@ -2229,7 +2242,8 @@ export const certificateRouter = router({
 
           // 1. The row first, with its renewals detached (issue #117). If this fails,
           //    no key is destroyed and no success audit row is written.
-          deleteCertificateRow(ctx.db, certId);
+          deleteCertificateRow(ctx.db, certId, { removeFromCrl: input.removeFromCrl });
+          if (input.removeFromCrl && isRevoked) removedFromCrl.add(cert.caId);
 
           // 2. Optional: destroy the KMS key.
           let keyDestroyed = false;
@@ -2291,6 +2305,11 @@ export const certificateRouter = router({
 
           failed++;
         }
+      }
+
+      // Best-effort: when the signing fails, downloads and the background job publish it.
+      for (const caId of removedFromCrl) {
+        await getCRLService().regenerateForCa({ db: ctx.db, ipAddress: ctx.req.ip }, caId);
       }
 
       // Create overall audit log entry
@@ -2573,13 +2592,13 @@ export const certificateRouter = router({
                 continue;
               }
 
-              // Create PKCS#12 for this certificate (with CA chain) — openssl supports RSA + EC.
-              const p12Buffer = await createPkcs12Bundle({
-                certPem: certificatePem,
+              // PKCS#12 for this certificate (with CA chain), from the Java KeyStore API (RSA + EC).
+              const p12Buffer = await createJavaKeyStore({
+                type: 'PKCS12',
+                storePassword: password,
+                alias,
                 privateKeyPem,
-                chainPems: [caData.pem],
-                password,
-                friendlyName: alias,
+                certPems: [certificatePem, caData.pem],
               });
 
               // Write PKCS#12 to temp file
@@ -2601,6 +2620,8 @@ export const certificateRouter = router({
                 logger.error({ error: keytoolError instanceof Error ? keytoolError.message : String(keytoolError), certId: certificate.id }, 'Failed to add certificate to JKS Keystore');
               }
             } catch (error) {
+              // An unavailable key store fails the whole download (503), not one file.
+              if (isKeyStoreUnavailable(error)) throw error;
               logger.error({ error, certId: certificate.id }, 'Failed to process certificate for JKS Keystore bulk download');
             }
           }
@@ -2706,6 +2727,8 @@ export const certificateRouter = router({
               caCount++;
               logger.info({ caId, caAlias }, 'CA certificate added to JKS Truststore as trusted entry');
             } catch (error) {
+              // An unavailable key store fails the whole download (503), not one file.
+              if (isKeyStoreUnavailable(error)) throw error;
               logger.warn({ caId, error: error instanceof Error ? error.message : String(error) }, 'Failed to add CA certificate to JKS Truststore (may already exist)');
             }
           }
@@ -2823,7 +2846,7 @@ export const certificateRouter = router({
               certificate.id
             );
 
-            // Prepare private key (encrypted or unencrypted; openssl handles RSA + EC)
+            // Prepare private key (encrypted or unencrypted; Node crypto handles RSA + EC)
             let keyContent: string;
             if (input.encryptPrivateKey && input.password) {
               keyContent = await encryptPrivateKeyPem(privateKeyPem, input.password);
@@ -2840,6 +2863,8 @@ export const certificateRouter = router({
             certCount++;
             logger.info({ certId: certificate.id, certName }, 'Certificate added to docker volume TAR');
           } catch (error) {
+            // An unavailable key store fails the whole download (503), not one file.
+            if (isKeyStoreUnavailable(error)) throw error;
             logger.error({ error, certId: certificate.id }, 'Failed to process certificate for docker-volume');
           }
         }
@@ -2922,6 +2947,8 @@ export const certificateRouter = router({
                   zip.file(filename, content);
                 }
               } catch (error) {
+                // An unavailable key store fails the whole download (503), not one file.
+                if (isKeyStoreUnavailable(error)) throw error;
                 logger.warn({ certId: certificate.id, format, error }, 'Failed to generate format for certificate');
               }
             }
@@ -2948,6 +2975,8 @@ export const certificateRouter = router({
 
           logger.info({ certId: certificate.id, format: input.format }, 'Certificate processed for bulk download');
         } catch (error) {
+          // An unavailable key store fails the whole download (503), not one file.
+          if (isKeyStoreUnavailable(error)) throw error;
           logger.error({ error, certId: certificate.id }, 'Failed to process certificate for bulk download');
         }
       }

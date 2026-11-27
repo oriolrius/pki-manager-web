@@ -9,7 +9,7 @@
 
 *Automation-first, end-to-end. This is the current counterpart to the legacy manual/UI walkthrough in [operator-quickstart.md](operator-quickstart.md).*
 
-**What you'll end up with:** a fleet of SSH servers that trust user certificates issued by PKI Manager (no per-user `authorized_keys`), clients that connect with **no host-key TOFU prompt**, principal-based RBAC deciding which local accounts a user may log into, unattended host-cert renewal, and a live revocation channel. User certs are short-lived (default 7 days); host certs long-lived (default ~1 year). Private keys never leave the KMS (CA keys) or the user's laptop (login keys).
+**What you'll end up with:** a fleet of SSH servers that trust user certificates issued by PKI Manager (no per-user `authorized_keys`), clients that connect with **no host-key TOFU prompt**, principal-based RBAC deciding which local accounts a user may log into, unattended host-cert renewal, and a live revocation channel. User certs are short-lived (default 7 days); host certs long-lived (default ~1 year). Private keys never leave OpenBao (CA keys) or the user's laptop (login keys).
 
 > **In a hurry?** Jump to [§6 — the complete, copy-paste worked example](#6-try-it-end-to-end--complete-worked-example) (or run the zero-infra sandbox `ansible/tests/e2e/run.sh`). §0–§5 explain *why* each step is there.
 
@@ -19,7 +19,7 @@
 
 ### The two trust directions (both must be wired, or auth is half-broken)
 
-PKI Manager runs **two** CAs whose private keys live in the Cosmian KMS: a **User CA** (signs people's login certs) and a **Host CA** (signs servers' host certs). Trust flows in two opposite, independent directions:
+PKI Manager runs **two** CAs whose private keys live in OpenBao Transit: a **User CA** (signs people's login certs) and a **Host CA** (signs servers' host certs). Trust flows in two opposite, independent directions:
 
 | Direction | What is installed, where | Referenced by | Public download |
 |---|---|---|---|
@@ -48,7 +48,7 @@ Certificate validity windows **and** KRL freshness depend on an accurate clock, 
 
 | Prerequisite | Notes |
 |---|---|
-| Both **User CA** and **Host CA** exist in PKI Manager | KMS reachable. See §1. |
+| Both **User CA** and **Host CA** exist in PKI Manager | OpenBao reachable and unsealed. See §1. |
 | **Fleet token** `pkimg_…`, scoped to ONE Host CA | Correct ops (see §1). Store in Ansible Vault. |
 | `community.crypto` collection on the **Ansible controller** | `ansible-galaxy collection install -r ansible/requirements.yml` |
 | **NTP/chrony** on every server and client | Hard requirement (above). |
@@ -346,7 +346,7 @@ The host's `krl-client` pulls `POST /api/v1/external/ssh/krl` (returns `304` wit
 - The **composed per-host KRL** = host-CA revocations ∪ all user-CA revocations ∪ resolved active blocks, signed with the **Host-CA** key; `krl-client` verifies it against `--ca-pubkey` (default `/etc/ssh/ssh-host-ca.pub`, from `GET /ssh/host-ca-keys`) — **not** the User CA.
 - **Fail-closed:** sshd re-reads `RevokedKeys` on **every** auth, so no reload is needed once the file lands.
 - **Latency** is bounded by the pull interval: **≤ 1 interval, median ≈ 7.5 min** at the default 15-min timer. An **offline host keeps its last-good KRL** and is never shown *Effective*.
-- If the composed KRL is **unsigned** (e.g. KMS signing failed), `krl-client` fails-stale on last-good (**exit 4**) unless run with `--allow-unsigned`; this surfaces as `(unsigned)` in the UI pill and audit log. And remember: **clock drift** makes `krl-client` fail every run with **exit 5**, silently freezing a host on its last KRL (§0).
+- If the composed KRL is **unsigned** (e.g. OpenBao signing failed), `krl-client` fails-stale on last-good (**exit 4**) unless run with `--allow-unsigned`; this surfaces as `(unsigned)` in the UI pill and audit log. And remember: **clock drift** makes `krl-client` fail every run with **exit 5**, silently freezing a host on its last KRL (§0).
 
 ---
 

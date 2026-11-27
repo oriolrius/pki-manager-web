@@ -7,13 +7,15 @@ rectangle "Host machine" {
     rectangle "Frontend (nginx)\n:8080 → localhost:58080" as fe <<pki>>
     rectangle "Backend (Node.js)\n:3000 → localhost:53000" as be <<pki>>
     rectangle "Keycloak (OIDC)\n:8080 → localhost:58180" as kc <<file>>
-    rectangle "KMS (Cosmian)\n:9998" as kms <<user>>
+  }
+  package "OpenBao test network" {
+    rectangle "OpenBao Transit\nTLS :8200" as bao <<user>>
   }
 }
 pw --> fe
 pw --> be
 pw --> kc
 fe --> be
-be --> kms
+be --> bao : scoped token
 be --> kc : OIDC_DISCOVERY_BASE_URL\n(keycloak:8080)
 @enduml

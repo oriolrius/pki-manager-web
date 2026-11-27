@@ -49,11 +49,20 @@ COPY backend/package.json ./backend/
 RUN pnpm install --frozen-lockfile
 
 # Copy backend source
-COPY backend/ ./backend/
+COPY backend/tsconfig.json backend/tsconfig.prod.json ./backend/
+COPY backend/src/ ./backend/src/
 
 # Build backend
 WORKDIR /app/backend
 RUN pnpm build
+
+# Give the shipped trees fixed modes here (directories 755, files 644), so the runtime
+# stage copies them unchanged. Do not use a symbolic COPY --chmod (u=rwX,...) on a folder:
+# BuildKit v0.20.2 (Docker 28.0.4, GitHub-hosted runners) applies X only to the top folder
+# and leaves nested folders (migrations/meta) at 644, so the non-root user cannot enter
+# them. A checkout made with umask 077 also gives 600 files and 700 folders.
+RUN find dist src/db/migrations -type d -exec chmod 755 {} + && \
+    find dist src/db/migrations -type f -exec chmod 644 {} +
 
 ################################################################################
 # Build Frontend - pnpm with the workspace lock file (same as the backend)
@@ -96,8 +105,9 @@ RUN pnpm run build:docker
 FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS backend
 
 # Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan, then
-# install dumb-init for signal handling, the openssl CLI (PKCS#12 export + encrypted key
-# downloads, see backend/src/crypto/pkcs12.ts) and OpenJDK for keytool (JKS generation).
+# install dumb-init for signal handling, the openssl CLI (only PKCS#12 bundles with a private
+# key, see backend/src/crypto/pkcs12.ts) and OpenJDK (the KeyStoreExport helper and keytool:
+# JKS stores and PKCS#12 truststores).
 # The runtime is pure `node` (see entrypoint + CMD), so pnpm is never installed here and
 # the bundled npm/npx are removed — this keeps their vulnerable transitive deps
 # (sigstore, tar, ...) and the corepack pnpm cache out of the shipped image.
@@ -115,19 +125,25 @@ WORKDIR /app
 # Copy production dependencies from dependencies stage (includes built native modules)
 COPY --from=dependencies --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=dependencies --chown=nodejs:nodejs /app/backend/node_modules ./backend/node_modules
-COPY --from=dependencies --chown=nodejs:nodejs /app/package.json ./
-COPY --from=dependencies --chown=nodejs:nodejs /app/pnpm-workspace.yaml ./
-COPY --from=dependencies --chown=nodejs:nodejs /app/backend/package.json ./backend/
+COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/package.json ./
+COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/pnpm-workspace.yaml ./
+COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/backend/package.json ./backend/
 
 # Copy built backend
 COPY --from=build-backend --chown=nodejs:nodejs /app/backend/dist ./backend/dist
 
-# Copy database migrations (SQL files not copied by TypeScript)
+# Java key store helper (backend/src/crypto/KeyStoreExport.java): compile it next to pkcs12.js
+# once, so an export does not compile it again (the JRE has the jdk.compiler module, not javac).
+COPY --from=build-backend --chown=nodejs:nodejs --chmod=644 /app/backend/src/crypto/KeyStoreExport.java ./backend/dist/crypto/
+RUN java -m jdk.compiler/com.sun.tools.javac.Main -d /app/backend/dist/crypto /app/backend/dist/crypto/KeyStoreExport.java && \
+    chmod 644 /app/backend/dist/crypto/KeyStoreExport.class
+
+# Copy database migrations (SQL files and meta/_journal.json, not copied by TypeScript).
+# The modes come from the build-backend stage, see there.
 COPY --from=build-backend --chown=nodejs:nodejs /app/backend/src/db/migrations ./backend/dist/db/migrations
 
 # Copy entrypoint script
-COPY --chown=nodejs:nodejs docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY --chown=nodejs:nodejs --chmod=755 docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Create data directory with proper permissions
 RUN mkdir -p /app/backend/data && \
@@ -135,6 +151,10 @@ RUN mkdir -p /app/backend/data && \
 
 # Switch to non-root user
 USER nodejs
+
+# Build-time smoke test as the runtime user: the migrations apply to an empty database, so
+# a folder or file the nodejs user cannot read fails the image build, not the first start.
+RUN DATABASE_PATH=:memory: node /app/backend/dist/db/migrate.js
 
 # Set environment variables with production defaults.
 # NODE_OPTIONS=--use-openssl-ca makes Node verify outbound TLS (KMS, OIDC discovery/JWKS)
@@ -145,8 +165,7 @@ ENV NODE_ENV=production \
     NODE_OPTIONS=--use-openssl-ca \
     PORT=3000 \
     HOST=0.0.0.0 \
-    DATABASE_PATH=/app/backend/data/pki.db \
-    KMS_URL=http://kms:9998
+    DATABASE_PATH=/app/backend/data/pki.db
 
 # Expose port
 EXPOSE 3000

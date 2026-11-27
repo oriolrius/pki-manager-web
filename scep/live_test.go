@@ -199,3 +199,81 @@ func TestLiveManagedProfileWithKMS(t *testing.T) {
 	}
 	t.Log("real KMS/backend SAN issuance, new-key renewal, CRL-backed revocation and renewal rejection verified; MDM authority mocked")
 }
+
+// Opt-in: a client that still holds an RA certificate whose key was replaced (migration
+// `reprovision`) encrypts its request to that certificate. The gateway has no key for it, so
+// the request fails (a CertRep FAILURE signed by the current RA); the client must fetch the
+// RA certificate again (GetCACert). No certificate is issued.
+func TestLiveEnrollmentStaleRA(t *testing.T) {
+	endpoint := os.Getenv("SCEP_TEST_SERVER_URL")
+	path := os.Getenv("SCEP_TEST_STALE_RA_FILE")
+	if endpoint == "" || path == "" {
+		t.Skip("SCEP_TEST_SERVER_URL or SCEP_TEST_STALE_RA_FILE is not set")
+	}
+	stalePEM, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := parsePEMCerts(string(stalePEM))
+	if err != nil {
+		t.Fatal(err)
+	}
+	challenge, err := os.ReadFile(os.Getenv("SCEP_TEST_CHALLENGE_FILE"))
+	if err != nil {
+		t.Fatal("test challenge file unavailable")
+	}
+	pkcs7.ContentEncryptionAlgorithm = pkcs7.EncryptionAlgorithmAES256CBC
+	client := &http.Client{Timeout: 90 * time.Second}
+	resp, err := client.Get(endpoint + "?operation=GetCACert")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatal("CA discovery failed")
+	}
+	certs, err := scep.CACerts(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var current *x509.Certificate
+	for _, c := range certs {
+		if bytes.Equal(c.Raw, stale[0].Raw) || bytes.Equal(c.RawSubjectPublicKeyInfo, stale[0].RawSubjectPublicKeyInfo) {
+			t.Fatal("GetCACert still serves the replaced RA certificate or its key")
+		}
+		if !c.IsCA {
+			current = c
+		}
+	}
+	if current == nil {
+		t.Fatal("no RA certificate in GetCACert")
+	}
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := makeCert(&key.PublicKey, pkix.Name{CommonName: "stale-ra-device"}, nil, key, false)
+	msg := request(t, &gateway{ra: stale[0]}, key, signer, strings.TrimSpace(string(challenge)), nil)
+	resp, err = client.Post(endpoint+"?operation=PKIOperation", "application/x-pki-message", bytes.NewReader(msg.Raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("stale-RA request: HTTP %d", resp.StatusCode)
+	}
+	reply, err := scep.ParsePKIMessage(raw, scep.WithCACerts([]*x509.Certificate{current}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reply.PKIStatus != scep.FAILURE || reply.Certificate != nil {
+		t.Fatal("a request encrypted to the replaced RA certificate was processed")
+	}
+	p7, err := pkcs7.Parse(raw)
+	if err != nil || p7.GetOnlySigner() == nil || !bytes.Equal(p7.GetOnlySigner().Raw, current.Raw) {
+		t.Fatal("the reply is not signed by the current RA certificate")
+	}
+	t.Log("request encrypted to the replaced RA certificate: CertRep FAILURE signed by the current RA; no certificate issued")
+}

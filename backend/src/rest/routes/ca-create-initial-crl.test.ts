@@ -84,6 +84,7 @@ describe('CA creation: keyAlgorithm and initial CRL (KMS)', () => {
     expect(forge.asn1.fromDer(forge.util.createBuffer(res.rawPayload.toString('binary'))).type).toBe(forge.asn1.Type.SEQUENCE);
     const rows = await db.select().from(crls).where(eq(crls.caId, caId)).orderBy(desc(crls.crlNumber));
     expect(rows).toHaveLength(1);
-    expect(rows[0].crlNumber).toBe(1);
+    // CRL 1 was published before its row was deleted: a number is never used twice.
+    expect(rows[0].crlNumber).toBe(2);
   });
 });

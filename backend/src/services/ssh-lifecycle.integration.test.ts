@@ -10,25 +10,23 @@ import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { sshCas, sshHosts, sshIdentities, sshCertificates, sshKrls, sshHostKrls, sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals, sshFleetTokens, sshIdempotency } from '../db/schema.js';
-import { getKMSService } from '../kms/service.js';
+import { isOpenBaoSshAvailable } from '../test/openbao-ssh.js';
 import { getSshCaService } from './ssh-ca.service.js';
 import { getSshHostService } from './ssh-host.service.js';
 import { getSshUserService } from './ssh-user.service.js';
 import { getSshZoneService } from './ssh-zone.service.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const ctx = { db, ipAddress: null };
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
 }
 
-describe.skipIf(!KMS)('SSH-32 lifecycle', () => {
+describe.skipIf(!OPENBAO)('SSH-32 lifecycle', () => {
   let work: string;
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'ssh-life-'));

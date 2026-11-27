@@ -13,7 +13,7 @@ managed SANs, fresh-challenge renewal with active old-signer checks, and Intune
 revocation polling with a durable pending-batch journal.
 
 Tests cover the Microsoft SDK HTTP contract using mock services and full SCEP
-issuance/renewal against the local PKI backend and Cosmian KMS. They do **not**
+issuance and renewal against a local PKI backend with OpenBao Transit. They do **not**
 prove access to your tenant, correct consent, a working Intune policy assignment,
 or successful enrollment on a physical device. Complete the acceptance steps
 below on each operating system before calling the deployment production ready.
@@ -38,10 +38,10 @@ as published in that SDK. It does not use deprecated Azure AD Graph fallbacks.
    protected file or secret manager. Do not commit it or paste it into a PR/chat.
 3. Create a dedicated issuing CA and a CA-bound service token in PKI Manager.
    Provision the RA using the [base gateway instructions](../README.md). The RA
-   key remains Sensitive in KMS; the existing CA is not exported to an NDES host.
+   key stays non-exportable in OpenBao Transit; the existing CA is not exported to an NDES host.
 4. Configure a public, trusted HTTPS SCEP URL such as
    `https://scep.example.com/scep`. Devices need network access to it without an
-   interactive browser/OIDC login. Keep management and KMS endpoints private.
+   interactive browser/OIDC login. Keep management and OpenBao endpoints private.
 5. Permit outbound HTTPS from the gateway to `login.microsoftonline.com`,
    `graph.microsoft.com`, and the `*.manage.microsoft.com` service endpoints
    returned by Microsoft Graph. The application only accepts HTTPS discovery

@@ -14,8 +14,9 @@ import {
 } from '../crypto/validation.js';
 import { logger } from '../lib/logger.js';
 import { crlDistributionUrl } from '../lib/crl-url.js';
-import { getCRLService } from './crl.service.js';
+import { CRLService, getCRLService } from './crl.service.js';
 import type { ServiceContext } from './types.js';
+import { isKeyStoreUnavailable } from '../keystore/errors.js';
 
 // Types for Certificate Service inputs and outputs
 /**
@@ -42,18 +43,27 @@ export async function kmsKeyUsedByOtherCertificate(
  * row in ONE synchronous better-sqlite3 transaction: both happen or neither.
  * Callers run it BEFORE any side effect (KMS key destruction, success audit row),
  * so a failed delete leaves nothing half done.
+ *
+ * A revoked certificate keeps its revocation in the same transaction
+ * (`CRLService.recordCertificateDelete`): its serial, date and reason stay in the
+ * next CRL of the CA, also when no signed CRL lists it yet (OpenBao sealed) and
+ * after a restart. With `removeFromCrl`, its serial leaves the CRL on purpose.
  */
 export function deleteCertificateRow(
   database: Pick<typeof import('../db/client.js').db, 'transaction'>,
   certId: string,
+  options: { removeFromCrl?: boolean } = {},
 ): void {
+  // Wait for any writer before reading the revocation that the delete must preserve.
   database.transaction((tx) => {
+    const row = tx.select().from(certificates).where(eq(certificates.id, certId)).get();
+    if (row) CRLService.recordCertificateDelete(tx, row, options.removeFromCrl === true);
     tx.update(certificates)
       .set({ renewedFromId: null })
       .where(eq(certificates.renewedFromId, certId))
       .run();
     tx.delete(certificates).where(eq(certificates.id, certId)).run();
-  });
+  }, { behavior: 'immediate' });
 }
 
 export interface ListCertificatesParams {
@@ -528,6 +538,8 @@ export class CertificateService {
         certificate.id
       );
     } catch (kmsError) {
+      // An unavailable key store is an outage, not an inconsistency: 503 KEY_STORE_UNAVAILABLE.
+      if (isKeyStoreUnavailable(kmsError)) throw kmsError;
       // Certificate exists in DB but not found in KMS - data inconsistency
       logger.warn(
         { certId: id, kmsCertificateId: certificate.kmsCertificateId, error: kmsError },
@@ -540,7 +552,8 @@ export class CertificateService {
           kmsCertificateId: certificate.kmsCertificateId,
           subjectDn: certificate.subjectDn,
           serialNumber: certificate.serialNumber,
-        }
+        },
+        { cause: kmsError }
       );
     }
 
@@ -1386,7 +1399,7 @@ export class CertificateService {
 
       // 1. The row first (with its renewals detached). If this fails, no key is
       //    destroyed and no success audit row is written.
-      deleteCertificateRow(ctx.db, params.id);
+      deleteCertificateRow(ctx.db, params.id, { removeFromCrl: params.removeFromCrl });
       logger.info(
         { certId: params.id, serialNumber: cert.serialNumber },
         'Certificate deleted successfully'
@@ -1417,8 +1430,12 @@ export class CertificateService {
         }
       }
 
-      if (params.removeFromCrl) {
-        logger.info({ caId: cert.caId }, 'CRL update requested (not yet implemented)');
+      // A deleted revoked certificate stays in the CRL (the delete recorded its revocation).
+      // removeFromCrl recorded the removal with the delete: publish the CRL without the serial
+      // now (best-effort; when it fails, downloads and the background job publish it).
+      if (params.removeFromCrl && isRevoked) {
+        await getCRLService().regenerateForCa(ctx, cert.caId);
+        logger.info({ caId: cert.caId, serialNumber: cert.serialNumber }, 'Serial removed from the CRL on request');
       }
 
       // 3. The success audit row, only after the delete really happened.
@@ -1563,9 +1580,11 @@ export class CertificateKmsInconsistencyError extends Error {
       kmsCertificateId?: string;
       subjectDn?: string;
       serialNumber?: string;
-    }
+    },
+    /** The key store error; a legacy (un-migrated) id maps to 409 KEY_MIGRATION_REQUIRED at the REST edge. */
+    options?: { cause?: unknown }
   ) {
-    super(`Certificate ${certId} exists in database but certificate not found in KMS: ${kmsError}`);
+    super(`Certificate ${certId} exists in database but certificate not found in KMS: ${kmsError}`, options);
     this.name = 'CertificateKmsInconsistencyError';
   }
 }

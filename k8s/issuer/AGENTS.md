@@ -44,7 +44,7 @@ change both sides together when the external API changes.
 |---|---|
 | `make build` / `test` / `fmt` / `vet` / `tidy` | `go build`/`test`/… |
 | `make docker-build` | `docker build -t $(IMG) .` (default `ghcr.io/oriolrius/pki-manager-issuer:dev`) |
-| `make e2e-in-cluster` | full kind e2e (KMS + backend + issuer + cert-manager); see `test/e2e/in-cluster/README.md` |
+| `make e2e-in-cluster` | deploy OpenBao, backend, issuer and cert-manager in kind; complete issuance checks in `test/e2e/in-cluster/README.md` |
 
 `Dockerfile`: static `golang:1.26.11` build (pinned by digest) → distroless nonroot (UID 65532), binary `/manager`; the builder's patched CA bundle replaces distroless's stale one (#9).
 Install via Helm chart `deploy/helm/pki-manager-issuer/`:
@@ -61,7 +61,7 @@ Then create a `Secret` (key `token` = the token of a Kubernetes integration from
 
 - **Approval gate**: cert-manager 1.16+ won't sign until the CR is `Approved`; the default
   approver doesn't auto-approve external groups — grant approve RBAC on `signers.cert-manager.io`
-  or approve manually (the e2e README patches CR status by hand).
+  or approve manually. The in-cluster Helm fixture enables the approver RBAC.
 - **Token ↔ CA binding**: token `caId` ≠ `spec.caId` → Issuer `Ready=False, CAIDMismatch`, never signs.
 - **CRD upgrades**: editing `crds/issuers.yaml` needs manual `kubectl apply` — `helm upgrade` skips CRDs.
 - Run all `go`/`make` commands from inside `k8s/issuer/` — it's its own module.

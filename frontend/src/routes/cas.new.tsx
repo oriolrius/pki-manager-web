@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { ArrowLeft, Shuffle } from 'lucide-react';
 import { useState } from 'react';
 import { useToast } from '@/components/ui';
+import { KEY_STORE_NAME } from '@/lib/key-store';
 
 export const Route = createFileRoute('/cas/new')({
   component: NewCA,
@@ -103,7 +104,7 @@ function NewCA() {
             <li>X.509 v3 self-signed certificate</li>
             <li>Basic Constraints: CA=true, pathlen=unlimited</li>
             <li>Key Usage: keyCertSign, cRLSign (critical)</li>
-            <li>Private key stored securely in Cosmian KMS</li>
+            <li>Private key generated and kept in {KEY_STORE_NAME}</li>
             <li>Subject DN equals Issuer DN (self-signed)</li>
           </ul>
         </div>
@@ -223,7 +224,7 @@ function NewCA() {
                   <option value="RSA-4096">RSA 4096 (Recommended for CAs)</option>
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  RSA-4096 is recommended for root CAs. ECDSA not supported by KMS.
+                  RSA-4096 is recommended for root CAs. CA keys are RSA only.
                 </p>
               </div>
 
@@ -251,7 +252,7 @@ function NewCA() {
           <div className="p-4 bg-primary/10 border border-primary/20 rounded-md">
             <h4 className="font-medium text-sm text-foreground mb-2">What happens when you create a CA?</h4>
             <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-              <li>A new key pair is generated and stored securely in Cosmian KMS</li>
+              <li>A new key pair is generated in {KEY_STORE_NAME}; the CA certificate is signed there</li>
               <li>A self-signed X.509 v3 certificate is created with CA=true</li>
               <li>The certificate is configured to sign other certificates and CRLs</li>
               <li>The CA becomes available for issuing end-entity certificates</li>

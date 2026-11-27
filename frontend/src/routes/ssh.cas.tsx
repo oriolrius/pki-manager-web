@@ -55,7 +55,7 @@ function SshCas() {
       <div className="flex items-start gap-2 text-xs text-muted-foreground p-3 rounded-md bg-muted/50 border">
         <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
         <span>
-          SSH CAs are <strong>ECDSA nistp256</strong> only (PKCS#11 v2.40 / Cosmian KMS compatibility). One active CA
+          SSH CAs are <strong>ECDSA nistp256</strong> only. One active CA
           per type; rotation keeps the predecessor trusted during overlap.
         </span>
       </div>

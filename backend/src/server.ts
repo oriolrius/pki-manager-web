@@ -4,7 +4,9 @@ import cors from '@fastify/cors';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
+import { keyStoreResponseMeta } from './trpc/key-store-errors.js';
 import { registerRestApi } from './rest/index.js';
+import { keyStoreErrorBody } from './rest/key-store-errors.js';
 import { registerSshPublicRoutes } from './rest/routes/ssh-public.routes.js';
 import { registerSshExternalRoutes } from './rest/routes/ssh-external.routes.js';
 import { externalRoutes } from './rest/routes/external.routes.js';
@@ -12,6 +14,7 @@ import { publicCrlRoutes } from './rest/routes/public-crl.routes.js';
 import { db } from './db/client.js';
 import { certificateAuthorities } from './db/schema.js';
 import { eq } from 'drizzle-orm';
+import { checkOpenBaoKeyStores } from './openbao/startup.js';
 import { initializeOIDC } from './lib/oidc.js';
 import { installAuditActorContext } from './lib/audit-actor.js';
 import { parseTrustProxy } from './lib/trust-proxy.js';
@@ -67,6 +70,8 @@ await server.register(async (trpcScope) => {
     trpcOptions: {
       router: appRouter,
       createContext,
+      // A key store outage (503 SERVICE_UNAVAILABLE) tells the client when to retry, as REST does.
+      responseMeta: keyStoreResponseMeta,
     },
   });
 });
@@ -155,6 +160,9 @@ server.get('/cas/:caId.:format', { schema: { hide: true } }, async (req, reply) 
     return content;
   } catch (error) {
     server.log.error({ error, caId }, 'Failed to serve CA certificate');
+    // A CA whose certificate is not in the key store yet (KEY_MIGRATION_REQUIRED, 409), ...
+    const keyStore = keyStoreErrorBody(reply, error);
+    if (keyStore) return { error: keyStore.error.message, code: keyStore.error.code };
     reply.code(500);
     return { error: 'Internal server error while serving CA certificate' };
   }
@@ -174,6 +182,9 @@ const start = async () => {
   try {
     // Initialize OIDC configuration (validates env vars and fetches JWKS if enabled)
     await initializeOIDC();
+
+    // OpenBao SSH CA / SCEP RA key stores: fail fast on bad settings, report legacy keys.
+    await checkOpenBaoKeyStores(db);
 
     const port = parseInt(process.env.PORT || '3000', 10);
     const host = process.env.HOST || '0.0.0.0';

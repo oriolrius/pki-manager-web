@@ -1,7 +1,7 @@
 # PKI Manager
 
 > A self-hosted web application to run your own certificate authorities for X.509 and SSH.
-> Private keys are made and kept in a KMS.
+> Private keys are made and kept in OpenBao Transit (a build of OpenBao with a small SCEP patch set).
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/website-pki--manager.oriolrius.cat-FF6600.svg)](https://pki-manager.oriolrius.cat/)
@@ -38,14 +38,16 @@ source code is public because it can be useful to someone else.
 
 | Folder | Content |
 |---|---|
-| `backend/` | API server: REST and tRPC, certificate logic, KMS client, SQLite database |
+| `backend/` | API server: REST and tRPC, certificate logic, OpenBao Transit clients, SQLite database |
 | `frontend/` | Web UI (React) |
 | `k8s/issuer/` | cert-manager external issuer for Kubernetes (Go, with its Helm chart) |
 | `scep/` | Optional SCEP gateway for device enrollment (Go) |
 | `krl-client/` | Program for SSH servers that fetches their revocation list (Go) |
 | `ansible/` | Playbook and end-to-end test of the SSH host certificate role |
 | `docker/` | Dockerfile and the Compose files of production |
-| `kms/`, `keycloak/` | Containers for local development |
+| `openbao/` | Fork image pin, Transit policies, server and Agent configuration |
+| `keycloak/` | OIDC provider for local development |
+| `kms/` | Legacy v3 key store for migration rehearsals |
 | `docs/` | All the documentation. The website is built from this folder |
 | `site/` | The website: layout and build scripts, with no text of its own |
 | `backlog/` | Tasks, decision records and specifications ([Backlog.md](https://backlog.md)) |
@@ -56,7 +58,7 @@ source code is public because it can be useful to someone else.
 
 ```bash
 just setup    # dependencies, .env files, dev database
-just dev      # KMS, Keycloak, backend, frontend and the task board
+just dev      # OpenBao, Keycloak, backend, frontend and the task board
 ```
 
 Then open <http://localhost:52080> and log in as `admin` / `admin`. The details are in

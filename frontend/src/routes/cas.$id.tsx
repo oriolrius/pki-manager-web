@@ -9,6 +9,7 @@ import { ExportPasswordField } from '@/components/ExportPasswordField';
 import { ArrowLeft, XCircle, Trash2, Calendar, Key, Database, Award, Link, Check, Download } from 'lucide-react';
 import { useState } from 'react';
 import { useToast, useConfirm } from '@/components/ui';
+import { KEY_STORE_NAME } from '@/lib/key-store';
 
 export const Route = createFileRoute('/cas/$id')({
   component: CADetail,
@@ -35,7 +36,7 @@ function CADetail() {
   const now = useCurrentTime();
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  // Disable retries for CONFLICT errors (KMS inconsistency) - they won't resolve with retries
+  // Disable retries for CONFLICT errors (database and key store disagree) - they won't resolve with retries
   const caQuery = trpc.ca.getById.useQuery({ id }, {
     retry: (failureCount, error) => {
       // Don't retry CONFLICT errors - they indicate data inconsistency, not transient failures
@@ -202,15 +203,15 @@ function CADetail() {
   }
 
   if (caQuery.isError) {
-    // KMS inconsistency is now properly returned as CONFLICT (HTTP 409) from the backend
+    // A database record whose stored certificate data cannot be read comes back as CONFLICT (HTTP 409)
     // IMPORTANT: Check CONFLICT first, before NOT_FOUND, because error message may contain "not found"
-    const isKmsInconsistency = caQuery.error.data?.code === 'CONFLICT';
-    const isNotFound = !isKmsInconsistency && (
+    const isStoreInconsistency = caQuery.error.data?.code === 'CONFLICT';
+    const isNotFound = !isStoreInconsistency && (
       caQuery.error.data?.code === 'NOT_FOUND' ||
       caQuery.error.message.toLowerCase().includes('not found')
     );
 
-    if (isKmsInconsistency) {
+    if (isStoreInconsistency) {
       // Extract metadata from error cause (sent by backend)
       const data = caQuery.error.data;
       const errorCause = (data && 'cause' in data ? data.cause : undefined) as {
@@ -281,7 +282,7 @@ function CADetail() {
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
                     This will permanently remove the CA record from the database.
-                    The certificate data in KMS (if any) will not be affected.
+                    Keys in the key store (if any) are not changed.
                   </p>
                   <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-md p-3">
                     <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
@@ -322,22 +323,22 @@ function CADetail() {
 
           <div className="text-center space-y-2">
             <div className="text-5xl text-orange-500">409</div>
-            <h2 className="text-xl font-semibold text-destructive">CA Not Found in KMS</h2>
+            <h2 className="text-xl font-semibold text-destructive">CA Data Not Available</h2>
           </div>
 
           <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 space-y-3">
             <p className="text-sm">
-              <strong>Problem:</strong> This CA exists in the application database but its certificate
-              could not be retrieved from the Key Management System (KMS).
+              <strong>Problem:</strong> This CA exists in the application database but its stored
+              certificate data or key could not be read.
             </p>
             <p className="text-sm text-muted-foreground">
               This can happen when:
             </p>
             <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
-              <li>The certificate was deleted directly from the KMS</li>
-              <li>The KMS database was restored from a backup without the certificate</li>
+              <li>The key or certificate object was deleted directly from the key store</li>
+              <li>The key store or the database was restored from a backup that does not match the other</li>
               <li>There was a partial failure during CA creation</li>
-              <li>The KMS is temporarily unavailable</li>
+              <li>The key store is sealed or temporarily unavailable</li>
             </ul>
           </div>
 
@@ -362,14 +363,14 @@ function CADetail() {
               )}
               {errorCause?.kmsCertificateId && (
                 <div>
-                  <span className="text-muted-foreground">KMS Certificate ID:</span>
+                  <span className="text-muted-foreground">Stored object ID:</span>
                   <code className="ml-2 text-xs bg-muted px-2 py-0.5 rounded break-all">{errorCause.kmsCertificateId}</code>
                 </div>
               )}
             </div>
             <div className="pt-2 border-t border-muted">
               <p className="text-xs text-muted-foreground">
-                <strong>KMS Error:</strong> {caQuery.error.message}
+                <strong>Error:</strong> {caQuery.error.message}
               </p>
             </div>
           </div>
@@ -729,7 +730,7 @@ function CADetail() {
             </div>
           </div>
 
-          {/* KMS Storage Information */}
+          {/* Key storage and download URLs */}
           <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
             <Database className="h-5 w-5 text-primary mt-0.5" />
             <div className="flex-1">
@@ -807,15 +808,15 @@ function CADetail() {
                   )}
                 </div>
 
-                {/* KMS Provider */}
+                {/* Key store */}
                 <div>
-                  <span className="text-muted-foreground text-xs block mb-1 font-semibold">☁️ KMS Storage:</span>
+                  <span className="text-muted-foreground text-xs block mb-1 font-semibold">🗝️ Private key:</span>
                   <div className="ml-2">
-                    <span className="text-muted-foreground text-xs">Provider:</span>
-                    <p className="font-mono text-sm">Cosmian KMS</p>
+                    <span className="text-muted-foreground text-xs">Key store:</span>
+                    <p className="font-mono text-sm">{KEY_STORE_NAME}</p>
                     {ca.kmsKeyId && (
                       <div className="mt-2">
-                        <span className="text-muted-foreground text-xs">KMS Key ID:</span>
+                        <span className="text-muted-foreground text-xs">Key reference:</span>
                         <p className="font-mono text-xs break-all">{ca.kmsKeyId}</p>
                       </div>
                     )}

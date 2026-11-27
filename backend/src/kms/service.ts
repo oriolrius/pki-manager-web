@@ -1,53 +1,56 @@
-import { randomUUID } from "crypto";
-import { KMSClient, type KMSClientConfig } from "./client.js";
-import type { KeyPairIds, CertificateInfo } from "./types.js";
-import { db } from "../db/client.js";
-import { auditLog } from "../db/schema.js";
-import { logger } from "../lib/logger.js";
-import { derToP1363 } from "../crypto/ssh/sign.js";
-import { ecPointToOpenSshEcdsa } from "../crypto/ssh/pubkey.js";
+/**
+ * Key service used by the X.509 services and routes (CA, certificates, bulk, CSR signing,
+ * CRL, downloads).
+ *
+ * Since the decision-018 cutover the runtime key store is OpenBao Transit; there is no
+ * Cosmian KMS path. The class keeps the method names and result shapes of the former Cosmian
+ * client, so call sites did not change:
+ *
+ * - ids are key store object ids (`keystore_objects`), stored in the `kms_*` columns;
+ * - `signCertificate` builds the certificate locally and signs it in Transit;
+ * - `getPrivateKey` exports only keys that were created exportable;
+ * - every operation writes a `kms.*` audit row (success and failure) with `provider: openbao`.
+ *
+ * SSH CA keys (`services/ssh-ca-key.ts`) and SCEP RA keys (`openbao/ra-transit.ts`) have
+ * their own Transit clients.
+ */
+import { randomUUID } from 'crypto';
+import type { KeyPairIds, CertificateInfo } from './types.js';
+import { db } from '../db/client.js';
+import { auditLog } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
+import { getX509KeyStore, type X509KeyStoreService } from '../keystore/x509-store.js';
+import type { KeyStoreState, SignHash } from '../keystore/types.js';
+import { OpenBaoTransitConfigError } from '../openbao/x509-transit.js';
 
 export interface KMSServiceOptions {
-  kmsUrl: string;
-  kmsApiKey?: string;
   enableAuditLog?: boolean;
+  /** Tests: a key store service with a stub key store. */
+  store?: X509KeyStoreService;
 }
 
 export class KMSService {
-  async performRAOperation(...args: Parameters<KMSClient['performRAOperation']>) {
-    return this.client.performRAOperation(...args);
-  }
-  private client: KMSClient;
-  private enableAuditLog: boolean;
+  private readonly enableAuditLog: boolean;
+  private readonly injected?: X509KeyStoreService;
 
-  constructor(options: KMSServiceOptions) {
-    const config: KMSClientConfig = {
-      url: options.kmsUrl,
-      apiKey: options.kmsApiKey,
-      timeout: 30000,
-      retryAttempts: 3,
-      retryDelay: 1000,
-    };
-
-    this.client = new KMSClient(config);
+  constructor(options: KMSServiceOptions = {}) {
     this.enableAuditLog = options.enableAuditLog !== false;
+    this.injected = options.store;
   }
 
-  /**
-   * Log KMS operation to audit trail
-   */
+  private get store(): X509KeyStoreService {
+    return this.injected ?? getX509KeyStore();
+  }
+
   private async logAudit(
     operation: string,
     entityType: string,
     entityId: string | null,
-    status: "success" | "failure",
+    status: 'success' | 'failure',
     details: Record<string, unknown>,
-    kmsOperationId?: string
+    kmsOperationId?: string,
   ): Promise<void> {
-    if (!this.enableAuditLog) {
-      return;
-    }
-
+    if (!this.enableAuditLog) return;
     try {
       await db.insert(auditLog).values({
         id: randomUUID(),
@@ -55,234 +58,121 @@ export class KMSService {
         entityType,
         entityId,
         status,
-        details: JSON.stringify(details),
+        details: JSON.stringify({ provider: 'openbao', ...details }),
         kmsOperationId,
-        ipAddress: null, // Can be set from context in tRPC procedures
+        ipAddress: null,
       });
     } catch (error) {
-      logger.error({ error }, "Failed to write audit log");
+      logger.error({ error }, 'Failed to write audit log');
     }
   }
 
-  /**
-   * Test connection to KMS
-   */
-  async testConnection(): Promise<boolean> {
+  /** Runs `fn` and writes one audit row for its outcome. */
+  private async audited<T>(
+    operation: string,
+    entityType: string,
+    entityId: string | null,
+    details: Record<string, unknown>,
+    fn: () => Promise<T>,
+    successDetails?: (result: T) => Record<string, unknown>,
+  ): Promise<T> {
     const operationId = randomUUID();
     try {
-      const result = await this.client.testConnection();
-      await this.logAudit(
-        "kms.test_connection",
-        "kms",
-        null,
-        "success",
-        { result },
-        operationId
-      );
+      const result = await fn();
+      await this.logAudit(operation, entityType, entityId, 'success', { ...details, ...successDetails?.(result) }, operationId);
       return result;
     } catch (error) {
-      await this.logAudit(
-        "kms.test_connection",
-        "kms",
-        null,
-        "failure",
-        { error: String(error) },
-        operationId
-      );
+      await this.logAudit(operation, entityType, entityId, 'failure', { ...details, error: String(error) }, operationId);
       throw error;
     }
   }
 
+  /** True when OpenBao is reachable, unsealed and accepts the token. */
+  async testConnection(): Promise<boolean> {
+    return this.audited('kms.test_connection', 'kms', null, {}, async () => (await this.store.status()) === 'ready', (result) => ({ result }));
+  }
+
+  /** Key store state for operator diagnostics. */
+  async status() {
+    return this.store.status();
+  }
+
   /**
-   * Create a key pair (RSA or ECDSA) for a CA or certificate
+   * Operator diagnostics of the X.509 key store. `configured: false` when the OpenBao settings
+   * are missing or invalid (the reason is in the server log). It writes no audit row: it is a
+   * read-only check that monitoring can call often.
    */
+  async diagnostics(): Promise<{ configured: boolean; state: KeyStoreState }> {
+    let store: X509KeyStoreService;
+    try {
+      store = this.store;
+    } catch (error) {
+      if (error instanceof OpenBaoTransitConfigError) {
+        logger.error({ reason: error.message }, 'OpenBao X.509 key store is not configured');
+        return { configured: false, state: 'unavailable' };
+      }
+      throw error;
+    }
+    return { configured: true, state: await store.status() };
+  }
+
+  /** Create a key pair (RSA or ECDSA) for a certificate. */
   async createKeyPair(options: {
     sizeInBits?: number;
     tags?: string[];
-    purpose: "ca" | "certificate";
+    purpose: 'ca' | 'certificate';
     entityId?: string;
-    keyAlgorithm?: string; // e.g., "RSA-4096", "ECDSA-P256"
+    keyAlgorithm?: string;
   }): Promise<KeyPairIds> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.createKeyPair({
-        sizeInBits: options.sizeInBits,
-        tags: options.tags,
-        keyAlgorithm: options.keyAlgorithm,
-      });
-
-      await this.logAudit(
-        "kms.create_key_pair",
-        options.purpose,
-        options.entityId || null,
-        "success",
-        {
-          sizeInBits: options.sizeInBits,
-          tags: options.tags,
-          privateKeyId: result.privateKeyId,
-          publicKeyId: result.publicKeyId,
-        },
-        operationId
-      );
-
-      logger.info(
-        {
-          privateKeyId: result.privateKeyId,
-          publicKeyId: result.publicKeyId,
-          purpose: options.purpose,
-        },
-        "Created key pair in KMS"
-      );
-
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.create_key_pair",
-        options.purpose,
-        options.entityId || null,
-        "failure",
-        { error: String(error), sizeInBits: options.sizeInBits },
-        operationId
-      );
-      throw error;
-    }
+    const result = await this.audited(
+      'kms.create_key_pair', options.purpose, options.entityId ?? null,
+      { sizeInBits: options.sizeInBits, keyAlgorithm: options.keyAlgorithm, tags: options.tags },
+      async () => {
+        const { privateKeyId, publicKeyId } = await this.store.createKeyPair(options);
+        return { privateKeyId, publicKeyId };
+      },
+      (r) => ({ ...r }),
+    );
+    logger.info({ ...result, purpose: options.purpose }, 'Created key pair in OpenBao');
+    return result;
   }
 
-  /**
-   * Get certificate from KMS in PEM format
-   */
+  /** Certificate PEM. */
   async getCertificate(certificateId: string, entityId?: string): Promise<string> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.getCertificate(certificateId);
-
-      await this.logAudit(
-        "kms.get_certificate",
-        "certificate",
-        entityId || certificateId,
-        "success",
-        { certificateId },
-        operationId
-      );
-
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.get_certificate",
-        "certificate",
-        entityId || certificateId,
-        "failure",
-        { error: String(error), certificateId },
-        operationId
-      );
-      throw error;
-    }
+    return this.audited('kms.get_certificate', 'certificate', entityId || certificateId, { certificateId }, () => this.store.getCertificatePem(certificateId));
   }
 
-  /**
-   * Resolve the private-key id linked to a certificate (via KMIP PrivateKeyLink).
-   */
+  /** Private key id linked to a certificate. */
   async getCertificatePrivateKeyId(certificateId: string, entityId?: string): Promise<string> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.getCertificatePrivateKeyId(certificateId);
-      await this.logAudit(
-        "kms.resolve_private_key_id",
-        "certificate",
-        entityId || certificateId,
-        "success",
-        { certificateId, privateKeyId: result },
-        operationId
-      );
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.resolve_private_key_id",
-        "certificate",
-        entityId || certificateId,
-        "failure",
-        { error: String(error), certificateId },
-        operationId
-      );
-      throw error;
-    }
+    return this.audited('kms.resolve_private_key_id', 'certificate', entityId || certificateId, { certificateId },
+      () => this.store.getCertificatePrivateKeyId(certificateId), (privateKeyId) => ({ privateKeyId }));
   }
 
-  /** Resolve the public key id linked to a private key (KMIP PublicKeyLink). */
+  /** Public key id linked to a private key. */
   async getPublicKeyIdForPrivateKey(privateKeyId: string): Promise<string> {
-    return this.client.getPrivateKeyPublicKeyId(privateKeyId);
+    return this.store.getPublicKeyIdForPrivateKey(privateKeyId);
   }
 
-  /**
-   * Get public key in PEM format
-   */
+  /** SubjectPublicKeyInfo PEM of a key. */
   async getPublicKey(keyId: string, entityId?: string): Promise<string> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.getPublicKey(keyId);
-
-      await this.logAudit(
-        "kms.get_public_key",
-        "key",
-        entityId || keyId,
-        "success",
-        { keyId },
-        operationId
-      );
-
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.get_public_key",
-        "key",
-        entityId || keyId,
-        "failure",
-        { error: String(error), keyId },
-        operationId
-      );
-      throw error;
-    }
+    return this.audited('kms.get_public_key', 'key', entityId || keyId, { keyId }, () => this.store.getPublicKeyPem(keyId));
   }
 
   /**
-   * Get private key in PEM format (PKCS#8)
-   * WARNING: This exports the private key from KMS. Use with caution and only when necessary.
+   * PKCS#8 PEM of a private key. Only keys created exportable (leaf keys; CA keys when
+   * `ALLOW_CA_KEY_EXPORT` was on at CA creation) can be exported; OpenBao refuses the others.
    */
   async getPrivateKey(keyId: string, entityId?: string): Promise<string> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.getPrivateKey(keyId);
-
-      await this.logAudit(
-        "kms.get_private_key",
-        "key",
-        entityId || keyId,
-        "success",
-        { keyId },
-        operationId
-      );
-
-      logger.warn(
-        { keyId, entityId },
-        "Private key exported from KMS - ensure secure handling"
-      );
-
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.get_private_key",
-        "key",
-        entityId || keyId,
-        "failure",
-        { error: String(error), keyId },
-        operationId
-      );
-      throw error;
-    }
+    const pem = await this.audited('kms.get_private_key', 'key', entityId || keyId, { keyId }, () => this.store.exportPrivateKeyPem(keyId));
+    logger.warn({ keyId, entityId }, 'Private key exported from OpenBao - ensure secure handling');
+    return pem;
   }
 
   /**
-   * Sign a certificate (certify operation)
+   * Issue a certificate. Modes (see `X509KeyStoreService.certify`): CSR (`csr` +
+   * `preserveCsrKey`), existing key pair (`publicKeyId` + `subjectName`), or a new key pair
+   * (`keyAlgorithm` + `subjectName`, self-signed CA). `issuerName` is not used: the issuer
+   * name is the issuer certificate's subject.
    */
   async signCertificate(options: {
     csr?: string;
@@ -294,289 +184,56 @@ export class KMSService {
     daysValid?: number;
     tags?: string[];
     entityId?: string;
-    keySizeInBits?: number; // Key size for KMS to generate (deprecated, use keyAlgorithm)
-    keyAlgorithm?: string; // Key algorithm (e.g., "RSA-4096", "ECDSA-P256")
-    x509Extensions?: string; // X.509 extensions in OpenSSL v3_ca format
-    preserveCsrKey?: boolean; // Sign the CSR's embedded public key instead of generating (TASK-109.22 option b)
+    keySizeInBits?: number;
+    keyAlgorithm?: string;
+    x509Extensions?: string;
+    preserveCsrKey?: boolean;
   }): Promise<CertificateInfo> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.certify({
-        csr: options.csr,
-        publicKeyId: options.publicKeyId,
-        issuerPrivateKeyId: options.issuerPrivateKeyId,
-        issuerCertificateId: options.issuerCertificateId,
-        issuerName: options.issuerName,
-        subjectName: options.subjectName,
-        daysValid: options.daysValid,
-        tags: options.tags,
-        keySizeInBits: options.keySizeInBits,
-        keyAlgorithm: options.keyAlgorithm,
-        x509Extensions: options.x509Extensions,
-        preserveCsrKey: options.preserveCsrKey,
-      });
-
-      await this.logAudit(
-        "kms.sign_certificate",
-        "certificate",
-        options.entityId || null,
-        "success",
-        {
-          certificateId: result.certificateId,
-          issuerPrivateKeyId: options.issuerPrivateKeyId,
-          subjectName: options.subjectName,
-          daysValid: options.daysValid,
-        },
-        operationId
-      );
-
-      logger.info(
-        {
-          certificateId: result.certificateId,
-          subjectName: options.subjectName,
-        },
-        "Signed certificate in KMS"
-      );
-
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.sign_certificate",
-        "certificate",
-        options.entityId || null,
-        "failure",
-        {
-          error: String(error),
-          issuerPrivateKeyId: options.issuerPrivateKeyId,
-          subjectName: options.subjectName,
-        },
-        operationId
-      );
-      throw error;
-    }
+    const result = await this.audited(
+      'kms.sign_certificate', 'certificate', options.entityId ?? null,
+      { issuerCertificateId: options.issuerCertificateId, subjectName: options.subjectName, daysValid: options.daysValid, csr: !!options.csr },
+      () => this.store.certify(options),
+      (r) => ({ certificateId: r.certificateId, privateKeyId: r.privateKeyId, publicKeyId: r.publicKeyId }),
+    );
+    logger.info({ certificateId: result.certificateId, subjectName: options.subjectName }, 'Signed certificate with OpenBao');
+    return { certificateId: result.certificateId, certificateData: result.certificateData, privateKeyId: result.privateKeyId, publicKeyId: result.publicKeyId };
   }
 
-  /**
-   * Canonical raw-signature seam (SSH-03, decision-011). Signs arbitrary bytes
-   * with a KMS-held ECDSA key via KMIP `Sign` — the CA private key never leaves
-   * the KMS. Returns DER by default, or fixed-width IEEE P-1363 `r‖s`. Every call
-   * writes a kms.sign_raw audit row (success and failure).
-   */
-  async signRaw(
-    keyId: string,
-    data: Buffer,
-    opts?: { entityId?: string; hashingAlgorithm?: string; format?: "der" | "ieee-p1363" }
-  ): Promise<Buffer> {
-    const operationId = randomUUID();
-    try {
-      const der = await this.client.sign(keyId, data, { hashingAlgorithm: opts?.hashingAlgorithm });
-      const result = opts?.format === "ieee-p1363" ? derToP1363(der) : der;
-      await this.logAudit(
-        "kms.sign_raw",
-        "key",
-        opts?.entityId ?? keyId,
-        "success",
-        { keyId, bytes: data.length, format: opts?.format ?? "der" },
-        operationId
-      );
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.sign_raw",
-        "key",
-        opts?.entityId ?? keyId,
-        "failure",
-        { error: String(error), keyId },
-        operationId
-      );
-      throw error;
-    }
+  /** X.509 signature over `data` (CRLs): RSA PKCS#1 v1.5 or ECDSA DER. The key stays in OpenBao. */
+  async signData(keyId: string, data: Buffer, hash: SignHash, entityId?: string): Promise<Buffer> {
+    return this.audited('kms.sign', 'key', entityId ?? keyId, { keyId, bytes: data.length, hash }, () => this.store.signData(keyId, data, hash));
   }
 
-  /**
-   * Create a NON-exportable ECDSA P-256 SSH CA key pair (Sensitive + Active),
-   * per decision-011. Returns the KMS key ids.
-   */
-  async createSshCaKeyPair(options: {
-    tags?: string[];
-    sensitive?: boolean;
-    entityId?: string;
-  }): Promise<KeyPairIds> {
-    const operationId = randomUUID();
-    try {
-      const result = await this.client.createEcSigningKeyPair({
-        tags: options.tags,
-        sensitive: options.sensitive,
-      });
-      await this.logAudit(
-        "kms.create_ssh_ca_key",
-        "ssh_ca",
-        options.entityId ?? null,
-        "success",
-        { tags: options.tags, sensitive: options.sensitive !== false, ...result },
-        operationId
-      );
-      logger.info({ ...result }, "Created SSH CA key pair in KMS (sensitive, active)");
-      return result;
-    } catch (error) {
-      await this.logAudit(
-        "kms.create_ssh_ca_key",
-        "ssh_ca",
-        options.entityId ?? null,
-        "failure",
-        { error: String(error), tags: options.tags },
-        operationId
-      );
-      throw error;
-    }
+  /** Refuse further signatures with a key. */
+  async revokeKey(keyId: string, reason?: string, entityId?: string): Promise<void> {
+    await this.audited('kms.revoke_key', 'key', entityId || keyId, { keyId, reason }, () => this.store.revoke(keyId));
+    logger.info({ keyId, reason }, 'Revoked key in the key store');
   }
 
-  /** Fetch a KMS EC public key and return it as an `ecdsa-sha2-nistp256 AAAA…` OpenSSH line. */
-  async getSshPublicKeyLine(publicKeyId: string, comment = "", _entityId?: string): Promise<string> {
-    const q = await this.client.getEcPublicPoint(publicKeyId);
-    return ecPointToOpenSshEcdsa(q, comment);
-  }
-
-  /** Verify a DER ECDSA signature server-side (KMIP SignatureVerify). */
-  async signatureVerify(publicKeyId: string, data: Buffer, signature: Buffer): Promise<boolean> {
-    return this.client.signatureVerify(publicKeyId, data, signature);
-  }
-
-  /** Register a per-host ECIES keypair in the KMS, tagged by host_id (SSH-15). */
-  async registerHostEciesKey(hostId: string, tags: string[] = []): Promise<KeyPairIds> {
-    const result = await this.client.createEcEncryptionKeyPair({ tags: ['ssh-host-ecies', `host:${hostId}`, ...tags] });
-    await this.logAudit('ssh.host.register_pubkey', 'ssh_host', hostId, 'success', { ...result }, randomUUID());
-    return result;
-  }
-
-  /** ECIES-encrypt to a host's registered public key (SSH-24). */
-  async eciesEncrypt(publicKeyId: string, data: Buffer): Promise<Buffer> {
-    return this.client.ecEncrypt(publicKeyId, data);
-  }
-
-  /** ECIES-decrypt with a host's private key in the KMS (used by the puller path). */
-  async eciesDecrypt(privateKeyId: string, ciphertext: Buffer): Promise<Buffer> {
-    return this.client.ecDecrypt(privateKeyId, ciphertext);
-  }
-
-  /**
-   * Revoke a key
-   */
-  async revokeKey(
-    keyId: string,
-    reason?: string,
-    entityId?: string
-  ): Promise<void> {
-    const operationId = randomUUID();
-    try {
-      await this.client.revokeKey(keyId, reason);
-
-      await this.logAudit(
-        "kms.revoke_key",
-        "key",
-        entityId || keyId,
-        "success",
-        { keyId, reason },
-        operationId
-      );
-
-      logger.info({ keyId, reason }, "Revoked key in KMS");
-    } catch (error) {
-      await this.logAudit(
-        "kms.revoke_key",
-        "key",
-        entityId || keyId,
-        "failure",
-        { error: String(error), keyId, reason },
-        operationId
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Destroy a key (must be revoked first)
-   */
+  /** Delete a key (its Transit key) or a certificate object. */
   async destroyKey(keyId: string, entityId?: string): Promise<void> {
-    const operationId = randomUUID();
-    try {
-      await this.client.destroyKey(keyId);
-
-      await this.logAudit(
-        "kms.destroy_key",
-        "key",
-        entityId || keyId,
-        "success",
-        { keyId },
-        operationId
-      );
-
-      logger.info({ keyId }, "Destroyed key in KMS");
-    } catch (error) {
-      await this.logAudit(
-        "kms.destroy_key",
-        "key",
-        entityId || keyId,
-        "failure",
-        { error: String(error), keyId },
-        operationId
-      );
-      throw error;
-    }
+    await this.audited('kms.destroy_key', 'key', entityId || keyId, { keyId }, () => this.store.destroy(keyId));
+    logger.info({ keyId }, 'Destroyed key in the key store');
   }
 
   /**
-   * Revoke and destroy a key pair
+   * @deprecated Cosmian SSH key pairs. SSH CA keys are in `services/ssh-ca-key.ts`; this
+   * service has no SSH keys. Kept only so old test cleanup code compiles.
    */
-  async destroyKeyPair(
-    privateKeyId: string,
-    publicKeyId: string,
-    entityId?: string
-  ): Promise<void> {
-    const operationId = randomUUID();
-    try {
-      await this.client.destroyKeyPair(privateKeyId, publicKeyId);
+  async destroyKeyPair(_privateKeyId: string, _publicKeyId: string, _entityId?: string): Promise<void> {
+    throw new Error('SSH key pairs are not in the X.509 key service (services/ssh-ca-key.ts)');
+  }
 
-      await this.logAudit(
-        "kms.destroy_key_pair",
-        "key_pair",
-        entityId || privateKeyId,
-        "success",
-        { privateKeyId, publicKeyId },
-        operationId
-      );
-
-      logger.info({ privateKeyId, publicKeyId }, "Destroyed key pair in KMS");
-    } catch (error) {
-      await this.logAudit(
-        "kms.destroy_key_pair",
-        "key_pair",
-        entityId || privateKeyId,
-        "failure",
-        { error: String(error), privateKeyId, publicKeyId },
-        operationId
-      );
-      throw error;
-    }
+  /** @deprecated Cosmian SignatureVerify of SSH CA keys. See `destroyKeyPair`. */
+  async signatureVerify(_publicKeyId: string, _data: Buffer, _signature: Buffer): Promise<boolean> {
+    throw new Error('SSH signatures are verified by services/ssh-ca-key.ts, not by the X.509 key service');
   }
 }
 
-// Singleton instance
 let kmsServiceInstance: KMSService | null = null;
 
-/**
- * Get or create KMS service instance
- */
+/** The process-wide key service. */
 export function getKMSService(): KMSService {
-  if (!kmsServiceInstance) {
-    const kmsUrl = process.env.KMS_URL || 'http://localhost:42998';
-
-    kmsServiceInstance = new KMSService({
-      kmsUrl,
-      kmsApiKey: process.env.KMS_API_KEY,
-      enableAuditLog: true,
-    });
-  }
-
+  kmsServiceInstance ??= new KMSService({ enableAuditLog: true });
   return kmsServiceInstance;
 }

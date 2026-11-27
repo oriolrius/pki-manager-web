@@ -1,0 +1,119 @@
+# Release acceptance: disposable PKI Manager 4 stack with the OpenBao fork and NO Cosmian KMS.
+# tests/acceptance/stacks/compose.sh starts it with the hooks in openbao-v4.hooks.sh.
+# Do not run it by hand. Test data only: OIDC is off, the SSH CA accepts unauthenticated calls,
+# OpenBao is bootstrapped in DEV/TEST mode (one unseal key and the root token in the state dir).
+#
+# State: OpenBao (Raft data, audit log, TLS, secrets) in ${ACCEPT_STATE_DIR}/openbao (bind
+# mounts, because openbao/scripts write host files), SQLite in the named volume pki-data.
+# The driver backs up both and restores them into a new project.
+services:
+  openbao:
+    image: ${OPENBAO_IMAGE:?set by openbao-v4.hooks.sh}
+    user: "${ACCEPT_UID:?}:${ACCEPT_GID:?}"
+    volumes:
+      - ${ACCEPT_REPO:?}/openbao/config:/openbao/config:ro
+      - ${ACCEPT_STATE_DIR:?}/openbao/data:/openbao/data
+      - ${ACCEPT_STATE_DIR:?}/openbao/logs:/openbao/logs
+      - ${ACCEPT_STATE_DIR:?}/openbao/tls:/openbao/tls:ro
+    environment:
+      BAO_API_ADDR: https://openbao:8200
+      BAO_CLUSTER_ADDR: https://openbao:8201
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      # Alive when sealed too (exit 2); the hook unseals it.
+      test: ["CMD-SHELL", "bao status -address=https://127.0.0.1:8200 -ca-cert=/openbao/tls/ca.pem >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    networks: [internal]
+
+  # One-shot (the hook runs `bootstrap dev`): init-dev, unseal-dev, configure, backend-token,
+  # ra-token (the X.509/SSH and the SCEP RA credentials are separate tokens).
+  bootstrap:
+    image: ${OPENBAO_IMAGE:?}
+    profiles: [bootstrap]
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/openbao/scripts/bootstrap.sh"]
+    environment:
+      BAO_ADDR: https://openbao:8200
+      BAO_CACERT: /openbao/tls/ca.pem
+      PKI_MANAGER_OPENBAO_DEV: "1"
+      SECRETS_OWNER: "1001:1001"
+    volumes:
+      - ${ACCEPT_REPO:?}/openbao/scripts:/openbao/scripts:ro
+      - ${ACCEPT_REPO:?}/openbao/policies:/openbao/policies:ro
+      - ${ACCEPT_STATE_DIR:?}/openbao/tls:/openbao/tls:ro
+      - ${ACCEPT_STATE_DIR:?}/openbao/secrets:/openbao/secrets
+    depends_on:
+      openbao:
+        condition: service_healthy
+    networks: [internal]
+
+  backend:
+    image: ${ACCEPT_BACKEND_IMAGE:?set ACCEPT_BACKEND_IMAGE or ACCEPT_BUILD=1}
+    depends_on:
+      openbao:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/app/backend/data/pki.db
+      - OPENBAO_ADDR=https://openbao:8200
+      - OPENBAO_CACERT=/run/openbao/ca.pem
+      - OPENBAO_TOKEN_FILE=/run/openbao/backend-token
+      - OPENBAO_RA_TOKEN_FILE=/run/openbao/ra-token
+      - OPENBAO_TRANSIT_MOUNT=pki-manager
+      - OPENBAO_RA_MOUNT=pki-manager-ra
+      - CRL_DISTRIBUTION_URL=http://localhost:${ACCEPT_API_PORT:?}/crl
+      - FRONTEND_URL=http://localhost:${ACCEPT_UI_PORT:?}
+      - ALLOW_UNAUTHENTICATED_SSH_CA=true
+      - ALLOW_CA_KEY_EXPORT=false
+      - SSH_HOST_KRL_SERVE=true
+      - SSH_HOST_KRL_PUBLIC=true
+    volumes:
+      - pki-data:/app/backend/data
+      - ${ACCEPT_STATE_DIR:?}/openbao/tls/ca.pem:/run/openbao/ca.pem:ro
+      - ${ACCEPT_STATE_DIR:?}/openbao/secrets/backend-token:/run/openbao/backend-token:ro
+      - ${ACCEPT_STATE_DIR:?}/openbao/secrets/ra-token:/run/openbao/ra-token:ro
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:${ACCEPT_API_PORT:?}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 5s
+    # The backend reaches OpenBao only; there is no KMS service in this project.
+    networks: [internal, public]
+
+  frontend:
+    image: ${ACCEPT_FRONTEND_IMAGE:?}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ${ACCEPT_RUN_DIR:?}/config.json:/usr/share/nginx/html/config.json:ro
+    tmpfs:
+      - /var/cache/nginx:uid=1001,gid=1001
+      - /var/run:uid=1001,gid=1001
+      - /var/log/nginx:uid=1001,gid=1001
+    ports:
+      - "127.0.0.1:${ACCEPT_UI_PORT:?}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    networks: [public]
+
+networks:
+  internal:
+    internal: true
+  public: {}
+
+volumes:
+  pki-data:

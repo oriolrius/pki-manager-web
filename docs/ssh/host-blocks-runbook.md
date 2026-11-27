@@ -26,13 +26,13 @@ The composed KRL is signed with the **Host-CA** key. The trust anchor is
 role. `krl-client` (Go) is the sole supported puller — it decrypts locally with
 the host's own SSH host key and verifies the detached CA signature.
 
-| Client | Trust anchor | Unsigned-KRL posture (KMS signing failed) |
+| Client | Trust anchor | Unsigned-KRL posture (OpenBao signing failed) |
 |---|---|---|
 | `krl-client` (Go) | `--ca-pubkey`, **default `/etc/ssh/ssh-host-ca.pub`** | **Rejects** (exit 4) and keeps last-good — fail-stale — unless run with `--allow-unsigned` |
 
 An unsigned latest KRL is surfaced in the UI state pill as `(unsigned)` and in
-the audit log (`ssh.host_krl.generate`, status `failure`, `signError`). Fix the
-KMS, then any block/unblock or the hourly lazy regen produces a signed row.
+the audit log (`ssh.host_krl.generate`, status `failure`, `signError`). Fix
+OpenBao (reachable, unsealed, token valid), then any block/unblock or the hourly lazy regen produces a signed row.
 
 ## Cutover runbook (existing fleet → per-host KRLs)
 

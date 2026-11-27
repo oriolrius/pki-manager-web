@@ -5,6 +5,8 @@
  * signature verifies only against its own zone's Host CA, and the same FQDN in
  * two zones yields two independently-certified hosts. Gated on KMS + sshd.
  */
+import { caPublicKeyFromLine } from '../../services/ssh-ca-key.js';
+import { verifySshCaSignature } from '../../openbao/ssh-transit.js';
 import type { SshHostDto } from '../../services/ssh-host.service.js';
 import type { SshCaDto } from '../../services/ssh-ca.service.js';
 import { assert, describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -19,7 +21,7 @@ import {
   sshHostBlocks, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshPrincipals,
   sshFleetTokens, sshIdempotency,
 } from '../../db/schema.js';
-import { getKMSService } from '../../kms/service.js';
+import { isOpenBaoSshAvailable } from '../../test/openbao-ssh.js';
 import { getSshZoneService } from '../../services/ssh-zone.service.js';
 import { getSshCaService } from '../../services/ssh-ca.service.js';
 import { getSshHostService } from '../../services/ssh-host.service.js';
@@ -28,16 +30,14 @@ import { getSshHostKrlService } from '../../services/ssh-host-krl.service.js';
 import { buildKrl } from './krl.js';
 
 const SSHD = ['/usr/sbin/sshd', '/usr/bin/sshd', '/sbin/sshd'].find((p) => existsSync(p));
-const KMS = process.env.KMS_AVAILABLE === 'true';
-const RUN = KMS && !!SSHD;
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
+const RUN = OPENBAO && !!SSHD;
 const ctx = { db, ipAddress: null };
 const PORT = 2340 + Math.floor((Date.now() / 1000) % 50);
 const USER = userInfo().username;
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) { try { await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId); } catch { /* */ } }
   for (const t of [sshHostKrls, sshHostBlocks, sshIdempotency, sshFleetTokens, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -144,20 +144,16 @@ describe.skipIf(!RUN)('ZONE-12 two-zone isolation against real sshd', () => {
     const row = await getSshHostKrlService().getLatestRow(ctx, prodHost.id);
     assert.isNotNull(row);
     expect(row?.caSignature).toBeTruthy();
-    const kms = getKMSService();
     const blob = Buffer.from(row.krlBlob);
     const sig = Buffer.from(row.caSignature!);
     // SshCaDto omits KMS key ids — fetch the rows for kmsPublicKeyId.
     const prodCaRow = (await db.select().from(sshCas).where(eq(sshCas.id, prodHostCa.id)).limit(1))[0];
     const stagingCaRow = (await db.select().from(sshCas).where(eq(sshCas.id, stagingHostCa.id)).limit(1))[0];
-    expect(await kms.signatureVerify(prodCaRow.kmsPublicKeyId, blob, sig)).toBe(true);
+    expect(verifySshCaSignature(caPublicKeyFromLine(prodCaRow.opensshPublicKey), blob, sig)).toBe(true);
     // Verifying prod's signature against staging's Host CA key must NOT succeed.
-    // The KMS may return false OR reject the mismatched request — both mean "does
-    // not verify against the other zone's CA".
-    const otherZoneVerify = await kms
-      .signatureVerify(stagingCaRow.kmsPublicKeyId, blob, sig)
-      .catch(() => false);
-    expect(otherZoneVerify).toBe(false);
+    expect(verifySshCaSignature(caPublicKeyFromLine(stagingCaRow.opensshPublicKey), blob, sig)).toBe(false);
+    // Each zone's CA has its own OpenBao Transit key.
+    expect(prodCaRow.kmsKeyId).not.toBe(stagingCaRow.kmsKeyId);
   });
 
   it('AC#5: the same FQDN in two zones yields two independently-certified hosts', async () => {

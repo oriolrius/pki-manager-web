@@ -20,25 +20,17 @@ import {
   sshRevocations,
   sshKrls, sshHostKrls, sshHostBlocks,
 } from '../db/schema.js';
-import { getKMSService } from '../kms/service.js';
+import { isOpenBaoSshAvailable } from '../test/openbao-ssh.js';
 import { getSshCaService } from './ssh-ca.service.js';
 import { getSshHostService } from './ssh-host.service.js';
 import { getSshUserService } from './ssh-user.service.js';
 import { getSshPrincipalService } from './ssh-principal.service.js';
 
-const KMS = process.env.KMS_AVAILABLE === 'true';
+// Live SSH CA key store: the OpenBao fork's SSH Transit mount (decision-018).
+const OPENBAO = await isOpenBaoSshAvailable();
 const ctx = { db, ipAddress: null };
 
 async function wipe() {
-  const cas = await db.select().from(sshCas);
-  const kms = getKMSService();
-  for (const c of cas) {
-    try {
-      await kms.destroyKeyPair(c.kmsKeyId, c.kmsPublicKeyId);
-    } catch {
-      /* best effort */
-    }
-  }
   for (const t of [sshHostKrls, sshHostBlocks, sshKrls, sshRevocations, sshHostPrincipalMaps, sshUserPrincipals, sshCertificates, sshHosts, sshIdentities, sshPrincipals, sshCas]) {
     await db.delete(t);
   }
@@ -51,7 +43,7 @@ const inspect = (line: string, work: string): string => {
   return execFileSync('ssh-keygen', ['-L', '-f', p], { encoding: 'utf8' });
 };
 
-describe.skipIf(!KMS)('SSH services integration (SSH-10..14)', () => {
+describe.skipIf(!OPENBAO)('SSH services integration (SSH-10..14)', () => {
   let work: string;
   let userCa: SshCaDto;
   let hostCa: SshCaDto;

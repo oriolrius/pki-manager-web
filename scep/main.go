@@ -242,7 +242,8 @@ func keyCheck(k *backendKey) error {
 	if err != nil {
 		return err
 	}
-	plain, err := k.Decrypt(rand.Reader, encrypted, nil)
+	// The self-test key is 32 bytes, so it asks for the exact AES-256 length.
+	plain, err := k.withSessionKeyLength(len(data)).Decrypt(rand.Reader, encrypted, nil)
 	if err != nil {
 		return err
 	}

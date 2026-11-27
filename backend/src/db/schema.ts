@@ -162,8 +162,13 @@ export const integrations = sqliteTable(
 export const integrationRAs = sqliteTable('integration_ras', {
   integrationId: text('integration_id').primaryKey().references(() => integrations.id, { onDelete: 'restrict' }),
   caId: text('ca_id').notNull().references(() => certificateAuthorities.id, { onDelete: 'restrict' }),
+  // Where the RA private key lives. Fixed when the key is first recorded:
+  // 'cosmian' (KMIP ids in key_id/public_key_id) or 'openbao' (Transit key name
+  // in key_id, the fixed Transit key version in key_version, public_key_id NULL).
+  keyProvider: text('key_provider', { enum: ['cosmian', 'openbao'] }).notNull().default('cosmian'),
   keyId: text('key_id'),
   publicKeyId: text('public_key_id'),
+  keyVersion: integer('key_version'),
   certificateId: text('certificate_id'),
   certificatePem: text('certificate_pem'),
   previous: text('previous').notNull().default('[]'),
@@ -187,10 +192,90 @@ export const crls = sqliteTable(
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
+    // SHA-256 of the canonical entry list (serial, revocation date, reason) of this CRL. Every
+    // CRL that the publication protocol writes has it (crl.service.ts). It is NULL on CRLs
+    // written before migration 0018: those rows are published history and stay unchanged.
+    entriesSha256: text('entries_sha256'),
   },
   (table) => ({
     caIdIdx: index('idx_crls_ca_id').on(table.caId),
     crlNumberIdx: index('idx_crls_number').on(table.caId, table.crlNumber),
+    // One number per CA for every CRL of the publication protocol. Older rows can repeat a
+    // number (concurrent generation before 0018); their DER is signed, so they are not renumbered.
+    publishedNumberIdx: uniqueIndex('uq_crls_published_number')
+      .on(table.caId, table.crlNumber)
+      .where(sql`entries_sha256 IS NOT NULL`),
+  })
+);
+
+// CRL publication state, one row per CA (migration 0018). It orders CRL publication across
+// requests and processes without a SQLite write lock during the OpenBao signing request:
+// a publisher takes the lease (short write), signs, then inserts the CRL in a short IMMEDIATE
+// transaction that checks its lease and the CRL number (crl.service.ts). `last_number` is the
+// high-water mark of the CRL numbers: it never goes down, also when old CRL rows are deleted.
+// `failure_count`/`retry_after` hold the backoff of background retries after a failed signing.
+export const crlPublication = sqliteTable('crl_publication', {
+  caId: text('ca_id')
+    .primaryKey()
+    .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+  lastNumber: integer('last_number').notNull().default(0),
+  lease: text('lease'),
+  leaseUntil: integer('lease_until', { mode: 'timestamp' }),
+  failureCount: integer('failure_count').notNull().default(0),
+  lastError: text('last_error'),
+  lastFailureAt: integer('last_failure_at', { mode: 'timestamp' }),
+  retryAfter: integer('retry_after', { mode: 'timestamp' }),
+  lastPublishedAt: integer('last_published_at', { mode: 'timestamp' }),
+  // Migration 0019: database triggers add 1 to `change_generation` on every write that can change
+  // the entries of the next CRL of the CA (a revoked certificate, a removal, a deleted
+  // revocation, a deleted or changed CRL row). `verified_generation` and `verified_crl_id` record
+  // that the CRL row `verified_crl_id` was current at that generation, so a download of an
+  // unchanged CRL reads two rows and no certificate (crl.service.ts).
+  changeGeneration: integer('change_generation').notNull().default(0),
+  verifiedGeneration: integer('verified_generation'),
+  verifiedCrlId: text('verified_crl_id'),
+});
+
+// Revoked certificates whose row was deleted (migration 0019). The delete writes this row in the
+// same transaction (`deleteCertificateRow`), so a revocation that no signed CRL lists yet (the
+// signing failed while OpenBao was sealed) is still in the next CRL of the CA, also after a
+// restart. `serial_number` is normalized hex (crypto/crl.ts); `revocation_date` is never null.
+export const crlDeletedRevocations = sqliteTable(
+  'crl_deleted_revocations',
+  {
+    caId: text('ca_id')
+      .notNull()
+      .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+    serialNumber: text('serial_number').notNull(),
+    revocationDate: integer('revocation_date', { mode: 'timestamp' }).notNull(),
+    revocationReason: text('revocation_reason'),
+    certificateId: text('certificate_id'),
+    deletedAt: integer('deleted_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.caId, table.serialNumber] }),
+  })
+);
+
+// Serials that an operator took out of the CRL on purpose (certificate delete with
+// removeFromCrl). Every other entry of a published CRL stays in the next CRL of its CA, also
+// when the certificate row is deleted. `serial_number` is normalized hex (crypto/crl.ts).
+export const crlEntryRemovals = sqliteTable(
+  'crl_entry_removals',
+  {
+    caId: text('ca_id')
+      .notNull()
+      .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+    serialNumber: text('serial_number').notNull(),
+    certificateId: text('certificate_id'),
+    removedAt: integer('removed_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.caId, table.serialNumber] }),
   })
 );
 
@@ -661,6 +746,7 @@ export type NewCertificate = typeof certificates.$inferInsert;
 
 export type Crl = typeof crls.$inferSelect;
 export type NewCrl = typeof crls.$inferInsert;
+export type CrlPublication = typeof crlPublication.$inferSelect;
 
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
@@ -669,6 +755,48 @@ export type Integration = typeof integrations.$inferSelect;
 /** @deprecated Use Integration. */
 export type Cluster = Integration;
 export type NewIntegration = typeof integrations.$inferInsert;
+// Key store objects (decision-018): the OpenBao replacement of the Cosmian object store.
+// Every id that the other tables keep in a `kms_*` column (certificate, private key, public
+// key) is a row here. Key rows pin the Transit mount, key name and key version; certificate
+// rows hold the public certificate PEM. Private key material is never stored here.
+export const keystoreObjects = sqliteTable(
+  'keystore_objects',
+  {
+    id: text('id').primaryKey(),
+    objectType: text('object_type', { enum: ['private_key', 'public_key', 'certificate'] }).notNull(),
+    provider: text('provider', { enum: ['openbao'] }).notNull().default('openbao'),
+    // 'pending' until the key exists in OpenBao; 'revoked' refuses new signatures;
+    // 'destroyed' after the Transit key is deleted (the row stays for the record).
+    state: text('state', { enum: ['pending', 'active', 'revoked', 'destroyed'] }).notNull().default('active'),
+    // Key rows: where the key lives in OpenBao Transit.
+    mount: text('mount'),
+    keyName: text('key_name'),
+    keyVersion: integer('key_version'),
+    keyAlgorithm: text('key_algorithm'),
+    exportable: integer('exportable', { mode: 'boolean' }),
+    purpose: text('purpose', { enum: ['ca', 'certificate'] }),
+    // SubjectPublicKeyInfo PEM (key rows).
+    publicKeyPem: text('public_key_pem'),
+    // Certificate rows.
+    certificatePem: text('certificate_pem'),
+    issuerCertificateId: text('issuer_certificate_id'),
+    // Links, as the KMIP PrivateKeyLink / PublicKeyLink did.
+    privateKeyId: text('private_key_id'),
+    publicKeyId: text('public_key_id'),
+    tags: text('tags'), // JSON array
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().default(sql`(unixepoch())`),
+    destroyedAt: integer('destroyed_at', { mode: 'timestamp' }),
+  },
+  (table) => ({
+    typeIdx: index('idx_keystore_objects_type').on(table.objectType),
+    keyNameUnique: uniqueIndex('idx_keystore_objects_key').on(table.mount, table.keyName, table.objectType),
+  })
+);
+
+export type KeystoreObject = typeof keystoreObjects.$inferSelect;
+export type NewKeystoreObject = typeof keystoreObjects.$inferInsert;
+
 /** @deprecated Use NewIntegration. */
 export type NewCluster = NewIntegration;
 

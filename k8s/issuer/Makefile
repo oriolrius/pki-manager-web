@@ -30,7 +30,8 @@ docker-build:
 .PHONY: kind-up kind-down install-cert-manager install-issuer e2e-local
 
 kind-up:
-	kind create cluster --name $(KIND_CLUSTER) --image $(KIND_NODE_IMAGE) || true
+	@if ! kind get clusters | grep -qx "$(KIND_CLUSTER)"; then kind create cluster --name "$(KIND_CLUSTER)" --image "$(KIND_NODE_IMAGE)"; fi
+	@test "$$(kubectl config current-context)" = "kind-$(KIND_CLUSTER)"
 
 kind-down:
 	kind delete cluster --name $(KIND_CLUSTER)
@@ -51,7 +52,7 @@ e2e-local: kind-up install-cert-manager install-issuer
 	@echo "Then: kubectl apply -f test/e2e/sample-certificate.yaml"
 	@echo "Inspect: kubectl get certificate,certificaterequest,issuer.pki-manager.issuer.io,clusterissuer.pki-manager.issuer.io -A"
 
-# --- Full in-cluster E2E: deploys PKI Manager backend + Cosmian KMS + cert-manager + issuer chart ---
+# --- Full in-cluster E2E: deploys PKI Manager backend + OpenBao + cert-manager + issuer chart ---
 .PHONY: e2e-in-cluster build-backend load-images deploy-pki-manager
 PKI_BACKEND_IMG ?= pki-manager-backend:e2e
 PKI_BACKEND_DOCKERFILE ?= ../../docker/Dockerfile
@@ -61,13 +62,16 @@ build-backend:
 
 load-images: docker-build build-backend
 	kind load docker-image $(IMG) $(PKI_BACKEND_IMG) --name $(KIND_CLUSTER)
-	docker pull ghcr.io/cosmian/kms:latest
-	kind load docker-image ghcr.io/cosmian/kms:latest --name $(KIND_CLUSTER)
+	@image="$${OPENBAO_IMAGE:-$$(bash ../../scripts/openbao-image.sh ensure)}"; docker tag "$$image" pki-manager-openbao:e2e
+	kind load docker-image pki-manager-openbao:e2e --name $(KIND_CLUSTER)
 
 deploy-pki-manager:
+	@test "$$(kubectl config current-context)" = "kind-$(KIND_CLUSTER)"
 	kubectl apply -f test/e2e/in-cluster/00-namespace.yaml
-	kubectl apply -f test/e2e/in-cluster/10-kms.yaml -f test/e2e/in-cluster/20-pki-manager.yaml
-	kubectl -n pki-manager wait --for=condition=Available --timeout=180s deployment --all
+	KIND_CLUSTER="$(KIND_CLUSTER)" bash test/e2e/in-cluster/openbao.sh
+	kubectl create --dry-run=client -f test/e2e/in-cluster/20-pki-manager.yaml -o json | \
+	  jq -s --arg image "$(PKI_BACKEND_IMG)" '(.[] | select(.kind=="Deployment") | .spec.template.spec.containers[] | select(.name=="backend").image)=$$image | {apiVersion:"v1",kind:"List",items:.}' | kubectl apply -f -
+	kubectl -n pki-manager rollout status deployment/pki-manager-backend --timeout=180s
 	kubectl -n pki-manager exec deploy/pki-manager-backend -- node backend/dist/db/migrate.js
 
 e2e-in-cluster: kind-up load-images deploy-pki-manager install-cert-manager

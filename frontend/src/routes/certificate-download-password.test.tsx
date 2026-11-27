@@ -14,7 +14,7 @@ vi.mock('@/lib/trpc', () => ({ trpc: {
   certificate: {
     getById: { useQuery: () => ({ data: {
       id: 'leaf', caId: 'ca', subjectDn: 'CN=Device', serialNumber: '1234', certificateType: 'client',
-      status: 'active', notBefore: '2026-01-01', notAfter: '2036-01-01',
+      status: 'active', kmsKeyId: 'leaf-key', notBefore: '2026-01-01', notAfter: '2036-01-01',
       createdAt: '2026-01-01', updatedAt: '2026-01-01', certificatePem: 'certificate',
       issuingCA: { id: 'ca', subjectDn: 'CN=Root', serialNumber: '5678' },
     } }) },

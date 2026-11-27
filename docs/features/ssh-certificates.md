@@ -45,8 +45,8 @@ links:
 
 ## How it works
 
-The keys of the SSH CAs are made in the KMS and cannot be exported. The KMS signs every SSH
-certificate and every KRL.
+The keys of the SSH CAs are ECDSA P-256 keys in OpenBao Transit, and they cannot be exported.
+OpenBao signs every SSH certificate and every KRL.
 
 PKI Manager never logs in to your servers. It makes the files, and you place them: by hand, with
 the Ansible role, or with `krl-client`, a small program on the server that fetches the KRL of that

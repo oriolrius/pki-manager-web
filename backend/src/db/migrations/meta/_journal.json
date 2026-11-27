@@ -113,6 +113,34 @@
       "when": 1795628838240,
       "tag": "0015_previous_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1795716754370,
+      "tag": "0016_openbao_ra_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795725322470,
+      "tag": "0017_keystore_objects",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795764789464,
+      "tag": "0018_crl_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795768900727,
+      "tag": "0019_crl_change_generation",
+      "breakpoints": true
     }
   ]
 }
