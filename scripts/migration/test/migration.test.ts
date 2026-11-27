@@ -1,0 +1,320 @@
+/**
+ * Offline migration tests: synthetic v3.19.1 data (schema from the backend's own
+ * migrations), fake Cosmian and Transit with real cryptography, and the target
+ * copy brought to v4 with the real 0016/0017 migrations.
+ * Run: cd scripts/migration && node --test test/   (Node >= 22.18)
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { buildManifest } from '../lib/inventory.ts';
+import { approvalTemplate, validateApproval, DEFAULT_MOUNTS } from '../lib/policy.ts';
+import { backupTo, openReadOnly } from '../lib/sqlite.ts';
+import { DEFAULT_PROFILE, sshKeyRef } from '../lib/target-db.ts';
+import { apply, liveTarget, preflight } from '../lib/transfer.ts';
+import { verifyMigration } from '../lib/verify.ts';
+import { backupPair, checkBackup } from '../lib/backup.ts';
+import { rotationPlan } from '../lib/rotation.ts';
+import type { Approval, Manifest } from '../lib/types.ts';
+import { documentDigest, MigrationError } from '../lib/util.ts';
+import { FakeCosmian, FakeTransit, makeCert, migrateToV4, seedV3, tempDir, v3Database } from './helpers.ts';
+
+const ADDR = 'https://openbao.test:8200';
+
+async function setup(opts: { seed?: (db: DatabaseSync, kms: FakeCosmian, ids: Record<string, string>) => void } = {}) {
+  const dir = tempDir();
+  const sourcePath = join(dir, 'v3.db');
+  const kms = new FakeCosmian();
+  const db = v3Database(sourcePath);
+  const ids = seedV3(db, kms);
+  opts.seed?.(db, kms, ids);
+  db.close();
+  const targetPath = join(dir, 'v4.db');
+  await backupTo(sourcePath, targetPath);
+  migrateToV4(targetPath);
+  const source = openReadOnly(sourcePath);
+  const manifest = await buildManifest({ sourcePath, db: source, kms });
+  source.close();
+  const store = new FakeTransit();
+  return { dir, sourcePath, targetPath, kms, store, manifest, ids };
+}
+
+async function approve(manifest: Manifest, store: FakeTransit, edit?: (a: Approval) => void): Promise<Approval> {
+  const a = approvalTemplate(manifest, await liveTarget(store, ADDR, manifest));
+  a.approvedBy = 'rehearsal-admin';
+  a.approvedAt = new Date().toISOString();
+  a.allowSourceWrappingKeyRegistration = true;
+  for (const k of Object.values(a.keys)) if (k.acknowledgeSensitive === false) k.acknowledgeSensitive = true;
+  edit?.(a);
+  return a;
+}
+
+const run = (s: Awaited<ReturnType<typeof setup>>, approval: Approval, extra: Partial<Parameters<typeof apply>[0]> = {}) => apply({
+  manifest: s.manifest, approval, sourceDbPath: s.sourcePath, targetDbPath: s.targetPath, runDir: join(s.dir, 'run'),
+  store: s.store, addr: ADDR, kms: s.kms, profile: DEFAULT_PROFILE, confirm: documentDigest(s.manifest).slice(0, 16), actor: 'test', ...extra,
+});
+
+const key = (m: Manifest, id: string) => m.keys.find(k => k.sourceKeyId === id)!;
+
+test('inventory classifies keys, resolves aliases and proposes dispositions', async () => {
+  const s = await setup();
+  const m = s.manifest;
+  assert.equal(key(m, s.ids.caKey).class, 'x509-ca');
+  assert.ok(m.problems.some(p => p.code === 'KEY_REF_IS_CERTIFICATE'), 'CA row holding the certificate id is resolved to its PrivateKeyLink');
+  const leaf = key(m, s.ids.leafKey);
+  assert.equal(leaf.class, 'x509-leaf');
+  assert.equal(leaf.shared, true, 'renewal that reuses the key is one shared key');
+  assert.equal(leaf.references.filter(r => r.role === 'x509-leaf-key').length, 2);
+  const ra = key(m, s.ids.raKey);
+  assert.equal(ra.class, 'scep-ra');
+  assert.ok(ra.references.some(r => r.role === 'scep-ra-cert-alias' && r.rowId === 'ra-cert-1'), 'RA certificate row is an alias of the RA key');
+  assert.ok(!m.problems.some(p => p.code === 'SHARED_ACROSS_CLASSES'), 'the RA alias is not a class conflict');
+  assert.equal(ra.proposed, 'transfer');
+  assert.equal(ra.target?.mount, 'pki-manager-ra');
+  assert.match(ra.target!.name, /^scep-ra-[0-9a-f-]{36}$/);
+  assert.equal(key(m, s.ids.caKey).target?.mount, 'pki-manager');
+  assert.match(key(m, s.ids.caKey).target!.name, /^x509-ca-/);
+  assert.match(leaf.target!.name, /^x509-leaf-/);
+  const ssh = key(m, s.ids.sshKey);
+  assert.equal(ssh.proposed, 'transfer');
+  assert.equal(ssh.target?.exportable, false);
+  const host = key(m, s.ids.sshHostKey);
+  assert.deepEqual(host.allowed, ['rotate'], 'non-extractable SSH CA key: rotate only');
+  assert.ok(host.reasons.some(r => r.includes('Extractable=false')));
+  assert.equal(m.legacy.length, 1);
+  assert.equal(m.certificates.find(c => c.rowId === 'cert-1')?.pemSource, 'kms');
+  assert.equal(m.certificates.find(c => c.rowId === 'cert-ext')?.keyLink, 'none');
+  assert.equal(m.certificates.find(c => c.rowId === 'ra-cert-1')?.keyLink, 'ra-alias');
+  assert.equal(m.problems.filter(p => p.severity === 'blocker').length, 0, JSON.stringify(m.problems));
+  // The inventory never asks for private key material.
+  assert.ok(!s.kms.calls.some(c => c.startsWith('WrappedGet') || c.startsWith('RegisterWrapping')));
+});
+
+test('RA alias mismatch is a blocker', async () => {
+  const s = await setup({ seed: (db, kms, ids) => {
+    const k = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const caKey = kms.objects.get(ids.caKey)!.privateKey!;
+    const caPem = Buffer.from(kms.objects.get([...kms.objects.values()].find(o => o.kind === 'Certificate' && o.links.PrivateKeyLink === ids.caKey)!.id)!.certDer!).toString('base64');
+    const caCert = `-----BEGIN CERTIFICATE-----\n${caPem.match(/.{1,64}/g)!.join('\n')}\n-----END CERTIFICATE-----\n`;
+    const pem = makeCert({ cn: 'not-the-ra', key: k.privateKey, issuerKey: caKey, issuerCert: caCert, serial: '4001' });
+    db.prepare("INSERT INTO certificates (id, ca_id, kms_certificate_id, kms_key_id, subject_dn, serial_number, certificate_type, not_before, not_after, status, certificate_pem) VALUES ('bad-alias', 'ca-1', ?, ?, 'CN=not-the-ra', '4001', 'server', 0, 1, 'active', ?)")
+      .run(kms.addCertificate(pem), ids.raKey, pem);
+  } });
+  const blockers = s.manifest.problems.filter(p => p.severity === 'blocker').map(p => p.code);
+  assert.ok(blockers.includes('RA_ALIAS_MISMATCH'), blockers.join(','));
+  assert.deepEqual(key(s.manifest, s.ids.raKey).allowed, ['rotate'], 'no transfer while the public views disagree');
+  const forced = await approve(s.manifest, s.store, x => { x.keys[s.ids.raKey].action = 'transfer'; });
+  const codes = validateApproval(s.manifest, forced).problems.map(p => p.code);
+  assert.ok(codes.includes('APPROVAL_ACTION') && codes.includes('RA_ALIAS_MISMATCH'), codes.join(','));
+});
+
+test('one SSH CA key in two zones is a blocker (v4 binds one key to one CA)', async () => {
+  const s = await setup({ seed: (db, _kms, ids) => {
+    const row = db.prepare("SELECT kms_public_key_id, openssh_public_key, fingerprint_sha256 FROM ssh_cas WHERE id = 'sshca-a'").get() as Record<string, string>;
+    db.exec("INSERT INTO zones (id, name, display_name) VALUES ('zone-c', 'lab', 'Lab')");
+    db.prepare("INSERT INTO ssh_cas (id, zone_id, ca_type, kms_key_id, kms_public_key_id, openssh_public_key, fingerprint_sha256, status) VALUES ('sshca-c', 'zone-c', 'user', ?, ?, ?, ?, 'active')")
+      .run(ids.sshKey, row.kms_public_key_id, row.openssh_public_key, row.fingerprint_sha256);
+  } });
+  assert.ok(s.manifest.problems.some(p => p.code === 'SHARED_SSH_CA_KEY' && p.severity === 'blocker'));
+});
+
+test('approval: stale, unsigned, unacknowledged Sensitive key, export escalation, wrong wrapping key', async () => {
+  const s = await setup();
+  const live = await liveTarget(s.store, ADDR, s.manifest);
+  const codes = (a: Approval) => validateApproval(s.manifest, a, live, { online: true }).problems.map(p => p.code);
+  assert.equal(validateApproval(s.manifest, await approve(s.manifest, s.store, a => { a.keys[s.ids.sshHostKey].action = 'rotate'; }), live, { online: true }).ok, true);
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.manifestSha256 = '0'.repeat(64); })).includes('APPROVAL_STALE'));
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.approvedBy = ''; })).includes('APPROVAL_UNSIGNED'));
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey].acknowledgeSensitive = false; })).includes('APPROVAL_SENSITIVE'));
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.keys[s.ids.sshKey].exportable = true; })).includes('APPROVAL_EXPORT_ESCALATION'));
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.keys[s.ids.sshHostKey].action = 'transfer'; })).includes('APPROVAL_ACTION'), 'cannot transfer a non-extractable key');
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.allowSourceWrappingKeyRegistration = false; })).includes('APPROVAL_NO_SOURCE_WRITE'));
+  assert.ok(codes(await approve(s.manifest, s.store, a => { a.target.wrappingKeys['pki-manager'] = 'f'.repeat(64); })).includes('APPROVAL_WRAPPING_KEY'));
+});
+
+test('apply writes the v4 target; a second run is a verified no-op', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  const first = await run(s, approval);
+  assert.equal(first.imported, 4, 'CA, leaf, SSH user CA, RA');
+  assert.equal(first.skipped.rotate, 1, 'non-extractable SSH host CA left for rotation');
+  assert.ok(first.db.keystoreRows >= 4 + 5, 'key rows + certificate rows');
+  assert.equal(first.db.pemBackfilled, 1, 'cert-1 PEM came from the KMS');
+  // Every wrapping key registered in Cosmian is removed at the end.
+  assert.equal(s.kms.wrappingKeys.size, 0);
+  // Only wrapped exports, never a clear key.
+  assert.ok(s.kms.calls.filter(c => c.startsWith('WrappedGet')).length === 4);
+
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  const ks = (id: string) => t.prepare('SELECT * FROM keystore_objects WHERE id = ?').get(id) as Record<string, unknown>;
+  const ca = t.prepare("SELECT kms_key_id, kms_certificate_id FROM certificate_authorities WHERE id = 'ca-1'").get() as Record<string, string>;
+  assert.equal(ca.kms_key_id, ca.kms_certificate_id, 'v3 ids are kept as they are');
+  const caCert = ks(ca.kms_certificate_id);
+  assert.equal(caCert.object_type, 'certificate');
+  assert.equal(caCert.private_key_id, s.ids.caKey, 'certificate links to the canonical private key');
+  assert.equal(caCert.issuer_certificate_id, ca.kms_certificate_id, 'self-signed root');
+  const caKey = ks(s.ids.caKey);
+  assert.equal(caKey.mount, 'pki-manager');
+  assert.equal(caKey.purpose, 'ca');
+  assert.equal(caKey.exportable, 1, 'v3 CA key was exportable: export capability preserved (still gated by ALLOW_CA_KEY_EXPORT)');
+  assert.equal(ks(String(caKey.public_key_id)).object_type, 'public_key');
+  const leafKey = ks(s.ids.leafKey);
+  assert.equal(leafKey.purpose, 'certificate');
+  const cert1 = t.prepare("SELECT kms_certificate_id, kms_key_id, certificate_pem FROM certificates WHERE id = 'cert-1'").get() as Record<string, string>;
+  assert.equal(cert1.kms_key_id, s.ids.leafKey);
+  assert.ok(cert1.certificate_pem, 'PEM backfilled');
+  assert.equal(ks(cert1.kms_certificate_id).issuer_certificate_id, ca.kms_certificate_id);
+  const ext = t.prepare("SELECT kms_certificate_id FROM certificates WHERE id = 'cert-ext'").get() as Record<string, string>;
+  assert.equal(ks(ext.kms_certificate_id).private_key_id, null, 'external CSR certificate has no key');
+  const sshA = t.prepare("SELECT kms_key_id, kms_public_key_id FROM ssh_cas WHERE id = 'sshca-a'").get() as Record<string, string>;
+  const sshSpec = key(s.manifest, s.ids.sshKey).target!;
+  assert.equal(sshA.kms_key_id, sshKeyRef('pki-manager-ssh', sshSpec.name, 1));
+  assert.equal(sshA.kms_public_key_id, sshA.kms_key_id);
+  const sshB = t.prepare("SELECT kms_key_id FROM ssh_cas WHERE id = 'sshca-b'").get() as Record<string, string>;
+  assert.equal(sshB.kms_key_id, s.ids.sshHostKey, 'a rotate decision changes nothing');
+  const ra = t.prepare("SELECT key_provider, key_id, key_version, public_key_id FROM integration_ras WHERE integration_id = 'int-1'").get() as Record<string, unknown>;
+  assert.deepEqual({ ...ra }, { key_provider: 'openbao', key_id: key(s.manifest, s.ids.raKey).target!.name, key_version: 1, public_key_id: null });
+  const raCert = t.prepare("SELECT kms_key_id, kms_certificate_id FROM certificates WHERE id = 'ra-cert-1'").get() as Record<string, string | null>;
+  assert.equal(raCert.kms_key_id, null, 'RA alias cleared, as v4 writes RA certificate rows');
+  assert.equal(ks(String(raCert.kms_certificate_id)).private_key_id, null);
+  const audits = Number((t.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE operation LIKE 'migration.%'").get() as { n: number }).n);
+  assert.equal(audits, first.db.auditRows);
+  t.close();
+
+  // Target keys carry the source policy: SSH and RA non-exportable, RA opted in.
+  const raT = key(s.manifest, s.ids.raKey).target!;
+  assert.equal(s.store.keys.get(`${raT.mount}/${raT.name}`)?.exportable, false);
+  assert.equal(s.store.keys.get(`${raT.mount}/${raT.name}`)?.allowPkcs1v15SessionKey, true);
+  assert.equal(s.store.keys.get(`${sshSpec.mount}/${sshSpec.name}`)?.exportable, false);
+
+  const second = await run(s, approval);
+  assert.equal(second.noOp, true);
+  assert.equal(second.imported, 0);
+  assert.equal(second.alreadyVerified, 4);
+  assert.equal(second.db.auditRows, 0);
+
+  const target = openReadOnly(s.targetPath);
+  const source = openReadOnly(s.sourcePath);
+  const v = await verifyMigration({ manifest: s.manifest, approval, target, store: s.store, profile: DEFAULT_PROFILE, source });
+  target.close(); source.close();
+  assert.equal(v.ok, true, JSON.stringify(v.checks.filter(c => !c.ok)));
+  assert.equal(v.cutoverReady, false, 'the SSH host CA still needs its rotation');
+  assert.equal(v.cosmianRequired, true);
+  assert.ok(rotationPlan(s.manifest, approval).includes('ssh-ca'));
+});
+
+test('cutover gate passes when every key is resolved (rotated CA removed before the final inventory)', async () => {
+  const s = await setup({ seed: db => { db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
+  const approval = await approve(s.manifest, s.store);
+  await run(s, approval);
+  const target = openReadOnly(s.targetPath);
+  const source = openReadOnly(s.sourcePath);
+  const v = await verifyMigration({ manifest: s.manifest, approval, target, store: s.store, profile: DEFAULT_PROFILE, source });
+  target.close(); source.close();
+  assert.equal(v.cutoverReady, true, JSON.stringify(v.checks.filter(c => !c.ok)));
+  assert.equal(v.cosmianRequired, false);
+});
+
+test('crash after an import: the rerun adopts the key and ends in the same state', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  class Crash extends Error {}
+  await assert.rejects(run(s, approval, { fault: p => { if (p === 'after-import:2') throw new Crash('simulated crash'); } }), Crash);
+  assert.equal(s.store.imports, 2);
+  const t1 = new DatabaseSync(s.targetPath, { readOnly: true });
+  assert.equal(Number((t1.prepare('SELECT COUNT(*) AS n FROM keystore_objects').get() as { n: number }).n), 0, 'no DB change before every key is verified');
+  t1.close();
+  const resumed = await run(s, approval);
+  assert.equal(resumed.adopted, 1, 'the key imported just before the crash is adopted, not imported twice');
+  assert.equal(resumed.imported + resumed.adopted + resumed.alreadyVerified, 4);
+  assert.equal(s.store.imports, 4);
+  assert.equal(s.kms.wrappingKeys.size, 0, 'wrapping keys of the crashed run are removed too');
+});
+
+test('a failure inside the DB transaction rolls back everything; the retry succeeds', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  await assert.rejects(run(s, approval, { fault: p => { if (p === 'db-mid-transaction') throw new MigrationError('FAULT', 'simulated'); } }), /simulated/);
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  assert.equal(Number((t.prepare('SELECT COUNT(*) AS n FROM keystore_objects').get() as { n: number }).n), 0);
+  assert.equal((t.prepare("SELECT key_provider FROM integration_ras").get() as { key_provider: string }).key_provider, 'cosmian');
+  t.close();
+  const r = await run(s, approval);
+  assert.ok(r.db.keystoreRows > 0);
+});
+
+test('an existing different key at the target name stops the run; nothing is overwritten', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  const spec = key(s.manifest, s.ids.leafKey).target!;
+  s.store.plant(spec.mount, spec.name, spec.type, generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey);
+  await assert.rejects(run(s, approval), (e: MigrationError) => e.code === 'TARGET_CONFLICT');
+  assert.equal(s.store.keys.get(`${spec.mount}/${spec.name}`)?.imported, false, 'the planted key is untouched');
+});
+
+test('a target row with another value is a conflict (compare-and-set)', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  const t = new DatabaseSync(s.targetPath);
+  t.exec("UPDATE integration_ras SET key_provider = 'openbao', key_id = 'scep-ra-00000000-0000-4000-8000-000000000000', key_version = 1");
+  t.close();
+  await assert.rejects(run(s, approval), (e: MigrationError) => e.code === 'TARGET_ROW_CONFLICT');
+});
+
+test('the source policy is re-checked at transfer time', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  s.kms.objects.get(s.ids.leafKey)!.extractable = false;
+  await assert.rejects(run(s, approval), (e: MigrationError) => e.code === 'SOURCE_POLICY');
+});
+
+test('preflight: v3 schema target, changed source, root token', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store);
+  const v3copy = join(s.dir, 'still-v3.db');
+  await backupTo(s.sourcePath, v3copy);
+  const p1 = await preflight({ manifest: s.manifest, approval, sourceDbPath: s.sourcePath, targetDbPath: v3copy, store: s.store, addr: ADDR, kms: s.kms, profile: DEFAULT_PROFILE, online: true });
+  assert.ok(p1.checks.some(c => !c.ok && c.name.includes('v4 schema')));
+  s.store.policies = ['root'];
+  const p2 = await preflight({ manifest: s.manifest, approval, sourceDbPath: s.sourcePath, targetDbPath: s.targetPath, store: s.store, addr: ADDR, kms: s.kms, profile: DEFAULT_PROFILE, online: true });
+  assert.ok(p2.checks.some(c => !c.ok && c.name.includes('root')));
+  s.store.policies = ['pki-migration'];
+  const w = new DatabaseSync(s.sourcePath); w.exec("UPDATE certificates SET status = 'revoked' WHERE id = 'cert-2'"); w.close();
+  const p3 = await preflight({ manifest: s.manifest, approval, sourceDbPath: s.sourcePath, targetDbPath: s.targetPath, store: s.store, addr: ADDR, kms: s.kms, profile: DEFAULT_PROFILE, online: true });
+  assert.ok(p3.checks.some(c => !c.ok && c.name.includes('unchanged since inventory')));
+  await assert.rejects(run(s, approval), (e: MigrationError) => e.code === 'PREFLIGHT');
+});
+
+test('caKeyExport=deny imports CA keys non-exportable; drop-key keeps the certificates', async () => {
+  const s = await setup();
+  const approval = await approve(s.manifest, s.store, a => { a.caKeyExport = 'deny'; a.keys[s.ids.leafKey].action = 'drop-key'; });
+  const r = await run(s, approval);
+  assert.equal(r.imported, 3);
+  const caSpec = key(s.manifest, s.ids.caKey).target!;
+  assert.equal(s.store.keys.get(`${caSpec.mount}/${caSpec.name}`)?.exportable, false);
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  assert.equal((t.prepare('SELECT exportable FROM keystore_objects WHERE id = ?').get(s.ids.caKey) as { exportable: number }).exportable, 0);
+  assert.equal((t.prepare('SELECT state FROM keystore_objects WHERE id = ?').get(s.ids.leafKey) as { state: string }).state, 'destroyed');
+  assert.equal(Number((t.prepare("SELECT COUNT(*) AS n FROM certificates WHERE id IN ('cert-1','cert-2')").get() as { n: number }).n), 2);
+  t.close();
+});
+
+test('offline backup pair: digests, integrity, tamper detection', async () => {
+  const s = await setup();
+  const out = join(s.dir, 'backup-1');
+  const rec = await backupPair({ dbPath: s.targetPath, outDir: out, label: 'test', store: s.store });
+  assert.ok(rec.files['pki.db'] && rec.files['openbao.snap']);
+  assert.equal(checkBackup(out).ok, true);
+  writeFileSync(join(out, 'openbao.snap'), 'tampered');
+  assert.equal(checkBackup(out).ok, false);
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: out, label: 'again' }), /refusing/);
+  assert.ok(existsSync(join(out, 'backup.json')) && JSON.parse(readFileSync(join(out, 'backup.json'), 'utf8')).format);
+});
+
+test('default mounts follow the backend', () => {
+  assert.deepEqual(DEFAULT_MOUNTS, { x509: 'pki-manager', ssh: 'pki-manager-ssh', ra: 'pki-manager-ra' });
+});
+
