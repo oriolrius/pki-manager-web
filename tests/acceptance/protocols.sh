@@ -10,9 +10,19 @@ protocol="${1:?use scep or kubernetes}"
 temp="$(mktemp -d "$OUT/$protocol.XXXXXXXX")"
 token="$temp/token"
 cleanup() {
+  local status=$? delay
   if [[ -n "${gateway_pid:-}" ]]; then kill "$gateway_pid" 2>/dev/null || true; wait "$gateway_pid" 2>/dev/null || true; fi
-  if [[ -n "${created_cluster:-}" ]]; then kind delete cluster --name "$created_cluster" --kubeconfig "$KUBECONFIG"; fi
-  rm -f "$token" "$temp/challenge" "$temp/tls.json" "$temp/response" "$temp/kubeconfig"
+  rm -f "$token" "$temp/challenge" "$temp/tls.json" "$temp/response"
+  if [[ -n "${created_cluster:-}" ]]; then
+    # Docker can return a timeout while the kind node is still stopping.
+    for delay in 0 2 5; do
+      sleep "$delay"
+      if kind delete cluster --name "$created_cluster" --kubeconfig "$KUBECONFIG"; then break; fi
+      if [[ "$delay" == 5 ]]; then status=1; fi
+    done
+  fi
+  rm -f "$temp/kubeconfig"
+  exit "$status"
 }
 trap cleanup EXIT
 # Keep token responses out of the shared assertion body and logs.
