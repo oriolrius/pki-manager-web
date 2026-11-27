@@ -10,6 +10,7 @@ import { AuthProvider, AuthGuard } from '@/lib/auth';
 import { UserMenu } from '@/components/UserMenu';
 import { UiProvider } from '@/components/ui';
 import { PageTitle } from '@/components/PageTitle';
+import { AppFooter } from '@/components/AppFooter';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -37,7 +38,7 @@ function RootComponent() {
     <PageTitle />
     <AuthProvider>
       <AuthGuard>
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <nav className="sticky top-0 z-40 border-b bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/85">
         <div className="container mx-auto px-4 sm:px-6">
           <div className="flex min-h-16 items-center justify-between gap-3">
@@ -109,9 +110,10 @@ function RootComponent() {
           )}
         </div>
       </nav>
-      <main className="container mx-auto px-4 py-6 sm:px-6">
+      <main className="container mx-auto flex-1 px-4 py-6 sm:px-6">
         <Outlet />
       </main>
+      <AppFooter version={packageJson.version} />
       {import.meta.env.DEV && <TanStackRouterDevtools position="bottom-right" />}
     </div>
       </AuthGuard>
