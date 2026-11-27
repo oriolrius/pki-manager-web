@@ -135,6 +135,18 @@ enable_transit() {
   fi
 }
 
+# KV v1 mount of the backup pair marker (scripts/migration/lib/backup.ts): one entry,
+# written by `pki-migrate backup` and read by `verify --restore`, operator token only.
+BACKUP_MOUNT=pki-manager-backup
+enable_backup_kv() {
+  if bao read -format=json "sys/mounts/$BACKUP_MOUNT" >/dev/null 2>&1; then
+    log "kv mount '$BACKUP_MOUNT' exists"
+  else
+    bao secrets enable -path="$BACKUP_MOUNT" -version=1 -description="PKI Manager backup pair marker" kv >/dev/null
+    log "enabled kv (v1) at '$BACKUP_MOUNT'"
+  fi
+}
+
 # The policy files name the default mounts; rewrite them for other mount paths.
 # write_policy NAME [FILE]: FILE defaults to $POLICY_DIR/NAME.hcl.
 write_policy() {
@@ -152,10 +164,14 @@ cmd_configure() {
   for mount in "$OPENBAO_TRANSIT_MOUNT" "$OPENBAO_RA_MOUNT" "$OPENBAO_SSH_MOUNT"; do
     case "$mount" in ""|/*|*/|*//*|*[!a-zA-Z0-9_/-]*) die "invalid Transit mount path";; esac
   done
+  for mount in "$OPENBAO_TRANSIT_MOUNT" "$OPENBAO_RA_MOUNT" "$OPENBAO_SSH_MOUNT"; do
+    [ "$mount" != "$BACKUP_MOUNT" ] || die "'$BACKUP_MOUNT' is the backup marker mount: use another Transit mount"
+  done
   [ "$OPENBAO_TRANSIT_MOUNT" != "$OPENBAO_SSH_MOUNT" ] && [ "$OPENBAO_TRANSIT_MOUNT" != "$OPENBAO_RA_MOUNT" ] && [ "$OPENBAO_SSH_MOUNT" != "$OPENBAO_RA_MOUNT" ] || die "use distinct Transit mounts for X.509, SSH and SCEP"
   enable_transit "$OPENBAO_TRANSIT_MOUNT" "PKI Manager X.509 keys"
   enable_transit "$OPENBAO_SSH_MOUNT" "PKI Manager SSH CA keys"
   enable_transit "$OPENBAO_RA_MOUNT" "PKI Manager SCEP RA keys"
+  enable_backup_kv
   write_policy pki-manager-backend
   write_policy pki-manager-ra
   write_policy pki-manager-operator

@@ -4,7 +4,9 @@
  * Calls: sys/health, auth/token/lookup-self, sys/internal/ui/mounts/<mount>,
  * <mount>/wrapping_key, <mount>/keys/<name> (read), <mount>/keys/<name>/import,
  * <mount>/sign/<name> (challenge), <mount>/session-key/pkcs1v15/<name> (RA check,
- * fork only, optional), sys/storage/raft/snapshot (backup).
+ * fork only, optional), sys/storage/raft/snapshot (backup), and the backup pair
+ * marker on the KV v1 mount pki-manager-backup (backup writes it, verify --restore
+ * reads it; operator token only, lib/backup.ts).
  *
  * Rules: HTTPS only, CA pinned with a file, no redirects, the token is read from
  * a file and never logged, a root token is refused.
@@ -53,6 +55,10 @@ export interface TargetStore {
   sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean; version?: number }): Promise<Buffer>;
   sessionKey(mount: string, name: string, ciphertext: Buffer, length: 16 | 24 | 32, version?: number): Promise<Buffer>;
   raftSnapshot(destPath: string): Promise<void>;
+  /** KV v1 read: the string fields of `<mount>/<path>`, or null when there is no entry. */
+  kvRead(mount: string, path: string): Promise<Record<string, string> | null>;
+  /** KV v1 write (replaces the entry). */
+  kvWrite(mount: string, path: string, data: Record<string, string>): Promise<void>;
 }
 
 export interface OpenBaoOptions {
@@ -232,6 +238,24 @@ export class OpenBaoClient implements TargetStore {
     } finally {
       rmSync(partial, { force: true });
     }
+  }
+
+  async kvRead(mount: string, path: string) {
+    if (!MOUNT.test(mount) || !MOUNT.test(path)) throw new MigrationError('OPENBAO_KV', `invalid KV path ${mount}/${path}`);
+    let json: Json;
+    try {
+      ({ json } = await this.call('GET', `${mount}/${path}`));
+    } catch (error) {
+      if (error instanceof OpenBaoHttpError && error.status === 404) return null;
+      throw error;
+    }
+    const d = isObject(json.data) ? json.data : {};
+    return Object.fromEntries(Object.entries(d).flatMap(([k, v]) => (typeof v === 'string' ? [[k, v]] : [])));
+  }
+
+  async kvWrite(mount: string, path: string, data: Record<string, string>) {
+    if (!MOUNT.test(mount) || !MOUNT.test(path)) throw new MigrationError('OPENBAO_KV', `invalid KV path ${mount}/${path}`);
+    await this.call('POST', `${mount}/${path}`, data);
   }
 
 }

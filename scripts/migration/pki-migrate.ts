@@ -10,8 +10,8 @@
  *   preflight        all checks of apply, changes nothing
  *   apply            transfer approved keys, write the target DB copy (idempotent)
  *   verify           check a migrated pair; --cutover is the gate (needs the frozen source);
- *                    --restore checks a later backup pair from the database side
- *   backup           SQLite + OpenBao Raft snapshot pair, with digests
+ *                    --restore checks a restored backup pair: pair marker + database side
+ *   backup           SQLite + OpenBao Raft snapshot pair, with digests and a pair marker
  *   check-backup     re-check a backup directory
  *   rotation-plan    steps for keys that cannot (or will not) migrate
  *
@@ -91,13 +91,19 @@ const HELP = `usage: pki-migrate <command> [options]   (guide: docs/operations/o
                    [--certificates F]     (bundle of inventory --certificates-out: no source KMS needed)
   apply            (preflight options) --run-dir DIR --confirm DIGEST12 [--actor NAME]
   verify           --manifest F --approval F --target-db F --openbao-* [--openbao-ra-token-file F] [--source-db F]
-                   [--cutover] [--ra-session-check] [--out report.json]
+                   [--target-profile F] [--cutover] [--ra-session-check] [--out report.json]
                    (--cutover needs --source-db: the frozen v3 copy, reconciled row by row;
                     RA mount calls use --openbao-ra-token-file when given: the v4 pki-manager-ra identity)
-  verify --restore --target-db F --openbao-* [--openbao-ra-token-file F] [--source-db F] [--manifest F --approval F] [--out F]
-                   a LATER backup pair (v4 wrote since the cutover): every key the database owns is in
-                   OpenBao with the same public key; with --source-db, the v3 audit history is still there
-  backup           --db FILE --out-dir DIR [--label TEXT] [--openbao-*]
+  verify --restore --target-db F --backup-dir DIR --openbao-operator-token-file F --openbao-*
+                   [--openbao-ra-token-file F] [--source-db F] [--manifest F --approval F] [--target-profile F] [--out F]
+                   a restored backup pair, before v4 starts: the restored OpenBao holds the pair marker of
+                   DIR and the database has the content of DIR (else verified=false); every key the
+                   database owns is in OpenBao with the same public key; with --source-db, the v3 audit
+                   history is still there
+  backup           --db FILE --out-dir DIR [--label TEXT]                 SQLite only (v3, or a copy)
+  backup           --db FILE --out-dir DIR [--label TEXT] --openbao-* --quiesced
+                   a pair: every writer stopped (--quiesced says so; a database change during the backup
+                   fails it), operator token (Raft snapshot + pair marker)
   check-backup     --dir DIR
   rotation-plan    --manifest F [--approval F]
 
@@ -168,6 +174,10 @@ async function main(argv: string[]): Promise<number> {
       const { store } = storeFrom(args);
       const manifest = manifestPath ? readJson<Manifest>(manifestPath) : undefined;
       const approval = approvalPath ? readJson<Approval>(approvalPath) : undefined;
+      const backupDir = restore ? opt(args, 'backup-dir') : undefined;
+      if (!restore && opt(args, 'backup-dir')) throw new UsageError('--backup-dir belongs to verify --restore');
+      const operatorTokenFile = opt(args, 'openbao-operator-token-file', 'OPENBAO_OPERATOR_TOKEN_FILE');
+      if (backupDir && !operatorTokenFile) throw new UsageError('--backup-dir needs --openbao-operator-token-file (or OPENBAO_OPERATOR_TOKEN_FILE): the pair marker is readable by an operator token only');
       const target = openReadOnly(targetPath);
       const sourcePath = opt(args, 'source-db');
       const source = sourcePath ? openReadOnly(sourcePath) : undefined;
@@ -175,13 +185,16 @@ async function main(argv: string[]): Promise<number> {
         const raTokenFile = opt(args, 'openbao-ra-token-file', 'OPENBAO_RA_TOKEN_FILE');
         const raStore = raTokenFile ? new OpenBaoClient({ addr: need(args, 'openbao-addr', 'OPENBAO_ADDR'), caFile: opt(args, 'openbao-cacert', 'OPENBAO_CACERT'), tokenFile: raTokenFile, namespace: opt(args, 'openbao-namespace', 'OPENBAO_NAMESPACE') }) : undefined;
         const profile = loadProfile(opt(args, 'target-profile'));
+        const evidence = backupDir && operatorTokenFile
+          ? { dir: backupDir, operator: new OpenBaoClient({ addr: need(args, 'openbao-addr', 'OPENBAO_ADDR'), caFile: opt(args, 'openbao-cacert', 'OPENBAO_CACERT'), tokenFile: operatorTokenFile, namespace: opt(args, 'openbao-namespace', 'OPENBAO_NAMESPACE') }) }
+          : undefined;
         const r = restore
-          ? await verifyRestore({ target, store, raStore, profile, source, manifest, approval })
+          ? await verifyRestore({ target, store, raStore, profile, source, manifest, approval, evidence })
           : await verifyMigration({ manifest: manifest!, approval: approval!, target, store, raStore, profile, source, sourcePath, raSessionCheck: args['ra-session-check'] === true });
         for (const c of r.checks.filter(x => !x.ok)) process.stdout.write(`FAIL ${c.name}${c.detail ? ` - ${c.detail}` : ''}\n`);
         for (const w of r.warnings) process.stdout.write(`WARN ${w}\n`);
         process.stdout.write(`mode ${r.mode}; checks ${r.checks.length}, failed ${r.checks.filter(c => !c.ok).length}; counts ${JSON.stringify(r.counts)}\n`);
-        process.stdout.write(restore ? `verified=${r.ok} cosmianRequired=${r.cosmianRequired}\n` : `verified=${r.ok} reconciled=${r.reconciled} cutoverReady=${r.cutoverReady} cosmianRequired=${r.cosmianRequired}\n`);
+        process.stdout.write(restore ? `verified=${r.ok} pairBound=${r.pairBound === true} cosmianRequired=${r.cosmianRequired}\n` : `verified=${r.ok} reconciled=${r.reconciled} cutoverReady=${r.cutoverReady} cosmianRequired=${r.cosmianRequired}\n`);
         const out = opt(args, 'out');
         if (out) writeNew(out, JSON.stringify(r, null, 2) + '\n', force);
         return cutover ? (r.cutoverReady ? 0 : 1) : (r.ok ? 0 : 1);
@@ -189,13 +202,15 @@ async function main(argv: string[]): Promise<number> {
     }
     case 'backup': {
       const withBao = !!opt(args, 'openbao-addr', 'OPENBAO_ADDR');
-      const record = await backupPair({ dbPath: need(args, 'db'), outDir: need(args, 'out-dir'), label: opt(args, 'label') ?? 'migration', store: withBao ? storeFrom(args).store : undefined });
+      if (args.quiesced !== undefined && args.quiesced !== true) throw new UsageError('--quiesced takes no value');
+      if (withBao && args.quiesced !== true) throw new UsageError('a database + OpenBao backup needs --quiesced: stop every writer first (the v4 backend, its OpenBao Agents, scripts with runtime tokens)');
+      const record = await backupPair({ dbPath: need(args, 'db'), outDir: need(args, 'out-dir'), label: opt(args, 'label') ?? 'migration', store: withBao ? storeFrom(args).store : undefined, quiesced: args.quiesced === true });
       process.stdout.write(`${JSON.stringify(record, null, 2)}\n`);
       return 0;
     }
     case 'check-backup': {
       const r = checkBackup(need(args, 'dir'));
-      process.stdout.write(r.ok ? `backup ok: ${Object.keys(r.record.files).join(', ')}\n` : `backup FAILED: ${r.problems.join('; ')}\n`);
+      process.stdout.write(r.ok ? `backup ok: ${Object.keys(r.record.files).join(', ')}; ${r.pairEvidence ? `pair evidence: backup ${r.record.pair!.backupId}` : `no pair evidence (${r.record.format}${'openbao.snap' in r.record.files ? '' : ', SQLite only'})`}\n` : `backup FAILED: ${r.problems.join('; ')}\n`);
       return r.ok ? 0 : 1;
     }
     case 'rotation-plan': {

@@ -50,6 +50,9 @@ expect 403       "rotate a key"                         POST "$mount/keys/$k/rot
 expect 403       "decrypt"                              POST "$mount/decrypt/$k" '{"ciphertext":"vault:v1:AAAA"}'
 expect 403       "list mounts (sys)"                    GET  "sys/mounts"
 expect 403       "read the default policy (sys)"        GET  "sys/policies/acl/default"
+expect 403       "read the backup pair marker (operator only)" GET "pki-manager-backup/pair-marker"
+expect 403       "write the backup pair marker (operator only)" POST "pki-manager-backup/pair-marker" '{"state":"snapshot"}'
+expect 403       "take a Raft snapshot (operator only)" GET  "sys/storage/raft/snapshot"
 expect '200|204' "allow deletion"                       POST "$mount/keys/$k/config" '{"deletion_allowed":true}'
 expect 204       "delete the key"                       DELETE "$mount/keys/$k"
 
@@ -90,6 +93,9 @@ if [ -n "$ra_token" ]; then
   expect 403     "RA mount: decrypt (OAEP)"             POST "$ra/decrypt/x" '{"ciphertext":"vault:v1:AAAA"}'
   expect 403     "list mounts (sys)"                    GET  "sys/mounts"
   expect 403     "AppRole: read the backend role-id"    GET  "auth/approle/role/pki-manager-backend/role-id"
+  expect 403     "read the backup pair marker (operator only)" GET "pki-manager-backup/pair-marker"
+  expect 403     "write the backup pair marker (operator only)" POST "pki-manager-backup/pair-marker" '{"state":"snapshot"}'
+  expect 403     "take a Raft snapshot (operator only)" GET  "sys/storage/raft/snapshot"
   if [ "${CHECK_RA:-}" = 1 ]; then
     r="scep-ra-check-$(random_hex 4)"
     expect '200|204' "RA mount: create rsa-3072 RA key"  POST "$ra/keys/$r" '{"type":"rsa-3072","exportable":false,"allow_plaintext_backup":false,"allow_pkcs1v15_session_key":true}'

@@ -198,6 +198,8 @@ async function main() {
   await expect(/^403$/, 'read a policy (sys)', migToken, 'GET', 'sys/policies/acl/pki-manager-migration');
   await expect(/^403$/, 'write a policy (sys)', migToken, 'POST', 'sys/policies/acl/pki-manager-migration', { policy: 'path "*" { capabilities = ["sudo"] }' });
   await expect(/^403$/, 'Raft snapshot (sys)', migToken, 'GET', 'sys/storage/raft/snapshot');
+  await expect(/^403$/, 'read the backup pair marker (operator only)', migToken, 'GET', 'pki-manager-backup/pair-marker');
+  await expect(/^403$/, 'write the backup pair marker (operator only)', migToken, 'POST', 'pki-manager-backup/pair-marker', { state: 'snapshot' });
   await expect(/^403$/, 'audit devices (sys)', migToken, 'GET', 'sys/audit');
   await expect(/^403$/, 'seal (sys)', migToken, 'POST', 'sys/seal', {});
 

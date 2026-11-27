@@ -1,7 +1,8 @@
 # Operator policy for `bootstrap.sh configure` once the root token is revoked:
 # manage the PKI Manager mounts, policies, the two runtime AppRoles (pki-manager-backend for
 # X.509/SSH, pki-manager-ra for SCEP RA keys) and their token roles, issue and revoke
-# migration tokens, revoke runtime Agent tokens, read status.
+# migration tokens, revoke runtime Agent tokens, read status, take backups (Raft snapshot and
+# the backup pair marker).
 # It cannot read or use keys (no paths under the mounts themselves).
 
 path "sys/mounts/pki-manager" { capabilities = ["create", "read", "update"] }
@@ -37,3 +38,7 @@ path "auth/token/revoke-accessor" { capabilities = ["update"] }
 path "sys/health" { capabilities = ["read", "sudo"] }
 path "sys/seal-status" { capabilities = ["read"] }
 path "sys/storage/raft/snapshot" { capabilities = ["read"] }
+# Backups (`pki-migrate backup` / `verify --restore`, scripts/migration/lib/backup.ts): the pair
+# marker that binds a Raft snapshot to its SQLite backup. One KV v1 entry, no other KV path.
+path "sys/mounts/pki-manager-backup" { capabilities = ["create", "read", "update"] }
+path "pki-manager-backup/pair-marker" { capabilities = ["create", "read", "update"] }

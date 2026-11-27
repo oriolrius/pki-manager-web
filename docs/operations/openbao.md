@@ -187,7 +187,7 @@ The v3 key migration (`pki-migrate`) uses its own short-lived identity, never th
 |---|---|
 | `approve-template`, `preflight`, `apply`, `verify` | migration token |
 | RA mount calls of `verify`, and `verify --ra-session-check` (SCEP session-key recovery) | RA token (`pki-manager-ra`), with `--openbao-ra-token-file` |
-| `backup --openbao-*` (Raft snapshot) | operator token |
+| `backup --openbao-* --quiesced` (Raft snapshot and backup pair marker), the pair evidence of `verify --restore` (`--openbao-operator-token-file`) | operator token |
 
 1. Obtain an operator token as above. Install the policy and the token role once. The helper reads the policy from stdin and rewrites the mount names from `OPENBAO_*_MOUNT`.
 
@@ -220,26 +220,48 @@ On a disposable rehearsal stack, `node openbao/scripts/check-migration-token.mts
 
 ## Back up and restore SQLite and Raft together
 
-1. Record the application image IDs, fork image ID, mount names, TLS trust, current CA certificates and SSH CA fingerprints. Secure the deployment configuration, TLS credentials and audit records under your backup policy. Keep Shamir shares in separate custody.
-2. Pause external issuers, SCEP gateways and other writers. Stop the application, Agent and OpenBao in that order. Make one offline copy of both data directories. This also captures SQLite WAL files if present.
+The SQLite database and the Raft store are one pair. A database next to the Raft state of
+another moment loses rows (revocations, serials) or keys, also when no key differs. Back them
+up with `pki-migrate backup`, which binds the two halves with a pair marker, and check every
+restore with `pki-migrate verify --restore --backup-dir` before the backend starts. The tool
+runs from a checkout of the same release with Node 22.18 or later, on a host or container that
+reaches OpenBao over TLS (the server is on the internal network). The
+[migration guide](openbao-migration.md#6-verify-and-cut-over) describes each step.
+
+1. Record the application image IDs, fork image ID, mount names, TLS trust, current CA certificates and SSH CA fingerprints. Secure the deployment configuration, TLS credentials and audit records under your backup policy. Keep Shamir shares in separate custody. Run `configure` (above) once with this release: it enables the KV mount `pki-manager-backup` of the pair marker and gives the operator policy its one entry.
+2. Pause external issuers, SCEP gateways and other writers. Stop the application and both Agents. Keep OpenBao running and unsealed. Take the pair with an operator token, then start the Agents and the application again.
 
    ```bash
    dc stop frontend backend
-   dc stop openbao-agent
-   dc stop openbao
-   backup_dir="$(sudo mktemp -d /var/backups/pki-openbao.XXXXXXXX)"
-   sudo tar --numeric-owner -czf "$backup_dir/state.tar.gz" pki openbao/state/data
-   sudo sh -ec 'cd "$1"; sha256sum state.tar.gz > SHA256SUMS' sh "$backup_dir"
+   dc stop openbao-agent openbao-agent-ra
+   backup_dir="/var/backups/pki-$(date -u +%Y%m%dT%H%M%SZ)"
+   pki-migrate backup --db pki/pki.db --out-dir "$backup_dir" \
+     --label "scheduled" --quiesced \
+     --openbao-addr "$OPENBAO_ADDR" --openbao-cacert openbao/state/tls/ca.pem --openbao-token-file "$OPERATOR_TOKEN_FILE"
+   pki-migrate check-backup --dir "$backup_dir"
    ```
 
-   Move the archive and checksum to protected backup storage. Retain the matching application revision and OpenBao configuration. For normal service, start the same server, unseal it, then start the Agent and application as above.
+   The directory holds `pki.db`, `openbao.snap` and `backup.json` (digests, the content digest of the database and the backup id). `check-backup` prints `pair evidence: backup <id>`. A failed backup removes its directory. Move the directory to protected backup storage. Retain the matching application revision and OpenBao configuration.
 
-3. Restore first on an isolated host with empty target directories. Install the recorded versions and prepare the host and TLS files. Verify the checksum and extract the two directories as one set, from the repository root.
+3. Restore first on an isolated host. Install the recorded versions and prepare the host and TLS files. Initialize a new server, restore the snapshot, and unseal the **restored** store with its original shares (the snapshot carries its keyring and its tokens).
 
    ```bash
-   sudo sh -ec 'cd "$1"; sha256sum -c SHA256SUMS' sh "$backup_dir"
-   sudo tar --numeric-owner -xzpf "$backup_dir/state.tar.gz"
    dc up -d openbao
+   dc exec openbao bao operator init -key-shares=1 -key-threshold=1   # throw-away store, replaced by the snapshot
+   dc exec openbao bao operator unseal                                # its throw-away share
+   docker cp "$backup_dir/openbao.snap" pki-openbao:/tmp/openbao.snap
+   BAO_TOKEN='<throw-away root token>' dc exec -e BAO_TOKEN openbao bao operator raft snapshot restore -force /tmp/openbao.snap
+   dc exec openbao bao operator unseal   # the ORIGINAL shares
+   install -o 1001 -g 1001 -m 0600 "$backup_dir/pki.db" pki/pki.db
    ```
 
-4. Unseal the **restored** Raft store with its original shares. Use its operator login to issue a new SecretID for each AppRole in use. Start the Agents and the backend. Compare the restored CA fingerprints and revocation state with the saved values. Issue a new certificate and CRL and verify both with a pre-backup CA certificate. If SSH or SCEP is in use, sign an SSH certificate or complete gateway enrollment against the restored identity. Keep the original installation offline from the recovery test.
+4. Use the restored operator login to issue a new SecretID for each AppRole in use. Start the two Agents, **not** the backend. Verify the pair with the Agent token files and an operator token:
+
+   ```bash
+   pki-migrate verify --restore --backup-dir "$backup_dir" --target-db pki/pki.db \
+     --openbao-addr "$OPENBAO_ADDR" --openbao-cacert openbao/state/tls/ca.pem \
+     --openbao-token-file openbao/state/token/backend-token --openbao-ra-token-file openbao/state/token-ra/ra-token \
+     --openbao-operator-token-file "$OPERATOR_TOKEN_FILE" --out verify-restore.json
+   ```
+
+   The Agent token files belong to UID 1001: run the check as that user or as root. Start the backend only on `verified=true pairBound=true` (exit code 0). A database or a snapshot from another backup, a snapshot taken outside `pki-migrate backup`, or a database that changed after the restore fails. Then compare the restored CA fingerprints and revocation state with the saved values. Issue a new certificate and CRL and verify both with a pre-backup CA certificate. If SSH or SCEP is in use, sign an SSH certificate or complete gateway enrollment against the restored identity. Keep the original installation offline from the recovery test.

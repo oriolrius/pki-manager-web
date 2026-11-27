@@ -17,11 +17,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { constants, generateKeyPairSync, privateDecrypt, randomUUID } from 'node:crypto';
-import { statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { backupPair, checkBackup, MARKER_MOUNT, MARKER_PATH } from '../lib/backup.ts';
 import { buildManifest } from '../lib/inventory.ts';
+import { OpenBaoHttpError } from '../lib/openbao.ts';
 import { approvalTemplate } from '../lib/policy.ts';
 import { reconcile } from '../lib/reconcile.ts';
 import { checkBinding, contentDigest } from '../lib/source.ts';
@@ -121,8 +123,12 @@ async function verifyCutover(s: Migrated, targetPath = s.targetPath, store: Sess
   finally { target.close(); source.close(); }
 }
 
+const EVIDENCE = 'restore: the database and OpenBao are the two halves of one backup (pair marker + content digest)';
 const failed = (checks: Check[]) => checks.filter(c => !c.ok);
 const failedNames = (checks: Check[]) => failed(checks).map(c => c.name);
+/** Failed checks of the database side only (the pair evidence is tested on its own below). */
+const dbSideFailed = (checks: Check[]) => failed(checks).filter(c => c.name !== EVIDENCE);
+const dbSideNames = (checks: Check[]) => dbSideFailed(checks).map(c => c.name);
 
 /** A copy of the migrated target with one change. */
 let copies = 0;
@@ -352,7 +358,7 @@ test('restore: an older Raft snapshot next to a later database fails for every k
   const keys = postCutoverWrites(s); // ... then v4 accepts writes; the database backup is later
   const v = await restore(s, atCutover);
   assert.equal(v.ok, false);
-  const names = failedNames(v.checks);
+  const names = dbSideNames(v.checks);
   assert.ok(names.includes('pair: keystore_objects:v4-priv key in OpenBao'), names.join(' | '));
   assert.ok(names.includes('pair: ssh_cas:sshca-v4 key in OpenBao'), names.join(' | '));
   assert.ok(names.includes('pair: integration_ras:int-v4 RA key in OpenBao'), names.join(' | '));
@@ -370,7 +376,10 @@ test('restore: the matching pair passes with post-cutover writes and deleted key
   const s = await migrated();
   postCutoverWrites(s);
   const v = await restore(s, snapshot(s.store));
-  assert.equal(v.ok, true, JSON.stringify(failed(v.checks)));
+  // No backup directory given: the database side passes, but the pair is not proven.
+  assert.deepEqual(dbSideFailed(v.checks), []);
+  assert.equal(v.ok, false, 'never verified without pair evidence');
+  assert.equal(v.pairBound, false);
   assert.equal(v.mode, 'restore');
   assert.equal(v.cutoverReady, false, 'a later restore is not a cutover');
   assert.ok(v.counts.liveKeysVerified >= 6, JSON.stringify(v.counts));
@@ -381,10 +390,10 @@ test('restore: the matching pair passes with post-cutover writes and deleted key
   const other = snapshot(s.store);
   const ssh = (openReadOnly(s.targetPath).prepare("SELECT kms_key_id FROM ssh_cas WHERE id = 'sshca-v4'").get() as { kms_key_id: string }).kms_key_id.split(':')[2];
   other.plant('pki-manager-ssh', ssh, 'ecdsa-p256', generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey);
-  assert.deepEqual(failedNames((await restore(s, other)).checks), ['pair: ssh_cas:sshca-v4 fingerprint']);
+  assert.deepEqual(dbSideNames((await restore(s, other)).checks), ['pair: ssh_cas:sshca-v4 fingerprint']);
   // v3 history lost in the restored database fails.
   const w = new DatabaseSync(s.targetPath); w.exec("DELETE FROM audit_log WHERE id = 'audit-v3-1'"); w.close();
-  assert.deepEqual(failedNames((await restore(s, snapshot(s.store))).checks), ['restore: audit_log history of the frozen source preserved']);
+  assert.deepEqual(dbSideNames((await restore(s, snapshot(s.store))).checks), ['restore: audit_log history of the frozen source preserved']);
 });
 
 test('verify --restore needs no manifest; it still needs OpenBao', () => {
@@ -401,6 +410,163 @@ test('a fresh v4 target (nothing migrated) is a valid pair', async () => {
   const target = openReadOnly(p);
   const v = await verifyRestore({ target, store: new FakeTransit(), profile: DEFAULT_PROFILE });
   target.close();
-  assert.equal(v.ok, true, JSON.stringify(failed(v.checks)));
+  assert.deepEqual(dbSideFailed(v.checks), []);
 });
 
+
+// ───────────── pair evidence: the restored database and OpenBao are ONE backup ─────────────
+
+/** `pki-migrate backup` of the live pair (writers stopped). */
+let backups = 0;
+async function backupNow(s: Migrated, label: string): Promise<string> {
+  const out = join(s.dir, `backup-${++backups}-${label}`);
+  await backupPair({ dbPath: s.targetPath, outDir: out, label, store: s.store, quiesced: true });
+  return out;
+}
+
+/** Restores the database of `dbFrom` and the Raft snapshot of `snapFrom`, then verifies with `claimed` as the backup directory. */
+async function restoreHalves(s: Migrated, dbFrom: string, snapFrom: string, claimed: string, o: { afterRestore?: string } = {}) {
+  const db = join(s.dir, `restored-${++copies}.db`);
+  copyFileSync(join(dbFrom, 'pki.db'), db);
+  if (o.afterRestore) { const w = new DatabaseSync(db); w.exec(o.afterRestore); w.close(); }
+  const store = FakeTransit.restore(join(snapFrom, 'openbao.snap'), sessionTransit());
+  const target = openReadOnly(db), source = openReadOnly(s.sourcePath);
+  try { return await verifyRestore({ target, store, profile: DEFAULT_PROFILE, source, manifest: s.manifest, approval: s.approval, evidence: { dir: claimed, operator: store } }); }
+  finally { target.close(); source.close(); }
+}
+const evidenceDetail = (checks: Check[]) => checks.find(c => c.name === EVIDENCE)!.detail ?? '';
+
+/** Only database rows change: an X.509 revocation and an SSH revocation. No key is created or deleted. */
+function metadataOnlyWrites(s: Migrated): void {
+  const db = new DatabaseSync(s.targetPath);
+  db.exec(`UPDATE certificates SET status = 'revoked', revocation_reason = 'keyCompromise', revocation_date = ${now + 60} WHERE id = 'cert-2'`);
+  db.exec(`INSERT INTO ssh_revocations (id, ca_id, target_type, serial, reason, revoked_at) VALUES ('rev-after', 'sshca-a', 'certificate', '99', 'compromised', ${now + 60})`);
+  db.close();
+}
+
+test('pair evidence: the same pair restored passes, with post-cutover writes', async () => {
+  const s = await migrated();
+  postCutoverWrites(s);
+  const b = await backupNow(s, 'later');
+  const v = await restoreHalves(s, b, b, b);
+  assert.equal(v.ok, true, JSON.stringify(failed(v.checks)));
+  assert.equal(v.pairBound, true);
+  assert.match(evidenceDetail(v.checks), /^backup [0-9a-f-]{36}$/);
+  const rec = JSON.parse(readFileSync(join(b, 'backup.json'), 'utf8'));
+  assert.equal(rec.format, 'pki-manager-migration-backup/2');
+  assert.equal(rec.pair.quiesced, true);
+  // The live cluster holds a released marker: a later snapshot of it is never a backup snapshot.
+  assert.equal(s.store.kv.get(`${MARKER_MOUNT}/${MARKER_PATH}`)?.state, 'released');
+});
+
+test('pair evidence: OLD database + NEWER Raft snapshot (only rows changed, same keys) fails', async () => {
+  const s = await migrated();
+  const a = await backupNow(s, 'A');
+  metadataOnlyWrites(s); // X.509 + SSH revocation: database only
+  const b = await backupNow(s, 'B');
+  for (const claimed of [a, b]) {
+    const v = await restoreHalves(s, a, b, claimed);
+    assert.equal(v.ok, false);
+    assert.equal(v.pairBound, false);
+    // Every key check passes: the keys of A and B are identical; only the evidence fails.
+    assert.deepEqual(failedNames(v.checks), [EVIDENCE]);
+    assert.ok(v.counts.liveKeysVerified >= 4, JSON.stringify(v.counts));
+  }
+  assert.match(evidenceDetail((await restoreHalves(s, a, b, a)).checks), /restored OpenBao comes from backup .*"B".* the database from backup .*"A"/);
+  assert.match(evidenceDetail((await restoreHalves(s, a, b, b)).checks), /restored database is not the database of backup/);
+});
+
+test('pair evidence: NEWER database + OLDER Raft snapshot (only rows changed, same keys) fails', async () => {
+  const s = await migrated();
+  const a = await backupNow(s, 'A');
+  metadataOnlyWrites(s);
+  const b = await backupNow(s, 'B');
+  for (const claimed of [a, b]) {
+    const v = await restoreHalves(s, b, a, claimed);
+    assert.equal(v.ok, false);
+    assert.deepEqual(failedNames(v.checks), [EVIDENCE]);
+  }
+});
+
+test('pair evidence: swapped halves with new keys fail on the marker AND on the keys', async () => {
+  const s = await migrated();
+  const a = await backupNow(s, 'A');
+  postCutoverWrites(s);
+  const b = await backupNow(s, 'B');
+  const v = await restoreHalves(s, b, a, b);
+  assert.ok(failedNames(v.checks).includes(EVIDENCE));
+  assert.ok(failedNames(v.checks).includes('pair: ssh_cas:sshca-v4 key in OpenBao'), failedNames(v.checks).join(' | '));
+});
+
+test('pair evidence: a snapshot taken outside pki-migrate backup, a changed database, an old-format backup, no backup dir', async () => {
+  const s = await migrated();
+  const b = await backupNow(s, 'B');
+  // A Raft snapshot of the live cluster after the backup (cron, another tool): released marker.
+  const external = join(s.dir, 'external');
+  mkdirSync(external);
+  await s.store.raftSnapshot(join(external, 'openbao.snap'));
+  let v = await restoreHalves(s, b, external, b);
+  assert.deepEqual(failedNames(v.checks), [EVIDENCE]);
+  assert.match(evidenceDetail(v.checks), /released marker/);
+  // The restored database changed after the restore (v4 started before verify).
+  v = await restoreHalves(s, b, b, b, { afterRestore: "INSERT INTO audit_log (id, timestamp, operation, entity_type, entity_id, status) VALUES ('a-late', 1, 'x', 'y', 'z', 'success')" });
+  assert.deepEqual(failedNames(v.checks), [EVIDENCE]);
+  assert.match(evidenceDetail(v.checks), /changed after the restore/);
+  // A backup made before pair markers (format /1): its files still check, the pair cannot be proven.
+  const old = join(s.dir, 'backup-v1');
+  mkdirSync(old);
+  copyFileSync(join(b, 'pki.db'), join(old, 'pki.db')); copyFileSync(join(b, 'openbao.snap'), join(old, 'openbao.snap'));
+  const rec = JSON.parse(readFileSync(join(b, 'backup.json'), 'utf8'));
+  writeFileSync(join(old, 'backup.json'), JSON.stringify({ format: 'pki-manager-migration-backup/1', createdAt: rec.createdAt, label: 'old', files: rec.files, openbao: rec.openbao }));
+  const c = checkBackup(old);
+  assert.equal(c.ok, true, c.problems.join('; '));
+  assert.equal(c.pairEvidence, false);
+  v = await restoreHalves(s, old, old, old);
+  assert.deepEqual(failedNames(v.checks), [EVIDENCE]);
+  assert.match(evidenceDetail(v.checks), /no pair evidence/);
+  // No evidence at all: never verified.
+  const target = openReadOnly(join(b, 'pki.db'));
+  try {
+    const r = await verifyRestore({ target, store: FakeTransit.restore(join(b, 'openbao.snap'), sessionTransit()), profile: DEFAULT_PROFILE });
+    assert.equal(r.ok, false); assert.equal(r.pairBound, false);
+  } finally { target.close(); }
+});
+
+test('backup: needs --quiesced for a pair; a writer during the backup, a refused marker or a failed snapshot leave no backup and no snapshot marker', async () => {
+  const s = await migrated();
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: join(s.dir, 'nq'), label: 'x', store: s.store }), /NOT_QUIESCED|--quiesced/);
+  assert.equal(existsSync(join(s.dir, 'nq')), false);
+  // A writer commits while the snapshot is taken.
+  const snap = s.store.raftSnapshot.bind(s.store);
+  s.store.raftSnapshot = async (dest: string) => { await snap(dest); const w = new DatabaseSync(s.targetPath); w.exec("INSERT INTO audit_log (id, timestamp, operation, entity_type, entity_id, status) VALUES ('a-race', 1, 'x', 'y', 'z', 'success')"); w.close(); };
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: join(s.dir, 'race'), label: 'race', store: s.store, quiesced: true }), /changed during the backup/);
+  assert.equal(existsSync(join(s.dir, 'race')), false);
+  // The snapshot fails (crash of the request): the marker is aborted, never left in state snapshot.
+  s.store.raftSnapshot = async () => { throw new MigrationError('OPENBAO_ERROR', 'HTTP 500'); };
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: join(s.dir, 'fail'), label: 'fail', store: s.store, quiesced: true }), /HTTP 500/);
+  assert.equal(existsSync(join(s.dir, 'fail')), false);
+  assert.equal(s.store.kv.get(`${MARKER_MOUNT}/${MARKER_PATH}`)?.state, 'aborted');
+  // An old operator policy (no marker path): a clear error, no directory.
+  s.store.raftSnapshot = snap;
+  s.store.kvWrite = async () => { throw new OpenBaoHttpError(403, `${MARKER_MOUNT}/${MARKER_PATH}`, 'permission denied'); };
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: join(s.dir, 'denied'), label: 'denied', store: s.store, quiesced: true }), /bootstrap\.sh configure/);
+  assert.equal(existsSync(join(s.dir, 'denied')), false);
+  // A killed backup (no backup.json) is reported as incomplete.
+  const killed = join(s.dir, 'killed'); mkdirSync(killed); copyFileSync(s.targetPath, join(killed, 'pki.db'));
+  assert.match(checkBackup(killed).problems.join(), /incomplete backup/);
+});
+
+test('backup: a SQLite-only backup (v3) needs no OpenBao and no --quiesced, and has no pair evidence', async () => {
+  const s = await setup();
+  const out = join(s.dir, 'v3-only');
+  const rec = await backupPair({ dbPath: s.sourcePath, outDir: out, label: 'v3' });
+  assert.deepEqual(Object.keys(rec.files), ['pki.db']);
+  const c = checkBackup(out);
+  assert.equal(c.ok, true); assert.equal(c.pairEvidence, false);
+  const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'backup', '--db', s.sourcePath, '--out-dir', join(s.dir, 'cli-pair'), '--openbao-addr', ADDR, '--openbao-token-file', join(s.dir, 'none')], { encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /--quiesced/);
+  const v = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', CLI, 'verify', '--restore', '--target-db', s.sourcePath, '--backup-dir', out, '--openbao-addr', ADDR, '--openbao-token-file', join(s.dir, 'none')], { encoding: 'utf8' });
+  assert.equal(v.status, 2, v.stderr);
+  assert.match(v.stderr, /--openbao-operator-token-file/);
+});

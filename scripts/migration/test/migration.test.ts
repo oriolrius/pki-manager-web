@@ -309,7 +309,7 @@ test('caKeyExport=deny imports CA keys non-exportable; drop-key keeps the certif
 test('offline backup pair: digests, integrity, tamper detection', async () => {
   const s = await setup();
   const out = join(s.dir, 'backup-1');
-  const rec = await backupPair({ dbPath: s.targetPath, outDir: out, label: 'test', store: s.store });
+  const rec = await backupPair({ dbPath: s.targetPath, outDir: out, label: 'test', store: s.store, quiesced: true });
   assert.ok(rec.files['pki.db'] && rec.files['openbao.snap']);
   assert.equal(checkBackup(out).ok, true);
   writeFileSync(join(out, 'openbao.snap'), 'tampered');
@@ -322,7 +322,7 @@ test('a refused snapshot leaves no half backup', async () => {
   const s = await setup();
   s.store.raftSnapshot = async () => { throw new MigrationError('OPENBAO_ERROR', 'HTTP 403'); };
   const out = join(s.dir, 'backup-denied');
-  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: out, label: 'denied', store: s.store }), /403/);
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: out, label: 'denied', store: s.store, quiesced: true }), /403/);
   assert.equal(existsSync(out), false);
 });
 

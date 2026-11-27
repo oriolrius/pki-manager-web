@@ -17,8 +17,11 @@
 #   6. Start the v4 backend on the restored pair with Cosmian stopped and use the
 #      migrated keys: CRL, new leaf, renewal with key reuse, PKCS#12, SSH host
 #      certificate, SCEP RA state and renewal.
-#   7. Later restore: back up the pair after the v4 writes, verify --restore passes; the
-#      cutover-time Raft snapshot next to that later database must fail.
+#   7. Later restores with pair evidence: back up the pair after the v4 writes (B1), then
+#      only rows change (an X.509 and an SSH revocation, no key) and back up again (B2).
+#      Same pair passes; old database + newer Raft and newer database + old Raft fail
+#      (identical keys); plain --restore is never verified; the cutover-time snapshot
+#      next to the later database fails on the keys too.
 #
 # Needs: docker, jq, curl, openssl, ssh, ssh-keygen, python3 (free ports), Node >= 22.18, and
 # `pnpm install` done (the v4 migration runner and server run from backend/). Images,
@@ -195,7 +198,8 @@ deny "$RUN/bao/secrets/backend.token" pki-manager/wrapping_key
 deny "$RUN/bao/secrets/ra.token" pki-manager-ra/wrapping_key
 deny "$RUN/bao/secrets/backend.token" pki-manager-ra/keys/probe
 deny "$RUN/bao/secrets/ra.token" pki-manager/keys/probe
-ok "runtime tokens: no import path (wrapping_key 403); X.509/SSH and RA identities do not cross (403)"
+for t in backend ra migration; do deny "$RUN/bao/secrets/$t.token" pki-manager-backup/pair-marker; deny "$RUN/bao/secrets/$t.token" sys/storage/raft/snapshot; done
+ok "runtime tokens: no import path (wrapping_key 403); X.509/SSH and RA identities do not cross (403); no runtime or migration token reads the backup pair marker or the Raft snapshot (403)"
 # The migration policy closes the import parameters: an exportable SSH key is refused by the
 # policy (403); the same call with the allowed values passes the policy and Transit rejects
 # the dummy ciphertext (an error that is not 403, and no key is created).
@@ -249,7 +253,10 @@ log "OpenBao audit log: $(grep -c '"type":"request"' "$RUN/bao/logs/audit.log") 
 set +e; migrate backup --db "$TGT" --out-dir "$RUN/backup-denied" --label "wrong token" --openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/migration.token" >/dev/null 2>>"$EVIDENCE"; rc=$?; set -e
 [ $rc -ne 0 ] && [ ! -e "$RUN/backup-denied" ] || die "backup with the (revoked) migration token did not fail cleanly"
 ok "backup with the migration token fails and leaves no partial backup"
-migrate backup --db "$TGT" --out-dir "$RUN/backup-v4" --label "migrated pair" --openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/operator.token" >/dev/null
+set +e; migrate backup --db "$TGT" --out-dir "$RUN/backup-noq" --label "not quiesced" --openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/operator.token" >/dev/null 2>>"$EVIDENCE"; rc=$?; set -e
+[ $rc -eq 2 ] && [ ! -e "$RUN/backup-noq" ] || die "a pair backup without --quiesced was not refused (exit $rc)"
+ok "a pair backup without --quiesced is refused (exit 2), nothing written"
+migrate backup --db "$TGT" --out-dir "$RUN/backup-v4" --label "migrated pair" --quiesced --openbao-addr "$BADDR" --openbao-cacert "$CACERT" --openbao-token-file "$RUN/bao/secrets/operator.token" >/dev/null
 migrate check-backup --dir "$RUN/backup-v4" | tee -a "$EVIDENCE"
 docker stop "$P-kms" >/dev/null
 ok "Cosmian stopped from here on"
@@ -267,20 +274,26 @@ RADDR="https://127.0.0.1:$BAO2_PORT"; RCACERT="$RUN/bao2/tls/ca.pem"
 cp "$RUN/backup-v4/pki.db" "$RUN/restored.db"
 migrate "${VERIFY[@]}" --target-db "$RUN/restored.db" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$RUN/bao/secrets/backend.token" \
   --openbao-ra-token-file "$RUN/bao/secrets/ra.token" --ra-session-check --cutover --out "$RUN/verify-restored.json" | tee -a "$EVIDENCE"
-ok "restored pair (new OpenBao from the Raft snapshot + SQLite backup) verifies with Cosmian stopped"
+migrate verify --restore --backup-dir "$RUN/backup-v4" --openbao-operator-token-file "$RUN/bao/secrets/operator.token" --source-db "$SRC" --target-db "$RUN/restored.db" \
+  --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$RUN/bao/secrets/backend.token" --openbao-ra-token-file "$RUN/bao/secrets/ra.token" --out "$RUN/verify-restored-pair.json" | tee -a "$EVIDENCE"
+jq -e '.pairBound == true and .ok == true' "$RUN/verify-restored-pair.json" >/dev/null || die "the restored backup-v4 pair is not proven"
+ok "restored pair (new OpenBao from the Raft snapshot + SQLite backup) verifies with Cosmian stopped; pair marker of backup $(jq -r .pair.backupId "$RUN/backup-v4/backup.json")"
 
 # ───────────────────────── 6. v4 backend on the restored pair ─────────────────────────
-(cd "$WEB/backend" && exec env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production PORT="$V4_PORT" HOST=127.0.0.1 DATABASE_PATH="$RUN/restored.db" \
-  OPENBAO_ADDR="$RADDR" OPENBAO_CACERT="$RCACERT" OPENBAO_TOKEN_FILE="$RUN/bao/secrets/backend.token" \
-  OPENBAO_RA_TOKEN_FILE="$RUN/bao/secrets/ra.token" ALLOW_UNAUTHENTICATED_SSH_CA=true ALLOW_CA_KEY_EXPORT=true \
-  FRONTEND_URL="http://localhost:$V4_PORT" CRL_DISTRIBUTION_URL="http://localhost:$V4_PORT/crl" \
-  node --import tsx src/server.ts > "$RUN/v4-backend.log" 2>&1) & V4_PID=$!
-for _ in $(seq 1 60); do
-  kill -0 "$V4_PID" 2>/dev/null || die "v4 backend exited at startup; see $RUN/v4-backend.log"
-  curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null 2>&1 && break
-  sleep 1
-done
-curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null || { tail -30 "$RUN/v4-backend.log"; die "v4 backend did not start"; }
+start_v4() {
+  (cd "$WEB/backend" && exec env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production PORT="$V4_PORT" HOST=127.0.0.1 DATABASE_PATH="$RUN/restored.db" \
+    OPENBAO_ADDR="$RADDR" OPENBAO_CACERT="$RCACERT" OPENBAO_TOKEN_FILE="$RUN/bao/secrets/backend.token" \
+    OPENBAO_RA_TOKEN_FILE="$RUN/bao/secrets/ra.token" ALLOW_UNAUTHENTICATED_SSH_CA=true ALLOW_CA_KEY_EXPORT=true \
+    FRONTEND_URL="http://localhost:$V4_PORT" CRL_DISTRIBUTION_URL="http://localhost:$V4_PORT/crl" \
+    node --import tsx src/server.ts > "$RUN/v4-backend.log" 2>&1) & V4_PID=$!
+  for _ in $(seq 1 60); do
+    kill -0 "$V4_PID" 2>/dev/null || die "v4 backend exited at startup; see $RUN/v4-backend.log"
+    curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null || { tail -30 "$RUN/v4-backend.log"; die "v4 backend did not start"; }
+}
+start_v4
 API="http://127.0.0.1:$V4_PORT/api/v1"
 step() { local name=$1; shift; if out=$("$@" 2>&1); then ok "v4 runtime: $name"; else log "$out" | head -5; die "v4 runtime: $name"; fi; }
 host_cert() {
@@ -342,26 +355,75 @@ ra_first_provision() {
 }
 step "first SCEP RA provisioning on v4: generated OpenBao key, signs, distinct from the migrated RA" ra_first_provision
 
-# ───────────────────────── 7. later restore: matching and mismatching pairs ─────────────────────────
-# v4 accepted writes above (new leaf keys, a CRL, a new RA key). Back up that pair and check it from
-# the database side; then put the cutover-time Raft snapshot back next to the LATER database: the
-# keys made after the snapshot are missing, and verify --restore must say so.
-kill "$V4_PID" 2>/dev/null || true; wait "$V4_PID" 2>/dev/null || true; V4_PID=
+# ───────────────────────── 7. later restores: pair evidence ─────────────────────────
+# v4 accepted writes above (new leaf keys, a CRL, a new RA key). Back up that pair (B1). Then only
+# ROWS change (an X.509 revocation and an SSH revocation through the v4 API: no key is made or
+# deleted) and back up again (B2). B1 and B2 hold the same keys, so the key checks cannot tell
+# their halves apart; the pair marker in the Raft snapshot and the database content digest do.
 OPTOKEN="$RUN/bao/secrets/operator.token" # the restored cluster keeps the tokens of the snapshot
-migrate backup --db "$RUN/restored.db" --out-dir "$RUN/backup-later" --label "after v4 writes" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$OPTOKEN" >/dev/null
-RESTORE=(verify --restore --source-db "$SRC" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$RUN/bao/secrets/backend.token" --openbao-ra-token-file "$RUN/bao/secrets/ra.token")
-cp "$RUN/backup-later/pki.db" "$RUN/later.db"
-migrate "${RESTORE[@]}" --target-db "$RUN/later.db" --out "$RUN/verify-later.json" | tee -a "$EVIDENCE"
-ok "later pair (database and Raft of one backup, after v4 writes) verifies with verify --restore"
-BAO_TOKEN="$(cat "$OPTOKEN")" bao "$P-bao2" operator raft snapshot restore -force /tmp/openbao.snap
-sleep 2
-bao "$P-bao2" operator unseal "$(cat "$RUN/bao/secrets/unseal.key")" >/dev/null 2>&1 || true
-for _ in $(seq 1 30); do if bao "$P-bao2" status >/dev/null 2>&1; then break; fi; sleep 1; done
-set +e; migrate "${RESTORE[@]}" --target-db "$RUN/later.db" --out "$RUN/verify-mismatch.json" > "$RUN/verify-mismatch.txt"; rc=$?; set -e
-cat "$RUN/verify-mismatch.txt" >> "$EVIDENCE"
-[ $rc -eq 1 ] && grep -q '^FAIL pair: .* in OpenBao' "$RUN/verify-mismatch.txt" || die "an older Raft snapshot next to the later database was not refused (exit $rc)"
-ok "older Raft snapshot + later database refused: $(grep -c '^FAIL pair:' "$RUN/verify-mismatch.txt") key(s) made after the snapshot are missing"
-cp "$RUN/backup-v4/pki.db" "$RUN/cutover-copy.db"
-migrate "${RESTORE[@]}" --target-db "$RUN/cutover-copy.db" >/dev/null
+stop_v4() { kill "$V4_PID" 2>/dev/null || true; wait "$V4_PID" 2>/dev/null || true; V4_PID=; }
+restore_snap() { # backup-dir: put its Raft snapshot into the live cluster (bao2)
+  docker cp "$1/openbao.snap" "$P-bao2:/tmp/restore.snap"
+  BAO_TOKEN="$(cat "$OPTOKEN")" bao "$P-bao2" operator raft snapshot restore -force /tmp/restore.snap
+  sleep 2
+  bao "$P-bao2" operator unseal "$(cat "$RUN/bao/secrets/unseal.key")" >/dev/null 2>&1 || true
+  for _ in $(seq 1 30); do if bao "$P-bao2" status >/dev/null 2>&1; then break; fi; sleep 1; done
+}
+BK=(--quiesced --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$OPTOKEN")
+RESTORE=(verify --restore --source-db "$SRC" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$RUN/bao/secrets/backend.token" --openbao-ra-token-file "$RUN/bao/secrets/ra.token" --openbao-operator-token-file "$OPTOKEN")
+stop_v4
+migrate backup --db "$RUN/restored.db" --out-dir "$RUN/backup-b1" --label "B1 after v4 writes" "${BK[@]}" >/dev/null
+start_v4
+step "X.509 revocation after B1 (database only)" post "/certificates/$L3R/revoke" '{"reason":"keyCompromise"}'
+step "SSH revocation after B1 (database only)" post "/ssh/cas/$HOST_CA/revoke-serial" '{"serial":"424242","reason":"compromised"}'
+stop_v4
+migrate backup --db "$RUN/restored.db" --out-dir "$RUN/backup-b2" --label "B2 after revocations" "${BK[@]}" >/dev/null
+for b in b1 b2; do migrate check-backup --dir "$RUN/backup-$b" | tee -a "$EVIDENCE"; done
+keys_of() { node -e 'const {DatabaseSync}=require("node:sqlite");const d=new DatabaseSync(process.argv[1],{readOnly:true});const q=s=>JSON.stringify(d.prepare(s).all());console.log(require("node:crypto").createHash("sha256").update(q("SELECT id,state,mount,key_name,key_version,public_key_pem FROM keystore_objects ORDER BY id")+q("SELECT id,kms_key_id,fingerprint_sha256 FROM ssh_cas ORDER BY id")+q("SELECT integration_id,key_id,key_version FROM integration_ras ORDER BY integration_id")).digest("hex"))' "$1"; }
+revs_of() { node -e 'const {DatabaseSync}=require("node:sqlite");const d=new DatabaseSync(process.argv[1],{readOnly:true});console.log(d.prepare("SELECT status FROM certificates WHERE id=?").get(process.argv[2]).status, d.prepare("SELECT COUNT(*) n FROM ssh_revocations WHERE serial=?").get("424242").n)' "$1" "$L3R"; }
+[ "$(keys_of "$RUN/backup-b1/pki.db")" = "$(keys_of "$RUN/backup-b2/pki.db")" ] || die "B1 and B2 must hold the same keys"
+[ "$(revs_of "$RUN/backup-b1/pki.db")" = "active 0" ] && [ "$(revs_of "$RUN/backup-b2/pki.db")" = "revoked 1" ] || die "B2 must hold the two revocations, B1 none"
+ok "B1 and B2: same keys and public keys; B2 adds one X.509 and one SSH revocation (database only)"
+# expect_restore NAME DB-FROM SNAP-FROM CLAIMED EXPECT(pass|fail)
+expect_restore() {
+  local name=$1 db=$2 snap=$3 claimed=$4 want=$5 out="$RUN/verify-$1"
+  restore_snap "$RUN/backup-$snap"
+  cp "$RUN/backup-$db/pki.db" "$RUN/restore-$name.db"
+  set +e; migrate "${RESTORE[@]}" --backup-dir "$RUN/backup-$claimed" --target-db "$RUN/restore-$name.db" --out "$out.json" > "$out.txt"; rc=$?; set -e
+  cat "$out.txt" >> "$EVIDENCE"
+  if [ "$want" = pass ]; then
+    [ $rc -eq 0 ] && jq -e '.ok and .pairBound' "$out.json" >/dev/null || die "$name: the same pair was not verified (exit $rc)"
+  else
+    # Refused, and ONLY by the pair evidence: every key check passes for these halves.
+    [ $rc -eq 1 ] && jq -e '(.ok | not) and (.pairBound | not) and ([.checks[] | select(.ok | not) | .name] | length == 1 and (.[0] | startswith("restore: the database and OpenBao are the two halves")))' "$out.json" >/dev/null \
+      || die "$name: swapped halves were not refused by the pair evidence alone (exit $rc)"
+  fi
+}
+expect_restore same-b2 b2 b2 b2 pass
+ok "same pair B2 (its database + its Raft snapshot) verifies: pairBound=true"
+expect_restore old-db-new-raft-claim-b1 b1 b2 b1 fail
+expect_restore old-db-new-raft-claim-b2 b1 b2 b2 fail
+ok "OLD database (B1) + NEWER Raft (B2) refused whichever backup is named: $(jq -r '.checks[] | select(.ok | not) | .detail' "$RUN/verify-old-db-new-raft-claim-b1.json" | head -c 200)"
+expect_restore new-db-old-raft-claim-b1 b2 b1 b1 fail
+expect_restore new-db-old-raft-claim-b2 b2 b1 b2 fail
+ok "NEWER database (B2) + OLD Raft (B1) refused whichever backup is named (the X.509 and SSH revocations would be lost)"
+expect_restore same-b1 b1 b1 b1 pass
+ok "same pair B1 verifies"
+# Plain --restore (no backup directory) is never a verified success.
+set +e; migrate verify --restore --source-db "$SRC" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$RUN/bao/secrets/backend.token" --openbao-ra-token-file "$RUN/bao/secrets/ra.token" --target-db "$RUN/restore-same-b1.db" --out "$RUN/verify-plain.json" > "$RUN/verify-plain.txt"; rc=$?; set -e
+cat "$RUN/verify-plain.txt" >> "$EVIDENCE"
+[ $rc -eq 1 ] && jq -e '(.ok | not) and (.pairBound | not)' "$RUN/verify-plain.json" >/dev/null || die "plain verify --restore returned success (exit $rc)"
+ok "plain verify --restore without --backup-dir: verified=false pairBound=false (exit 1)"
+# The cutover-time snapshot next to the later database: keys made after it are missing too.
+expect_keys_missing() {
+  restore_snap "$RUN/backup-v4"
+  cp "$RUN/backup-b2/pki.db" "$RUN/restore-cutover-snap.db"
+  set +e; migrate "${RESTORE[@]}" --backup-dir "$RUN/backup-b2" --target-db "$RUN/restore-cutover-snap.db" --out "$RUN/verify-mismatch.json" > "$RUN/verify-mismatch.txt"; rc=$?; set -e
+  cat "$RUN/verify-mismatch.txt" >> "$EVIDENCE"
+  [ $rc -eq 1 ] && grep -q '^FAIL pair: .* in OpenBao' "$RUN/verify-mismatch.txt" && grep -q '^FAIL restore: the database and OpenBao are the two halves' "$RUN/verify-mismatch.txt"
+}
+expect_keys_missing || die "the cutover-time Raft snapshot next to the later database was not refused"
+ok "cutover-time Raft snapshot + later database refused: pair marker of another backup and $(grep -c '^FAIL pair:' "$RUN/verify-mismatch.txt") key(s) made after the snapshot missing"
+expect_restore cutover-pair v4 v4 v4 pass
 ok "the cutover-time pair (its own database and snapshot) still verifies with verify --restore"
 ok "rehearsal complete: $RUN"

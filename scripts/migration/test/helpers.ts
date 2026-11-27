@@ -258,7 +258,24 @@ export class FakeTransit implements TargetStore {
     return key;
   }
 
-  async raftSnapshot(dest: string) { writeFileSync(dest, Buffer.from(`fake-snapshot:${[...this.keys.keys()].join(',')}`), { mode: 0o600 }); }
+  /** KV v1 entries (the backup pair marker), part of the snapshot like Transit keys. */
+  kv = new Map<string, Record<string, string>>();
+  async kvRead(mount: string, path: string) { const v = this.kv.get(`${mount}/${path}`); return v ? { ...v } : null; }
+  async kvWrite(mount: string, path: string, data: Record<string, string>) { this.kv.set(`${mount}/${path}`, { ...data }); }
+
+  /** The whole state (keys and KV), restorable with `FakeTransit.restore`: a Raft snapshot of the fake. */
+  async raftSnapshot(dest: string) {
+    const keys = [...this.keys].map(([k, v]) => [k, { ...v, priv: v.priv.export({ format: 'pem', type: 'pkcs8' }) }]);
+    writeFileSync(dest, JSON.stringify({ fake: 'snapshot', keys, kv: [...this.kv] }), { mode: 0o600 });
+  }
+
+  /** Restores a snapshot file of `raftSnapshot` into `into` (replacing its state), like `bao operator raft snapshot restore`. */
+  static restore<T extends FakeTransit>(file: string, into: T): T {
+    const j = JSON.parse(readFileSync(file, 'utf8')) as { keys: [string, FakeKey & { priv: string }][]; kv: [string, Record<string, string>][] };
+    into.keys = new Map(j.keys.map(([k, v]) => [k, { ...v, priv: createPrivateKey(v.priv) }]));
+    into.kv = new Map(j.kv);
+    return into;
+  }
 }
 
 /** A populated v3 installation: Cosmian objects + database rows, the way v3 services write them. */

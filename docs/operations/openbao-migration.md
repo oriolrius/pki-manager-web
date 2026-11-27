@@ -322,18 +322,33 @@ a session key wrapped to the certificate key.
 Then revoke the migration token, take a backup pair, and start v4 on the target copy:
 
 ```sh
-pki-migrate backup --db "$W/target/pki.db" --out-dir "$W/backup-v4" --label "migrated pair" \
+pki-migrate backup --db "$W/target/pki.db" --out-dir "$W/backup-v4" --label "migrated pair" --quiesced \
   --openbao-addr https://openbao.example:8200 --openbao-cacert "$W/openbao-ca.pem" --openbao-token-file "$W/operator-token"
 ```
 
-The token for the Raft snapshot needs `read` on `sys/storage/raft/snapshot` (an operator
-token, not the migration token). When the snapshot is refused, `backup` removes the directory
-it created: a database without its snapshot is not a backup pair. The snapshot is encrypted with the OpenBao keyring: restore
-needs the unseal keys of the cluster that took it. Keep the database and the snapshot of one
-backup together: one without the other loses keys or rows.
+A pair backup needs `--quiesced`: stop every writer first (the v4 backend, its OpenBao Agents,
+scripts with a runtime token). The token needs the `pki-manager-operator` policy: `read` on
+`sys/storage/raft/snapshot` and the backup pair marker (an operator token, not the migration
+token; run `bootstrap.sh configure` once, it enables the marker mount). The command:
 
-To check a restore made right after this backup (before v4 accepted writes), run the same
-`verify --cutover` on the restored database and the restored OpenBao.
+1. copies the database with the SQLite online backup API and records its logical content digest;
+2. writes a pair marker (a new backup id and that digest) to the KV entry
+   `pki-manager-backup/pair-marker`, and reads it back;
+3. takes the Raft snapshot: the marker is inside it, encrypted by the OpenBao barrier;
+4. sets the live marker to `released`, so a later snapshot of the cluster never looks like
+   this backup;
+5. fails when the live database changed during the backup (a writer was running);
+6. writes `backup.json` last: file digests, the content digest and the backup id.
+
+When a step fails, `backup` removes the directory it created and sets the marker to
+`aborted`: a database without its snapshot is not a backup pair. A directory without
+`backup.json` (a killed run) is an incomplete backup; `check-backup` says so. The snapshot is
+encrypted with the OpenBao keyring: restore needs the unseal keys of the cluster that took it.
+Keep the database and the snapshot of one backup together.
+
+To check a restore made right after this backup (before v4 accepted writes), run
+`verify --restore --backup-dir "$W/backup-v4"` (section 8) and the same `verify --cutover` on
+the restored database and the restored OpenBao.
 
 ### 7. Return path
 
@@ -343,18 +358,40 @@ keys, serials, revocations); plan a forward recovery from the v4 backup pair ins
 Cosmian until the recovery window closes, then destroy its objects, including the legacy
 ECIES host keys.
 
-### 8. Verify a later restore
+### 8. Verify a restore
 
-After v4 accepted writes, a restored database differs from the v3 copy (new certificates,
-revocations, CRLs, deleted keys), so the cutover comparison does not apply. Restore the
-database and the Raft snapshot of **one** `backup` directory, then, before v4 starts:
+Restore the database and the Raft snapshot of **one** `backup` directory, then, before v4
+starts (the Agents may run; the check reads their token files):
 
 ```sh
-pki-migrate verify --restore --target-db /restored/pki.db $BAO --openbao-ra-token-file "$W/ra-token" \
+pki-migrate verify --restore --backup-dir /backups/backup-v4 --target-db /restored/pki.db \
+  $BAO --openbao-ra-token-file "$W/ra-token" --openbao-operator-token-file "$W/operator-token" \
   --source-db "$W/backup-v3/pki.db" --out "$W/verify-restore.json"
 ```
 
-`--restore` needs no manifest. It starts from the database: every key the database owns
+`--openbao-token-file` is the backend token (X.509 and SSH keys), `--openbao-ra-token-file`
+the RA token, `--openbao-operator-token-file` an operator token: only the operator policy can
+read the pair marker. Nothing is written. The command prints `verified=<bool> pairBound=<bool>`;
+the JSON report (`--out`) has `mode: "restore"`, `ok`, `pairBound`, `checks[]` (`name`, `ok`,
+`detail`), `counts` and `warnings`. Exit code 0 only when `ok` is true.
+
+**Pair evidence** (check `restore: the database and OpenBao are the two halves of one backup`):
+
+- the backup directory is intact (`check-backup`), format `pki-manager-migration-backup/2` with a
+  pair marker;
+- the restored OpenBao holds the marker of **that** backup in state `snapshot`: an OpenBao
+  restored from another backup, a live cluster, or a snapshot taken outside `pki-migrate backup`
+  fails;
+- the restored database has the content digest of that backup: a database of another backup,
+  or one that changed after the restore, fails.
+
+This holds when two backups have the same keys (only rows changed between them, for example a
+revocation): an older database next to a newer snapshot, or the reverse, fails whichever backup
+is named. Without `--backup-dir` the report is never `ok` (`pairBound=false`). A backup made
+before pair markers (format `/1`) or a SQLite-only backup cannot prove its pair: `check-backup`
+still checks its files; take a new backup pair.
+
+**Database side** (no manifest needed): every key the database owns
 must be in OpenBao at its version with the same public key, certificate rows must certify
 their keys, and no id may need Cosmian. Each key version must also pass the v4 runtime
 policy of its purpose, the same check as the migration (`lib/key-policy.ts`): a key whose
@@ -373,8 +410,8 @@ restored: the keys made after the snapshot (an X.509 issue, a new SSH CA, an RA 
 missing. Keys that v4 deleted (rows in state `destroyed`) need nothing; a deleted key that
 the snapshot still holds is a `WARN` line, as is a key row left `pending` by an interrupted
 creation. Pass `--manifest` and `--approval` when the migration dropped keys or accepted
-missing PEMs: the gate then knows those decisions. A key in OpenBao that no row uses (a
-snapshot newer than the database) is not found: Transit keys are not listed.
+missing PEMs: the gate then knows those decisions. A key in OpenBao that no row uses is not found (Transit keys are not listed); the pair
+evidence above finds a snapshot newer than the database.
 
 ## Controlled rotation
 
@@ -422,8 +459,11 @@ v3.19.1 backend, Cosmian 5.28.0 and the OpenBao fork from `scripts/openbao-image
    and RA tokens. Use the migrated keys, connect to a test SSH server that presents a new
    host certificate, then provision the RA of a new SCEP integration. The SSH client
    checks the host certificate against the original v3 host CA.
-7. Take a second backup after these writes. Verify this pair, then check that restoring the
-   older Raft snapshot alongside the later database reports the missing keys.
+7. Restores with pair evidence: back up the pair after the v4 writes (B1); make an X.509 and
+   an SSH revocation through the v4 API (rows only, no key); back up again (B2). The same pair
+   verifies; the older database with the newer snapshot, and the newer database with the older
+   snapshot, fail whichever backup is named; `verify --restore` without `--backup-dir` is not
+   verified; the cutover-time snapshot next to the later database fails.
 
 The synthetic rehearsal ran on 2026-11-27 from commit `ff096d11` with separate X.509/SSH
 and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b2`.

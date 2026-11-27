@@ -18,12 +18,15 @@
  * - cutover gate: reconciled with the frozen source, no key left to rotate,
  *   no id that only Cosmian can resolve.
  *
- * verifyRestore checks a LATER restore (after v4 accepted writes): the pair
- * and the gate from the database side, and the audit history of the source.
+ * verifyRestore checks a restore of a backup pair: the pair evidence (the
+ * database and the OpenBao state are the two halves of ONE backup directory,
+ * lib/backup.ts), the pair and the gate from the database side, and the audit
+ * history of the source.
  */
 import { X509Certificate } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { TargetStore } from './openbao.ts';
+import { checkPairEvidence } from './backup.ts';
 import { approvedTarget } from './policy.ts';
 import { checkPair } from './pair.ts';
 import { reconcile } from './reconcile.ts';
@@ -43,6 +46,8 @@ export interface VerifyReport {
   cosmianRequired: boolean;
   /** Frozen source given, bound to the manifest and reconciled (migration mode). */
   reconciled: boolean;
+  /** Restore mode: the database and OpenBao are proven to be the halves of one backup. */
+  pairBound?: boolean;
   checks: Check[];
   counts: Record<string, number>;
   /** Findings that do not fail the check (pending rows, keys left after a delete). */
@@ -226,9 +231,12 @@ export async function verifyMigration(o: {
 }
 
 /**
- * A later restore: the database and the Raft snapshot of one backup pair,
- * after v4 accepted writes (new keys, revocations, deleted keys). Nothing is
- * compared with the manifest's key list; every check starts from the database.
+ * A restore of one backup pair, possibly after v4 accepted writes (new keys,
+ * revocations, deleted keys). Nothing is compared with the manifest's key list;
+ * every check starts from the database. Without `evidence` (the backup
+ * directory and an operator identity to read the pair marker) the result is
+ * never ok: the database side alone cannot tell which backup a Raft snapshot
+ * comes from when only rows changed between two backups.
  * With `source`, the audit history of the frozen v3 copy must still be there.
  */
 export async function verifyRestore(o: {
@@ -236,15 +244,25 @@ export async function verifyRestore(o: {
   source?: DatabaseSync;
   /** Optional: the decisions of the migration (accepted missing PEMs, dropped keys). */
   manifest?: Manifest; approval?: Approval;
+  /** The backup directory that was restored, and the identity that reads its marker. */
+  evidence?: { dir: string; operator: TargetStore };
 }): Promise<VerifyReport> {
   const checks: Check[] = [];
   const add = (name: string, ok: boolean, detail?: string) => checks.push({ name, ok, detail });
   const counts: Record<string, number> = {};
   const warnings: string[] = [];
+  let pairBound = false;
+  if (o.evidence) {
+    const e = await checkPairEvidence({ dir: o.evidence.dir, target: o.target, operator: o.evidence.operator });
+    pairBound = e.problems.length === 0;
+    add('restore: the database and OpenBao are the two halves of one backup (pair marker + content digest)', pairBound, pairBound ? `backup ${e.backupId}` : e.problems.join('; '));
+  } else {
+    add('restore: the database and OpenBao are the two halves of one backup (pair marker + content digest)', false, 'no pair evidence: pass --backup-dir (the restored backup directory) and --openbao-operator-token-file; the keys alone cannot prove the pair');
+  }
   await checkPair({ target: o.target, store: o.store, raStore: o.raStore, profile: o.profile, add, counts, warnings });
   const unresolved = cosmianGate(o.target, new Set(o.approval?.acceptMissingPem ?? []), add, o);
   if (o.source) counts.rowsReconciled = reconcile({ source: o.source, target: o.target, add, mode: 'history' }).rows;
-  return { mode: 'restore', ok: checks.every(c => c.ok), cutoverReady: false, cosmianRequired: unresolved > 0, reconciled: false, checks, counts, warnings };
+  return { mode: 'restore', ok: checks.every(c => c.ok), cutoverReady: false, cosmianRequired: unresolved > 0, reconciled: false, pairBound, checks, counts, warnings };
 }
 
 /** Every id the v4 runtime looks up must resolve without Cosmian. Returns the number that do not. */
