@@ -6,7 +6,7 @@
  */
 import { randomUUID } from 'crypto';
 import { eq, and, gt, inArray, isNull } from 'drizzle-orm';
-import { sshCas, sshCertificates, sshHosts } from '../db/schema.js';
+import { sshCas, sshCertificates, sshHosts, zones } from '../db/schema.js';
 import {
   SshCaKeyExistsError, SshCaKeyMigrationRequiredError, adoptSshCaKey, caPublicKeyFromLine, createSshCaKey, isLegacySshCa, signWithSshCa,
 } from './ssh-ca-key.js';
@@ -14,7 +14,7 @@ import { verifySshCaSignature } from '../openbao/ssh-transit.js';
 import { createAuditLog } from '../lib/audit.js';
 import { logger } from '../lib/logger.js';
 import { parseSshPublicKey } from '../crypto/ssh/pubkey.js';
-import { resolveZone, assertZoneUsable } from './ssh-zone.service.js';
+import { resolveZone, assertZoneUsable, SshZoneArchivedError, SshZoneNotFoundError } from './ssh-zone.service.js';
 import type { ServiceContext } from './types.js';
 
 export type SshCaType = 'user' | 'host';
@@ -101,6 +101,42 @@ function toDto(row: typeof sshCas.$inferSelect): SshCaDto {
   };
 }
 
+/** `openbao-transit:<mount>:<name>` of a key reference: the key without its version. */
+function sshKeyName(kmsKeyId: string): string {
+  return kmsKeyId.split(':').slice(0, -1).join(':');
+}
+
+type SshCaDb = Pick<ServiceContext['db'], 'select'>;
+
+/**
+ * The import invariants, read synchronously so they can run inside a
+ * better-sqlite3 transaction: the zone is usable, the zone has no active CA of
+ * this type, and (with `key`) no CA of any zone uses the same Transit key (any
+ * version) or the same public key. One key is one trust anchor.
+ */
+function assertImportAllowed(
+  db: SshCaDb,
+  check: { zoneId: string; zoneName: string; caType: SshCaType; key?: { keyName: string; fingerprint: string }; recheckZone?: boolean },
+): void {
+  if (check.recheckZone) {
+    const row = db.select({ name: zones.name, status: zones.status }).from(zones).where(eq(zones.id, check.zoneId)).get();
+    if (!row) throw new SshZoneNotFoundError(check.zoneId);
+    if (row.status === 'archived') throw new SshZoneArchivedError(row.name);
+  }
+  const active = db
+    .select({ id: sshCas.id })
+    .from(sshCas)
+    .where(and(eq(sshCas.zoneId, check.zoneId), eq(sshCas.caType, check.caType), eq(sshCas.status, 'active')))
+    .all();
+  if (active.length) throw new SshCaExistsError(check.caType, check.zoneName);
+  if (!check.key) return;
+  const { keyName, fingerprint } = check.key;
+  const all = db.select({ kmsKeyId: sshCas.kmsKeyId, fingerprintSha256: sshCas.fingerprintSha256 }).from(sshCas).all();
+  if (all.some((c) => c.fingerprintSha256 === fingerprint || sshKeyName(c.kmsKeyId) === keyName)) {
+    throw new SshCaKeyExistsError();
+  }
+}
+
 export class SshCaService {
   /** Create a non-exportable ECDSA-P256 SSH CA (decision-011), scoped to a zone. */
   async create(ctx: ServiceContext, params: { caType: SshCaType; label?: string; zone?: string }): Promise<SshCaDto> {
@@ -171,64 +207,82 @@ export class SshCaService {
    * reference. A Cosmian KMS id is refused (`SshCaKeyMigrationRequiredError`).
    * The key must not belong to another CA in any zone. Verifies the key is usable
    * by signing & verifying a probe before persisting.
+   *
+   * The checks run twice: once before the key-store calls (fail fast) and again
+   * in one IMMEDIATE SQLite transaction with the insert, because the key-store
+   * calls are slow and a concurrent import can win in between. The key-store
+   * calls stay outside the write lock. A losing import changes nothing: no row,
+   * and nothing in OpenBao (import never creates or deletes a key).
    */
   async import(
     ctx: ServiceContext,
     params: { caType: SshCaType; label?: string; kmsKeyId: string; kmsPublicKeyId: string; zone?: string }
   ): Promise<SshCaDto> {
     const zone = await resolveZone(ctx, params.zone);
-    await assertZoneUsable(ctx, zone.id);
-    const existing = await ctx.db
-      .select()
-      .from(sshCas)
-      .where(and(eq(sshCas.zoneId, zone.id), eq(sshCas.caType, params.caType), eq(sshCas.status, 'active')));
-    if (existing.length) throw new SshCaExistsError(params.caType, zone.name);
-
-    if (isLegacySshCa({ kmsKeyId: params.kmsKeyId }) || isLegacySshCa({ kmsKeyId: params.kmsPublicKeyId })) {
-      throw new SshCaKeyMigrationRequiredError();
-    }
-    if (params.kmsPublicKeyId !== params.kmsKeyId) throw new SshCaAlgorithmError('kmsPublicKeyId must equal kmsKeyId (one OpenBao key reference)');
-    const { keyRef, opensshPublicKey: line } = await adoptSshCaKey(params.kmsKeyId, params.label ?? `ssh-${params.caType}-ca`);
-    const parsed = parseSshPublicKey(line);
-    if (parsed.algo !== 'ecdsa-sha2-nistp256') throw new SshCaAlgorithmError(parsed.algo);
-
-    // One key is one trust anchor: refuse a key (same Transit key, any version,
-    // or the same public key) that another CA of any zone already uses.
-    const keyName = keyRef.split(':').slice(0, -1).join(':');
-    const all = await ctx.db.select({ kmsKeyId: sshCas.kmsKeyId, fingerprintSha256: sshCas.fingerprintSha256 }).from(sshCas);
-    if (all.some((c) => c.fingerprintSha256 === parsed.fingerprintSha256 || c.kmsKeyId.split(':').slice(0, -1).join(':') === keyName)) {
-      throw new SshCaKeyExistsError();
-    }
-
     const id = randomUUID();
-    // Prove the key can sign and the signature verifies with the public key we
-    // are about to publish (local verification, no key-store round trip).
-    const probe = Buffer.from(`ssh-ca-import-probe:${parsed.fingerprintSha256}`);
-    const der = await signWithSshCa({ id, kmsKeyId: keyRef, opensshPublicKey: line }, probe, { purpose: 'probe', ctx });
-    if (!verifySshCaSignature(caPublicKeyFromLine(line), probe, der)) throw new Error('imported CA key failed a sign/verify probe; refusing to adopt');
+    try {
+      await assertZoneUsable(ctx, zone.id);
+      assertImportAllowed(ctx.db, { zoneId: zone.id, zoneName: zone.name, caType: params.caType });
 
-    await ctx.db.insert(sshCas).values({
-      id,
-      zoneId: zone.id,
-      caType: params.caType,
-      label: params.label ?? null,
-      kmsKeyId: keyRef,
-      kmsPublicKeyId: keyRef,
-      opensshPublicKey: line,
-      fingerprintSha256: parsed.fingerprintSha256,
-      keyAlgorithm: 'ECDSA-P256',
-      status: 'active',
-    });
-    await createAuditLog({
-      db: ctx.db,
-      operation: 'ssh.ca.import',
-      entityType: 'ssh_ca',
-      entityId: id,
-      status: 'success',
-      details: { caType: params.caType, zone: zone.name, fingerprint: parsed.fingerprintSha256, kmsKeyId: keyRef },
-      ipAddress: ctx.ipAddress ?? undefined,
-    });
-    return toDto((await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0]);
+      if (isLegacySshCa({ kmsKeyId: params.kmsKeyId }) || isLegacySshCa({ kmsKeyId: params.kmsPublicKeyId })) {
+        throw new SshCaKeyMigrationRequiredError();
+      }
+      if (params.kmsPublicKeyId !== params.kmsKeyId) throw new SshCaAlgorithmError('kmsPublicKeyId must equal kmsKeyId (one OpenBao key reference)');
+      const { keyRef, opensshPublicKey: line } = await adoptSshCaKey(params.kmsKeyId, params.label ?? `ssh-${params.caType}-ca`);
+      const parsed = parseSshPublicKey(line);
+      if (parsed.algo !== 'ecdsa-sha2-nistp256') throw new SshCaAlgorithmError(parsed.algo);
+      const key = { keyName: sshKeyName(keyRef), fingerprint: parsed.fingerprintSha256 };
+      assertImportAllowed(ctx.db, { zoneId: zone.id, zoneName: zone.name, caType: params.caType, key });
+
+      // Prove the key can sign and the signature verifies with the public key we
+      // are about to publish (local verification, no key-store round trip).
+      const probe = Buffer.from(`ssh-ca-import-probe:${parsed.fingerprintSha256}`);
+      const der = await signWithSshCa({ id, kmsKeyId: keyRef, opensshPublicKey: line }, probe, { purpose: 'probe', ctx });
+      if (!verifySshCaSignature(caPublicKeyFromLine(line), probe, der)) throw new Error('imported CA key failed a sign/verify probe; refusing to adopt');
+
+      // Recheck and insert under one write lock (BEGIN IMMEDIATE): another
+      // import, create or rotation that committed during the probe is seen here,
+      // and no other writer can commit between the check and the insert.
+      ctx.db.transaction((tx) => {
+        assertImportAllowed(tx, { zoneId: zone.id, zoneName: zone.name, caType: params.caType, key, recheckZone: true });
+        tx.insert(sshCas)
+          .values({
+            id,
+            zoneId: zone.id,
+            caType: params.caType,
+            label: params.label ?? null,
+            kmsKeyId: keyRef,
+            kmsPublicKeyId: keyRef,
+            opensshPublicKey: line,
+            fingerprintSha256: parsed.fingerprintSha256,
+            keyAlgorithm: 'ECDSA-P256',
+            status: 'active',
+          })
+          .run();
+      }, { behavior: 'immediate' });
+
+      await createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.ca.import',
+        entityType: 'ssh_ca',
+        entityId: id,
+        status: 'success',
+        details: { caType: params.caType, zone: zone.name, fingerprint: parsed.fingerprintSha256, kmsKeyId: keyRef },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+      return toDto((await ctx.db.select().from(sshCas).where(eq(sshCas.id, id)).limit(1))[0]);
+    } catch (error) {
+      await createAuditLog({
+        db: ctx.db,
+        operation: 'ssh.ca.import',
+        entityType: 'ssh_ca',
+        entityId: id,
+        status: 'failure',
+        details: { caType: params.caType, zone: zone.name, kmsKeyId: params.kmsKeyId, error: error instanceof Error ? error.message : String(error) },
+        ipAddress: ctx.ipAddress ?? undefined,
+      });
+      throw error;
+    }
   }
 
   async list(ctx: ServiceContext, opts?: { zoneId?: string }): Promise<SshCaDto[]> {
