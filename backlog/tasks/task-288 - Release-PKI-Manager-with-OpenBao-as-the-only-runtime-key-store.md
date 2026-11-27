@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T08:00:00Z'
+updated_date: '2026-11-27T08:10:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -62,4 +62,6 @@ The source cutover uses a separate, expiring OpenBao migration identity. Runtime
 Migration rehearsal on synthetic v3.19.1 API data (10 keys). The author reports a forced interruption, successful resume and idempotent third apply, 78/78 cutover checks, and a verified SQLite plus Raft restore with Cosmian stopped. The restored backend issued and renewed certificates, signed a CRL and SSH host certificate, and used the original SCEP RA. The rehearsal included concurrent uncommitted runtime changes; a clean integrated rerun and independent review are pending. Export change b9620490 uses Node for encrypted PKCS#8 and Java for JKS and CA-only truststores. PKCS#12 key bundles retain the openssl executable to preserve mixed-case friendly names and legacy Unicode passwords. Hosted RBAC on bb61b79 stopped before the browser tests because the packaged process could not find the Drizzle migration journal.
 
 On clean commit 4fda0bbb the v3.19.1 rehearsal passed with synthetic data. All 10 key identities survived an interrupted migration and no-op repeat. Both the migrated database and a separate SQLite/Raft restore passed 78/78 checks. With Cosmian stopped, the restored v4 backend issued and renewed X.509 certificates, signed a CRL and SSH host certificate, and used the original SCEP RA. All 16 migration unit tests passed. The docs link check passed on 188 pages. The X.509 profiles and exports suite passed 61/61 on the same runtime. PR #120's RBAC failure on bb61b79 was caused by BuildKit 0.20.2 setting mode 0644 on migrations/meta. The corrected production image builds and migrates as UID 1001 on BuildKit 0.20.2 and 0.32.2. The 0.20.2 image passed all 23 Playwright RBAC tests. Independent checks for split credentials and the final integrated runtime remain pending.
+
+Independent migration review on c309a137 found release blockers. Cutover can omit source reconciliation, the source digest misses WAL-only changes, and restore verification misses keys created after the source manifest. Retired/shared SSH drop-key, Transit policy parity, an existing RA with a mismatched certificate, offline public certificate material and rotation of a non-transferable RA also need corrections. An operator must be able to detect a lost revocation and a mismatched Raft/SQLite pair before release. Positive rehearsal alone does not close AC2. Runtime error correction d3feda02 passed 1091 live tests, including 503 and Retry-After on OpenBao outages. The rehearsal at 27b62288 passed 78 checks twice, connected a real OpenSSH client with the original v3 host CA, exercised a newly provisioned RA and refused an occupied operator port without stopping its listener. The new diagnostics API is being synchronized with the CLI.
 <!-- SECTION:NOTES:END -->
