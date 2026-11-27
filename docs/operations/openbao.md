@@ -1,12 +1,12 @@
 # Operate the OpenBao key store
 
-Use this procedure for a **new installation of the OpenBao candidate**. The backend stores certificates and key references in SQLite. The OpenBao fork stores key material in encrypted Raft storage. The Agent authenticates the backend with AppRole. The backend reads the Agent token from a file on each request.
+Use this procedure for a **new PKI Manager v4 installation**. The backend stores certificates and key references in SQLite. The OpenBao fork stores key material in encrypted Raft storage. The Agent authenticates the backend with AppRole. The backend reads the Agent token from a file on each request.
 
 A v3 installation has its keys in Cosmian. Keep its matched application and KMS backups. Starting this stack against an existing v3 database does not transfer any keys. See [Docker deployment](deployment.md).
 
 ## Prepare the host
 
-Run these commands in Bash from the repository root on the deployment host. Use the candidate backend and frontend from the same checkout. Set the UI, OIDC and public CRL URL in the Docker deployment configuration before you issue certificates.
+Run these commands in Bash from the repository root on the deployment host. Use the backend and frontend from the same PKI Manager version. Set the UI, OIDC and public CRL URL in the Docker deployment configuration before you issue certificates.
 
 1. Select and verify the fork image. The version and source commit come from [image.env](../../openbao/image.env).
 
@@ -16,7 +16,7 @@ Run these commands in Bash from the repository root on the deployment host. Use 
    dc() { docker compose -f docker/docker-compose.yml "$@"; }
    ```
 
-   Persist the verified image reference as `OPENBAO_IMAGE` in `docker/.env` for subsequent sessions. If you build the unpublished application candidate locally, give it its own tag in that file and run `dc build backend frontend`.
+   Persist the verified image reference as `OPENBAO_IMAGE` in `docker/.env` for subsequent sessions. For a local build, set `IMAGE_TAG` to your local tag and run `dc build backend frontend`.
 
 2. Prepare the bind mounts. The OpenBao process runs as UID 1000. The Agent, bootstrap helper and backend run as UID 1001. The configuration and policies contain no credentials.
 
@@ -143,7 +143,7 @@ The configured SecretID has unlimited uses and no expiry. To replace it, take th
 
 ## Issue and revoke a migration token
 
-The v3 key migration (`pki-migrate`) uses its own short-lived identity, never the backend AppRole. Its policy is `pki-manager-migration`, from [scripts/migration/policies/pki-manager-migration.hcl](../../scripts/migration/policies/pki-manager-migration.hcl). It reads the wrapping keys, imports new keys, reads them and signs a challenge on the three mounts. It cannot export, back up, configure, rotate or delete keys, recover RA session keys, read `sys/` or create tokens. The backend policies have no import path and no wrapping-key read. The backend token cannot create a migration token.
+The v3 key migration (`pki-migrate`) uses its own short-lived identity, never the backend AppRole. Its policy is `pki-manager-migration`, from [scripts/migration/policies/pki-manager-migration.hcl](../../scripts/migration/policies/pki-manager-migration.hcl). It reads the wrapping keys, imports new keys, reads them and signs a challenge on the three mounts. It cannot export, back up, configure, rotate or delete keys, recover RA session keys or create tokens. Preflight reads mount metadata under `sys/internal/ui/mounts/`. The backend policies have no import path and no wrapping-key read. The backend token cannot create a migration token.
 
 | Operation | Identity |
 |---|---|
