@@ -28,7 +28,8 @@ services:
       retries: 40
     networks: [internal]
 
-  # One-shot (the hook runs `bootstrap dev`): init-dev, unseal-dev, configure, backend-token.
+  # One-shot (the hook runs `bootstrap dev`): init-dev, unseal-dev, configure, backend-token,
+  # ra-token (the X.509/SSH and the SCEP RA credentials are separate tokens).
   bootstrap:
     image: ${OPENBAO_IMAGE:?}
     profiles: [bootstrap]
@@ -62,6 +63,7 @@ services:
       - OPENBAO_ADDR=https://openbao:8200
       - OPENBAO_CACERT=/run/openbao/ca.pem
       - OPENBAO_TOKEN_FILE=/run/openbao/backend-token
+      - OPENBAO_RA_TOKEN_FILE=/run/openbao/ra-token
       - OPENBAO_TRANSIT_MOUNT=pki-manager
       - OPENBAO_RA_MOUNT=pki-manager-ra
       - CRL_DISTRIBUTION_URL=http://localhost:${ACCEPT_API_PORT:?}/crl
@@ -74,6 +76,7 @@ services:
       - pki-data:/app/backend/data
       - ${ACCEPT_STATE_DIR:?}/openbao/tls/ca.pem:/run/openbao/ca.pem:ro
       - ${ACCEPT_STATE_DIR:?}/openbao/secrets/backend-token:/run/openbao/backend-token:ro
+      - ${ACCEPT_STATE_DIR:?}/openbao/secrets/ra-token:/run/openbao/ra-token:ro
     tmpfs:
       - /tmp
     ports:

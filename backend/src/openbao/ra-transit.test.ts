@@ -43,7 +43,9 @@ describe('OpenBao RA Transit client', () => {
   beforeAll(async () => {
     const identity = tlsIdentity('fake-openbao');
     dir = mkdtempSync(join(tmpdir(), 'openbao-ra-test-'));
-    writeFileSync(join(dir, 'ca.pem'), identity.cert); writeFileSync(join(dir, 'token'), 's.test-token-0123456789\n');
+    writeFileSync(join(dir, 'ca.pem'), identity.cert); writeFileSync(join(dir, 'ra-token'), 's.test-token-0123456789\n');
+    // The X.509/SSH credential: the fake refuses it on the RA mount, like the real policies.
+    writeFileSync(join(dir, 'token'), 's.backend-token-0123456789\n');
     server = createServer({ key: identity.key, cert: identity.cert }, (req, res) => {
       const chunks: Buffer[] = [];
       req.on('data', c => chunks.push(c)); req.on('end', () => {
@@ -74,7 +76,7 @@ describe('OpenBao RA Transit client', () => {
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const { port } = server.address() as AddressInfo;
-    env = { OPENBAO_ADDR: `https://127.0.0.1:${port}`, OPENBAO_CACERT: join(dir, 'ca.pem'), OPENBAO_TOKEN_FILE: join(dir, 'token'), OPENBAO_NAMESPACE: 'pki/ns1' };
+    env = { OPENBAO_ADDR: `https://127.0.0.1:${port}`, OPENBAO_CACERT: join(dir, 'ca.pem'), OPENBAO_TOKEN_FILE: join(dir, 'token'), OPENBAO_RA_TOKEN_FILE: join(dir, 'ra-token'), OPENBAO_NAMESPACE: 'pki/ns1' };
     transit = new OpenBaoRATransit(loadOpenBaoConfig(env));
   });
   afterAll(async () => { await new Promise(resolve => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); });
@@ -85,14 +87,21 @@ describe('OpenBao RA Transit client', () => {
     expect(() => assertRAKeyProviderSetting({})).not.toThrow();
     expect(() => assertRAKeyProviderSetting({ SCEP_RA_KEY_PROVIDER: 'openbao' })).not.toThrow();
     for (const value of ['cosmian', 'vault']) expect(() => assertRAKeyProviderSetting({ SCEP_RA_KEY_PROVIDER: value })).toThrow(OpenBaoConfigError);
-    expect(() => checkOpenBaoRAConfig(0, {})).not.toThrow();
-    expect(() => checkOpenBaoRAConfig(0, { SCEP_RA_KEY_PROVIDER: 'cosmian' })).toThrow('obsolete');
-    expect(() => checkOpenBaoRAConfig(1, {})).toThrow('OPENBAO_ADDR');
-    expect(() => checkOpenBaoRAConfig(0, { OPENBAO_ADDR: 'http://bao:8200' })).toThrow('https');
+    expect(checkOpenBaoRAConfig({})).toEqual({ raCredential: false });
+    expect(() => checkOpenBaoRAConfig({ SCEP_RA_KEY_PROVIDER: 'cosmian' })).toThrow('obsolete');
+    // An X.509/SSH-only installation (no RA credential) starts; RA operations answer 503.
+    expect(checkOpenBaoRAConfig({ OPENBAO_ADDR: 'https://bao:8200', OPENBAO_TOKEN_FILE: '/run/openbao/token/backend-token' })).toEqual({ raCredential: false });
+    expect(() => checkOpenBaoRAConfig({ OPENBAO_RA_TOKEN_FILE: '/run/ra-token' })).toThrow('OPENBAO_ADDR');
+    expect(() => checkOpenBaoRAConfig({ OPENBAO_ADDR: 'http://bao:8200', OPENBAO_RA_TOKEN_FILE: '/run/ra-token' })).toThrow('https');
+    expect(checkOpenBaoRAConfig(env)).toEqual({ raCredential: true });
     for (const addr of ['http://127.0.0.1:8200', 'https://u:p@bao:8200', 'https://bao:8200/v1', 'https://bao:8200/?x=1', 'not a url']) {
       expect(() => loadOpenBaoConfig({ ...env, OPENBAO_ADDR: addr }), addr).toThrow(OpenBaoConfigError);
     }
-    expect(() => loadOpenBaoConfig({ ...env, OPENBAO_TOKEN_FILE: 'token' })).toThrow('absolute');
+    expect(() => loadOpenBaoConfig({ ...env, OPENBAO_RA_TOKEN_FILE: 'ra-token' })).toThrow('OPENBAO_RA_TOKEN_FILE must be an absolute path');
+    expect(() => loadOpenBaoConfig({ ...env, OPENBAO_RA_TOKEN_FILE: undefined })).toThrow('OPENBAO_RA_TOKEN_FILE');
+    // The RA client never falls back to, or shares, the X.509/SSH token file.
+    expect(() => loadOpenBaoConfig({ ...env, OPENBAO_RA_TOKEN_FILE: env.OPENBAO_TOKEN_FILE })).toThrow('separate credential');
+    expect(() => loadOpenBaoConfig({ ...env, OPENBAO_RA_TOKEN_FILE: `${dir}/./token` })).toThrow('separate credential');
     expect(() => loadOpenBaoConfig({ ...env, OPENBAO_CACERT: join(dir, 'token') })).toThrow('OPENBAO_CACERT');
     expect(() => loadOpenBaoConfig({ ...env, OPENBAO_RA_MOUNT: '../sys' })).toThrow('OPENBAO_RA_MOUNT');
     expect(() => loadOpenBaoConfig({ ...env, OPENBAO_TIMEOUT_MS: '10' })).toThrow('OPENBAO_TIMEOUT_MS');
@@ -181,8 +190,17 @@ describe('OpenBao RA Transit client', () => {
     const error = await unpinned.readKey(name, 1).catch(e => e);
     expect(error).toBeInstanceOf(OpenBaoError); expect(error.status).toBe(0);
     writeFileSync(join(dir, 'bad-token'), 'not a token\n');
-    const badToken = new OpenBaoRATransit(loadOpenBaoConfig({ ...env, OPENBAO_TOKEN_FILE: join(dir, 'bad-token') }));
-    await expect(badToken.readKey(name, 1)).rejects.toThrow(OpenBaoError);
+    const badToken = new OpenBaoRATransit(loadOpenBaoConfig({ ...env, OPENBAO_RA_TOKEN_FILE: join(dir, 'bad-token') }));
+    await expect(badToken.readKey(name, 1)).rejects.toThrow(OpenBaoConfigError);
+    // An RA credential that the Agent has not written (yet) is a configuration error (503).
+    const missing = new OpenBaoRATransit(loadOpenBaoConfig({ ...env, OPENBAO_RA_TOKEN_FILE: join(dir, 'absent-ra-token') }));
+    await expect(missing.unwrapSessionKey(name, 1, Buffer.alloc(384, 1), 32)).rejects.toThrow(/SCEP RA credential/);
     expect(seen).toHaveLength(0);
+  });
+
+  it('sends the RA credential only, never the X.509/SSH token', async () => {
+    await transit.readKey(name, 1);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(r => r.headers['x-vault-token'] === 's.test-token-0123456789')).toBe(true);
   });
 });

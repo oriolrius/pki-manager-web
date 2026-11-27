@@ -35,6 +35,7 @@ services:
       - ../openbao/policies:/openbao/policies:ro
       - ../openbao/state/tls/ca.pem:/openbao/tls/ca.pem:ro
       - ../openbao/state/approle:/openbao/setup/approle
+      - ../openbao/state/approle-ra:/openbao/setup/approle-ra
     environment:
       - BAO_ADDR=https://openbao:8200
       - BAO_CACERT=/openbao/tls/ca.pem
@@ -49,15 +50,15 @@ services:
     tmpfs:
       - /tmp:uid=1001,gid=1001
 
-  # OpenBao Agent: AppRole login for the backend, token written to a shared file.
-  # Runs as the backend uid (1001) so the token file can be 0400. AppRole credentials in
-  # ../openbao/state/approle (0400, uid 1001), never mounted into the backend.
+  # OpenBao Agent: AppRole pki-manager-backend (X.509 + SSH keys), token written to a
+  # shared file. Runs as the backend uid (1001) so the token file can be 0400. AppRole
+  # credentials in ../openbao/state/approle (0400, uid 1001), never mounted into the backend.
   openbao-agent:
     image: ${OPENBAO_IMAGE:?set OPENBAO_IMAGE (openbao/image.env)}
     container_name: pki-openbao-agent
     restart: unless-stopped
     user: "1001:1001"
-    command: ["agent", "-config=/openbao/agent/agent.hcl"]
+    command: ["agent", "-config=/openbao/agent/common.hcl", "-config=/openbao/agent/agent.hcl"]
     networks:
       - keystore-internal
     volumes:
@@ -71,6 +72,47 @@ services:
     read_only: true
     tmpfs:
       - /tmp:uid=1001,gid=1001
+    healthcheck:
+      # Healthy once the Agent has written a token (it rewrites it on renewal and login).
+      test: ["CMD-SHELL", "test -s /openbao/token/backend-token"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      openbao:
+        condition: service_started
+
+  # SCEP only (COMPOSE_PROFILES=scep): a second Agent with its own AppRole, pki-manager-ra
+  # (policy pki-manager-ra: the RA mount only). Its token goes to a separate directory that
+  # only the backend RA client reads (OPENBAO_RA_TOKEN_FILE). Without this Agent the
+  # X.509 and SSH functions work and RA requests answer 503.
+  openbao-agent-ra:
+    profiles: [scep]
+    image: ${OPENBAO_IMAGE:?set OPENBAO_IMAGE (openbao/image.env)}
+    container_name: pki-openbao-agent-ra
+    restart: unless-stopped
+    user: "1001:1001"
+    command: ["agent", "-config=/openbao/agent/common.hcl", "-config=/openbao/agent/agent-ra.hcl"]
+    networks:
+      - keystore-internal
+    volumes:
+      - ../openbao/agent:/openbao/agent:ro
+      - ../openbao/state/tls/ca.pem:/openbao/tls/ca.pem:ro
+      - ../openbao/state/approle-ra:/openbao/approle-ra:ro
+      - ../openbao/state/token-ra:/openbao/token-ra
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:uid=1001,gid=1001
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /openbao/token-ra/ra-token"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
     depends_on:
       openbao:
         condition: service_started
@@ -91,6 +133,7 @@ services:
       - ../pki:/app/backend/data
       - ../openbao/state/tls/ca.pem:/run/openbao/ca.pem:ro
       - ../openbao/state/token:/run/openbao/token:ro
+      - ../openbao/state/token-ra:/run/openbao/token-ra:ro
     environment:
       # Server configuration
       - NODE_ENV=${NODE_ENV:-production}
@@ -104,11 +147,13 @@ services:
       # Database
       - DATABASE_PATH=${DATABASE_PATH:-/app/backend/data/pki.db}
 
-      # OpenBao (key store). The token file is rewritten by openbao-agent; the backend
-      # reads it on every call. Mount paths: openbao/scripts/bootstrap.sh configure.
+      # OpenBao (key store). openbao-agent rewrites the X.509/SSH token file and
+      # openbao-agent-ra (profile scep) the SCEP RA token file; the backend reads them on
+      # every call. Mount paths: openbao/scripts/bootstrap.sh configure.
       - OPENBAO_ADDR=${OPENBAO_ADDR:-https://openbao:8200}
       - OPENBAO_CACERT=/run/openbao/ca.pem
       - OPENBAO_TOKEN_FILE=/run/openbao/token/backend-token
+      - OPENBAO_RA_TOKEN_FILE=/run/openbao/token-ra/ra-token
       - OPENBAO_TRANSIT_MOUNT=${OPENBAO_TRANSIT_MOUNT:-pki-manager}
       - OPENBAO_RA_MOUNT=${OPENBAO_RA_MOUNT:-pki-manager-ra}
       - OPENBAO_SSH_MOUNT=${OPENBAO_SSH_MOUNT:-pki-manager-ssh}
@@ -140,6 +185,9 @@ services:
     depends_on:
       openbao-agent:
         condition: service_started
+      openbao-agent-ra:
+        condition: service_started
+        required: false
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s

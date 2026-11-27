@@ -229,12 +229,13 @@ ensure_openbao() {
   bash "$OPENBAO_SRC_DIR/scripts/dev-tls.sh" "$OPENBAO_STATE_DIR/tls"
   openbao_compose up -d --wait --wait-timeout 120 --quiet-pull openbao >&2
   openbao_compose run --rm -T bootstrap dev >&2
-  [ -s "$OPENBAO_STATE_DIR/secrets/backend-token" ] \
+  [ -s "$OPENBAO_STATE_DIR/secrets/backend-token" ] && [ -s "$OPENBAO_STATE_DIR/secrets/ra-token" ] \
     || { echo "error: OpenBao bootstrap failed — see 'docker logs pki-manager-openbao'" >&2; exit 1; }
   OPENBAO_ENV=(
     "OPENBAO_ADDR=https://localhost:$OPENBAO_PORT"
     "OPENBAO_CACERT=$OPENBAO_STATE_DIR/tls/ca.pem"
     "OPENBAO_TOKEN_FILE=$OPENBAO_STATE_DIR/secrets/backend-token"
+    "OPENBAO_RA_TOKEN_FILE=$OPENBAO_STATE_DIR/secrets/ra-token"
   )
 }
 

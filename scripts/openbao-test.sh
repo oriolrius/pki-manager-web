@@ -3,8 +3,9 @@
 #
 #   up [NAME]     start an isolated instance (own Compose project, container, free port,
 #                 state dir), bootstrap it in dev/test mode, print its backend settings
-#   client [NAME] prepare the token and CA for a backend container (uid 1001), print its Compose settings
+#   client [NAME] prepare the two tokens and the CA for a backend container (uid 1001), print its Compose settings
 #   env [NAME]    print the settings again: OPENBAO_ADDR, OPENBAO_CACERT, OPENBAO_TOKEN_FILE
+#                 (X.509/SSH token), OPENBAO_RA_TOKEN_FILE (SCEP RA token)
 #   check [NAME]  run openbao/scripts/check-backend-token.sh against it
 #   down [NAME]   remove the containers and the state
 #
@@ -35,6 +36,7 @@ print_env() {
   echo "OPENBAO_ADDR=https://localhost:$port"
   echo "OPENBAO_CACERT=$STATE/tls/ca.pem"
   echo "OPENBAO_TOKEN_FILE=$STATE/secrets/backend-token"
+  echo "OPENBAO_RA_TOKEN_FILE=$STATE/secrets/ra-token"
   echo "OPENBAO_TRANSIT_MOUNT=pki-manager"
   echo "OPENBAO_RA_MOUNT=pki-manager-ra"
 }
@@ -54,10 +56,12 @@ case "$CMD" in
     chmod 0711 "$STATE/client"
     compose run --rm -T --user 0 --volume "$STATE/client:/client" --entrypoint /bin/sh bootstrap -ec '
       umask 077
-      cp /openbao/secrets/backend-token /client/token.tmp
-      chown 1001:1001 /client/token.tmp
-      chmod 0400 /client/token.tmp
-      mv /client/token.tmp /client/backend-token
+      for t in backend-token ra-token; do
+        cp "/openbao/secrets/$t" /client/token.tmp
+        chown 1001:1001 /client/token.tmp
+        chmod 0400 /client/token.tmp
+        mv /client/token.tmp "/client/$t"
+      done
       cp /openbao/tls/ca.pem /client/ca.pem
       chmod 0444 /client/ca.pem
     ' >&2

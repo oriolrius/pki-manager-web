@@ -5,8 +5,10 @@
  * use the same connection settings and the same request rules:
  *
  * - HTTPS only. `OPENBAO_CACERT` pins the trust anchors; no redirects are followed.
- * - The token comes from `OPENBAO_TOKEN_FILE`, read on every call, so an OpenBao
- *   Agent (or an operator) can rotate it without a restart. It never goes in a log.
+ * - The token comes from a file read on every call, so an OpenBao Agent (or an
+ *   operator) can rotate it without a restart. It never goes in a log. The SSH client
+ *   uses `OPENBAO_TOKEN_FILE` (the X.509/SSH credential); the RA client uses
+ *   `OPENBAO_RA_TOKEN_FILE`, a separate credential that only holds the RA mount.
  * - Each client has its own Transit mount (`OPENBAO_RA_MOUNT`, `OPENBAO_SSH_MOUNT`).
  * - Errors carry the HTTP status and the request path only. The OpenBao error
  *   text stays in `detail` for the server log; it never reaches an API client.
@@ -43,7 +45,8 @@ export interface OpenBaoConnection {
   timeoutMs: number;
 }
 
-export function loadOpenBaoConnection(env: NodeJS.ProcessEnv = process.env): OpenBaoConnection {
+/** `tokenVariable` names the token file setting of the credential that this client uses. */
+export function loadOpenBaoConnection(env: NodeJS.ProcessEnv = process.env, tokenVariable = 'OPENBAO_TOKEN_FILE'): OpenBaoConnection {
   const rawAddr = env.OPENBAO_ADDR?.trim();
   if (!rawAddr) throw new OpenBaoConfigError('OPENBAO_ADDR is required');
   let addr: URL;
@@ -60,8 +63,8 @@ export function loadOpenBaoConnection(env: NodeJS.ProcessEnv = process.env): Ope
       new X509Certificate(caPem); // at least the first certificate must parse
     } catch { throw new OpenBaoConfigError('OPENBAO_CACERT must be a readable PEM certificate file'); }
   }
-  const tokenFile = env.OPENBAO_TOKEN_FILE?.trim();
-  if (!tokenFile || !isAbsolute(tokenFile)) throw new OpenBaoConfigError('OPENBAO_TOKEN_FILE must be an absolute path');
+  const tokenFile = env[tokenVariable]?.trim();
+  if (!tokenFile || !isAbsolute(tokenFile)) throw new OpenBaoConfigError(`${tokenVariable} must be an absolute path`);
   const namespace = env.OPENBAO_NAMESPACE?.trim() || undefined;
   if (namespace && !PATH_SEGMENTS.test(namespace)) throw new OpenBaoConfigError('OPENBAO_NAMESPACE is not a valid namespace path');
   const timeoutMs = env.OPENBAO_TIMEOUT_MS ? Number(env.OPENBAO_TIMEOUT_MS) : 10_000;

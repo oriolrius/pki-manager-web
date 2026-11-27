@@ -7,6 +7,8 @@ services:
     profiles: [production]
   openbao-agent:
     profiles: [production]
+  openbao-agent-ra:
+    profiles: [production]
   backend:
     container_name: pki-demo-backend
     volumes: !override
@@ -14,6 +16,7 @@ services:
       - ${OPENBAO_TEST_CLIENT_DIR:?}:/run/openbao:ro
     environment:
       - OPENBAO_TOKEN_FILE=/run/openbao/backend-token
+      - OPENBAO_RA_TOKEN_FILE=/run/openbao/ra-token
       - OIDC_ISSUER=http://localhost:47381/realms/pki-demo
       - OIDC_DISCOVERY_BASE_URL=http://keycloak:8080/realms/pki-demo
       - OIDC_AUDIENCE=pki-web

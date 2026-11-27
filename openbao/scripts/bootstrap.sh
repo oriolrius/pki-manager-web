@@ -9,12 +9,21 @@
 #                        and the root token in $SECRETS_DIR (refused without
 #                        PKI_MANAGER_OPENBAO_DEV=1)
 #   unseal-dev           DEV/TEST ONLY: unseal with the key that init-dev stored
-#   configure            mounts, policies, AppRole role and token role (needs BAO_TOKEN
-#                        with root or the pki-manager-operator policy)
-#   backend-token        DEV/TEST ONLY: write a periodic backend token to
-#                        $SECRETS_DIR/backend-token (reused while it is valid)
-#   approle-credentials  write role-id and a new secret-id for the OpenBao Agent to
-#                        $SECRETS_DIR/approle/ (production path)
+#   configure            mounts, policies, the AppRoles and token roles pki-manager-backend
+#                        (X.509 + SSH) and pki-manager-ra (SCEP RA) (needs BAO_TOKEN with
+#                        root or the pki-manager-operator policy)
+#   backend-token        DEV/TEST ONLY: write a periodic X.509/SSH token (policy
+#                        pki-manager-backend only) to $SECRETS_DIR/backend-token (reused
+#                        while it is valid and has exactly that policy)
+#   ra-token             DEV/TEST ONLY: write a periodic SCEP RA token (policy
+#                        pki-manager-ra only) to $SECRETS_DIR/ra-token (same reuse rule)
+#   approle-credentials [backend|ra]
+#                        write role-id and a new secret-id for one OpenBao Agent to
+#                        $SECRETS_DIR/approle/ (backend, the default) or
+#                        $SECRETS_DIR/approle-ra/ (ra) (production path)
+#   revoke-agent-tokens  revoke every token issued by an AppRole login, then restart the
+#                        Agents so they log in again. Run it once after `configure` changed
+#                        the AppRole policies: a renewed token keeps the policies of its login
 #   migration-setup      write the migration policy (HCL on stdin: the file
 #                        scripts/migration/policies/pki-manager-migration.hcl) and the
 #                        token role pki-manager-migration; the backend never gets it
@@ -24,8 +33,9 @@
 #                        must be a file; its accessor and expiry go to stderr
 #   migration-revoke     revoke the migration token whose accessor is in
 #                        $MIGRATION_TOKEN_ACCESSOR (refused for any other token)
-#   dev                  DEV/TEST ONLY: wait, init-dev, unseal-dev, configure, backend-token
-#   status               seal status, mounts and the backend token policies
+#   dev                  DEV/TEST ONLY: wait, init-dev, unseal-dev, configure, backend-token,
+#                        ra-token
+#   status               seal status and the policies of the dev/test runtime tokens
 #
 # Environment: BAO_ADDR (https://openbao:8200), BAO_CACERT (/openbao/tls/ca.pem),
 # SECRETS_DIR (/openbao/secrets), POLICY_DIR (/openbao/policies),
@@ -34,8 +44,9 @@
 # (uid:gid; when it runs as root, test stacks only: hand $SECRETS_DIR to the backend user).
 #
 # Production never runs the DEV/TEST commands: it initializes with several key shares
-# held by people, unseals by hand, and gives the backend an AppRole through an OpenBao
-# Agent. Guide: docs/operations/openbao.md
+# held by people, unseals by hand, and gives the backend one AppRole per credential, each
+# through its own OpenBao Agent (the RA Agent only where SCEP is used).
+# Guide: docs/operations/openbao.md
 set -eu
 
 : "${BAO_ADDR:=https://openbao:8200}"
@@ -50,6 +61,7 @@ export BAO_ADDR BAO_CACERT
 umask 077
 
 ROLE=pki-manager-backend
+RA_ROLE=pki-manager-ra
 MIGRATION_ROLE=pki-manager-migration
 log() { echo "openbao-bootstrap: $*" >&2; }
 die() { log "error: $*"; exit 1; }
@@ -151,19 +163,23 @@ cmd_configure() {
     bao auth enable approle >/dev/null
     log "enabled approle auth"
   fi
-  # AppRole for the OpenBao Agent (production). Short tokens; the Agent renews and
-  # re-authenticates, and writes the token to the backend OPENBAO_TOKEN_FILE.
-  bao write "auth/approle/role/$ROLE" \
-    token_policies="pki-manager-backend,pki-manager-ra" \
-    token_no_default_policy=true token_type=service \
-    token_ttl=1h token_max_ttl=24h \
-    secret_id_ttl=0 secret_id_num_uses=0 bind_secret_id=true >/dev/null
-  # Token role for directly issued tokens (dev/test, break-glass).
-  bao write "auth/token/roles/$ROLE" \
-    allowed_policies="pki-manager-backend,pki-manager-ra" \
-    orphan=true renewable=true token_no_default_policy=true \
-    token_period="$BACKEND_TOKEN_PERIOD" >/dev/null
-  log "AppRole and token role '$ROLE' written"
+  # One AppRole per runtime credential (production), each with ONE policy: the backend
+  # token (X.509 + SSH) cannot reach the RA mount, and the RA token cannot reach the
+  # X.509 or SSH mounts. Short tokens; each Agent renews and re-authenticates, and
+  # writes its token to the backend OPENBAO_TOKEN_FILE or OPENBAO_RA_TOKEN_FILE.
+  # Token roles: directly issued tokens (dev/test, break-glass), same single policy.
+  for r in "$ROLE" "$RA_ROLE"; do
+    bao write "auth/approle/role/$r" \
+      token_policies="$r" \
+      token_no_default_policy=true token_type=service \
+      token_ttl=1h token_max_ttl=24h \
+      secret_id_ttl=0 secret_id_num_uses=0 bind_secret_id=true >/dev/null
+    bao write "auth/token/roles/$r" \
+      allowed_policies="$r" disallowed_policies="root" \
+      orphan=true renewable=true token_no_default_policy=true \
+      token_period="$BACKEND_TOKEN_PERIOD" >/dev/null
+    log "AppRole and token role '$r' written (policy $r only)"
+  done
 }
 
 # The migration policy belongs to the migration tool (scripts/migration/policies), which
@@ -220,46 +236,80 @@ cmd_migration_revoke() {
   log "migration token $acc revoked"
 }
 
+# runtime_token FILE ROLE: a periodic dev/test token of token role ROLE (policy ROLE only).
+# A valid token with exactly that policy is renewed and kept. Any other token in the file
+# (expired, or issued before the X.509/SSH and RA credentials were split) is revoked and
+# replaced.
+runtime_token() {
+  f="$SECRETS_DIR/$1" role="$2"
+  # The runtime tokens have no `default` policy, so they cannot look themselves up: the
+  # admin token checks and renews them.
+  if [ -s "$f" ] && info="$(bao token lookup -format=json "$(cat "$f")" 2>/dev/null)"; then
+    pols="$(echo "$info" | tr -d ' \n' | sed -n 's/.*"policies":\[\([^]]*\)\].*/\1/p')"
+    if [ "$pols" = "\"$role\"" ]; then
+      bao token renew "$(cat "$f")" >/dev/null
+      log "$1 in $SECRETS_DIR is valid (renewed, policy $role)"
+      return 0
+    fi
+    bao token revoke "$(cat "$f")" >/dev/null
+    log "$1 had policies [$pols]: revoked, issuing a $role-only token"
+  fi
+  mkdir -p "$SECRETS_DIR"
+  bao token create -role="$role" -policy="$role" -display-name="$role" -field=token > "$f.tmp"
+  mv "$f.tmp" "$f"
+  log "$1 written to $SECRETS_DIR (period $BACKEND_TOKEN_PERIOD, policy $role only)"
+}
+
 cmd_backend_token() {
   dev_only backend-token
   admin_token
-  f="$SECRETS_DIR/backend-token"
-  # The backend token has no `default` policy, so it cannot look itself up: the admin
-  # token checks and renews it.
-  if [ -s "$f" ] && bao token lookup "$(cat "$f")" >/dev/null 2>&1; then
-    # Still valid: renew it to the full period, keep the file unchanged.
-    bao token renew "$(cat "$f")" >/dev/null
-    log "backend token in $f is valid (renewed)"
-    return 0
-  fi
-  mkdir -p "$SECRETS_DIR"
-  bao token create -role="$ROLE" -policy=pki-manager-backend -policy=pki-manager-ra \
-    -display-name=pki-manager-backend -field=token > "$f.tmp"
-  mv "$f.tmp" "$f"
-  log "backend token written to $f (period $BACKEND_TOKEN_PERIOD, policies pki-manager-backend + pki-manager-ra)"
+  runtime_token backend-token "$ROLE"
+}
+
+cmd_ra_token() {
+  dev_only ra-token
+  admin_token
+  runtime_token ra-token "$RA_ROLE"
 }
 
 cmd_approle_credentials() {
+  case "${1:-backend}" in
+    backend) role="$ROLE" d="$SECRETS_DIR/approle" ;;
+    ra) role="$RA_ROLE" d="$SECRETS_DIR/approle-ra" ;;
+    *) die "approle-credentials takes 'backend' (X.509 + SSH, the default) or 'ra' (SCEP RA)" ;;
+  esac
   admin_token
-  d="$SECRETS_DIR/approle"
   mkdir -p "$d"
   tmp="$(mktemp -d "$d/.login.XXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
-  bao read -field=role_id "auth/approle/role/$ROLE/role-id" > "$tmp/role-id"
-  bao write -f -field=secret_id "auth/approle/role/$ROLE/secret-id" > "$tmp/secret-id"
+  bao read -field=role_id "auth/approle/role/$role/role-id" > "$tmp/role-id"
+  bao write -f -field=secret_id "auth/approle/role/$role/secret-id" > "$tmp/secret-id"
   chmod 0400 "$tmp/role-id" "$tmp/secret-id"
   mv "$tmp/role-id" "$d/role-id"
   mv "$tmp/secret-id" "$d/secret-id"
-  log "role-id and a new secret-id written to $d for Agent login and restart"
+  log "role-id and a new secret-id of '$role' written to $d for Agent login and restart"
+}
+
+# After a policy change (for example the split of the RA policy from the backend AppRole),
+# AppRole tokens issued before it keep their old policies through every renewal until
+# their max TTL. Revoking them makes both Agents log in again at once.
+cmd_revoke_agent_tokens() {
+  admin_token
+  [ "$(seal_state)" = unsealed ] || die "OpenBao is $(seal_state)"
+  bao lease revoke -prefix auth/approle/login >/dev/null
+  log "revoked every AppRole login token: restart the Agents now (openbao-agent, and openbao-agent-ra with SCEP); until then the backend gets HTTP 403"
 }
 
 cmd_status() {
   bao status || true
-  if [ -s "$SECRETS_DIR/backend-token" ] && { [ -n "${BAO_TOKEN:-}" ] || { [ "${PKI_MANAGER_OPENBAO_DEV:-}" = 1 ] && [ -s "$SECRETS_DIR/dev-root-token" ]; }; }; then
-    admin_token
-    bao token lookup "$(cat "$SECRETS_DIR/backend-token")" 2>/dev/null \
-      | grep -E "^(display_name|policies|ttl|period) " || log "backend token is not valid"
-  fi
+  for t in backend-token ra-token; do
+    if [ -s "$SECRETS_DIR/$t" ] && { [ -n "${BAO_TOKEN:-}" ] || { [ "${PKI_MANAGER_OPENBAO_DEV:-}" = 1 ] && [ -s "$SECRETS_DIR/dev-root-token" ]; }; }; then
+      admin_token
+      log "$t:"
+      bao token lookup "$(cat "$SECRETS_DIR/$t")" 2>/dev/null \
+        | grep -E "^(display_name|policies|ttl|period) " || log "$t is not valid"
+    fi
+  done
 }
 
 # Test stacks run this as root on a named volume; the backend reads the token as its own user.
@@ -276,11 +326,13 @@ case "${1:-}" in
   unseal-dev) cmd_unseal_dev ;;
   configure) cmd_configure ;;
   backend-token) cmd_backend_token; own_secrets ;;
-  approle-credentials) cmd_approle_credentials ;;
+  ra-token) cmd_ra_token; own_secrets ;;
+  approle-credentials) cmd_approle_credentials "${2:-backend}" ;;
+  revoke-agent-tokens) cmd_revoke_agent_tokens ;;
   migration-setup) cmd_migration_setup ;;
   migration-token) cmd_migration_token ;;
   migration-revoke) cmd_migration_revoke ;;
-  dev) dev_only dev; cmd_wait; cmd_init_dev; cmd_unseal_dev; cmd_configure; cmd_backend_token; own_secrets ;;
+  dev) dev_only dev; cmd_wait; cmd_init_dev; cmd_unseal_dev; cmd_configure; cmd_backend_token; cmd_ra_token; own_secrets ;;
   status) cmd_status ;;
   *) sed -n 's/^#   //p' "$0" >&2; exit 2 ;;
 esac

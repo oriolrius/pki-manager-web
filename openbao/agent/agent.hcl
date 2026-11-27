@@ -1,15 +1,11 @@
-# OpenBao Agent for the PKI Manager backend (production path; Compose service
-# `openbao-agent`). It logs in with the AppRole `pki-manager-backend`, renews the token,
-# logs in again when the token reaches its max TTL, and writes the token to the file the
-# backend reads on every call (OPENBAO_TOKEN_FILE). The backend never holds the AppRole
-# credentials. Guide: docs/operations/openbao.md
+# OpenBao Agent for the PKI Manager backend X.509 and SSH keys (Compose service
+# `openbao-agent`; load it after common.hcl). It logs in with the AppRole
+# `pki-manager-backend` (policy pki-manager-backend only), renews the token, logs in again
+# when the token reaches its max TTL, and writes the token to the file the backend reads
+# on every call (OPENBAO_TOKEN_FILE). The backend never holds the AppRole credentials.
+# SCEP RA keys use another Agent and AppRole: agent-ra.hcl. Guide: docs/operations/openbao.md
 
 pid_file = "/tmp/openbao-agent.pid"
-
-vault {
-  address = "https://openbao:8200"
-  ca_cert = "/openbao/tls/ca.pem"
-}
 
 auto_auth {
   method "approle" {

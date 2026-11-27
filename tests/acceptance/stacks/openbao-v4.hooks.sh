@@ -6,7 +6,7 @@
 #   openbao-v4.hooks.sh up        start OpenBao, bootstrap it (dev/test), then the rest
 #
 # "up" also serves a restore: the restored Raft data starts sealed, `bootstrap dev` is
-# idempotent (it unseals with the stored dev key and reuses a valid backend token).
+# idempotent (it unseals with the stored dev key and reuses the valid backend and RA tokens).
 # Images: OPENBAO_IMAGE (default: scripts/openbao-image.sh ensure), ACCEPT_BACKEND_IMAGE and
 # ACCEPT_FRONTEND_IMAGE (run.sh builds them from the checkout with ACCEPT_BUILD=1).
 set -euo pipefail

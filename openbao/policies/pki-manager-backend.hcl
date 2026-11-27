@@ -1,4 +1,6 @@
-# Runtime policy of the PKI Manager backend on its X.509 and SSH mounts. Attach it with pki-manager-ra; never with `default` or root.
+# Runtime policy of the PKI Manager backend on its X.509 and SSH mounts (AppRole and token
+# role pki-manager-backend). Attach it alone: never with pki-manager-ra (SCEP RA keys have
+# their own credential), `default` or root.
 #
 # `+` matches one path segment, so `keys/<name>/config` is only reachable through the
 # rule below, which accepts `deletion_allowed` and nothing else: the backend cannot turn
@@ -6,7 +8,8 @@
 #
 # Denied by omission: wrapping_key, keys/<name>/import and import_version (only the
 # migration token, policy pki-manager-migration, imports keys), backup/, restore/,
-# rotate, trim, decrypt/, encrypt/, rewrap/, random/, sys/*, auth/*.
+# rotate, trim, decrypt/, encrypt/, rewrap/, random/, sys/*, auth/*, and every path of
+# the SCEP RA mount (OPENBAO_RA_MOUNT; policy pki-manager-ra).
 # The mount path is the backend OPENBAO_TRANSIT_MOUNT value.
 
 # Create (generate) and read keys; delete a key whose deletion was allowed first.

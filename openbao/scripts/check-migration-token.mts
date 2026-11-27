@@ -7,12 +7,14 @@
  *
  * Needs Node >= 22.18 (runs TypeScript directly) and no other tool. Settings:
  * OPENBAO_ADDR, OPENBAO_CACERT, MIGRATION_TOKEN_FILE (from `bootstrap.sh migration-token`),
- * optional OPENBAO_TOKEN_FILE (the backend token: separation checks), OPENBAO_TRANSIT_MOUNT,
- * OPENBAO_SSH_MOUNT, OPENBAO_RA_MOUNT.
+ * optional OPENBAO_TOKEN_FILE (the X.509/SSH backend token) and OPENBAO_RA_TOKEN_FILE (the
+ * SCEP RA token) for the separation checks, OPENBAO_TRANSIT_MOUNT, OPENBAO_SSH_MOUNT,
+ * OPENBAO_RA_MOUNT.
  *
  * With OPENBAO_TOKEN_FILE it also proves the runtime side: the backend token cannot
- * import or mint migration tokens, and it alone holds the RA session-key operation and
- * signs with the migrated keys.
+ * import or mint migration tokens, signs with the migrated X.509 and SSH keys, and has no
+ * path on the RA mount. With OPENBAO_RA_TOKEN_FILE: the RA token alone recovers RA
+ * session keys and signs with the migrated RA key, and has no X.509 or SSH path.
  *
  * WARN lines are defence in depth that the policy does not enforce today (import
  * parameters the tool never sends); they do not fail the check.
@@ -35,6 +37,8 @@ const ca = readFileSync(env('OPENBAO_CACERT'), 'utf8');
 const migToken = readFileSync(env('MIGRATION_TOKEN_FILE'), 'utf8').trim();
 const backendFile = process.env.OPENBAO_TOKEN_FILE;
 const backendToken = backendFile ? readFileSync(backendFile, 'utf8').trim() : undefined;
+const raFile = process.env.OPENBAO_RA_TOKEN_FILE;
+const raToken = raFile ? readFileSync(raFile, 'utf8').trim() : undefined;
 const X509 = env('OPENBAO_TRANSIT_MOUNT', 'pki-manager');
 const SSH = env('OPENBAO_SSH_MOUNT', 'pki-manager-ssh');
 const RA = env('OPENBAO_RA_MOUNT', 'pki-manager-ra');
@@ -205,8 +209,8 @@ async function main() {
     await expect(/^403$/, 'backend token: import an X.509 key', backendToken, 'POST', `${X509}/keys/migcheck-x-${rnd()}/import`, importBody(await wrapped(X509, spare), 'ecdsa-p256', false));
     await expect(/^403$/, 'backend token: import an SSH key', backendToken, 'POST', `${SSH}/keys/migcheck-x-${rnd()}/import`, importBody(await wrapped(SSH, spare), 'ecdsa-p256', false));
     await expect(/^403$/, 'backend token: import_version', backendToken, 'POST', `${X509}/keys/${n.leaf}/import_version`, { ciphertext: 'AAAA' });
-    const bsk = await expect(/^200$/, 'backend token: RA session-key recovery on the migrated RA key (SCEP)', backendToken, 'POST', `${RA}/session-key/pkcs1v15/${n.ra}`, sessionBody);
-    report(typeof bsk.json?.data?.session_key === 'string' && Buffer.from(bsk.json.data.session_key, 'base64').equals(sessionKey), 'backend token: recovered session key equals the original', 'compare');
+    await expect(/^403$/, 'backend token: RA session-key recovery (RA token only)', backendToken, 'POST', `${RA}/session-key/pkcs1v15/${n.ra}`, sessionBody);
+    await expect(/^403$/, 'backend token: sign with the migrated RA key (RA token only)', backendToken, 'POST', `${RA}/sign/${n.ra}/sha2-256`, { input: randomBytes(32).toString('base64'), prehashed: true, signature_algorithm: 'pkcs1v15' });
     await expect(/^200$/, 'backend token: sign with the migrated X.509 CA key', backendToken, 'POST', `${X509}/sign/${n.ca}/sha2-384`, { input: randomBytes(32).toString('base64'), marshaling_algorithm: 'asn1' });
     await expect(/^200$/, 'backend token: sign with the migrated SSH CA key', backendToken, 'POST', `${SSH}/sign/${n.ssh}/sha2-256`, { input: randomBytes(32).toString('base64'), marshaling_algorithm: 'asn1' });
     await expect(/^200$/, 'backend token: export the migrated exportable leaf key (PKCS#12/PEM download)', backendToken, 'GET', `${X509}/export/signing-key/${n.leaf}/1`);
@@ -220,6 +224,22 @@ async function main() {
     await expect(/^403$/, 'backend token: import an RA key', backendToken, 'POST', `${RA}/keys/migcheck-x-${rnd()}/import`, importBody(await wrapped(RA, spareRsa), 'rsa-3072', false, { allow_pkcs1v15_session_key: true }));
     const still = await call(migToken, 'GET', 'auth/token/lookup-self');
     report(still.status === 200, 'migration token still valid after the backend checks', String(still.status));
+  }
+
+  if (raToken) {
+    console.log('separation of the SCEP RA (runtime) token:');
+    report(raToken !== backendToken && raToken !== migToken, 'RA token is its own credential', 'compare');
+    const rsk = await expect(/^200$/, 'RA token: session-key recovery on the migrated RA key (SCEP)', raToken, 'POST', `${RA}/session-key/pkcs1v15/${n.ra}`, sessionBody);
+    report(typeof rsk.json?.data?.session_key === 'string' && Buffer.from(rsk.json.data.session_key, 'base64').equals(sessionKey), 'RA token: recovered session key equals the original', 'compare');
+    await expect(/^200$/, 'RA token: sign with the migrated RA key', raToken, 'POST', `${RA}/sign/${n.ra}/sha2-256`, { input: randomBytes(32).toString('base64'), prehashed: true, signature_algorithm: 'pkcs1v15' });
+    await expect(/^403$/, 'RA token: read a wrapping key', raToken, 'GET', `${RA}/wrapping_key`);
+    await expect(/^403$/, 'RA token: import an RA key', raToken, 'POST', `${RA}/keys/migcheck-x-${rnd()}/import`, importBody(await wrapped(RA, spareRsa), 'rsa-3072', false, { allow_pkcs1v15_session_key: true }));
+    await expect(/^403$/, 'RA token: export the migrated RA key', raToken, 'GET', `${RA}/export/signing-key/${n.ra}`);
+    await expect(/^403$/, 'RA token: sign with the migrated X.509 CA key', raToken, 'POST', `${X509}/sign/${n.ca}/sha2-384`, { input: randomBytes(32).toString('base64'), marshaling_algorithm: 'asn1' });
+    await expect(/^403$/, 'RA token: read the migrated X.509 CA key', raToken, 'GET', `${X509}/keys/${n.ca}`);
+    await expect(/^403$/, 'RA token: export the migrated exportable leaf key', raToken, 'GET', `${X509}/export/signing-key/${n.leaf}/1`);
+    await expect(/^403$/, 'RA token: sign with the migrated SSH CA key', raToken, 'POST', `${SSH}/sign/${n.ssh}/sha2-256`, { input: randomBytes(32).toString('base64'), marshaling_algorithm: 'asn1' });
+    await expect(/^403$/, 'RA token: create a migration token', raToken, 'POST', 'auth/token/create/pki-manager-migration', {});
   }
 
   if (fails) { console.log(`check-migration-token: ${fails} check(s) FAILED, ${warns} warning(s)`); process.exit(1); }
