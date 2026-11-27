@@ -430,7 +430,7 @@ export class CRLService {
 
   /**
    * Seconds after which a manual generation that found the CA busy can try again: the end of the
-   * lease of the other publisher, or the retry time after a failed signing; 1 to 120 s.
+   * lease of the other publisher, or the retry time after a failed signing; 1 to 30 s.
    */
   private busyRetrySeconds(db: Database, caId: string): number {
     const state = db.select().from(crlPublication).where(eq(crlPublication.caId, caId)).get();
@@ -464,16 +464,21 @@ export class CRLService {
   private async publish(ctx: ServiceContext, caId: string, options: PublishOptions): Promise<CRLPublicationResult> {
     const ca = ctx.db.select().from(certificateAuthorities).where(eq(certificateAuthorities.id, caId)).get();
     if (!ca) throw new CRLCANotFoundError(caId);
-    // A revoked CA can still publish its CRL; other states cannot sign.
+    const now = new Date();
+    if (!options.force) {
+      const verified = this.verifiedRow(ctx.db, caId, now);
+      if (verified) return { status: 'current', need: null, crl: verified };
+    }
+    // A revoked CA can still sign. For an inactive CA, serve its last CRL.
     if (ca.status !== 'active' && ca.status !== 'revoked') {
       if (options.force) throw new CRLInvalidCAStatusError(caId, ca.status);
-      const snapshot = this.snapshot(ctx.db, caId, new Date());
+      const crl = this.newestRow(ctx.db, caId);
+      if (!crl) return { status: 'pending', need: 'missing', crl };
+      if (!crl.crlPem) return { status: 'pending', need: 'empty', crl };
+      if (now > crl.nextUpdate) return { status: 'pending', need: 'expired', crl };
+      const snapshot = this.snapshot(ctx.db, caId, now);
+      if (!snapshot.need && snapshot.served) this.markVerified(ctx.db, caId, snapshot.generation, snapshot.served.id);
       return { status: snapshot.need ? 'pending' : 'current', need: snapshot.need, crl: snapshot.served };
-    }
-    // Fast path: the CRL was verified at the current generation and is not expired.
-    if (!options.force) {
-      const verified = this.verifiedRow(ctx.db, caId, new Date());
-      if (verified) return { status: 'current', need: null, crl: verified };
     }
     let waitMs = options.waitMs;
     if (!options.passive && this.state(ctx.db, caId).failureCount > 0) waitMs = Math.min(waitMs, WAIT_FAILING_MS);

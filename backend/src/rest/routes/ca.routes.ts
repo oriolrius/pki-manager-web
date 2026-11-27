@@ -164,7 +164,7 @@ function handleServiceError(error: unknown, reply: FastifyReply) {
     return sendError(reply, 409, 'INVALID_CA_STATUS', error.message);
   }
   if (error instanceof CRLPublicationBusyError) {
-    // Another publication holds the CA: retry after its lease or retry time (1-120 s).
+    // Another publication holds the CA: retry after its lease or retry time (1-30 s).
     reply.header('Retry-After', String(error.retryAfterSeconds));
     return sendError(reply, 503, 'CRL_PUBLICATION_BUSY', error.message);
   }

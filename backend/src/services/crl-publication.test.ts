@@ -622,6 +622,22 @@ describe('CRL publication: fast path of unchanged downloads', () => {
     return vi.spyOn(CRLService.prototype as any, 'snapshot');
   }
 
+  it('serves the last CRL of an expired CA without scanning its revoked certificates again', async () => {
+    const ca = await makeCa('Expired CA');
+    db.update(certificateAuthorities).set({ status: 'expired' }).where(eq(certificateAuthorities.id, ca.id)).run();
+    const service = getCRLService();
+    const spy = countSnapshots();
+    try {
+      expect((await service.refreshForDistribution(ctx, ca.id)).status).toBe('current');
+      expect(spy).not.toHaveBeenCalled();
+      db.update(crls).set({ nextUpdate: new Date(Date.now() - 1000) }).where(eq(crls.caId, ca.id)).run();
+      expect(await service.refreshForDistribution(ctx, ca.id)).toMatchObject({ status: 'pending', need: 'expired' });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('a download of an unchanged CRL reads no certificate; any write, also from another connection, invalidates it', async () => {
     const ca = await makeCa('Fast Path CA');
     const leaves = makeLeaves(ca.id, 4);
