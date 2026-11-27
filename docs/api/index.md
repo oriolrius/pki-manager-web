@@ -67,7 +67,10 @@ renew and delete report the message in the result of each row. A bulk download f
 with `503`.
 
 `/health` and `/api/v1/health` stay liveness checks: they answer `200` while OpenBao is sealed.
-The reason for a `503` is in the operator diagnostics:
+A CRL publication can also return `503 CRL_PUBLICATION_BUSY`. The response gives the wait in
+`Retry-After`. See [CRL publication](../features/revocation.md).
+
+For `503 KEY_STORE_UNAVAILABLE`, check the operator diagnostics.
 
 ```bash
 curl -s https://pki.example.com/api/v1/diagnostics/key-store -H "Authorization: Bearer $ADMIN_TOKEN"
