@@ -85,7 +85,9 @@ const HELP = `usage: pki-migrate <command> [options]   (guide: docs/operations/o
   approve-template --manifest F --openbao-* --out approval.json
   preflight        --manifest F --approval F --source-db F --target-db F --openbao-* [--kms-url URL] [--target-profile F]
   apply            (preflight options) --run-dir DIR --confirm DIGEST12 [--material-dir DIR] [--actor NAME]
-  verify           --manifest F --approval F --target-db F --openbao-* [--source-db F] [--cutover] [--ra-session-check] [--out report.json]
+  verify           --manifest F --approval F --target-db F --openbao-* [--openbao-ra-token-file F] [--source-db F]
+                   [--cutover] [--ra-session-check] [--out report.json]
+                   (RA mount calls use --openbao-ra-token-file when given: the v4 pki-manager-ra identity)
   backup           --db FILE --out-dir DIR [--label TEXT] [--openbao-*]
   check-backup     --dir DIR
   rotation-plan    --manifest F [--approval F]
@@ -146,7 +148,9 @@ async function main(argv: string[]): Promise<number> {
       const sourcePath = opt(args, 'source-db');
       const source = sourcePath ? openReadOnly(sourcePath) : undefined;
       try {
-        const r = await verifyMigration({ manifest, approval, target, store, profile: loadProfile(opt(args, 'target-profile')), source, raSessionCheck: args['ra-session-check'] === true });
+        const raTokenFile = opt(args, 'openbao-ra-token-file', 'OPENBAO_RA_TOKEN_FILE');
+        const raStore = raTokenFile ? new OpenBaoClient({ addr: need(args, 'openbao-addr', 'OPENBAO_ADDR'), caFile: opt(args, 'openbao-cacert', 'OPENBAO_CACERT'), tokenFile: raTokenFile, namespace: opt(args, 'openbao-namespace', 'OPENBAO_NAMESPACE') }) : undefined;
+        const r = await verifyMigration({ manifest, approval, target, store, raStore, profile: loadProfile(opt(args, 'target-profile')), source, raSessionCheck: args['ra-session-check'] === true });
         for (const c of r.checks.filter(x => !x.ok)) process.stdout.write(`FAIL ${c.name}${c.detail ? ` - ${c.detail}` : ''}\n`);
         process.stdout.write(`checks ${r.checks.length}, failed ${r.checks.filter(c => !c.ok).length}; counts ${JSON.stringify(r.counts)}\nverified=${r.ok} cutoverReady=${r.cutoverReady} cosmianRequired=${r.cosmianRequired}\n`);
         const out = opt(args, 'out');

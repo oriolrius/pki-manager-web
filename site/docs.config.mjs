@@ -41,7 +41,8 @@ export const PAGES = {
   'operations/migration-0009': ['Migration 0009: SSH zones', 6],
   'operations/migration-0010': ['Migration 0010: integrations', 7],
   'operations/openbao': ['OpenBao key store', 8],
-  'operations/releases': ['Release notes', 9],
+  'operations/openbao-migration': ['Migrate v3 keys to OpenBao', 9],
+  'operations/releases': ['Release notes', 10],
 
   'api': ['REST API', 1],
   'api/how-to': ['Call the API (examples)', 2],

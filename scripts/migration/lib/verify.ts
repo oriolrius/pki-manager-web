@@ -31,7 +31,10 @@ type Ks = { id: string; object_type: string; state: string; mount: string | null
 export async function verifyMigration(o: {
   manifest: Manifest; approval: Approval; target: DatabaseSync; store: TargetStore; profile: TargetProfile;
   source?: DatabaseSync; raSessionCheck?: boolean;
+  /** Identity for the RA mount when it differs from `store` (v4 runtime: the pki-manager-ra token). */
+  raStore?: TargetStore;
 }): Promise<VerifyReport> {
+  const storeFor = (cls: string) => (cls === 'scep-ra' && o.raStore ? o.raStore : o.store);
   const checks: Check[] = [];
   const add = (name: string, ok: boolean, detail?: string) => checks.push({ name, ok, detail });
   const counts: Record<string, number> = { keysVerified: 0, keystoreRowsVerified: 0, rowsVerified: 0, pemVerified: 0, raUnwrapped: 0 };
@@ -46,7 +49,7 @@ export async function verifyMigration(o: {
     if (a.action === 'already-target') {
       const ref = key.references.find(r => r.role === 'scep-ra-openbao-key');
       const name = ref ? ref.sourceId.replace(/^openbao:/, '') : '';
-      const k = name ? await o.store.readKey(o.profile.mounts.ra, name) : null;
+      const k = name ? await storeFor('scep-ra').readKey(o.profile.mounts.ra, name) : null;
       add(`RA key already in OpenBao ${name}`, !!k && !!k.publicKeyPem, k ? '' : 'not readable');
       continue;
     }
@@ -57,11 +60,12 @@ export async function verifyMigration(o: {
     }
     // transfer
     const spec = approvedTarget(key, a, o.approval);
-    const k = await o.store.readKey(spec.mount, spec.name);
+    const st = storeFor(key.class);
+    const k = await st.readKey(spec.mount, spec.name);
     const bad = k ? checkTargetKey(k, spec, key.spkiSha256!) : ['missing in OpenBao'];
     add(`${key.class} key ${spec.mount}/${spec.name}`, bad.length === 0, bad.join('; '));
     if (!k || bad.length) continue;
-    try { await challenge(o.store, spec, k.publicKeyPem!); counts.keysVerified++; add(`challenge ${spec.name}`, true); }
+    try { await challenge(st, spec, k.publicKeyPem!); counts.keysVerified++; add(`challenge ${spec.name}`, true); }
     catch (error) { add(`challenge ${spec.name}`, false, (error as Error).message); }
 
     if (key.class === 'x509-ca' || key.class === 'x509-leaf') {
@@ -99,7 +103,7 @@ export async function verifyMigration(o: {
         try {
           const sessionKey = randomBytes(32);
           const ct = publicEncrypt({ key: createPublicKey(k.publicKeyPem!), padding: constants.RSA_PKCS1_PADDING }, sessionKey);
-          const got = await o.store.sessionKey(spec.mount, spec.name, ct, 32);
+          const got = await st.sessionKey(spec.mount, spec.name, ct, 32);
           add(`RA session-key unwrap ${spec.name}`, got.equals(sessionKey));
           if (got.equals(sessionKey)) counts.raUnwrapped++;
         } catch (error) { add(`RA session-key unwrap ${spec.name}`, false, (error as Error).message); }
