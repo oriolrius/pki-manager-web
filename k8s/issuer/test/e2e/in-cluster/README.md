@@ -27,8 +27,9 @@ Run the target from `k8s/issuer/`. It performs these steps:
 2. Build and load the backend and issuer images. Load the pinned fork as `pki-manager-openbao:e2e`.
 3. Deploy OpenBao in the `pki-manager` namespace. The fixture creates TLS credentials and
    persistent claims for Raft and bootstrap data. It initializes and unseals this test instance.
-4. Deploy the backend. It reads the scoped token from Secret `pki-manager-backend-token`
-   and the TLS CA from ConfigMap `openbao-client-ca`. Run the database migrations.
+4. Deploy the backend. It reads the scoped X.509/SSH token from Secret `pki-manager-backend-token`
+   and the TLS CA from ConfigMap `openbao-client-ca`. Run the database migrations. The test has
+   no SCEP RA credential (`OPENBAO_RA_TOKEN_FILE` unset): the issuer path needs none.
 5. Install cert-manager and the issuer Helm chart.
 
 The next steps create the signing CA and issue a certificate. The issuer sends the CSR to

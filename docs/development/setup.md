@@ -145,10 +145,12 @@ VITE_OIDC_CLIENT_ID=pki-web
 
 ## OpenBao and Keycloak containers
 
-`just dev` supplies `OPENBAO_ADDR`, `OPENBAO_CACERT` and `OPENBAO_TOKEN_FILE` to the
-backend process. To run the backend manually, run `just openbao` and export the three
-settings it prints. The token setting names a file. Keep the token file and the dev
-bootstrap credentials outside Git.
+`just dev` supplies `OPENBAO_ADDR`, `OPENBAO_CACERT`, `OPENBAO_TOKEN_FILE` and
+`OPENBAO_RA_TOKEN_FILE` to the backend process. To run the backend manually, run `just openbao`
+and export the settings it prints. Each token setting names a file: `backend-token` (policy
+`pki-manager-backend`, X.509 and SSH keys) and `ra-token` (policy `pki-manager-ra`, SCEP RA keys
+only). The dev bootstrap replaces a `backend-token` that still holds both policies. Keep the
+token files and the dev bootstrap credentials outside Git.
 
 `openbao/image.env` pins the fork. `just openbao-image verify` checks the image revision.
 Use a separate OpenBao instance for live tests as described in [Testing](testing.md#unit-tests-and-checks).

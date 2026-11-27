@@ -154,8 +154,12 @@ optional and idempotent against the backend binding.
    version. See the [backend RA API](../docs/api/integrations.md#backend-owned-scep-ra)
    for request fields, supported lengths and errors.
 
-The backend uses the dedicated Transit mount `pki-manager-ra` by default. The configuration,
-AppRole and policies live with the OpenBao deployment. Omit the obsolete
+The backend uses the dedicated Transit mount `pki-manager-ra` by default, with its own
+credential: the AppRole `pki-manager-ra`, delivered by the Compose service `openbao-agent-ra`
+(profile `scep`) to the backend `OPENBAO_RA_TOKEN_FILE`. The X.509/SSH backend token has no
+right on the RA mount, and the RA token has none on the X.509 and SSH mounts. Without the RA
+credential, the RA endpoints answer 503. The configuration, AppRoles and policies live with the
+OpenBao deployment ([OpenBao operations](../docs/operations/openbao.md)). Omit the obsolete
 `SCEP_RA_KEY_PROVIDER` setting on v4.
 
 ### Upgrade a v3 binding

@@ -23,8 +23,9 @@ isolated Cosmian service for a restored v3 backup.
 | Service (container) | What it does | Networks |
 |---|---|---|
 | `openbao` (`pki-openbao`) | The OpenBao fork. It keeps the keys in its Raft storage and signs with them, on HTTPS port 8200. It has no host port | `keystore-internal` |
-| `openbao-agent` (`pki-openbao-agent`) | Logs in with AppRole and writes the backend token to a file | `keystore-internal` |
-| `backend` (`pki-backend`) | Fastify API, certificate logic, SQLite database in `pki/`. It reads the token file on each call to OpenBao | `pki-network`, `keystore-internal` |
+| `openbao-agent` (`pki-openbao-agent`) | Logs in with the AppRole `pki-manager-backend` and writes the X.509/SSH token to a file | `keystore-internal` |
+| `openbao-agent-ra` (`pki-openbao-agent-ra`) | SCEP only (profile `scep`): logs in with the AppRole `pki-manager-ra` and writes the SCEP RA token to a separate file | `keystore-internal` |
+| `backend` (`pki-backend`) | Fastify API, certificate logic, SQLite database in `pki/`. It reads the token files on each call to OpenBao | `pki-network`, `keystore-internal` |
 | `frontend` (`pki-frontend`) | Web UI (nginx). It also forwards the backend paths (see [the single-origin proxy](#the-fix-already-applied-to-dockernginxconf)) | `pki-network` |
 | `openbao-bootstrap` | One-shot operator helper (profile `bootstrap`): policies, Transit mounts, AppRole credentials | `keystore-internal` |
 
@@ -135,7 +136,8 @@ steps of [Operate the OpenBao key store](openbao.md) in this sequence:
 2. [Initialize and unseal](openbao.md#initialize-and-unseal): initialize an empty store once,
    then unseal it.
 3. [Configure access and start the application](openbao.md#configure-access-and-start-the-application):
-   policies, Transit mounts and AppRole, then the Agent, then `backend` and `frontend`.
+   policies, Transit mounts and AppRoles, then the Agents, then `backend` and `frontend`. With
+   SCEP, set `COMPOSE_PROFILES=scep` in `docker/.env` to run the RA Agent.
 
 Then check the stack:
 
@@ -506,6 +508,7 @@ See [docker/.env.example](../../docker/.env.example) for full list. Key variable
 | `OPENBAO_TRANSIT_MOUNT` | `pki-manager` | Transit mount of the X.509 CA and certificate keys |
 | `OPENBAO_SSH_MOUNT` | `pki-manager-ssh` | Transit mount of the SSH CA keys |
 | `OPENBAO_RA_MOUNT` | `pki-manager-ra` | Transit mount of the SCEP RA keys |
+| `COMPOSE_PROFILES` | _(empty)_ | `scep` starts `openbao-agent-ra`, the SCEP RA credential. Without it, the RA endpoints answer 503 and the rest works |
 | `CRL_DISTRIBUTION_URL` | `http://localhost:3000/crl` | Public URL for CRL distribution points |
 | `TRUST_PROXY` | _(empty)_ | Reverse proxies allowed to set the client IP ([details](#client-ips-behind-a-reverse-proxy-trust_proxy)) |
 | `ALLOW_CA_KEY_EXPORT` | `false` | Enable audited PKCS#12/JKS CA keystore downloads for administrators. Set it before you create a CA that requires export. An existing non-exportable key stays non-exportable. CRL signing runs inside OpenBao. |
@@ -544,10 +547,12 @@ reads its part from `docker/config.json`. Both are described in one place:
 
 ### Secrets Management
 
-The backend environment has no OpenBao credential. The Agent writes a renewable token to
-`openbao/state/token/`, and the backend mounts that folder read-only. Only the Agent and the
-bootstrap helper mount the AppRole credentials of `openbao/state/approle/`. To renew the token
-and replace the SecretID, see
+The backend environment has no OpenBao credential. The Agent writes a renewable X.509/SSH token
+to `openbao/state/token/`, and the RA Agent writes the SCEP RA token to `openbao/state/token-ra/`.
+The backend mounts both folders read-only. The two tokens have separate AppRoles and policies:
+only the RA token reaches the RA keys. Only the Agents and the bootstrap helper mount the AppRole
+credentials of `openbao/state/approle/` and `openbao/state/approle-ra/`. To renew the tokens
+and replace a SecretID, see
 [Renew tokens and rotate the SecretID](openbao.md#renew-tokens-and-rotate-the-secretid). Keep the
 unseal shares in separate custody, and protect the root token separately.
 
@@ -600,7 +605,7 @@ docker inspect pki-backend --format='{{.State.Health.Status}}'
 ```bash
 docker compose logs backend
 docker compose logs frontend
-docker compose logs openbao openbao-agent
+docker compose logs openbao openbao-agent openbao-agent-ra
 ```
 
 ### Database Issues
@@ -609,7 +614,7 @@ Check backend logs, disk space and ownership of `pki/` (UID 1001). Stop writers 
 
 ### Key store connection issues
 
-Run `docker compose exec openbao bao status`. Unseal if required. Inspect `docker compose logs openbao-agent` for TLS, permission and AppRole errors. See the [OpenBao runbook](openbao.md#configure-access-and-start-the-application) for the token file check.
+Run `docker compose exec openbao bao status`. Unseal if required. Inspect `docker compose logs openbao-agent` (and `openbao-agent-ra` for SCEP) for TLS, permission and AppRole errors. A 503 `RA key provider is not configured` from the RA endpoints means that the backend has no readable SCEP RA token: start `openbao-agent-ra`. See the [OpenBao runbook](openbao.md#configure-access-and-start-the-application) for the token file check.
 
 For a v3 installation with Cosmian KMS, see the
 [v3 deployment guide](https://github.com/oriolrius/pki-manager-web/blob/v3.19.1/docs/operations/deployment.md#kms-connection-issues).

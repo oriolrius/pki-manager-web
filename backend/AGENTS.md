@@ -108,6 +108,10 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
 ## Environment
 
 Configure the TLS address in `OPENBAO_ADDR`, the trusted CA file in `OPENBAO_CACERT`,
-and the scoped token file in `OPENBAO_TOKEN_FILE`. The X.509, SSH and RA clients use
-`OPENBAO_TRANSIT_MOUNT`, `OPENBAO_SSH_MOUNT` and `OPENBAO_RA_MOUNT`, respectively.
+the X.509/SSH token file in `OPENBAO_TOKEN_FILE` (policy `pki-manager-backend`) and the SCEP RA
+token file in `OPENBAO_RA_TOKEN_FILE` (policy `pki-manager-ra`). Only `openbao/ra-transit.ts`
+reads the RA token; it refuses the same file as `OPENBAO_TOKEN_FILE`, and without it the RA
+operations answer 503 while the rest of the backend works. Never give one token both policies.
+The X.509, SSH and RA clients use `OPENBAO_TRANSIT_MOUNT`, `OPENBAO_SSH_MOUNT` and
+`OPENBAO_RA_MOUNT`, respectively.
 See `.env.example` for server, database, OIDC and proxy settings.

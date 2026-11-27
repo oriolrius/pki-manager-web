@@ -19,7 +19,8 @@ checkout. Operators use the published images instead: see [Docker deployment](..
    `-f docker/docker-compose.yml` from the repository root).
 
 2. Copy `.env.example` to `.env`. Set `IMAGE_TAG` to a local tag for the build.
-3. Prepare the OpenBao image, TLS files, persistent storage and AppRole credentials. Follow
+3. Prepare the OpenBao image, TLS files, persistent storage and AppRole credentials (also the
+   RA AppRole and `COMPOSE_PROFILES=scep` to test SCEP). Follow
    the [OpenBao operations guide](../operations/openbao.md). The Compose stack reads the
    image reference from `OPENBAO_IMAGE`.
 4. Create the backend data folder so the container user can write to it.

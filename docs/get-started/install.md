@@ -8,7 +8,8 @@ The production Compose stack has four long-running services.
 | `pki-frontend` | Web UI (nginx). It also forwards `/trpc` and `/api` to the backend, so the browser needs only this URL. |
 | `pki-backend` | API, certificate logic, SQLite database in `pki/`. |
 | `pki-openbao` | Holds the keys and signs on an internal TLS endpoint. |
-| `pki-openbao-agent` | Uses AppRole to deliver a scoped token to the backend. |
+| `pki-openbao-agent` | Uses AppRole to deliver a scoped X.509/SSH token to the backend. |
+| `pki-openbao-agent-ra` | SCEP only (Compose profile `scep`): delivers the separate SCEP RA token. |
 
 ## 1. Get the Compose files
 
@@ -141,4 +142,4 @@ Your name (top right) opens the user menu. The sun icon switches light and dark 
 docker compose down          # stop; the data stays on disk
 ```
 
-Back up the SQLite database in `pki/` together with the OpenBao Raft state. Keep the unseal shares and TLS and AppRole credentials for recovery. Follow the [OpenBao backup and restore procedure](../operations/openbao.md).
+Back up the SQLite database in `pki/` together with the OpenBao Raft state. Keep the unseal shares and TLS and AppRole credentials (both AppRoles with SCEP) for recovery. Follow the [OpenBao backup and restore procedure](../operations/openbao.md).
