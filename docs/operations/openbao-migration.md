@@ -380,14 +380,18 @@ the JSON report (`--out`) has `mode: "restore"`, `ok`, `pairBound`, `checks[]` (
 - the backup directory is intact (`check-backup`), format `pki-manager-migration-backup/2` with a
   pair marker;
 - the restored OpenBao holds the marker of **that** backup in state `snapshot`: an OpenBao
-  restored from another backup, a live cluster, or a snapshot taken outside `pki-migrate backup`
-  fails;
+  restored from a different managed backup fails, as does the source cluster after the backup
+  command releases its marker;
 - the restored database has the content digest of that backup: a database of another backup,
   or one that changed after the restore, fails.
 
 This holds when two backups have the same keys (only rows changed between them, for example a
 revocation): an older database next to a newer snapshot, or the reverse, fails whichever backup
-is named. Without `--backup-dir` the report is never `ok` (`pairBound=false`). A backup made
+is named. After a restore, the cluster carries the archived marker. Use `pki-migrate backup`
+for its next backup. A raw Raft snapshot of that cluster can inherit the old marker, even after
+new writes. Restore the checked `openbao.snap` from the named backup directory.
+
+Without `--backup-dir` the report is never `ok` (`pairBound=false`). A backup made
 before pair markers (format `/1`) or a SQLite-only backup cannot prove its pair: `check-backup`
 still checks its files; take a new backup pair.
 

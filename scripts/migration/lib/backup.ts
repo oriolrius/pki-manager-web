@@ -15,8 +15,8 @@
  *   2. marker `{backupId, sqliteContentSha256, state: snapshot}` written to the
  *      KV v1 entry pki-manager-backup/pair-marker, read back;
  *   3. Raft snapshot: the marker is INSIDE it, under the OpenBao barrier;
- *   4. marker set to `released`: a later snapshot of the live cluster (or of
- *      another tool) never holds a `snapshot` marker;
+ *   4. marker set to `released`: subsequent snapshots of this source cluster
+ *      see the released marker until another backup or restore changes it;
  *   5. the live database content is compared with the copy: a writer that ran
  *      during the backup fails it;
  *   6. `backup.json` (written last, atomically) records the same backupId and
