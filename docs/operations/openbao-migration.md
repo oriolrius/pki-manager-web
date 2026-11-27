@@ -466,7 +466,8 @@ v3.19.1 backend, Cosmian 5.28.0 and the OpenBao fork from `scripts/openbao-image
    verified; the cutover-time snapshot next to the later database fails.
 
 The synthetic rehearsal ran on 2026-11-27 from commit `ff096d11` with separate X.509/SSH
-and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b2`.
+and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b2`. The pair-evidence rows come
+from a run on 2026-11-27 from commit `18c63475` with the same fork (42 steps passed).
 
 | Check | Result |
 |---|---|
@@ -481,6 +482,12 @@ and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b
 | SSH with Cosmian stopped | An OpenSSH client that trusted the original v3 host CA completed a connection to a server presenting the new host certificate. |
 | Migrated SCEP RA with Cosmian stopped | The RA certificate matched v3. It verified a new signature. The RA recovered a PKCS#1 v1.5 session key. |
 | First RA provisioning on v4, Cosmian stopped | new SCEP integration: RA key generated in OpenBao (`imported_key=false`, non-exportable, session-key opt-in), binding `key_provider=openbao`, signature verifies with the new RA certificate |
+| Pair backup without `--quiesced` | exit 2, no directory |
+| Runtime (X.509/SSH, RA) and migration tokens on the pair marker and the Raft snapshot | HTTP 403 |
+| `verify --restore --backup-dir`, same pair (cutover backup, B1, B2) | `ok`, `pairBound=true` |
+| B1 database + B2 snapshot, and B2 database + B1 snapshot, each naming B1 and then B2 (same keys; B2 adds one X.509 and one SSH revocation) | exit 1, `pairBound=false`; the pair evidence is the only failed check |
+| `verify --restore` without `--backup-dir` | exit 1, `verified=false pairBound=false` |
+| Cutover-time snapshot + B2 database | exit 1: pair evidence and 2 keys made after the snapshot missing |
 
 The unit tests (`cd scripts/migration && npm test`) cover what the rehearsal data does not
 have: a CA row that holds its certificate id (repaired to its private key), a non-extractable
