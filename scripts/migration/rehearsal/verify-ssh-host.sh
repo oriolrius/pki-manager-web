@@ -24,6 +24,25 @@ id=$(docker run -d --label "pki-manager.rehearsal=$network" --network "$network"
       -o AuthorizedKeysFile=/etc/ssh/rehearsal_authorized_keys')
 trap 'docker rm -f "$id" >/dev/null 2>&1 || true' EXIT
 port=$(docker inspect --format '{{(index (index .NetworkSettings.Ports "2222/tcp") 0).HostPort}}' "$id")
+# Docker can accept the first TCP connection before sshd listens inside the container.
+# Wait for an SSH banner before the single authenticated connection that proves CA trust.
+python3 - "$port" <<'PYREADY'
+import socket
+import sys
+import time
+
+deadline = time.monotonic() + 10
+while time.monotonic() < deadline:
+    try:
+        with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=1) as sock:
+            if sock.makefile("rb").readline(256).startswith(b"SSH-2.0-"):
+                break
+    except OSError:
+        pass
+    time.sleep(0.1)
+else:
+    sys.exit("The rehearsal SSH server did not send a banner within 10 seconds")
+PYREADY
 ssh -F /dev/null -p "$port" -i "$run/ssh-client" \
   -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none \
   -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ecdsa-sha2-nistp256-cert-v01@openssh.com \
