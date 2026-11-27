@@ -160,6 +160,15 @@ export function validateApproval(manifest: Manifest, approval: Approval, live?: 
       if (m && (!m.file || !/^[0-9a-f]{64}$/.test(m.sha256))) bad('APPROVAL_MATERIAL', 'material entry needs file and sha256', k.sourceKeyId);
     }
   }
+  // Offline material: one file for each approved transfer, and none for anything else.
+  if (approval.material) {
+    for (const k of manifest.keys) {
+      if (approval.keys[k.sourceKeyId]?.action === 'transfer' && !approval.material[k.sourceKeyId]) bad('APPROVAL_MATERIAL_MISSING', 'offline approval: this transfer has no material file', k.sourceKeyId);
+    }
+    for (const id of Object.keys(approval.material)) {
+      if (approval.keys[id]?.action !== 'transfer') bad('APPROVAL_MATERIAL', 'material listed for a key that is not an approved transfer', id);
+    }
+  }
   const pemMissing = manifest.certificates.filter(c => c.pemSource === 'missing').map(c => `${c.table}:${c.rowId}`);
   for (const id of pemMissing) if (!(approval.acceptMissingPem ?? []).includes(id)) bad('PEM_MISSING', 'certificate PEM missing in DB and KMS; list it in acceptMissingPem to keep the row without PEM', id);
   for (const p of manifest.problems) if (p.severity === 'blocker' && !p.subject) problems.push(p);

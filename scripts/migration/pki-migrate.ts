@@ -18,6 +18,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { CosmianKmipClient } from './lib/cosmian.ts';
+import { exportCertificateBundle } from './lib/certificates.ts';
 import { buildManifest, summarize } from './lib/inventory.ts';
 import { OpenBaoClient } from './lib/openbao.ts';
 import { approvalTemplate } from './lib/policy.ts';
@@ -82,9 +83,12 @@ function writeNew(path: string, content: string, force: boolean): void {
 const HELP = `usage: pki-migrate <command> [options]   (guide: docs/operations/openbao-migration.md)
 
   inventory        --source-db FILE [--kms-url URL] [--kms-api-key-file F] [--target-profile F] --out manifest.json
+                   [--certificates-out F]   (PEM bundle of the certificates whose PEM is only in the KMS)
   approve-template --manifest F --openbao-* --out approval.json
   preflight        --manifest F --approval F --source-db F --target-db F --openbao-* [--kms-url URL] [--target-profile F]
-  apply            (preflight options) --run-dir DIR --confirm DIGEST12 [--material-dir DIR] [--actor NAME]
+                   [--material-dir DIR]   (offline material: every file is checked against its approved digest)
+                   [--certificates F]     (bundle of inventory --certificates-out: no source KMS needed)
+  apply            (preflight options) --run-dir DIR --confirm DIGEST12 [--actor NAME]
   verify           --manifest F --approval F --target-db F --openbao-* [--openbao-ra-token-file F] [--source-db F]
                    [--cutover] [--ra-session-check] [--out report.json]
                    (RA mount calls use --openbao-ra-token-file when given: the v4 pki-manager-ra identity)
@@ -104,8 +108,16 @@ async function main(argv: string[]): Promise<number> {
       const sourcePath = need(args, 'source-db');
       const db = openReadOnly(sourcePath);
       try {
-        const manifest = await buildManifest({ sourcePath, db, kms: kmsFrom(args), mounts: loadProfile(opt(args, 'target-profile')).mounts });
+        const kms = kmsFrom(args);
+        const certsOut = opt(args, 'certificates-out');
+        if (certsOut && !kms) throw new UsageError('--certificates-out needs --kms-url');
+        const manifest = await buildManifest({ sourcePath, db, kms, mounts: loadProfile(opt(args, 'target-profile')).mounts });
         writeNew(need(args, 'out'), JSON.stringify(manifest, null, 2) + '\n', force);
+        if (certsOut && kms) {
+          const b = await exportCertificateBundle(manifest, kms);
+          writeNew(certsOut, b.pem, force);
+          process.stdout.write(`certificate bundle: ${b.count} certificate(s) whose PEM is only in the KMS\n`);
+        }
         process.stdout.write(`${summarize(manifest)}\nmanifest digest ${documentDigest(manifest)}\n`);
         return manifest.problems.some(p => p.severity === 'blocker') ? 1 : 0;
       } finally { db.close(); }
@@ -122,7 +134,7 @@ async function main(argv: string[]): Promise<number> {
       const manifest = readJson<Manifest>(need(args, 'manifest'));
       const approval = readJson<Approval>(need(args, 'approval'));
       const { store, addr } = storeFrom(args);
-      const r = await preflight({ manifest, approval, sourceDbPath: need(args, 'source-db'), targetDbPath: need(args, 'target-db'), store, addr, kms: kmsFrom(args), profile: loadProfile(opt(args, 'target-profile')), online: !approval.material });
+      const r = await preflight({ manifest, approval, sourceDbPath: need(args, 'source-db'), targetDbPath: need(args, 'target-db'), store, addr, kms: kmsFrom(args), profile: loadProfile(opt(args, 'target-profile')), online: !approval.material, materialDir: opt(args, 'material-dir'), certificatesFile: opt(args, 'certificates') });
       for (const c of r.checks) process.stdout.write(`${c.ok ? 'ok  ' : 'FAIL'} ${c.name}${c.detail ? ` - ${c.detail}` : ''}\n`);
       return r.ok ? 0 : 1;
     }
@@ -133,7 +145,7 @@ async function main(argv: string[]): Promise<number> {
       const faultSpec = process.env.PKI_MIGRATE_FAULT; // rehearsal only: simulate a crash
       const report = await apply({
         manifest, approval, sourceDbPath: need(args, 'source-db'), targetDbPath: need(args, 'target-db'), runDir: need(args, 'run-dir'),
-        store, addr, kms: kmsFrom(args), profile: loadProfile(opt(args, 'target-profile')), materialDir: opt(args, 'material-dir'),
+        store, addr, kms: kmsFrom(args), profile: loadProfile(opt(args, 'target-profile')), materialDir: opt(args, 'material-dir'), certificatesFile: opt(args, 'certificates'),
         confirm: need(args, 'confirm'), actor: opt(args, 'actor') ?? 'pki-migrate',
         fault: faultSpec ? point => { if (point === faultSpec) { log(`FAULT injected at ${point}: exiting without cleanup`); process.exit(75); } } : undefined,
       });

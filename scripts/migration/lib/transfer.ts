@@ -21,6 +21,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { CosmianSource } from './cosmian.ts';
 import { Journal } from './journal.ts';
 import type { TargetStore, TransitKey } from './openbao.ts';
+import { kmsOnlyCertificates, loadCertificateBundle } from './certificates.ts';
 import { approvedTarget, validateApproval } from './policy.ts';
 import { fileSha256, openWritable } from './sqlite.ts';
 import { applyToTargetDb, missingColumns, type DbResult, type TargetProfile } from './target-db.ts';
@@ -41,8 +42,8 @@ export interface PreflightResult { ok: boolean; checks: { name: string; ok: bool
 
 export async function preflight(o: {
   manifest: Manifest; approval: Approval; sourceDbPath: string; targetDbPath: string; store: TargetStore; addr: string;
-  kms?: CosmianSource; profile: TargetProfile; online: boolean;
-}): Promise<PreflightResult & { live?: LiveTarget }> {
+  kms?: CosmianSource; profile: TargetProfile; online: boolean; materialDir?: string; certificatesFile?: string;
+}): Promise<PreflightResult & { live?: LiveTarget; certificates?: Map<string, Buffer> }> {
   const checks: PreflightResult['checks'] = [];
   const check = (name: string, ok: boolean, detail = '') => { checks.push({ name, ok, detail }); return ok; };
   check('source database unchanged since inventory', fileSha256(o.sourceDbPath) === o.manifest.source.dbSha256, 'the source copy must be frozen: writers stopped, no new rows');
@@ -66,11 +67,39 @@ export async function preflight(o: {
   } catch (error) {
     check('OpenBao reachable with the migration identity', false, (error as Error).message);
   }
-  if (o.online) {
-    if (!o.kms) check('source KMS configured for online transfer', false, 'use --kms-url, or approved offline material');
-    else {
+  // Apply writes every certificate PEM into the target. v3 keeps CA certificates (and a leaf PEM
+  // when its row has none) only in Cosmian: they come from the certificate bundle, else from the
+  // source KMS. Checked here, before any import, also with offline key material.
+  let certificates: Map<string, Buffer> | undefined;
+  if (o.certificatesFile) {
+    try {
+      certificates = loadCertificateBundle(o.certificatesFile);
+      const known = new Set(o.manifest.certificates.map(c => c.pemSha256).filter(Boolean));
+      const unknown = [...certificates.keys()].filter(h => !known.has(h)).length;
+      check('certificate bundle holds only inventoried certificates', unknown === 0, unknown ? `${unknown} certificate(s) match no inventoried DER (changed or foreign)` : `${certificates.size} certificate(s)`);
+    } catch (error) {
+      check('certificate bundle readable', false, (error as Error).message);
+    }
+  }
+  const needKms = kmsOnlyCertificates(o.manifest).filter(c => !(c.pemSha256 && certificates?.has(c.pemSha256)));
+  if (o.online || needKms.length > 0) {
+    if (!o.kms) {
+      if (o.online) check('source KMS configured for online transfer', false, 'use --kms-url, or approved offline material');
+      else check('certificate PEMs available without the source KMS', false, `${needKms.length} certificate(s) have their PEM only in the source KMS and are not in --certificates (${needKms.slice(0, 3).map(c => `${c.table}:${c.rowId}`).join(', ')}${needKms.length > 3 ? ', ...' : ''}): pass the bundle of inventory --certificates-out, or --kms-url (read only)`);
+    } else {
       try { await o.kms.query(); check('source KMS reachable', true); } catch (error) { check('source KMS reachable', false, (error as Error).message); }
     }
+  } else if (certificates) check('certificate PEMs available without the source KMS', true, `${kmsOnlyCertificates(o.manifest).length} KMS-only certificate(s) in the bundle`);
+  // Offline material: every file is read and checked here, so a missing or wrong file stops
+  // the run before the first import (not in the middle of it).
+  if (o.approval.material) {
+    const bad: string[] = [];
+    let n = 0;
+    for (const key of o.manifest.keys) {
+      if (o.approval.keys[key.sourceKeyId]?.action !== 'transfer' || !o.approval.material[key.sourceKeyId]) continue;
+      try { readMaterial(o.approval, o.materialDir, key).fill(0); n++; } catch (error) { bad.push((error as Error).message); }
+    }
+    check('offline material files present and match the approved digests', bad.length === 0, bad.length ? bad.slice(0, 5).join('; ') : `${n} file(s)`);
   }
   const a = validateApproval(o.manifest, o.approval, live, { online: o.online && !o.approval.material });
   for (const p of a.problems) check(`approval: ${p.code}`, false, `${p.subject ?? ''} ${p.message}`.trim());
@@ -84,7 +113,7 @@ export async function preflight(o: {
   } catch (error) {
     check('target database opens', false, (error as Error).message);
   }
-  return { ok: checks.every(c => c.ok), checks, live };
+  return { ok: checks.every(c => c.ok), checks, live, certificates };
 }
 
 /** Checks a Transit key against the approved spec and the source fingerprint. */
@@ -120,7 +149,7 @@ export interface ApplyReport {
 
 export async function apply(o: {
   manifest: Manifest; approval: Approval; sourceDbPath: string; targetDbPath: string; runDir: string;
-  store: TargetStore; addr: string; kms?: CosmianSource; profile: TargetProfile; materialDir?: string;
+  store: TargetStore; addr: string; kms?: CosmianSource; profile: TargetProfile; materialDir?: string; certificatesFile?: string;
   confirm: string; actor: string; fault?: (point: string) => void;
 }): Promise<ApplyReport> {
   const digest = documentDigest(o.manifest);
@@ -189,6 +218,8 @@ export async function apply(o: {
       dbResult = await applyToTargetDb({
         db, manifest: o.manifest, approval: o.approval, profile: o.profile, ready, publicKeys, actor: o.actor, fault: o.fault,
         pemFor: async c => {
+          const bundled = c.pemSha256 ? pre.certificates?.get(c.pemSha256) : undefined;
+          if (bundled) return derToPem(bundled, 'CERTIFICATE');
           if (!o.kms || !c.kmsCertificateId) return null;
           const der = await o.kms.getCertificateDer(c.kmsCertificateId);
           return der ? derToPem(der, 'CERTIFICATE') : null;
@@ -260,8 +291,12 @@ function readMaterial(approval: Approval, dir: string | undefined, key: KeyEntry
   const m = approval.material?.[key.sourceKeyId];
   if (!m) throw new MigrationError('MATERIAL_MISSING', `no approved material for ${key.sourceKeyId}`);
   if (!dir) throw new MigrationError('MATERIAL_DIR', '--material-dir is required for offline material');
-  const path = resolve(dir, m.file);
-  if (!path.startsWith(resolve(dir) + '/')) throw new MigrationError('MATERIAL_PATH', 'material file must be inside --material-dir');
+  const inside = (p: string, root: string) => p.startsWith(root + '/');
+  if (!inside(resolve(dir, m.file), resolve(dir))) throw new MigrationError('MATERIAL_PATH', 'material file must be inside --material-dir');
+  // Also after symbolic links: a link inside the directory must not point outside it.
+  let path: string;
+  try { path = realpath(resolve(dir, m.file)); } catch { throw new MigrationError('MATERIAL_FILE', `material file of ${key.sourceKeyId} is not readable`); }
+  if (!inside(path, realpath(dir))) throw new MigrationError('MATERIAL_PATH', 'material file must be inside --material-dir');
   const blob = readFileSync(path);
   if (sha256Hex(blob) !== m.sha256) { blob.fill(0); throw new MigrationError('MATERIAL_DIGEST', `material for ${key.sourceKeyId} does not match the approved digest`); }
   return blob;

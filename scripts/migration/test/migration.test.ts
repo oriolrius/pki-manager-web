@@ -6,8 +6,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createPublicKey, generateKeyPairSync, X509Certificate } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { buildManifest } from '../lib/inventory.ts';
@@ -19,7 +19,8 @@ import { verifyMigration } from '../lib/verify.ts';
 import { backupPair, checkBackup } from '../lib/backup.ts';
 import { rotationPlan } from '../lib/rotation.ts';
 import type { Approval, Manifest } from '../lib/types.ts';
-import { documentDigest, MigrationError } from '../lib/util.ts';
+import { derToPem, documentDigest, MigrationError, sha256Hex, spkiFingerprint } from '../lib/util.ts';
+import { exportCertificateBundle } from '../lib/certificates.ts';
 import { FakeCosmian, FakeTransit, makeCert, migrateToV4, seedV3, tempDir, v3Database } from './helpers.ts';
 
 const ADDR = 'https://openbao.test:8200';
@@ -326,3 +327,105 @@ test('default mounts follow the backend', () => {
   assert.deepEqual(DEFAULT_MOUNTS, { x509: 'pki-manager', ssh: 'pki-manager-ssh', ra: 'pki-manager-ra' });
 });
 
+
+/** Offline material as the operator makes it: each transfer key wrapped by Cosmian to the target wrapping key. */
+async function offline(s: Awaited<ReturnType<typeof setup>>) {
+  const materialDir = join(s.dir, 'material');
+  mkdirSync(materialDir);
+  const wrapId = await s.kms.registerWrappingKey(createPublicKey(await s.store.wrappingKeyPem()).export({ format: 'der', type: 'spki' }) as Buffer);
+  const material: NonNullable<Approval['material']> = {};
+  for (const [i, k] of s.manifest.keys.filter(x => x.proposed === 'transfer').entries()) {
+    const blob = await s.kms.wrappedGet(k.sourceKeyId, wrapId);
+    writeFileSync(join(materialDir, `k${i}.wrapped`), blob);
+    material[k.sourceKeyId] = { file: `k${i}.wrapped`, sha256: sha256Hex(blob) };
+  }
+  await s.kms.removeWrappingKey(wrapId);
+  const approval = await approve(s.manifest, s.store, a => { a.allowSourceWrappingKeyRegistration = false; a.material = material; });
+  const certificatesFile = join(s.dir, 'certificates.pem');
+  writeFileSync(certificatesFile, (await exportCertificateBundle(s.manifest, s.kms)).pem);
+  s.kms.calls.length = 0;
+  return { materialDir, approval, certificatesFile };
+}
+const pf = (s: Awaited<ReturnType<typeof setup>>, approval: Approval, extra: Partial<Parameters<typeof preflight>[0]> = {}) =>
+  preflight({ manifest: s.manifest, approval, sourceDbPath: s.sourcePath, targetDbPath: s.targetPath, store: s.store, addr: ADDR, profile: DEFAULT_PROFILE, online: false, ...extra });
+const failed = (p: Awaited<ReturnType<typeof preflight>>) => p.checks.filter(c => !c.ok).map(c => `${c.name} ${c.detail}`).join(' | ');
+
+test('offline material: preflight reads every file, so a bad one stops the run before the first import', async () => {
+  const s = await setup();
+  const o = await offline(s);
+  const ok = await pf(s, o.approval, { materialDir: o.materialDir, certificatesFile: o.certificatesFile });
+  assert.equal(ok.ok, true, failed(ok));
+  const ids = Object.keys(o.approval.material!).sort();
+  const last = ids[ids.length - 1]; // the run order: a late failure used to leave the earlier keys imported
+  const variant = (edit: (a: Approval) => void) => { const a = structuredClone(o.approval); edit(a); return a; };
+  const cases: [string, Approval, Partial<Parameters<typeof preflight>[0]>, RegExp][] = [
+    ['wrong digest', variant(a => { a.material![last].sha256 = '0'.repeat(64); }), { materialDir: o.materialDir }, /does not match the approved digest/],
+    ['no --material-dir', o.approval, {}, /--material-dir is required/],
+    ['transfer without material', variant(a => { delete a.material![last]; }), { materialDir: o.materialDir }, /APPROVAL_MATERIAL_MISSING/],
+    ['material for a key that is not a transfer', variant(a => { a.keys[last].action = 'rotate'; }), { materialDir: o.materialDir }, /APPROVAL_MATERIAL /],
+    ['path outside the directory', variant(a => { a.material![last].file = '../certificates.pem'; }), { materialDir: o.materialDir }, /inside --material-dir/],
+  ];
+  // A symbolic link inside the directory that points outside it (same bytes, right digest).
+  const outside = join(s.dir, 'outside.wrapped');
+  writeFileSync(outside, readFileSync(join(o.materialDir, o.approval.material![last].file)));
+  symlinkSync(outside, join(o.materialDir, 'link.wrapped'));
+  cases.push(['link to a file outside the directory', variant(a => { a.material![last].file = 'link.wrapped'; }), { materialDir: o.materialDir }, /inside --material-dir/]);
+  for (const [name, approval, extra, re] of cases) {
+    const p = await pf(s, approval, { certificatesFile: o.certificatesFile, ...extra });
+    assert.equal(p.ok, false, name);
+    assert.match(failed(p), re, name);
+    await assert.rejects(run(s, approval, { kms: undefined, certificatesFile: o.certificatesFile, ...extra }), (e: MigrationError) => e.code === 'PREFLIGHT', name);
+    assert.equal(s.store.imports, 0, `${name}: nothing imported`);
+  }
+});
+
+test('offline material with Cosmian stopped: the certificate bundle gives the PEMs, identities and DER are kept', async () => {
+  const s = await setup();
+  const o = await offline(s);
+  const kmsPems = s.manifest.certificates.filter(c => c.table !== 'integration_ras' && c.pemSource === 'kms');
+  assert.ok(kmsPems.length > 0, 'the seed has certificates whose PEM is only in Cosmian');
+  // No KMS and no bundle: refused in preflight (it used to fail after the imports).
+  const noPem = await pf(s, o.approval, { materialDir: o.materialDir });
+  assert.match(failed(noPem), /certificate PEMs available without the source KMS/);
+  await assert.rejects(run(s, o.approval, { kms: undefined, materialDir: o.materialDir }), (e: MigrationError) => e.code === 'PREFLIGHT');
+  assert.equal(s.store.imports, 0);
+  // Missing, changed and foreign certificates, and a key block in the bundle.
+  const pems = readFileSync(o.certificatesFile, 'utf8').match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g)!;
+  const der0 = new X509Certificate(pems[0]).raw;
+  const changed = Buffer.from(der0); changed[changed.length - 1] ^= 0xff; // signature byte: still parses
+  const k = generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey;
+  const foreign = makeCert({ cn: 'Foreign', key: k, serial: '99', ca: true });
+  const bundles: [string, string, RegExp][] = [
+    ['missing', pems.slice(1).join('\n'), /not in --certificates/],
+    ['changed', [derToPem(changed, 'CERTIFICATE'), ...pems.slice(1)].join('\n'), /match no inventoried DER/],
+    ['foreign', [...pems, foreign].join('\n'), /match no inventoried DER/],
+    ['private key block', [...pems, k.export({ format: 'pem', type: 'pkcs8' }) as string].join('\n'), /PRIVATE KEY, not CERTIFICATE/],
+  ];
+  for (const [name, text, re] of bundles) {
+    const f = join(s.dir, `bundle-${name.replace(/ /g, '-')}.pem`);
+    writeFileSync(f, text);
+    const p = await pf(s, o.approval, { materialDir: o.materialDir, certificatesFile: f });
+    assert.match(failed(p), re, name);
+    await assert.rejects(run(s, o.approval, { kms: undefined, materialDir: o.materialDir, certificatesFile: f }), (e: MigrationError) => e.code === 'PREFLIGHT', name);
+    assert.equal(s.store.imports, 0, `${name}: nothing imported`);
+  }
+  // The good run: no source KMS at all.
+  const r = await run(s, o.approval, { kms: undefined, materialDir: o.materialDir, certificatesFile: o.certificatesFile });
+  assert.equal(r.imported, Object.keys(o.approval.material!).length);
+  assert.deepEqual(s.kms.calls, [], 'apply made no call to Cosmian');
+  const again = await run(s, o.approval, { kms: undefined, materialDir: o.materialDir, certificatesFile: o.certificatesFile });
+  assert.equal(again.noOp, true);
+  const target = openReadOnly(s.targetPath);
+  for (const c of kmsPems) {
+    const row = target.prepare('SELECT certificate_pem FROM keystore_objects WHERE id = ?').get(c.kmsCertificateId!) as { certificate_pem: string } | undefined;
+    if (!row) continue; // a certificate of a key to rotate gets no row
+    assert.equal(sha256Hex(new X509Certificate(row.certificate_pem).raw), c.pemSha256, `DER of ${c.table}:${c.rowId} kept`);
+  }
+  const v = await verifyMigration({ manifest: s.manifest, approval: o.approval, target, store: s.store, profile: DEFAULT_PROFILE });
+  target.close();
+  assert.equal(v.ok, true, JSON.stringify(v.checks.filter(c => !c.ok)));
+  for (const key of s.manifest.keys.filter(x => o.approval.material![x.sourceKeyId])) {
+    const t = await s.store.readKey(key.target!.mount, key.target!.name);
+    assert.equal(spkiFingerprint(t!.publicKeyPem!), key.spkiSha256, `identity of ${key.sourceKeyId}`);
+  }
+});

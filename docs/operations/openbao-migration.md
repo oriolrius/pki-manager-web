@@ -160,10 +160,32 @@ administrator then edits it:
 leaf keys, for revoked or expired CAs and for retired SSH CAs. After a drop, key downloads
 and renewals that reuse that key are no longer possible.
 
-Offline material: instead of the online wrapped export, an approval can list, per key, a file
-of wrapped key material made for the same wrapping key (`"material": {"<key id>": {"file":
-"...", "sha256": "..."}}`) and `apply --material-dir DIR`. The tool checks the digest before the
-import. The rehearsal below uses the online export only.
+**Offline material.** Instead of the online wrapped export, the approval can list one file of
+wrapped key material for each key to transfer: `"material": {"<key id>": {"file": "...",
+"sha256": "..."}}`, with `allowSourceWrappingKeyRegistration: false`. Pass `--material-dir DIR`
+to `preflight` and `apply`. The rules:
+
+- Each file is the Transit import `ciphertext`, decoded: the key wrapped by Cosmian to the
+  **wrapping key of its target mount** (each mount has its own; the template records their
+  fingerprints). The tool does not make these files: the operator registers the wrapping key in
+  Cosmian, runs the wrapped `Get` (`Encrypt`, RSA, SHA-256, `NoEncoding`), then removes it.
+- Every key approved as `transfer` needs an entry, and only those keys can have one. A file
+  must be inside `DIR`, also after symbolic links.
+- `preflight` reads every file and checks its digest, so a missing, changed or misplaced file
+  stops the run before the first import.
+- A file with the right digest but the key of **another** row is imported, then refused: its
+  public key differs from the source key (`IMPORT_MISMATCH`). The wrong key stays under that
+  Transit name, and the next run stops on it (`TARGET_CONFLICT`); nothing is overwritten.
+  Delete that Transit key with an operator token, fix the approval, and run again.
+
+v3 keeps CA certificates (and a leaf PEM when its row has none) only in Cosmian, and `apply`
+writes every certificate into the target. Without Cosmian, give them in a bundle:
+`inventory --certificates-out FILE` writes the PEM bundle of those certificates while
+Cosmian is reachable, and `preflight` and `apply --certificates FILE` read it. Each certificate
+must have the DER SHA-256 of the manifest, which the approval binds: a missing, changed or
+unknown certificate, or a PEM block that is not a certificate, stops `preflight`. With neither
+the bundle nor `--kms-url`, `preflight` fails. With the material and the bundle, `apply` makes
+no call to Cosmian.
 
 ### 5. Preflight and apply
 
@@ -178,15 +200,18 @@ pki-migrate apply --manifest "$W/manifest.json" --approval "$W/approval.json" \
 The preflight changes nothing. It fails when the source copy changed after the inventory,
 when the target copy is the source file or has no v4 schema, when OpenBao is sealed, when a
 mount is missing or is not Transit, when the token is a root token, when the mounts differ
-from the inventory, or when the approval does not match the manifest and the live wrapping
-keys. `apply` runs the same checks first.
+from the inventory, when the approval does not match the manifest and the live wrapping
+keys, when an offline material file is missing or has another digest, or when a certificate
+PEM that is only in Cosmian is neither in `--certificates` nor readable with `--kms-url`.
+`apply` runs the same checks first.
 
 `apply` then, for each approved key in a fixed order:
 
 1. reads the target name in OpenBao. A key that is there and matches (type, imported,
    version 1, flags, public key) is adopted. A key that is there and does not match stops
    the run, and nothing is overwritten;
-2. otherwise exports the key wrapped from Cosmian and imports it;
+2. otherwise exports the key wrapped from Cosmian (or reads its approved material file) and
+   imports it;
 3. reads it back and checks it, then signs fresh random data in OpenBao and verifies the
    signature with the source public key.
 
@@ -310,7 +335,10 @@ have: a CA row that holds its certificate id, a non-extractable SSH CA key (rota
 SSH key shared by two zones, an RA alias that certifies another key, approval refusals, a
 planted conflicting OpenBao key, a conflicting target row, a failure inside the database
 transaction, a source key that becomes non-extractable before transfer, a root token, a
-changed source copy, `caKeyExport: "deny"`, `drop-key` and backup tampering.
+changed source copy, `caKeyExport: "deny"`, `drop-key`, backup tampering, offline material
+refusals (wrong digest, missing entry, a path or link outside the directory), certificate
+bundles with a missing, changed or foreign certificate or a key block, and an offline apply
+with no Cosmian.
 
 ## Limits
 
