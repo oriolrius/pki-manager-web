@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T07:35:00Z'
+updated_date: '2026-11-27T07:49:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -58,4 +58,6 @@ Scope of the 102 checks without the openssl executable: X.509 issuance, renewal,
 Verified v3.19.1 directly with Cosmian 5.28.0 and the v3 Keycloak realm. Vitest exited 0: 110 files and 1,018 tests passed, zero failures or pending tests. The signed-image Ansible collection run also passed and found five Transit keys. The public release draft is PR #120. Its CodeQL finding at x509-extensions.ts refers to the public key identifier from RFC 5280 §4.2.1.2 method 1. Certificate signatures use SHA-256 or stronger and an independent issuer-key verification. GitGuardian identified a synthetic export-test password; the test now generates a fresh value per run.
 
 The source cutover uses a separate, expiring OpenBao migration identity. Runtime requests to import keys get HTTP 403. The migration token imported synthetic X.509, SSH and RA keys and could not export them. The complete Ansible integration suite passed with the public fork, web policy d02873a2 and collection probe 9365518. The focused kind rerun after cleanup handling passed 4/4 with a real issued certificate. GitHub code-scanning alert 307 was triaged as a false positive specific to the public-key identifier in RFC 5280 section 4.2.1.2. Four CA fixtures independently matched that identifier and verified their signatures. Branch protection and scan rules remain enabled.
+
+Migration rehearsal on synthetic v3.19.1 API data (10 keys). The author reports a forced interruption, successful resume and idempotent third apply, 78/78 cutover checks, and a verified SQLite plus Raft restore with Cosmian stopped. The restored backend issued and renewed certificates, signed a CRL and SSH host certificate, and used the original SCEP RA. The rehearsal included concurrent uncommitted runtime changes; a clean integrated rerun and independent review are pending. Export change b9620490 uses Node for encrypted PKCS#8 and Java for JKS and CA-only truststores. PKCS#12 key bundles retain the openssl executable to preserve mixed-case friendly names and legacy Unicode passwords. Hosted RBAC on bb61b79 stopped before the browser tests because the packaged process could not find the Drizzle migration journal.
 <!-- SECTION:NOTES:END -->
