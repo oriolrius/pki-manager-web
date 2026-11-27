@@ -70,6 +70,12 @@ With the fork, PKI Manager 4 covers every function that it used from Cosmian KMS
 use Cosmian for anything. The rest of OpenBao is unchanged. I plan to propose the session-key
 operation to the OpenBao project; until it is accepted there, PKI Manager needs the fork.
 
+The fork is also a tool of its own: the image is a complete OpenBao 2.7.3 server, and it runs
+without PKI Manager. Its specification (what it adds, what it does not change, how to run and
+verify it, versions) is in
+[downstream/README.md](https://github.com/oriolrius/openbao/blob/pki-manager/downstream/README.md),
+and each version has notes on its [releases page](https://github.com/oriolrius/openbao/releases).
+
 Licence of the fork: OpenBao is MPL-2.0, and its files keep that licence, also where the fork
 changes them. The files that the fork adds are Apache-2.0, the licence of PKI Manager. The rules are
 in [DOWNSTREAM-LICENSING.md](https://github.com/oriolrius/openbao/blob/pki-manager/DOWNSTREAM-LICENSING.md).
