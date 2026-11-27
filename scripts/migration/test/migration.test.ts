@@ -2,7 +2,7 @@
  * Offline migration tests: synthetic v3.19.1 data (schema from the backend's own
  * migrations), fake Cosmian and Transit with real cryptography, and the target
  * copy brought to v4 with the real 0016/0017 migrations.
- * Run: cd scripts/migration && node --test test/   (Node >= 22.18)
+ * Run: cd scripts/migration && npm test   (Node >= 22.18)
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
