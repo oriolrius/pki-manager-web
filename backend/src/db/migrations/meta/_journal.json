@@ -127,6 +127,13 @@
       "when": 1795725322470,
       "tag": "0017_keystore_objects",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795764789464,
+      "tag": "0018_crl_publication",
+      "breakpoints": true
     }
   ]
 }

@@ -230,7 +230,7 @@ describe('Public CRL endpoint heals an empty-PEM CRL row (issue #48)', () => {
 
   it('regenerates and serves a signed CRL when the newest row has an empty PEM', async () => {
     // Stand in for the KMS-backed signer: write a real signed CRL #2 (as CRLService.generate does).
-    const spy = vi.spyOn(getCRLService(), 'regenerateForCa').mockImplementation(async (_ctx, id) => {
+    const spy = vi.spyOn(getCRLService(), 'refreshForDistribution').mockImplementation(async (_ctx, id) => {
       const pem = generateCRL({
         issuer: { CN: 'Endpoint Test CA', O: 'Test', C: 'US' },
         crlNumber: 2,
@@ -241,8 +241,9 @@ describe('Public CRL endpoint heals an empty-PEM CRL row (issue #48)', () => {
         signatureAlgorithm: 'SHA256-RSA',
         issuerCertificate: ca.certPem,
       }).pem;
-      await db.insert(crls).values({ ...emptyRow(id), crlNumber: 2, crlPem: pem });
-      return true;
+      const row = { ...emptyRow(id), crlNumber: 2, crlPem: pem, entriesSha256: null };
+      await db.insert(crls).values(row);
+      return { status: 'published' as const, need: 'empty' as const, crl: row };
     });
     const res = await server.inject({ method: 'GET', url: `/crl/${healCaId}.crl` });
     expect(spy).toHaveBeenCalledWith(expect.anything(), healCaId);

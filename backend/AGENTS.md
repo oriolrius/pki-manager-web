@@ -87,8 +87,15 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
   retains the CSR's public key. The backend verifies the CSR and builds the certificate.
   See [CSR signing](../docs/guides/k8s-csr-signing.md).
 - `crl.service.ts` builds the X.509 v2 CRL and passes its signed data to `KMSService.signData`.
-  Transit signs it with the CA key. Revocation regenerates the CRL. The public route
-  `/crl/:caId.crl|.der` refreshes it after `nextUpdate`.
+  Transit signs it with the CA key. It publishes one CRL at a time per CA: a lease on the
+  `crl_publication` row, the Transit request with no transaction open, then a compare-and-set
+  insert (lease + next number) in a short IMMEDIATE transaction. Never hold a SQLite write lock
+  over a network call. Each CRL keeps the entries of the one before it (`crl_entry_removals` is
+  the only way out). `regenerateForCa` publishes only when the newest CRL is not current;
+  `generate` always makes a new number. The public route `/crl/:caId.crl|.der` and the background
+  job (`crl-reconciler.ts`, started on `onListen` by the route plugin) publish what an outage
+  left pending. Rows from before migration 0018 can share a number (NULL `entries_sha256`):
+  never renumber or delete them.
 - Renewal with `generateNewKey: false` resolves the key link in `keystore_objects`.
   The service rejects key reuse for certificates at least 90 days old. `revokeOriginal`
   revokes the original certificate as superseded and writes a `certificate.revoke` audit row.

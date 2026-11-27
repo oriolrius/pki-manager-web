@@ -47,8 +47,10 @@ the key, and gets back only the signed certificate.
 ## When you revoke a certificate
 
 1. You revoke it with a reason.
-2. The backend marks it as revoked and signs a new certificate revocation list (CRL) for that CA.
-   For that call it exports the key of the CA from OpenBao and keeps it in memory only.
+2. The backend marks it as revoked and publishes a new certificate revocation list (CRL) for that
+   CA. It builds the list, and OpenBao Transit signs it with the key of the CA. When OpenBao cannot
+   sign, the revocation stays and the backend publishes the CRL later. See
+   [Revocation and CRLs](features/revocation.md#when-openbao-cannot-sign).
 3. Clients and servers fetch the CRL from a public address and refuse the certificate.
 
 SSH uses its own list, the KRL. See [SSH certificate authority](features/ssh-certificates.md).

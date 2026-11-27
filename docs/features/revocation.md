@@ -29,6 +29,9 @@ links:
   database transaction. Then PKI Manager signs a new CRL of that CA that lists them. The response
   field `crlGenerated` tells if the CRL was signed. When OpenBao cannot sign at that moment, the
   CA stays revoked, and the next request for its CRL signs the list.
+- Delete a revoked certificate. Its serial stays in the CRL. To take the serial out of the CRL,
+  delete with `removeFromCrl=true`. Do not do this while the certificate is still valid: a client
+  then accepts it again.
 
 ## How it works
 
@@ -37,6 +40,33 @@ one. It is valid for 7 days. When a client asks for a list that is past that dat
 signs a new one.
 
 The backend builds the list and sends the data to OpenBao Transit for signing. A CA with a non-exportable key can issue CRLs.
+
+### Numbers and entries
+
+- The backend publishes one CRL at a time for each CA. This is also true for revocations at the
+  same time and for several backend processes on one database.
+- Each new CRL has a higher CRL number than all the CRLs of that CA before it.
+- Each new CRL lists all the entries of the CRL before it, and all the revoked certificates of the
+  CA. Only `removeFromCrl` takes an entry out.
+- When a revocation does not change the list, no new CRL is made. A CRL generate request
+  (`POST /api/v1/cas/<caId>/crls`) always makes a new one.
+- Version 3 could give the same number to two different CRLs when revocations came at the same
+  time. Those CRLs stay in the history as they are. The first new CRL has a number above the
+  highest old one, and it lists the entries of all the old CRLs with that number.
+
+### When OpenBao cannot sign
+
+A revocation still succeeds when OpenBao is sealed or cannot be reached. The CRL stays as it was,
+so it does not list the new revocation yet. The backend signs the missing CRL when OpenBao works
+again:
+
+- at the next request for the CRL (`/crl/<caId>.crl` or `.der`),
+- every minute in the background, also after a restart of the backend,
+- at the next revocation of that CA.
+
+After a failure, the CRL requests and the background job wait before they try again: 5 seconds,
+then double the time after each failure, at most 60 seconds. While the CRL does not list all the
+revocations, its `Cache-Control` time is at most 30 seconds, so caches fetch it again soon.
 
 Revocation works only when the server that accepts the certificate reads the CRL. The Mosquitto
 guide shows the full path: revoke in PKI Manager, refresh the CRL file of the broker, and see the

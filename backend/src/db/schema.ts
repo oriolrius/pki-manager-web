@@ -192,10 +192,59 @@ export const crls = sqliteTable(
     createdAt: integer('created_at', { mode: 'timestamp' })
       .notNull()
       .default(sql`(unixepoch())`),
+    // SHA-256 of the canonical entry list (serial, revocation date, reason) of this CRL. Every
+    // CRL that the publication protocol writes has it (crl.service.ts). It is NULL on CRLs
+    // written before migration 0018: those rows are published history and stay unchanged.
+    entriesSha256: text('entries_sha256'),
   },
   (table) => ({
     caIdIdx: index('idx_crls_ca_id').on(table.caId),
     crlNumberIdx: index('idx_crls_number').on(table.caId, table.crlNumber),
+    // One number per CA for every CRL of the publication protocol. Older rows can repeat a
+    // number (concurrent generation before 0018); their DER is signed, so they are not renumbered.
+    publishedNumberIdx: uniqueIndex('uq_crls_published_number')
+      .on(table.caId, table.crlNumber)
+      .where(sql`entries_sha256 IS NOT NULL`),
+  })
+);
+
+// CRL publication state, one row per CA (migration 0018). It orders CRL publication across
+// requests and processes without a SQLite write lock during the OpenBao signing request:
+// a publisher takes the lease (short write), signs, then inserts the CRL in a short IMMEDIATE
+// transaction that checks its lease and the CRL number (crl.service.ts). `last_number` is the
+// high-water mark of the CRL numbers: it never goes down, also when old CRL rows are deleted.
+// `failure_count`/`retry_after` hold the backoff of background retries after a failed signing.
+export const crlPublication = sqliteTable('crl_publication', {
+  caId: text('ca_id')
+    .primaryKey()
+    .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+  lastNumber: integer('last_number').notNull().default(0),
+  lease: text('lease'),
+  leaseUntil: integer('lease_until', { mode: 'timestamp' }),
+  failureCount: integer('failure_count').notNull().default(0),
+  lastError: text('last_error'),
+  lastFailureAt: integer('last_failure_at', { mode: 'timestamp' }),
+  retryAfter: integer('retry_after', { mode: 'timestamp' }),
+  lastPublishedAt: integer('last_published_at', { mode: 'timestamp' }),
+});
+
+// Serials that an operator took out of the CRL on purpose (certificate delete with
+// removeFromCrl). Every other entry of a published CRL stays in the next CRL of its CA, also
+// when the certificate row is deleted. `serial_number` is normalized hex (crypto/crl.ts).
+export const crlEntryRemovals = sqliteTable(
+  'crl_entry_removals',
+  {
+    caId: text('ca_id')
+      .notNull()
+      .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+    serialNumber: text('serial_number').notNull(),
+    certificateId: text('certificate_id'),
+    removedAt: integer('removed_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.caId, table.serialNumber] }),
   })
 );
 
@@ -666,6 +715,7 @@ export type NewCertificate = typeof certificates.$inferInsert;
 
 export type Crl = typeof crls.$inferSelect;
 export type NewCrl = typeof crls.$inferInsert;
+export type CrlPublication = typeof crlPublication.$inferSelect;
 
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;

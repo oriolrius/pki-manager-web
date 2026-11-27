@@ -420,7 +420,7 @@ export function parseCRL(data: string, format: CertificateFormat = 'PEM'): Parse
  * 0x00 sign-padding byte (added by DER INTEGER encoding when the high bit is set) — but never
  * a significant leading-zero nibble. Keeps full-byte hex so "0a1b2c" stays "0a1b2c".
  */
-function normalizeSerialHex(hex: string): string {
+export function normalizeSerialHex(hex: string): string {
   let h = hex.toLowerCase().replace(/[:\s]/g, '');
   if (h.length % 2 !== 0) h = '0' + h;
   while (h.length > 2 && h.startsWith('00')) h = h.slice(2);

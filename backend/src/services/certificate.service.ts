@@ -1421,8 +1421,16 @@ export class CertificateService {
         }
       }
 
-      if (params.removeFromCrl) {
-        logger.info({ caId: cert.caId }, 'CRL update requested (not yet implemented)');
+      // A deleted revoked certificate stays in the CRL: each CRL keeps the entries of the one
+      // before it. removeFromCrl takes its serial out on purpose (best-effort republish).
+      if (params.removeFromCrl && isRevoked) {
+        try {
+          await getCRLService().removeEntry(ctx, cert.caId, cert.serialNumber, params.id);
+          logger.info({ caId: cert.caId, serialNumber: cert.serialNumber }, 'Serial removed from the CRL on request');
+        } catch (error) {
+          // The row is already gone; the serial stays in the CRL (the safe side).
+          logger.warn({ error, caId: cert.caId, serialNumber: cert.serialNumber }, 'Could not record the CRL removal');
+        }
       }
 
       // 3. The success audit row, only after the delete really happened.
