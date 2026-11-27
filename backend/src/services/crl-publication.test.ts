@@ -10,6 +10,8 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Fastify from 'fastify';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { spawn } from 'node:child_process';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import * as schema from '../db/schema.js';
@@ -564,6 +566,27 @@ describe('CRL publication: a revocation deleted before any CRL lists it', () => 
     await getCRLService().generate(ctx, { caId: ca.id });
     const latest = expectOrderedHistory(ca.id, ca.pem).at(-1)!.crlPem;
     expect(serialsOf(latest)).toEqual(new Set([norm(viaService.serial), norm(viaBulk.serial)]));
+  });
+
+  it('deletes the committed revocation when another SQLite writer is still revoking the certificate', async () => {
+    const ca = await makeCa('Concurrent revoke and delete');
+    const [leaf] = makeLeaves(ca.id, 1);
+    const writer = spawn(process.execPath, ['--eval', `
+      const Database = require('better-sqlite3');
+      const sqlite = new Database(process.env.DATABASE_PATH);
+      sqlite.exec('BEGIN IMMEDIATE');
+      sqlite.prepare("UPDATE certificates SET status='revoked', revocation_reason='keyCompromise' WHERE id=?").run(process.argv[1]);
+      process.send('revoking');
+      setTimeout(() => { sqlite.exec('COMMIT'); sqlite.close(); }, 250);
+    `, leaf.id], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });
+    try {
+      await once(writer, 'message');
+      deleteCertificateRow(db, leaf.id);
+      const saved = db.select().from(crlDeletedRevocations).where(eq(crlDeletedRevocations.caId, ca.id)).get();
+      expect(saved).toMatchObject({ serialNumber: norm(leaf.serial), revocationReason: 'keyCompromise' });
+    } finally {
+      writer.kill();
+    }
   });
 
   it('an explicit removeFromCrl during the outage leaves the serial out of the first CRL after unseal', async () => {

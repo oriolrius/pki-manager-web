@@ -54,6 +54,7 @@ export function deleteCertificateRow(
   certId: string,
   options: { removeFromCrl?: boolean } = {},
 ): void {
+  // Wait for any writer before reading the revocation that the delete must preserve.
   database.transaction((tx) => {
     const row = tx.select().from(certificates).where(eq(certificates.id, certId)).get();
     if (row) CRLService.recordCertificateDelete(tx, row, options.removeFromCrl === true);
@@ -62,7 +63,7 @@ export function deleteCertificateRow(
       .where(eq(certificates.renewedFromId, certId))
       .run();
     tx.delete(certificates).where(eq(certificates.id, certId)).run();
-  });
+  }, { behavior: 'immediate' });
 }
 
 export interface ListCertificatesParams {
