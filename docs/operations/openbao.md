@@ -122,7 +122,7 @@ Run these commands in Bash from the repository root on the deployment host. Use 
    dc logs --tail=50 backend
    ```
 
-   Issue a certificate from a test CA and verify it against that CA. An HTTP health check alone does not exercise a key. The backend uses HTTPS to reach OpenBao on its internal network. With SCEP, complete one enrollment through the gateway. Without the RA Agent, the backend logs a warning at startup for each existing SCEP RA binding, and RA requests answer HTTP 503.
+   Check the OpenBao state and backend credential with the [key store diagnostics endpoint](../api/index.md#key-store-errors). Issue a certificate from a test CA and verify it against that CA. The backend uses HTTPS to reach OpenBao on its internal network. With SCEP, complete one enrollment through the gateway. Without the RA Agent, the backend logs a warning at startup for each existing SCEP RA binding, and RA requests answer HTTP 503.
 
 ## Upgrade an installation that has one backend AppRole
 
