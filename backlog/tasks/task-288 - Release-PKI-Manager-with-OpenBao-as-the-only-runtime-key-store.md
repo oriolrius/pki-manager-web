@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T09:13:00Z'
+updated_date: '2026-11-27T09:31:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -76,4 +76,6 @@ On clean b01287e8, restore verification checked the live policy and version of e
 Integrated migration 0019 in 07a8f787. On that clean commit, all 1122 backend tests passed with the signed OpenBao fork, all 50 migrator tests passed, and Drizzle validated the migration history. The v3.19.1 rehearsal passed 94/94 checks at cutover and after restore with Cosmian stopped. The site link check passed on 189 pages at 6b9ecade. A two-process regression reproduced SQLITE_BUSY when a delete raced an ongoing revocation. At d0a1b3e3 the delete acquires its SQLite write lock before reading and retains the committed revocation. All 24 CRL publication tests, backend typecheck and lint for the changed files passed. A local HTTP fixture confirmed one POST per client after a busy 503 with retries configured; the CLI displayed Retry-After, and Ansible preserved the application error. Independent CRL review is in progress.
 
 Paired restore on clean d4d0ba8f passed 42 rehearsal steps with schema 0019 and the signed fork. Two backups had the same keys and differed by one X.509 and one SSH revocation. Both matching pairs passed. Both mixed pairs failed, whichever backup directory was named. Cutover and its restore each passed 94 checks (80 rows, 10 keys), with Cosmian stopped for restored runtime operations. All 59 migration tests and typecheck passed. Regression tests found that overlapping Raft snapshots and incomplete digest records could be accepted; backup now checks the marker across the snapshot, validates the required files and takes exclusive ownership of its output directory. The SSH fixture waits for its server banner before checking the original host CA. Site checked 189 pages at 92e8a64d. Use the Raft file from the verified managed backup directory; a raw snapshot of a restored cluster can inherit its marker. Independent review, SCEP reprovision and final release checks remain in progress.
+
+At runtime commit 0ca54bf2 the v3.19.1 SCEP reprovision rehearsal passed all 18 steps with disposable keys. Cutover reconciled 23 rows and passed 43 checks. With Cosmian stopped, the gateway enrolled devices, rejected requests encrypted to both retired certificates, restarted and enrolled again. The restored pair passed verification. All 63 migration tests and typecheck passed, as did Go race tests and 166 frontend tests. Independent review confirmed ordered CRLs and preserved revocations during outages on migration 0019. Paired restore code passed independent checks with a non-root operator token. The documentation objection was closed at 38345448. Recovery requires the managed snapshot from the checked backup directory. The site link check passed on 189 pages. Final product acceptance, SCEP review and release checks are in progress.
 <!-- SECTION:NOTES:END -->
