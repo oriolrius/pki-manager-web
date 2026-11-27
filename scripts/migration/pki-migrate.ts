@@ -9,7 +9,8 @@
  *   approve-template approval template bound to the manifest and the target
  *   preflight        all checks of apply, changes nothing
  *   apply            transfer approved keys, write the target DB copy (idempotent)
- *   verify           check a migrated (or restored) pair; --cutover is the gate
+ *   verify           check a migrated pair; --cutover is the gate (needs the frozen source);
+ *                    --restore checks a later backup pair from the database side
  *   backup           SQLite + OpenBao Raft snapshot pair, with digests
  *   check-backup     re-check a backup directory
  *   rotation-plan    steps for keys that cannot (or will not) migrate
@@ -25,7 +26,7 @@ import { approvalTemplate } from './lib/policy.ts';
 import { openReadOnly } from './lib/sqlite.ts';
 import { loadProfile } from './lib/target-db.ts';
 import { apply, liveTarget, preflight } from './lib/transfer.ts';
-import { verifyMigration } from './lib/verify.ts';
+import { verifyMigration, verifyRestore } from './lib/verify.ts';
 import { backupPair, checkBackup } from './lib/backup.ts';
 import { rotationPlan } from './lib/rotation.ts';
 import type { Approval, Manifest } from './lib/types.ts';
@@ -91,7 +92,11 @@ const HELP = `usage: pki-migrate <command> [options]   (guide: docs/operations/o
   apply            (preflight options) --run-dir DIR --confirm DIGEST12 [--actor NAME]
   verify           --manifest F --approval F --target-db F --openbao-* [--openbao-ra-token-file F] [--source-db F]
                    [--cutover] [--ra-session-check] [--out report.json]
-                   (RA mount calls use --openbao-ra-token-file when given: the v4 pki-manager-ra identity)
+                   (--cutover needs --source-db: the frozen v3 copy, reconciled row by row;
+                    RA mount calls use --openbao-ra-token-file when given: the v4 pki-manager-ra identity)
+  verify --restore --target-db F --openbao-* [--openbao-ra-token-file F] [--source-db F] [--manifest F --approval F] [--out F]
+                   a LATER backup pair (v4 wrote since the cutover): every key the database owns is in
+                   OpenBao with the same public key; with --source-db, the v3 audit history is still there
   backup           --db FILE --out-dir DIR [--label TEXT] [--openbao-*]
   check-backup     --dir DIR
   rotation-plan    --manifest F [--approval F]
@@ -153,21 +158,33 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'verify': {
-      const manifest = readJson<Manifest>(need(args, 'manifest'));
-      const approval = readJson<Approval>(need(args, 'approval'));
+      const restore = args.restore === true, cutover = args.cutover === true;
+      // The gate compares the target with the frozen v3 copy; a later restore is not a cutover.
+      if (restore && cutover) throw new UsageError('--restore and --cutover exclude each other: --cutover is the gate against the frozen v3 copy, --restore checks a later backup pair');
+      if (cutover && !opt(args, 'source-db')) throw new UsageError('--cutover needs --source-db: the frozen v3 copy the manifest was made from (the gate reconciles the target with it)');
+      const manifestPath = restore ? opt(args, 'manifest') : need(args, 'manifest');
+      const approvalPath = restore ? opt(args, 'approval') : need(args, 'approval');
+      const targetPath = need(args, 'target-db');
       const { store } = storeFrom(args);
-      const target = openReadOnly(need(args, 'target-db'));
+      const manifest = manifestPath ? readJson<Manifest>(manifestPath) : undefined;
+      const approval = approvalPath ? readJson<Approval>(approvalPath) : undefined;
+      const target = openReadOnly(targetPath);
       const sourcePath = opt(args, 'source-db');
       const source = sourcePath ? openReadOnly(sourcePath) : undefined;
       try {
         const raTokenFile = opt(args, 'openbao-ra-token-file', 'OPENBAO_RA_TOKEN_FILE');
         const raStore = raTokenFile ? new OpenBaoClient({ addr: need(args, 'openbao-addr', 'OPENBAO_ADDR'), caFile: opt(args, 'openbao-cacert', 'OPENBAO_CACERT'), tokenFile: raTokenFile, namespace: opt(args, 'openbao-namespace', 'OPENBAO_NAMESPACE') }) : undefined;
-        const r = await verifyMigration({ manifest, approval, target, store, raStore, profile: loadProfile(opt(args, 'target-profile')), source, raSessionCheck: args['ra-session-check'] === true });
+        const profile = loadProfile(opt(args, 'target-profile'));
+        const r = restore
+          ? await verifyRestore({ target, store, raStore, profile, source, manifest, approval })
+          : await verifyMigration({ manifest: manifest!, approval: approval!, target, store, raStore, profile, source, sourcePath, raSessionCheck: args['ra-session-check'] === true });
         for (const c of r.checks.filter(x => !x.ok)) process.stdout.write(`FAIL ${c.name}${c.detail ? ` - ${c.detail}` : ''}\n`);
-        process.stdout.write(`checks ${r.checks.length}, failed ${r.checks.filter(c => !c.ok).length}; counts ${JSON.stringify(r.counts)}\nverified=${r.ok} cutoverReady=${r.cutoverReady} cosmianRequired=${r.cosmianRequired}\n`);
+        for (const w of r.warnings) process.stdout.write(`WARN ${w}\n`);
+        process.stdout.write(`mode ${r.mode}; checks ${r.checks.length}, failed ${r.checks.filter(c => !c.ok).length}; counts ${JSON.stringify(r.counts)}\n`);
+        process.stdout.write(restore ? `verified=${r.ok} cosmianRequired=${r.cosmianRequired}\n` : `verified=${r.ok} reconciled=${r.reconciled} cutoverReady=${r.cutoverReady} cosmianRequired=${r.cosmianRequired}\n`);
         const out = opt(args, 'out');
         if (out) writeNew(out, JSON.stringify(r, null, 2) + '\n', force);
-        return args.cutover === true ? (r.cutoverReady ? 0 : 1) : (r.ok ? 0 : 1);
+        return cutover ? (r.cutoverReady ? 0 : 1) : (r.ok ? 0 : 1);
       } finally { target.close(); source?.close(); }
     }
     case 'backup': {

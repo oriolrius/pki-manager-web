@@ -17,7 +17,7 @@ and has no dependencies. It reads the v3 database copy only. It never writes tha
 | Keep the key identity: the same public key, checked by SHA-256 of the SubjectPublicKeyInfo and by a new signature | Generate a replacement key in silence |
 | Write v4 rows in one transaction, compare-and-set on each row | Overwrite a row or an OpenBao key that holds another value |
 | Resume after a crash, and do nothing on a second run | Rotate a key that cannot move (it gives the rotation steps) |
-| Verify the result, also after a restore, with Cosmian stopped | Remove the Cosmian objects (you do that after the recovery window) |
+| Verify the result against the frozen v3 copy, and a later restore from the database side, with Cosmian stopped | Remove the Cosmian objects (you do that after the recovery window) |
 
 ## How v3 objects map to v4
 
@@ -94,6 +94,12 @@ means `node scripts/migration/pki-migrate.ts`, run from the repository root.
 
    `backup` uses the SQLite online backup API, checks integrity and foreign keys, and records
    SHA-256 digests. It refuses an existing directory. Keep the matching Cosmian backup.
+
+   Always work on this backup copy. A v3 backend in WAL mode can keep its last commits in
+   `pki.db-wal` after it stops: the main file alone then misses rows, and a plain `cp` of
+   `pki.db` loses them. The backup API reads them through SQLite. `inventory`, `preflight`,
+   `apply` and `verify` refuse a source database whose `-wal` file holds data or that has a
+   `-journal` file (error `SOURCE_NOT_FROZEN`).
 3. Bring the target copy (`$W/target/pki.db`) to the v4 schema with the v4 migrations, and
    do not start the server. From source: `cd backend && DATABASE_PATH=$W/target/pki.db pnpm db:migrate`.
    With the v4 image, the entrypoint runs `node /app/backend/dist/db/migrate.js` before its
@@ -132,7 +138,10 @@ pki-migrate inventory --source-db "$W/backup-v3/pki.db" $KMS --out "$W/manifest.
 It reads the database and runs only read operations on Cosmian (Query, GetAttributes, Get of
 public keys and certificates). The manifest has no private key material. It lists every key
 with its references, attributes, public key fingerprint, allowed actions and proposed action,
-every certificate with the source of its PEM, the legacy references and the problems. Exit
+every certificate with the source of its PEM, the legacy references and the problems. It
+binds the source copy with two digests: `dbSha256` (the file) and `contentSha256` (the
+schema and every row of every table, read through SQLite). `preflight`, `apply` and `verify`
+compute both again and stop when either differs. Exit
 code 1 means at least one blocker. Without `--kms-url` it works on the database alone; the
 result cannot be applied, but it shows the scope early.
 
@@ -237,10 +246,28 @@ pki-migrate verify --manifest "$W/manifest.json" --approval "$W/approval.json" \
 
 `verify` never contacts Cosmian. It checks every key in OpenBao (flags, public key, a new
 signature), every `keystore_objects` row and link, the SSH references and fingerprints, the
-RA bindings, every certificate PEM (digest, serial, public key), and it reconciles the copy
-with the frozen source: CAs, certificates, revocations, renewal links, CRLs, SSH CAs and
-their serial counters, SSH certificates, integrations and RA bindings. `--cutover` also
-fails while a key waits for rotation or any id still needs Cosmian. The migration token can
+RA bindings, every certificate PEM (digest, serial, public key). From the database side, it
+checks that every key the target database owns (`keystore_objects` key rows that are
+active or revoked, `ssh_cas` references, RA bindings in OpenBao) is in OpenBao at the
+version the row names, with the same public key.
+
+With `--source-db` it checks that the source is the frozen copy the manifest binds (no WAL
+data, file and content digests), then reconciles every table of that copy with the target,
+row by row and column by column: the audit history, CAs, certificates and their revocations,
+renewal links and owners (integration, Kubernetes resource), CRLs, SSH CAs and their serial
+counters, SSH certificates, revocations, KRLs and the KRL sequence, host blocks, principals
+and grants, identities, hosts, zones, fleet tokens, integrations and RA bindings. The only
+accepted differences are the writes of the migration, each with its exact value: the PEM
+backfill of `certificates.certificate_pem`, the RA alias and key-link repair of `kms_key_id`,
+the SSH references, the RA binding columns, the new `audit_log` rows of operation
+`migration.*` of this approval, and columns and tables that only the v4 schema has. The
+replay cache `ssh_idempotency` is not compared. A failed table lists the missing, changed and
+extra rows, for example `reconcile certificates - 1 changed [s"cert-1": status s"revoked" -> s"active"]`.
+
+`--cutover` is the gate: it needs `--source-db` (without it, the command stops with a usage
+error), and it fails while a table does not reconcile, a key waits for rotation, or any id
+still needs Cosmian. Without `--cutover` and without `--source-db`, `verify` checks the keys
+and rows but reports `reconciled=false` and `cutoverReady=false`. The migration token can
 run `verify` on all three mounts. To check with the v4 runtime identities instead, pass the
 X.509 and SSH token (policy `pki-manager-backend`) as `--openbao-token-file` and the SCEP RA
 token (policy `pki-manager-ra`) as `--openbao-ra-token-file`: every RA mount call then uses the
@@ -260,6 +287,9 @@ it created: a database without its snapshot is not a backup pair. The snapshot i
 needs the unseal keys of the cluster that took it. Keep the database and the snapshot of one
 backup together: one without the other loses keys or rows.
 
+To check a restore made right after this backup (before v4 accepted writes), run the same
+`verify --cutover` on the restored database and the restored OpenBao.
+
 ### 7. Return path
 
 Before v4 accepts writes, the original pair is intact: the v3 database backup and Cosmian.
@@ -267,6 +297,28 @@ Start v3 on them again. After v4 accepted writes, a return to v3 loses those wri
 keys, serials, revocations); plan a forward recovery from the v4 backup pair instead. Keep
 Cosmian until the recovery window closes, then destroy its objects, including the legacy
 ECIES host keys.
+
+### 8. Verify a later restore
+
+After v4 accepted writes, a restored database differs from the v3 copy (new certificates,
+revocations, CRLs, deleted keys), so the cutover comparison does not apply. Restore the
+database and the Raft snapshot of **one** `backup` directory, then, before v4 starts:
+
+```sh
+pki-migrate verify --restore --target-db /restored/pki.db $BAO --openbao-ra-token-file "$W/ra-token" \
+  --source-db "$W/backup-v3/pki.db" --out "$W/verify-restore.json"
+```
+
+`--restore` needs no manifest. It starts from the database: every key the database owns
+must be in OpenBao at its version with the same public key, certificate rows must certify
+their keys, and no id may need Cosmian. With `--source-db`, every `audit_log` row of the v3
+copy must still be there, unchanged. It fails when a snapshot older than the database is
+restored: the keys made after the snapshot (an X.509 issue, a new SSH CA, an RA key) are
+missing. Keys that v4 deleted (rows in state `destroyed`) need nothing; a deleted key that
+the snapshot still holds is a `WARN` line, as is a key row left `pending` by an interrupted
+creation. Pass `--manifest` and `--approval` when the migration dropped keys or accepted
+missing PEMs: the gate then knows those decisions. A key in OpenBao that no row uses (a
+snapshot newer than the database) is not found: Transit keys are not listed.
 
 ## Controlled rotation
 

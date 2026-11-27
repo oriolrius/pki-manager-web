@@ -36,6 +36,8 @@ export interface TransitKey {
   deletionAllowed: boolean;
   allowPkcs1v15SessionKey: boolean;
   publicKeyPem: string | null; // of version 1
+  /** Public key PEM of every version OpenBao returns (`keys.<n>.public_key`), by version. */
+  publicKeys: Record<number, string>;
 }
 
 export interface TargetStore {
@@ -182,6 +184,7 @@ export class OpenBaoClient implements TargetStore {
       deletionAllowed: d.deletion_allowed === true,
       allowPkcs1v15SessionKey: d.allow_pkcs1v15_session_key === true,
       publicKeyPem: v1 && typeof v1.public_key === 'string' ? v1.public_key : null,
+      publicKeys: Object.fromEntries(Object.entries(keys).flatMap(([v, k]) => (isObject(k) && typeof k.public_key === 'string' && /^[1-9][0-9]*$/.test(v) ? [[Number(v), k.public_key]] : []))),
     };
   }
 

@@ -9,14 +9,25 @@
  *   certificate rows hold, with the right links, PEMs and Transit key;
  * - SSH: ssh_cas references are versioned OpenBao references, the OpenSSH
  *   fingerprint is unchanged; SCEP: bindings use OpenBao (optional unwrap test);
- * - reconciliation with the frozen source copy: rows, serials, statuses,
- *   revocations, renewal links, SSH serial counters, CRLs, token hashes;
- * - cutover gate: no key left to rotate, no id that only Cosmian can resolve.
+ * - the frozen source copy is the one the manifest binds (file and content
+ *   digests, no pending WAL commits), and every row of every table of it is
+ *   in the target, unchanged except for the writes of the migration
+ *   (lib/reconcile.ts);
+ * - the pair, from the database side: every key the target database owns is
+ *   in OpenBao with the same public key (lib/pair.ts);
+ * - cutover gate: reconciled with the frozen source, no key left to rotate,
+ *   no id that only Cosmian can resolve.
+ *
+ * verifyRestore checks a LATER restore (after v4 accepted writes): the pair
+ * and the gate from the database side, and the audit history of the source.
  */
 import { constants, createPublicKey, publicEncrypt, randomBytes, X509Certificate } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { TargetStore } from './openbao.ts';
 import { approvedTarget } from './policy.ts';
+import { checkPair } from './pair.ts';
+import { reconcile } from './reconcile.ts';
+import { checkBinding } from './source.ts';
 import { all, columnsOf, tableExists } from './sqlite.ts';
 import { sshKeyRef, SSH_KEY_REF_PREFIX, type TargetProfile } from './target-db.ts';
 import { challenge, checkTargetKey } from './transfer.ts';
@@ -24,13 +35,26 @@ import type { Approval, Manifest } from './types.ts';
 import { normalizeSerial, sha256Hex, spkiDer, spkiFingerprint, sshFingerprintOfP256 } from './util.ts';
 
 export interface Check { name: string; ok: boolean; detail?: string }
-export interface VerifyReport { ok: boolean; cutoverReady: boolean; cosmianRequired: boolean; checks: Check[]; counts: Record<string, number> }
+export interface VerifyReport {
+  mode: 'migration' | 'restore';
+  ok: boolean;
+  /** Always false in restore mode: a later restore is not a cutover. */
+  cutoverReady: boolean;
+  cosmianRequired: boolean;
+  /** Frozen source given, bound to the manifest and reconciled (migration mode). */
+  reconciled: boolean;
+  checks: Check[];
+  counts: Record<string, number>;
+  /** Findings that do not fail the check (pending rows, keys left after a delete). */
+  warnings: string[];
+}
 
 type Ks = { id: string; object_type: string; state: string; mount: string | null; key_name: string | null; key_version: number | null; exportable: number | null; public_key_pem: string | null; certificate_pem: string | null; private_key_id: string | null; public_key_id: string | null; issuer_certificate_id: string | null };
 
 export async function verifyMigration(o: {
   manifest: Manifest; approval: Approval; target: DatabaseSync; store: TargetStore; profile: TargetProfile;
-  source?: DatabaseSync; raSessionCheck?: boolean;
+  /** The frozen source copy (and its path, for the WAL and file checks). Required for cutoverReady. */
+  source?: DatabaseSync; sourcePath?: string; raSessionCheck?: boolean;
   /** Identity for the RA mount when it differs from `store` (v4 runtime: the pki-manager-ra token). */
   raStore?: TargetStore;
 }): Promise<VerifyReport> {
@@ -143,13 +167,57 @@ export async function verifyMigration(o: {
     if (ok) counts.pemVerified++;
   }
 
-  if (o.source) reconcile(o.source, o.target, add);
+  // The frozen source: bound to the manifest, then reconciled row by row. The gate needs it.
+  let reconciled = false;
+  if (o.source) {
+    const bad = checkBinding(o.manifest.source, o.sourcePath, o.source);
+    add('frozen source is the copy the manifest binds (no WAL commits, file and content digests)', bad.length === 0, bad.join('; '));
+    const r = reconcile({ source: o.source, target: o.target, manifest: o.manifest, approval: o.approval, add, mode: 'full' });
+    counts.rowsReconciled = r.rows;
+    reconciled = bad.length === 0 && r.ok;
+  } else {
+    add('cutover: reconciliation with the frozen source', false, 'no source database: pass --source-db with the frozen v3 copy the manifest was made from');
+  }
 
-  // Cutover gate: every id the runtime will look up must resolve without Cosmian.
+  // The pair from the database side: keys the manifest does not know (made after the cutover).
+  const warnings: string[] = [];
+  await checkPair({ target: o.target, store: o.store, raStore: o.raStore, profile: o.profile, add, counts, warnings });
+
+  const unresolved = cosmianGate(o.target, accepted, add, o);
+  const ok = checks.every(c => c.ok || c.name.endsWith('resolved before cutover') || c.name.startsWith('resolves without Cosmian') || c.name.startsWith('cutover: '));
+  const cutoverReady = checks.every(c => c.ok) && reconciled && rotateOpen === 0 && unresolved === 0 && o.manifest.source.kmsRead;
+  return { mode: 'migration', ok, cutoverReady, cosmianRequired: unresolved > 0 || rotateOpen > 0, reconciled, checks, counts, warnings };
+}
+
+/**
+ * A later restore: the database and the Raft snapshot of one backup pair,
+ * after v4 accepted writes (new keys, revocations, deleted keys). Nothing is
+ * compared with the manifest's key list; every check starts from the database.
+ * With `source`, the audit history of the frozen v3 copy must still be there.
+ */
+export async function verifyRestore(o: {
+  target: DatabaseSync; store: TargetStore; raStore?: TargetStore; profile: TargetProfile;
+  source?: DatabaseSync;
+  /** Optional: the decisions of the migration (accepted missing PEMs, dropped keys). */
+  manifest?: Manifest; approval?: Approval;
+}): Promise<VerifyReport> {
+  const checks: Check[] = [];
+  const add = (name: string, ok: boolean, detail?: string) => checks.push({ name, ok, detail });
+  const counts: Record<string, number> = {};
+  const warnings: string[] = [];
+  await checkPair({ target: o.target, store: o.store, raStore: o.raStore, profile: o.profile, add, counts, warnings });
+  const unresolved = cosmianGate(o.target, new Set(o.approval?.acceptMissingPem ?? []), add, o);
+  if (o.source) counts.rowsReconciled = reconcile({ source: o.source, target: o.target, add, mode: 'history' }).rows;
+  return { mode: 'restore', ok: checks.every(c => c.ok), cutoverReady: false, cosmianRequired: unresolved > 0, reconciled: false, checks, counts, warnings };
+}
+
+/** Every id the v4 runtime looks up must resolve without Cosmian. Returns the number that do not. */
+export function cosmianGate(target: DatabaseSync, accepted: Set<string>, add: (name: string, ok: boolean, detail?: string) => void, o: { manifest?: Manifest; approval?: Approval } = {}): number {
+  const ks = (id: string) => (tableExists(target, 'keystore_objects') ? target.prepare('SELECT * FROM keystore_objects WHERE id = ?').get(id) as Ks | undefined : undefined);
   let unresolved = 0;
   const need = (what: string, ok: boolean) => { if (!ok) { unresolved++; add(`resolves without Cosmian: ${what}`, false); } };
-  if (tableExists(o.target, 'certificate_authorities')) {
-    for (const r of all(o.target, 'SELECT id, kms_key_id, kms_certificate_id FROM certificate_authorities')) {
+  if (tableExists(target, 'certificate_authorities')) {
+    for (const r of all(target, 'SELECT id, kms_key_id, kms_certificate_id FROM certificate_authorities')) {
       const cert = ks(String(r.kms_certificate_id));
       need(`certificate_authorities:${r.id} certificate`, cert?.object_type === 'certificate');
       const keyId = r.kms_key_id === r.kms_certificate_id ? cert?.private_key_id : String(r.kms_key_id);
@@ -157,45 +225,24 @@ export async function verifyMigration(o: {
       need(`certificate_authorities:${r.id} key`, key?.object_type === 'private_key' && (key.state === 'active' || key.state === 'destroyed'));
     }
   }
-  if (tableExists(o.target, 'certificates')) {
-    for (const r of all(o.target, 'SELECT id, kms_key_id, kms_certificate_id FROM certificates')) {
+  if (tableExists(target, 'certificates')) {
+    for (const r of all(target, 'SELECT id, kms_key_id, kms_certificate_id FROM certificates')) {
       const id = `certificates:${r.id}`;
       need(`${id} certificate`, ks(String(r.kms_certificate_id))?.object_type === 'certificate' || accepted.has(id));
       if (r.kms_key_id !== null) need(`${id} key`, ks(String(r.kms_key_id))?.object_type === 'private_key');
     }
   }
-  if (tableExists(o.target, 'ssh_cas')) {
-    for (const r of all(o.target, 'SELECT id, kms_key_id, kms_public_key_id FROM ssh_cas')) {
+  if (tableExists(target, 'ssh_cas')) {
+    for (const r of all(target, 'SELECT id, kms_key_id, kms_public_key_id FROM ssh_cas')) {
       need(`ssh_cas:${r.id} key reference`, String(r.kms_key_id).startsWith(SSH_KEY_REF_PREFIX) && r.kms_key_id === r.kms_public_key_id);
     }
   }
-  if (tableExists(o.target, 'integration_ras') && columnsOf(o.target, 'integration_ras').has('key_provider')) {
-    for (const r of all(o.target, 'SELECT integration_id, key_provider, key_id, public_key_id, certificate_pem FROM integration_ras')) {
+  if (tableExists(target, 'integration_ras') && columnsOf(target, 'integration_ras').has('key_provider')) {
+    for (const r of all(target, 'SELECT integration_id, key_provider, key_id, public_key_id, certificate_pem FROM integration_ras')) {
       const unassigned = r.key_id === null && r.public_key_id === null && r.certificate_pem === null;
       need(`integration_ras:${r.integration_id} key provider`, r.key_provider === 'openbao' || unassigned);
     }
   }
   if (unresolved === 0) add('every key and certificate id resolves without Cosmian', true);
-  const ok = checks.every(c => c.ok || c.name.endsWith('resolved before cutover') || c.name.startsWith('resolves without Cosmian'));
-  const cutoverReady = checks.every(c => c.ok) && rotateOpen === 0 && unresolved === 0 && o.manifest.source.kmsRead;
-  return { ok, cutoverReady, cosmianRequired: unresolved > 0 || rotateOpen > 0, checks, counts };
-}
-
-function reconcile(source: DatabaseSync, target: DatabaseSync, add: (name: string, ok: boolean, detail?: string) => void): void {
-  const digest = (db: DatabaseSync, sql: string) => sha256Hex(JSON.stringify(all(db, sql)));
-  const has = (t: string) => tableExists(source, t);
-  const queries: [string, string][] = [];
-  if (has('certificate_authorities')) queries.push(['CAs (ids, serial, status, revocation)', 'SELECT id, kms_certificate_id, kms_key_id, serial_number, status, revocation_date, revocation_reason, not_after FROM certificate_authorities ORDER BY id']);
-  if (has('certificates')) queries.push(['certificates (ca, serial, status, revocation, renewal links, owner)', 'SELECT id, ca_id, kms_certificate_id, serial_number, status, revocation_date, revocation_reason, renewed_from_id, integration_id, source_type FROM certificates ORDER BY id']);
-  if (has('crls')) queries.push(['CRLs (number, content)', 'SELECT id, ca_id, crl_number, crl_pem FROM crls ORDER BY id']);
-  if (has('ssh_cas')) queries.push(['SSH CAs (zone, type, status, serial counter, public key)', 'SELECT id, zone_id, ca_type, status, next_serial, openssh_public_key, fingerprint_sha256, predecessor_ca_id FROM ssh_cas ORDER BY id']);
-  if (has('ssh_certificates')) queries.push(['SSH certificates (serial, status, revocation, blob, signer)', 'SELECT id, ca_id, serial, status, revocation_date, cert_openssh, kms_signing_key_id FROM ssh_certificates ORDER BY id']);
-  if (has('integrations')) queries.push(['integrations (token hashes, CA bindings, revocation)', 'SELECT id, ca_id, kind, token_hash, revoked_at FROM integrations ORDER BY id']);
-  if (has('integration_ras')) queries.push(['RA bindings (certificates, previous)', 'SELECT integration_id, ca_id, certificate_id, certificate_pem, previous FROM integration_ras ORDER BY integration_id']);
-  for (const [name, sql] of queries) add(`reconcile ${name}`, digest(source, sql) === digest(target, sql));
-  for (const t of ['zones', 'ssh_hosts', 'ssh_identities', 'ssh_principals', 'ssh_user_principals', 'ssh_fleet_tokens']) {
-    if (!has(t)) continue;
-    const n = (db: DatabaseSync) => Number((db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n);
-    add(`reconcile ${t} row count`, n(source) === n(target), `${n(source)} vs ${n(target)}`);
-  }
+  return unresolved;
 }

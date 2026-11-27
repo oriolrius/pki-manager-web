@@ -23,7 +23,8 @@ import { Journal } from './journal.ts';
 import type { TargetStore, TransitKey } from './openbao.ts';
 import { kmsOnlyCertificates, loadCertificateBundle } from './certificates.ts';
 import { approvedTarget, validateApproval } from './policy.ts';
-import { fileSha256, openWritable } from './sqlite.ts';
+import { openReadOnly, openWritable } from './sqlite.ts';
+import { checkBinding } from './source.ts';
 import { applyToTargetDb, missingColumns, type DbResult, type TargetProfile } from './target-db.ts';
 import type { Approval, KeyEntry, Manifest, TargetSpec } from './types.ts';
 import { MigrationError, derToPem, documentDigest, isoNow, log, sha256Hex, spkiFingerprint } from './util.ts';
@@ -46,7 +47,13 @@ export async function preflight(o: {
 }): Promise<PreflightResult & { live?: LiveTarget; certificates?: Map<string, Buffer> }> {
   const checks: PreflightResult['checks'] = [];
   const check = (name: string, ok: boolean, detail = '') => { checks.push({ name, ok, detail }); return ok; };
-  check('source database unchanged since inventory', fileSha256(o.sourceDbPath) === o.manifest.source.dbSha256, 'the source copy must be frozen: writers stopped, no new rows');
+  {
+    // The frozen source: no pending WAL commits, same file and same content (read through SQLite).
+    let bad: string[];
+    try { const db = openReadOnly(o.sourceDbPath); try { bad = checkBinding(o.manifest.source, o.sourceDbPath, db); } finally { db.close(); } }
+    catch (error) { bad = [(error as Error).message]; }
+    check('source database unchanged since inventory (frozen copy, file and content digests)', bad.length === 0, bad.length ? bad.join('; ') : 'the source copy must be frozen: writers stopped, no new rows');
+  }
   let distinct = false;
   try { distinct = realpath(o.sourceDbPath) !== realpath(o.targetDbPath); } catch { distinct = false; }
   check('target database is a separate copy', distinct, o.targetDbPath);

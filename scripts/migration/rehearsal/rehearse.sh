@@ -17,6 +17,8 @@
 #   6. Start the v4 backend on the restored pair with Cosmian stopped and use the
 #      migrated keys: CRL, new leaf, renewal with key reuse, PKCS#12, SSH host
 #      certificate, SCEP RA state and renewal.
+#   7. Later restore: back up the pair after the v4 writes, verify --restore passes; the
+#      cutover-time Raft snapshot next to that later database must fail.
 #
 # Needs: docker, jq, curl, openssl, ssh, ssh-keygen, python3 (free ports), Node >= 22.18, and
 # `pnpm install` done (the v4 migration runner and server run from backend/). Images,
@@ -339,4 +341,27 @@ ra_first_provision() {
   ! cmp -s "$RUN/ra-v4.pub" "$RUN/ra.pub"
 }
 step "first SCEP RA provisioning on v4: generated OpenBao key, signs, distinct from the migrated RA" ra_first_provision
+
+# ───────────────────────── 7. later restore: matching and mismatching pairs ─────────────────────────
+# v4 accepted writes above (new leaf keys, a CRL, a new RA key). Back up that pair and check it from
+# the database side; then put the cutover-time Raft snapshot back next to the LATER database: the
+# keys made after the snapshot are missing, and verify --restore must say so.
+kill "$V4_PID" 2>/dev/null || true; wait "$V4_PID" 2>/dev/null || true; V4_PID=
+OPTOKEN="$RUN/bao/secrets/operator.token" # the restored cluster keeps the tokens of the snapshot
+migrate backup --db "$RUN/restored.db" --out-dir "$RUN/backup-later" --label "after v4 writes" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$OPTOKEN" >/dev/null
+RESTORE=(verify --restore --source-db "$SRC" --openbao-addr "$RADDR" --openbao-cacert "$RCACERT" --openbao-token-file "$RUN/bao/secrets/backend.token" --openbao-ra-token-file "$RUN/bao/secrets/ra.token")
+cp "$RUN/backup-later/pki.db" "$RUN/later.db"
+migrate "${RESTORE[@]}" --target-db "$RUN/later.db" --out "$RUN/verify-later.json" | tee -a "$EVIDENCE"
+ok "later pair (database and Raft of one backup, after v4 writes) verifies with verify --restore"
+BAO_TOKEN="$(cat "$OPTOKEN")" bao "$P-bao2" operator raft snapshot restore -force /tmp/openbao.snap
+sleep 2
+bao "$P-bao2" operator unseal "$(cat "$RUN/bao/secrets/unseal.key")" >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do if bao "$P-bao2" status >/dev/null 2>&1; then break; fi; sleep 1; done
+set +e; migrate "${RESTORE[@]}" --target-db "$RUN/later.db" --out "$RUN/verify-mismatch.json" > "$RUN/verify-mismatch.txt"; rc=$?; set -e
+cat "$RUN/verify-mismatch.txt" >> "$EVIDENCE"
+[ $rc -eq 1 ] && grep -q '^FAIL pair: .* in OpenBao' "$RUN/verify-mismatch.txt" || die "an older Raft snapshot next to the later database was not refused (exit $rc)"
+ok "older Raft snapshot + later database refused: $(grep -c '^FAIL pair:' "$RUN/verify-mismatch.txt") key(s) made after the snapshot are missing"
+cp "$RUN/backup-v4/pki.db" "$RUN/cutover-copy.db"
+migrate "${RESTORE[@]}" --target-db "$RUN/cutover-copy.db" >/dev/null
+ok "the cutover-time pair (its own database and snapshot) still verifies with verify --restore"
 ok "rehearsal complete: $RUN"

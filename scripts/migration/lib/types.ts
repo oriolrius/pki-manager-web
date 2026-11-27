@@ -120,6 +120,8 @@ export interface Manifest {
   source: {
     dbFile: string;
     dbSha256: string;
+    /** SHA-256 of the logical content read through SQLite (WAL included): lib/source.ts. */
+    contentSha256: string;
     migrations: { count: number; lastCreatedAt: number | null };
     kmsRead: boolean;
     counts: Record<string, number>;

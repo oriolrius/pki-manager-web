@@ -174,7 +174,7 @@ export class FakeTransit implements TargetStore {
   async readKey(mount: string, name: string): Promise<TransitKey | null> {
     const k = this.keys.get(`${mount}/${name}`);
     if (!k) return null;
-    return { type: k.type, latestVersion: 1, exportable: k.exportable, allowPlaintextBackup: false, importedKey: k.imported, deletionAllowed: false, allowPkcs1v15SessionKey: k.allowPkcs1v15SessionKey, publicKeyPem: createPublicKey(k.priv).export({ format: 'pem', type: 'spki' }) as string };
+    return { type: k.type, latestVersion: 1, exportable: k.exportable, allowPlaintextBackup: false, importedKey: k.imported, deletionAllowed: false, allowPkcs1v15SessionKey: k.allowPkcs1v15SessionKey, publicKeyPem: createPublicKey(k.priv).export({ format: 'pem', type: 'spki' }) as string, publicKeys: { 1: createPublicKey(k.priv).export({ format: 'pem', type: 'spki' }) as string } };
   }
 
   async importKey(mount: string, name: string, body: Record<string, unknown>) {

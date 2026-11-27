@@ -12,7 +12,8 @@ import { X509Certificate } from 'node:crypto';
 import { basename } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { CosmianSource, KeyAttributes } from './cosmian.ts';
-import { all, appliedMigrations, columnsOf, fileSha256, tableExists } from './sqlite.ts';
+import { all, appliedMigrations, columnsOf, tableExists } from './sqlite.ts';
+import { assertFrozen, sourceBinding } from './source.ts';
 import { decide, DEFAULT_MOUNTS, type Mounts } from './policy.ts';
 import { CLASS_RANK, MANIFEST_FORMAT, type CertificateEntry, type KeyClass, type KeyEntry, type LegacyEntry, type Manifest, type Problem, type Reference, type ReferenceRole } from './types.ts';
 import { createPublicKey } from 'node:crypto';
@@ -114,6 +115,7 @@ export interface InventoryOptions {
 
 export async function buildManifest(opts: InventoryOptions): Promise<Manifest> {
   const { db, kms } = opts;
+  assertFrozen(opts.sourcePath); // before any KMS call
   const mounts = opts.mounts ?? DEFAULT_MOUNTS;
   const problems: Problem[] = [];
   const refs = collectReferences(db, problems);
@@ -308,7 +310,7 @@ export async function buildManifest(opts: InventoryOptions): Promise<Manifest> {
   return {
     format: MANIFEST_FORMAT,
     createdAt: isoNow(),
-    source: { dbFile: basename(opts.sourcePath), dbSha256: fileSha256(opts.sourcePath), migrations: appliedMigrations(db), kmsRead: !!kms, counts },
+    source: { dbFile: basename(opts.sourcePath), ...sourceBinding(opts.sourcePath, db), migrations: appliedMigrations(db), kmsRead: !!kms, counts },
     profile: { mounts },
     keys,
     certificates,
