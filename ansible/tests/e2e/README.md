@@ -11,9 +11,8 @@ ansible/tests/e2e/run.sh
 
 Requires docker + `ansible-core` + the `community.docker` and `community.crypto`
 collections on the host. Builds the `krl-client` static binary via `make
-build-static` if it is missing. **Skips cleanly (exit 0)** when docker or KMS is
-unavailable — so it is CI-safe as a gated job (mirrors the `KMS_AVAILABLE`
-pattern).
+build-static` if it is missing. **Skips cleanly (exit 0)** when Docker or OpenBao is
+unavailable, so it is CI-safe as a gated job. With `E2E_STRICT=1` (CI) a skip is a failure.
 
 Environment:
 - `E2E_BACKEND_PORT` (default `43000`) — the published backend port.
@@ -22,7 +21,7 @@ Environment:
 
 | Service | Role |
 |---|---|
-| `kms` | Cosmian KMS (mirrors the dev `kms/` config: `:latest` + `kms.toml`) |
+| `openbao` | a throw-away OpenBao of the pinned PKI Manager fork, started by `scripts/openbao-test.sh up ssh-e2e` (the stack joins its network; the backend reads its tokens and CA from `/run/openbao`) |
 | `backend` | PKI Manager API, `SSH_ECIES_ENABLED` + `SSH_HOST_KRL_PUBLIC` on, OIDC off, published to the host |
 | `host_public` | managed host — ed25519 key, public-path curl KRL cron, known_hosts + X.509 stretch enabled |
 | `host_ecies` | managed host — ecdsa key, encrypted `krl-client` puller |

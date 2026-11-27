@@ -356,13 +356,13 @@ Scenario used throughout: onboard user **alice** (principal `developers` → loc
 
 ### 6.1 Fastest — the zero-infra sandbox
 
-The quickest way to *watch the whole process run* — deploy servers, onboard a user, log in with a cert (no TOFU), and prove revocation — needs **no real hosts** (containers act as managed hosts) and skips cleanly if docker/KMS is unavailable:
+The quickest way to *watch the whole process run* — deploy servers, onboard a user, log in with a cert (no TOFU), and prove revocation — needs **no real hosts** (containers act as managed hosts) and skips cleanly if Docker/OpenBao is unavailable:
 
 ```bash
 ansible/tests/e2e/run.sh
 ```
 
-It builds the `krl-client` binary, stands up backend+KMS, applies the role, asserts idempotence, then drives real `ssh`. See [tests/e2e/README.md](../../ansible/tests/e2e/README.md) for what each phase asserts, and `ansible/tests/e2e/seed.py` for the same bootstrap expressed as API calls.
+It builds the `krl-client` binary, stands up the backend and a test OpenBao, applies the role, asserts idempotence, then drives real `ssh`. See [tests/e2e/README.md](../../ansible/tests/e2e/README.md) for what each phase asserts, and `ansible/tests/e2e/seed.py` for the same bootstrap expressed as API calls.
 
 ### 6.2 Against your own backend and host (Ansible, module-driven)
 
