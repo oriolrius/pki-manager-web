@@ -49,7 +49,12 @@ if [[ "$ACCEPT_STACK" == compose && "$ACCEPT_PROFILE" == openbao-v4 && -z "${ACC
 fi
 # ACCEPT_BUILD=1: images from this checkout, tagged with its commit (+dirty when it has changes).
 if [[ "${ACCEPT_BUILD:-}" == 1 ]]; then
-  src="$(git -C "$REPO" rev-parse --short=12 HEAD)$( [[ -n "$(git -C "$REPO" status --porcelain -- backend frontend docker package.json pnpm-lock.yaml)" ]] && echo -dirty)"
+  # Explicit on both paths: a clean tree must not end the run under set -e.
+  src="$(git -C "$REPO" rev-parse --short=12 HEAD)" || { echo "cannot read the commit of $REPO" >&2; exit 1; }
+  changes="$(git -C "$REPO" status --porcelain -- backend frontend docker package.json pnpm-lock.yaml)" \
+    || { echo "cannot read the status of $REPO" >&2; exit 1; }
+  if [[ -n "$changes" ]]; then src="$src-dirty"; fi
+  unset changes
   export ACCEPT_IMAGE_SOURCE="$src"
   for t in backend frontend; do
     echo "== build $t image from $REPO ($src)" >&2
