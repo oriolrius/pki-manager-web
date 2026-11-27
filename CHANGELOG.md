@@ -1,8 +1,15 @@
 ## v4.0.0 (2026-11-27)
 
-**OpenBao replaces Cosmian as the runtime key store**
+**OpenBao replaces Cosmian KMS: no Cosmian dependency any more**
 
-PKI Manager 4 uses the PKI Manager fork of OpenBao for X.509 issuance, CRLs, SSH and SCEP. The backend and the SCEP registration authority use separate credentials. The application keeps its certificate and revocation records in SQLite.
+> [!IMPORTANT]
+> **PKI Manager 4 does not use Cosmian KMS for anything.** The backend, the SCEP gateway, the Kubernetes issuer and the web UI have no Cosmian client and send no KMIP request. A v4 installation runs without any Cosmian container.
+>
+> Cosmian is needed only on the way out of v3: the offline migration tool `pki-migrate` reads the v3 keys from it once, and the `kms/` folder can start an isolated Cosmian to inspect a restored v3 backup. After the migration and its recovery window, remove the Cosmian container and its data.
+
+PKI Manager 4 uses the PKI Manager fork of OpenBao for X.509 issuance, CRLs, SSH and SCEP. Every private key is in OpenBao Transit, and PKI Manager builds the certificates and CRLs itself. The backend and the SCEP registration authority use separate credentials. The application keeps its certificate and revocation records in SQLite.
+
+Why: Cosmian KMS is licensed under BUSL-1.1, and v3 depended on its `Certify` operation to build certificates. See [decision-018](backlog/decisions/decision-018%20-%20Replace-Cosmian-KMS-with-a-KeyStore-abstraction-backed-by-OpenBao-Transit.md).
 
 ### Upgrade from 3.x
 
