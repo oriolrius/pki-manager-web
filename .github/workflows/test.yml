@@ -7,6 +7,7 @@ on:
     paths:
       - 'openbao/**'
       - 'scripts/openbao-*.sh'
+      - 'scripts/migration/**'
       - 'backend/**'
       - 'frontend/**'
       - 'package.json'
@@ -18,6 +19,7 @@ on:
     paths:
       - 'openbao/**'
       - 'scripts/openbao-*.sh'
+      - 'scripts/migration/**'
       - 'backend/**'
       - 'frontend/**'
       - 'package.json'
@@ -61,6 +63,12 @@ jobs:
       - name: Install backend dependencies
         working-directory: ./backend
         run: pnpm install --frozen-lockfile
+
+      - name: Check the offline v3 migration tool
+        working-directory: ./scripts/migration
+        run: |
+          npm run typecheck
+          npm test
 
       - name: Run database migrations
         working-directory: ./backend

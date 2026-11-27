@@ -16,6 +16,12 @@ just lint         # lint both
 (`@typescript-eslint/no-explicit-any`) in both workspaces: give the value a real type, or `unknown`
 and narrow it. The CI job **Lint** in `test.yml` runs the same command.
 
+CI also checks the offline v3 migration tool. After installing backend dependencies, run its type check and SQLite fixture tests from the repository root with Node 22.18 or later.
+
+```bash
+(cd scripts/migration && npm run typecheck && npm test)
+```
+
 Run one workspace with `pnpm test` (or `pnpm test:watch`) inside `backend/` or `frontend/`.
 Run each workspace's `typecheck`, not only `build`: the frontend Docker build is relaxed, so a
 green image build is not a clean type check.
