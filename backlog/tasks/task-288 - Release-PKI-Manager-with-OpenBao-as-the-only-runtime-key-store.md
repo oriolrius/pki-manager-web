@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T07:26:00Z'
+updated_date: '2026-11-27T07:35:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -56,4 +56,6 @@ Additional controls: removal of the openssl executable from a disposable backend
 Scope of the 102 checks without the openssl executable: X.509 issuance, renewal, revocation, CRLs, CSR signing, SSH and SCEP. The run omitted x509_exports. PKCS#12, JKS via PKCS#12, and password-protected PKCS#8 used the executable at commit 23b37825; their interoperability checks ran separately with the normal image. The 08:00 independent review found duplicate CRL numbers under concurrency, stale CRLs after outages and X.509 error/diagnostic gaps. Release is pending corrections and independent re-verification.
 
 Verified v3.19.1 directly with Cosmian 5.28.0 and the v3 Keycloak realm. Vitest exited 0: 110 files and 1,018 tests passed, zero failures or pending tests. The signed-image Ansible collection run also passed and found five Transit keys. The public release draft is PR #120. Its CodeQL finding at x509-extensions.ts refers to the public key identifier from RFC 5280 §4.2.1.2 method 1. Certificate signatures use SHA-256 or stronger and an independent issuer-key verification. GitGuardian identified a synthetic export-test password; the test now generates a fresh value per run.
+
+The source cutover uses a separate, expiring OpenBao migration identity. Runtime requests to import keys get HTTP 403. The migration token imported synthetic X.509, SSH and RA keys and could not export them. The complete Ansible integration suite passed with the public fork, web policy d02873a2 and collection probe 9365518. The focused kind rerun after cleanup handling passed 4/4 with a real issued certificate. GitHub code-scanning alert 307 was triaged as a false positive specific to the public-key identifier in RFC 5280 section 4.2.1.2. Four CA fixtures independently matched that identifier and verified their signatures. Branch protection and scan rules remain enabled.
 <!-- SECTION:NOTES:END -->
