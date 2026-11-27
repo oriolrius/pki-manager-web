@@ -43,3 +43,38 @@ These paths are public on purpose. Clients and hosts must reach them to check ce
 | `/cas/<caId>.pem` (also `.crt`, `.der`, `.cer`) | A CA certificate |
 | `/crl/<caId>.crl` (PEM), `/crl/<caId>.der` | The CRL of a CA |
 | `/ssh/...`, `/krl/...` | SSH trust files and KRLs, see the [SSH API contract](../ssh/api-contract.md#public-download-endpoints-no-auth) |
+
+## Key store errors
+
+X.509 operations that use a private key (CA and certificate creation, renewal, CRL generation,
+key downloads) need OpenBao. When OpenBao cannot serve them, or an object is not in it, the REST
+API and the external API answer with one of these codes. The body is the usual
+`{ "error": { "code", "message" } }`, with a fixed message and no OpenBao detail.
+
+| HTTP | `error.code` | Meaning | What the client does |
+|---|---|---|---|
+| 503 | `KEY_STORE_UNAVAILABLE` | OpenBao is sealed, not initialised, not reachable, or refuses the backend token | Retry after the `Retry-After` header (30 seconds) |
+| 409 | `KEY_MIGRATION_REQUIRED` | The key or certificate of this object is still a Cosmian KMS id | An operator runs the [key migration](../operations/openbao-migration.md) |
+| 409 | `KEY_STATE_CONFLICT` | The key is revoked, destroyed or was never completed | Do not retry the same request |
+| 403 | `KEY_NOT_EXPORTABLE` | The private key was created non-exportable | The key cannot be downloaded |
+| 403 | `KEY_EXPORT_DENIED` | OpenBao refused the export (key policy or token policy) | An operator checks the key and the token policy |
+
+The tRPC API returns the same cases as `SERVICE_UNAVAILABLE` (with `Retry-After`), `CONFLICT` and
+`FORBIDDEN`, and the code above in `error.data.appCode`.
+
+A create request that got `503` made no CA and no certificate: send it again after the wait. Bulk issue, revoke,
+renew and delete report the message in the result of each row. A bulk download fails as a whole
+with `503`.
+
+`/health` and `/api/v1/health` stay liveness checks: they answer `200` while OpenBao is sealed.
+The reason for a `503` is in the operator diagnostics:
+
+```bash
+curl -s https://pki.example.com/api/v1/diagnostics/key-store -H "Authorization: Bearer $ADMIN_TOKEN"
+# {"provider":"openbao","configured":true,"state":"sealed","checkedAt":"..."}
+```
+
+`state` is `ready`, `sealed`, `uninitialized`, `unauthorized` (the token file is missing or
+OpenBao refuses the token) or `unavailable` (no answer). `configured` is `false` when the OpenBao
+settings are missing or invalid. The route needs the `admin` role when OIDC is on. The web UI
+reads the same data with the tRPC query `dashboard.keyStoreStatus`.

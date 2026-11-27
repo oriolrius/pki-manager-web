@@ -1,4 +1,5 @@
 import { router, protectedProcedure } from '../init.js';
+import { throwIfKeyStoreError } from '../key-store-errors.js';
 import {
   generateCrlSchema,
   getCrlSchema,
@@ -15,6 +16,7 @@ import {
 
 // Helper to map service errors to tRPC errors
 function mapServiceError(error: unknown): never {
+  throwIfKeyStoreError(error);
   if (error instanceof CRLCANotFoundError) {
     throw new TRPCError({
       code: 'NOT_FOUND',

@@ -16,6 +16,7 @@ import { logger } from '../lib/logger.js';
 import { crlDistributionUrl } from '../lib/crl-url.js';
 import { getCRLService } from './crl.service.js';
 import type { ServiceContext } from './types.js';
+import { isKeyStoreUnavailable } from '../keystore/errors.js';
 
 // Types for Certificate Service inputs and outputs
 /**
@@ -528,6 +529,8 @@ export class CertificateService {
         certificate.id
       );
     } catch (kmsError) {
+      // An unavailable key store is an outage, not an inconsistency: 503 KEY_STORE_UNAVAILABLE.
+      if (isKeyStoreUnavailable(kmsError)) throw kmsError;
       // Certificate exists in DB but not found in KMS - data inconsistency
       logger.warn(
         { certId: id, kmsCertificateId: certificate.kmsCertificateId, error: kmsError },
@@ -540,7 +543,8 @@ export class CertificateService {
           kmsCertificateId: certificate.kmsCertificateId,
           subjectDn: certificate.subjectDn,
           serialNumber: certificate.serialNumber,
-        }
+        },
+        { cause: kmsError }
       );
     }
 
@@ -1563,9 +1567,11 @@ export class CertificateKmsInconsistencyError extends Error {
       kmsCertificateId?: string;
       subjectDn?: string;
       serialNumber?: string;
-    }
+    },
+    /** The key store error; a legacy (un-migrated) id maps to 409 KEY_MIGRATION_REQUIRED at the REST edge. */
+    options?: { cause?: unknown }
   ) {
-    super(`Certificate ${certId} exists in database but certificate not found in KMS: ${kmsError}`);
+    super(`Certificate ${certId} exists in database but certificate not found in KMS: ${kmsError}`, options);
     this.name = 'CertificateKmsInconsistencyError';
   }
 }

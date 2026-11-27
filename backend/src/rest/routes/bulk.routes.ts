@@ -6,6 +6,8 @@ import JSZip from 'jszip';
 import { db } from '../../db/client.js';
 import { certificates, certificateAuthorities, auditLog } from '../../db/schema.js';
 import { getKMSService } from '../../kms/service.js';
+import { isKeyStoreUnavailable } from '../../keystore/errors.js';
+import { keyStoreErrorBody } from '../key-store-errors.js';
 import { formatDN } from '../../crypto/dn.js';
 import { parseCertificate } from '../../crypto/index.js';
 import {
@@ -1277,6 +1279,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         400: errorResponseSchema,
         404: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -1486,7 +1489,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         if (jksError instanceof JKSKeytoolError) {
           return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
         }
-        return sendError(reply, 500, 'INTERNAL_ERROR', 'Failed to create JKS keystore');
+        return keyStoreErrorBody(reply, jksError) ?? sendError(reply, 500, 'INTERNAL_ERROR', 'Failed to create JKS keystore');
       }
     }
     // Handle JKS truststore - single file with unique CA certs only
@@ -1531,7 +1534,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
         if (jksError instanceof JKSKeytoolError) {
           return sendError(reply, 500, 'JKS_GENERATION_FAILED', jksError.message);
         }
-        return sendError(reply, 500, 'INTERNAL_ERROR', 'Failed to create JKS truststore');
+        return keyStoreErrorBody(reply, jksError) ?? sendError(reply, 500, 'INTERNAL_ERROR', 'Failed to create JKS truststore');
       }
     }
     // Handle docker-volume format - TAR archive
@@ -1614,6 +1617,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
               certFolder.file(`${baseName}.${result.extension}`, result.content as string);
             }
           } catch (error) {
+            // An unavailable key store fails the whole export (503); it is not one certificate's problem.
+            if (isKeyStoreUnavailable(error)) throw error;
             logger.warn({ error, certId: certificate.id, format: fmt }, 'Failed to generate format, skipping');
           }
         }
@@ -1637,6 +1642,7 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
             zip.file(`${baseName}.${result.extension}`, result.content as string);
           }
         } catch (error) {
+          if (isKeyStoreUnavailable(error)) throw error;
           logger.warn({ error, certId: certificate.id }, 'Failed to generate certificate file, skipping');
         }
       }

@@ -8,6 +8,8 @@ import { bulkRoutes } from './routes/bulk.routes.js';
 import { utilityRoutes } from './routes/utility.routes.js';
 import { sshRoutes } from './routes/ssh.routes.js';
 import { createAuthPreHandler } from './middleware/auth.js';
+import { diagnosticsRoutes } from './routes/diagnostics.js';
+import { keyStoreErrorBody } from './key-store-errors.js';
 
 /**
  * Register all REST API routes and plugins
@@ -62,6 +64,10 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
           });
         }
 
+        // Key store errors (OpenBao sealed or down, key migration required, export refused)
+        const keyStore = keyStoreErrorBody(reply, error);
+        if (keyStore) return reply.send(keyStore);
+
         // Handle internal server errors
         api.log.error(error);
         return reply.status(500).send({
@@ -74,6 +80,9 @@ export async function registerRestApi(fastify: FastifyInstance): Promise<void> {
 
       // Health check endpoint for the REST API
       await api.register(healthRoutes);
+
+      // Operator diagnostics (admin only): key store state
+      await api.register(diagnosticsRoutes);
 
       // CA routes - Certificate Authority management
       await api.register(caRoutes, { prefix: '/cas' });

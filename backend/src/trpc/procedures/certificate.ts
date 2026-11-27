@@ -1,4 +1,6 @@
 import type { Readable } from 'node:stream';
+import { throwIfKeyStoreError } from '../key-store-errors.js';
+import { isKeyStoreUnavailable } from '../../keystore/errors.js';
 import { kmsKeyUsedByOtherCertificate } from '../../services/certificate.service.js';
 import { z } from 'zod';
 import { router, protectedProcedure, adminProcedure } from '../init.js';
@@ -603,6 +605,7 @@ export const certificateRouter = router({
         if (error instanceof CertificateCANotActiveError || error instanceof CertificateCAExpiredError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
         }
+        throwIfKeyStoreError(error);
         if (error instanceof CertificateOperationError) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
@@ -664,6 +667,7 @@ export const certificateRouter = router({
         if (error instanceof CertificateCANotActiveError || error instanceof CertificateCAExpiredError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
         }
+        throwIfKeyStoreError(error);
         if (error instanceof CertificateOperationError) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
         }
@@ -802,6 +806,8 @@ export const certificateRouter = router({
           ipAddress: ctx.req.ip,
         });
 
+        throwIfKeyStoreError(error);
+
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to revoke certificate: ${error instanceof Error ? error.message : String(error)}`,
@@ -832,6 +838,7 @@ export const certificateRouter = router({
         if (error instanceof CertificateNotDeletableError) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
         }
+        throwIfKeyStoreError(error);
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Failed to delete certificate: ${error instanceof Error ? error.message : String(error)}`,
@@ -1027,6 +1034,8 @@ export const certificateRouter = router({
               const fileName = `${commonName}-${serialShort}.${fileExtension}`;
               zip.file(fileName, fileContent);
             } catch (error) {
+              // An unavailable key store fails the whole download (503), not one file.
+              if (isKeyStoreUnavailable(error)) throw error;
               logger.warn({ certId: input.id, format, error }, 'Failed to generate format for certificate');
             }
           }
@@ -1352,6 +1361,8 @@ export const certificateRouter = router({
         if (error instanceof TRPCError) {
           throw error;
         }
+
+        throwIfKeyStoreError(error);
 
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -2601,6 +2612,8 @@ export const certificateRouter = router({
                 logger.error({ error: keytoolError instanceof Error ? keytoolError.message : String(keytoolError), certId: certificate.id }, 'Failed to add certificate to JKS Keystore');
               }
             } catch (error) {
+              // An unavailable key store fails the whole download (503), not one file.
+              if (isKeyStoreUnavailable(error)) throw error;
               logger.error({ error, certId: certificate.id }, 'Failed to process certificate for JKS Keystore bulk download');
             }
           }
@@ -2706,6 +2719,8 @@ export const certificateRouter = router({
               caCount++;
               logger.info({ caId, caAlias }, 'CA certificate added to JKS Truststore as trusted entry');
             } catch (error) {
+              // An unavailable key store fails the whole download (503), not one file.
+              if (isKeyStoreUnavailable(error)) throw error;
               logger.warn({ caId, error: error instanceof Error ? error.message : String(error) }, 'Failed to add CA certificate to JKS Truststore (may already exist)');
             }
           }
@@ -2840,6 +2855,8 @@ export const certificateRouter = router({
             certCount++;
             logger.info({ certId: certificate.id, certName }, 'Certificate added to docker volume TAR');
           } catch (error) {
+            // An unavailable key store fails the whole download (503), not one file.
+            if (isKeyStoreUnavailable(error)) throw error;
             logger.error({ error, certId: certificate.id }, 'Failed to process certificate for docker-volume');
           }
         }
@@ -2922,6 +2939,8 @@ export const certificateRouter = router({
                   zip.file(filename, content);
                 }
               } catch (error) {
+                // An unavailable key store fails the whole download (503), not one file.
+                if (isKeyStoreUnavailable(error)) throw error;
                 logger.warn({ certId: certificate.id, format, error }, 'Failed to generate format for certificate');
               }
             }
@@ -2948,6 +2967,8 @@ export const certificateRouter = router({
 
           logger.info({ certId: certificate.id, format: input.format }, 'Certificate processed for bulk download');
         } catch (error) {
+          // An unavailable key store fails the whole download (503), not one file.
+          if (isKeyStoreUnavailable(error)) throw error;
           logger.error({ error, certId: certificate.id }, 'Failed to process certificate for bulk download');
         }
       }

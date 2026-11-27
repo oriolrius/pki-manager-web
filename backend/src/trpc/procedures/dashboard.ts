@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { router, protectedProcedure } from '../init.js';
+import { router, protectedProcedure, adminProcedure } from '../init.js';
+import { getKMSService } from '../../kms/service.js';
 import { eq, sql, asc, gte, and } from 'drizzle-orm';
 import { certificateAuthorities, certificates } from '../../db/schema.js';
 
@@ -41,6 +42,24 @@ function formatCertificateType(type: 'server' | 'client' | 'dual' | 'code_signin
 }
 
 export const dashboardRouter = router({
+  /**
+   * Operator diagnostics (admin only): state of the X.509 key store (OpenBao Transit).
+   * Same data as `GET /api/v1/diagnostics/key-store`; it writes no audit row.
+   */
+  keyStoreStatus: adminProcedure
+    .output(
+      z.object({
+        provider: z.literal('openbao'),
+        configured: z.boolean(),
+        state: z.enum(['ready', 'sealed', 'uninitialized', 'unauthorized', 'unavailable']),
+        checkedAt: z.string(),
+      })
+    )
+    .query(async () => {
+      const { configured, state } = await getKMSService().diagnostics();
+      return { provider: 'openbao' as const, configured, state, checkedAt: new Date().toISOString() };
+    }),
+
   stats: protectedProcedure
     .output(
       z.object({

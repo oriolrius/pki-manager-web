@@ -274,7 +274,7 @@ export function generateCRL(params: CRLParams): GeneratedCRL {
     return finishCRL(params, built, signature);
   } catch (error) {
     logger.error({ error }, 'Failed to generate CRL');
-    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 
@@ -298,7 +298,7 @@ export async function generateCRLWithSigner(params: TbsParams & { issuerCertific
     return finishCRL(params, built, signature);
   } catch (error) {
     logger.error({ error }, 'Failed to generate CRL');
-    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`CRL generation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }
 

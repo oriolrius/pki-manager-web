@@ -41,10 +41,31 @@ export class OpenBaoTransitConfigError extends Error {}
 export class OpenBaoTransitError extends Error {
   /** OpenBao error text, for the server log only. */
   readonly detail: string;
+  /**
+   * Set by `createKey` when OpenBao did not create the key: the first read failed, or the create
+   * request got an answer that refuses it. Unset when the outcome is unknown.
+   */
+  keyNotCreated?: boolean;
   constructor(readonly status: number, readonly path: string, detail: string) {
     super(`OpenBao request failed (${status === 0 ? 'transport' : `HTTP ${status}`}) on ${path}`);
     this.detail = detail.slice(0, 500);
   }
+}
+
+/**
+ * A create request that OpenBao refused with an answer (4xx, not initialized, sealed or standby),
+ * or that was never sent (the token file failed): the key does not exist. A transport error after
+ * the request was sent, or another 5xx, leaves the outcome unknown.
+ */
+function createRefused(error: unknown): boolean {
+  if (!(error instanceof OpenBaoTransitError)) return false;
+  if (error.status === 0) return error.path === 'token';
+  return (error.status >= 400 && error.status < 500) || error.status === 501 || error.status === 503;
+}
+
+function markNotCreated(error: unknown): unknown {
+  if (error instanceof OpenBaoTransitError) error.keyNotCreated = true;
+  return error;
 }
 
 /** A response that does not match what the key store requires. */
@@ -242,11 +263,20 @@ export class OpenBaoTransitClient {
   async createKey(mount: string, name: string, type: TransitKeyType, exportable: boolean): Promise<TransitKeyInfo> {
     assertMount(mount);
     assertTransitKeyName(name);
-    const existing = await this.readKey(mount, name);
+    let existing: TransitKeyInfo | null;
+    try {
+      existing = await this.readKey(mount, name);
+    } catch (error) {
+      throw markNotCreated(error);
+    }
     if (!existing) {
-      await this.call('POST', `${mount}/keys/${name}`, 'keys/<name>', {
-        type, exportable, allow_plaintext_backup: false, auto_rotate_period: 0,
-      });
+      try {
+        await this.call('POST', `${mount}/keys/${name}`, 'keys/<name>', {
+          type, exportable, allow_plaintext_backup: false, auto_rotate_period: 0,
+        });
+      } catch (error) {
+        throw createRefused(error) ? markNotCreated(error) : error;
+      }
     }
     const info = existing ?? (await this.readKey(mount, name));
     if (!info) throw new OpenBaoTransitResponseError('key not readable after creation');

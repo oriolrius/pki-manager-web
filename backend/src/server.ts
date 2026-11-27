@@ -4,7 +4,9 @@ import cors from '@fastify/cors';
 import { fastifyTRPCPlugin } from '@trpc/server/adapters/fastify';
 import { appRouter } from './trpc/router.js';
 import { createContext } from './trpc/context.js';
+import { keyStoreResponseMeta } from './trpc/key-store-errors.js';
 import { registerRestApi } from './rest/index.js';
+import { keyStoreErrorBody } from './rest/key-store-errors.js';
 import { registerSshPublicRoutes } from './rest/routes/ssh-public.routes.js';
 import { registerSshExternalRoutes } from './rest/routes/ssh-external.routes.js';
 import { externalRoutes } from './rest/routes/external.routes.js';
@@ -68,6 +70,8 @@ await server.register(async (trpcScope) => {
     trpcOptions: {
       router: appRouter,
       createContext,
+      // A key store outage (503 SERVICE_UNAVAILABLE) tells the client when to retry, as REST does.
+      responseMeta: keyStoreResponseMeta,
     },
   });
 });
@@ -156,6 +160,9 @@ server.get('/cas/:caId.:format', { schema: { hide: true } }, async (req, reply) 
     return content;
   } catch (error) {
     server.log.error({ error, caId }, 'Failed to serve CA certificate');
+    // A CA whose certificate is not in the key store yet (KEY_MIGRATION_REQUIRED, 409), ...
+    const keyStore = keyStoreErrorBody(reply, error);
+    if (keyStore) return { error: keyStore.error.message, code: keyStore.error.code };
     reply.code(500);
     return { error: 'Internal server error while serving CA certificate' };
   }

@@ -20,7 +20,8 @@ import { db } from '../db/client.js';
 import { auditLog } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { getX509KeyStore, type X509KeyStoreService } from '../keystore/x509-store.js';
-import type { SignHash } from '../keystore/types.js';
+import type { KeyStoreState, SignHash } from '../keystore/types.js';
+import { OpenBaoTransitConfigError } from '../openbao/x509-transit.js';
 
 export interface KMSServiceOptions {
   enableAuditLog?: boolean;
@@ -94,6 +95,25 @@ export class KMSService {
   /** Key store state for operator diagnostics. */
   async status() {
     return this.store.status();
+  }
+
+  /**
+   * Operator diagnostics of the X.509 key store. `configured: false` when the OpenBao settings
+   * are missing or invalid (the reason is in the server log). It writes no audit row: it is a
+   * read-only check that monitoring can call often.
+   */
+  async diagnostics(): Promise<{ configured: boolean; state: KeyStoreState }> {
+    let store: X509KeyStoreService;
+    try {
+      store = this.store;
+    } catch (error) {
+      if (error instanceof OpenBaoTransitConfigError) {
+        logger.error({ reason: error.message }, 'OpenBao X.509 key store is not configured');
+        return { configured: false, state: 'unavailable' };
+      }
+      throw error;
+    }
+    return { configured: true, state: await store.status() };
   }
 
   /** Create a key pair (RSA or ECDSA) for a certificate. */

@@ -62,7 +62,7 @@ import {
 function mapSshError(error: unknown): never {
   if (error instanceof SshCaKeyMigrationRequiredError) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: error.message });
   if (error instanceof SshCaKeyExistsError) throw new TRPCError({ code: 'CONFLICT', message: error.message });
-  if (error instanceof SshCaKeyStoreError) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: error.message });
+  if (error instanceof SshCaKeyStoreError) throw new TRPCError({ code: error.statusCode === 503 ? 'SERVICE_UNAVAILABLE' : 'BAD_GATEWAY', message: error.message });
   if (error instanceof SshCaExistsError || error instanceof SshZoneExistsError || error instanceof SshCertPurgeForbiddenError)
     throw new TRPCError({ code: 'CONFLICT', message: error.message });
   if (error instanceof SshZoneNotFoundError)

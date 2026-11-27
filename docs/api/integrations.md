@@ -60,6 +60,10 @@ when management OIDC is disabled. A token is scoped to its integration and bound
 | POST | `/external/sign` | Sign a CSR with the bound CA; idempotent within integration and CA |
 | POST | `/external/revoke` | Revoke an owned certificate and publish the CA CRL; retries are idempotent |
 
+`sign` answers `503 KEY_STORE_UNAVAILABLE` with a `Retry-After` header while OpenBao is sealed
+or not reachable. It stores no certificate then: retry with the same `requestUid` (see
+[Key store errors](index.md#key-store-errors)).
+
 `sign` requires `csrPem` and `requestUid`. Optional `durationDays` defaults to 90
 and must be 1–825 (other values return `400`). `certificateType` is a display hint (`server`, `client`,
 `dual`), not a substitute for the CSR's key usage/EKU. Subject and SANs come from

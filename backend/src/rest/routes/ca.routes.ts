@@ -1,4 +1,5 @@
 import { resolveExportPassword, exportPasswordHeaderSchema, deprecatedPasswordQueryDescription } from '../export-password.js';
+import { keyStoreErrorBody } from '../key-store-errors.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { createPkcs12Bundle } from '../../crypto/pkcs12.js';
 import { db } from '../../db/client.js';
@@ -135,6 +136,8 @@ function sendError(
 
 // Map service errors to HTTP responses
 function handleServiceError(error: unknown, reply: FastifyReply) {
+  const keyStore = keyStoreErrorBody(reply, error);
+  if (keyStore) return keyStore;
   if (error instanceof CANotFoundError) {
     return sendError(reply, 404, 'CA_NOT_FOUND', error.message);
   }
@@ -341,6 +344,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         },
         400: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -464,6 +468,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -517,6 +522,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -797,6 +803,7 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         404: errorResponseSchema,
         409: errorResponseSchema,
         500: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {
@@ -888,6 +895,8 @@ export async function caRoutes(fastify: FastifyInstance): Promise<void> {
         403: errorResponseSchema,
         404: errorResponseSchema,
         500: errorResponseSchema,
+        409: errorResponseSchema,
+        503: errorResponseSchema,
       },
     },
   }, async (request, reply) => {

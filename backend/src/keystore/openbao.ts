@@ -17,7 +17,15 @@ const TRANSIT_TYPE: Record<KeyAlg, TransitKeyType> = {
 const TRANSIT_HASH: Record<SignHash, TransitHash> = { sha256: 'sha2-256', sha384: 'sha2-384', sha512: 'sha2-512' };
 
 export class OpenBaoKeyStore implements KeyStore {
-  constructor(private readonly client: OpenBaoTransitClient = getOpenBaoTransitClient()) {}
+  /**
+   * The client is resolved on first use, so the OpenBao settings are only needed by key
+   * operations: certificate and public key reads (SQLite rows) work without them.
+   */
+  constructor(private readonly injected?: OpenBaoTransitClient) {}
+
+  private get client(): OpenBaoTransitClient {
+    return this.injected ?? getOpenBaoTransitClient();
+  }
 
   get mount(): string {
     return this.client.cfg.mount;
@@ -54,7 +62,8 @@ export class OpenBaoKeyStore implements KeyStore {
       if (health.sealed) return 'sealed';
       return (await this.client.tokenValid()) ? 'ready' : 'unauthorized';
     } catch (error) {
-      if (error instanceof OpenBaoTransitError && error.status === 403) return 'unauthorized';
+      // 403: the token is refused; status 0 on `token`: the token file is missing or not a token.
+      if (error instanceof OpenBaoTransitError && (error.status === 403 || (error.status === 0 && error.path === 'token'))) return 'unauthorized';
       return 'unavailable';
     }
   }

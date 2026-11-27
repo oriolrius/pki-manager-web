@@ -13,7 +13,7 @@
  * An id that has no row here is a legacy Cosmian object, which needs the key migration.
  */
 import { createPrivateKey, createPublicKey, randomUUID, verify as nodeVerify, type KeyObject } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { keystoreObjects, type KeystoreObject } from '../db/schema.js';
 import { parseDN } from '../crypto/dn.js';
@@ -26,22 +26,23 @@ import {
 import { OpenBaoKeyStore } from './openbao.js';
 import { toKeyAlg, type KeyAlg, type KeyRef, type KeyStore, type KeyStoreState, type SignHash } from './types.js';
 
-export const KEY_MIGRATION_REQUIRED = 'KEY_MIGRATION_REQUIRED';
+import {
+  KeyNotExportableError, KeyStoreConflictError, KeyStoreObjectNotFoundError, KeyStoreStateError, keyCreationNotStarted, toKeyStoreError,
+  type KeyStoreOperation,
+} from './errors.js';
+import { logger } from '../lib/logger.js';
 
-/** An id with no key store row: a Cosmian object that the migration has not moved yet. */
-export class KeyStoreObjectNotFoundError extends Error {
-  readonly code = KEY_MIGRATION_REQUIRED;
-  constructor(readonly objectId: string) {
-    super(`Key store object ${objectId} is not in the OpenBao key store; run the key migration`);
-  }
-}
+export {
+  KEY_MIGRATION_REQUIRED, KeyExportDeniedError, KeyNotExportableError, KeyStoreConflictError, KeyStoreObjectNotFoundError,
+  KeyStoreStateError, KeyStoreUnavailableError,
+} from './errors.js';
 
-export class KeyStoreStateError extends Error {}
-
-export class KeyNotExportableError extends Error {
-  readonly code = 'KEY_NOT_EXPORTABLE';
-  constructor() {
-    super('The private key was created non-exportable in OpenBao and cannot be exported');
+/** Runs one key store call; OpenBao failures leave it as typed errors (`errors.ts`). */
+async function bao<T>(operation: KeyStoreOperation, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    throw toKeyStoreError(error, operation);
   }
 }
 
@@ -107,9 +108,9 @@ export class X509KeyStoreService {
   private async keyRow(id: string, purpose: 'sign' | 'read' | 'export'): Promise<KeystoreObject & { ref: KeyRef; publicKey: KeyObject }> {
     const r = await this.row(id);
     if (r.objectType !== 'private_key' && r.objectType !== 'public_key') throw new KeyStoreStateError(`object ${id} is not a key`);
-    if (r.state === 'pending') throw new KeyStoreStateError(`key ${id} was never completed`);
-    if (r.state === 'destroyed') throw new KeyStoreStateError(`key ${id} is destroyed`);
-    if (r.state === 'revoked' && purpose !== 'read') throw new KeyStoreStateError(`key ${id} is revoked`);
+    if (r.state === 'pending') throw new KeyStoreConflictError(`key ${id} was never completed`);
+    if (r.state === 'destroyed') throw new KeyStoreConflictError(`key ${id} is destroyed`);
+    if (r.state === 'revoked' && purpose !== 'read') throw new KeyStoreConflictError(`key ${id} is revoked`);
     if (!r.mount || !r.keyName || !r.keyVersion || !r.keyAlgorithm || !r.publicKeyPem) throw new KeyStoreStateError(`key ${id} is incomplete`);
     const ref: KeyRef = { provider: 'openbao', mount: r.mount, name: r.keyName, version: r.keyVersion, alg: toKeyAlg(r.keyAlgorithm) };
     return { ...r, ref, publicKey: createPublicKey(r.publicKeyPem) };
@@ -118,7 +119,7 @@ export class X509KeyStoreService {
   private async certificateRow(id: string): Promise<KeystoreObject & { certificatePem: string; parsed: ParsedCertificate }> {
     const r = await this.row(id);
     if (r.objectType !== 'certificate') throw new KeyStoreStateError(`object ${id} is not a certificate`);
-    if (r.state === 'destroyed' || !r.certificatePem) throw new KeyStoreStateError(`certificate ${id} is destroyed`);
+    if (r.state === 'destroyed' || !r.certificatePem) throw new KeyStoreConflictError(`certificate ${id} is destroyed`);
     return { ...r, certificatePem: r.certificatePem, parsed: parseCertificateDer(pemToDer(r.certificatePem, 'CERTIFICATE')) };
   }
 
@@ -144,7 +145,19 @@ export class X509KeyStoreService {
       { ...common, id: privateKeyId, objectType: 'private_key', publicKeyId },
       { ...common, id: publicKeyId, objectType: 'public_key', privateKeyId },
     ]);
-    const { ref, publicKey } = await this.store.createKey({ name: keyName, alg, exportable });
+    let created: Awaited<ReturnType<KeyStore['createKey']>>;
+    try {
+      created = await bao('create', () => this.store.createKey({ name: keyName, alg, exportable }));
+    } catch (error) {
+      if (keyCreationNotStarted(error)) {
+        // OpenBao did not create the key: the pending rows point at nothing. A retry makes new ids.
+        await db.delete(keystoreObjects).where(and(inArray(keystoreObjects.id, [privateKeyId, publicKeyId]), eq(keystoreObjects.state, 'pending')));
+      } else {
+        logger.warn({ keyName, privateKeyId, publicKeyId }, 'X.509 key creation outcome unknown; the pending key rows are kept for reconciliation');
+      }
+      throw error;
+    }
+    const { ref, publicKey } = created;
     if (ref.version !== 1) throw new KeyStoreStateError('a new key must start at version 1');
     const now = new Date();
     for (const id of [privateKeyId, publicKeyId]) {
@@ -169,7 +182,7 @@ export class X509KeyStoreService {
     const r = await this.keyRow(privateKeyId, 'export');
     if (r.objectType !== 'private_key') throw new KeyStoreStateError(`object ${privateKeyId} is not a private key`);
     if (!r.exportable) throw new KeyNotExportableError();
-    const pem = await this.store.exportPrivateKeyPkcs8(r.ref);
+    const pem = await bao('export', () => this.store.exportPrivateKeyPkcs8(r.ref));
     if (!spkiDer(createPublicKey(createPrivateKey(pem))).equals(spkiDer(r.publicKey))) {
       throw new KeyStoreStateError('the exported key does not match the recorded public key');
     }
@@ -183,7 +196,7 @@ export class X509KeyStoreService {
   async signData(privateKeyId: string, data: Buffer, hash: SignHash): Promise<Buffer> {
     const r = await this.keyRow(privateKeyId, 'sign');
     if (r.objectType !== 'private_key') throw new KeyStoreStateError(`object ${privateKeyId} is not a private key`);
-    const signature = await this.store.sign(r.ref, data, hash);
+    const signature = await bao('sign', () => this.store.sign(r.ref, data, hash));
     if (!nodeVerify(hash, data, r.publicKey, signature)) throw new KeyStoreStateError('the key store signature does not verify');
     return signature;
   }
@@ -243,7 +256,7 @@ export class X509KeyStoreService {
       subjectName = encodeName(nameFields(o.subjectName));
       if (o.publicKeyId) {
         const pub = await this.keyRow(o.publicKeyId, 'read');
-        if (pub.state !== 'active') throw new KeyStoreStateError(`key ${o.publicKeyId} is not active`);
+        if (pub.state !== 'active') throw new KeyStoreConflictError(`key ${o.publicKeyId} is not active`);
         links = { publicKeyId: pub.objectType === 'public_key' ? pub.id : pub.publicKeyId ?? undefined, privateKeyId: pub.objectType === 'private_key' ? pub.id : pub.privateKeyId ?? undefined };
         subjectPublicKey = pub.publicKey;
         if (!issuer) {
@@ -283,7 +296,7 @@ export class X509KeyStoreService {
       notBefore,
       notAfter,
       extensions,
-      signer: (tbs) => this.store.sign(signingKey.ref, tbs, alg.hash),
+      signer: (tbs) => bao('sign', () => this.store.sign(signingKey.ref, tbs, alg.hash)),
     });
     const certificatePem = derToPem(der, 'CERTIFICATE');
 
@@ -329,7 +342,8 @@ export class X509KeyStoreService {
     const r = await this.row(id);
     if (r.state === 'destroyed') return;
     if (r.objectType !== 'certificate' && r.mount && r.keyName && r.keyVersion && r.keyAlgorithm) {
-      await this.store.destroy({ provider: 'openbao', mount: r.mount, name: r.keyName, version: r.keyVersion, alg: toKeyAlg(r.keyAlgorithm) });
+      const ref: KeyRef = { provider: 'openbao', mount: r.mount, name: r.keyName, version: r.keyVersion, alg: toKeyAlg(r.keyAlgorithm) };
+      await bao('destroy', () => this.store.destroy(ref));
     }
     await this.setState(r, 'destroyed');
   }
