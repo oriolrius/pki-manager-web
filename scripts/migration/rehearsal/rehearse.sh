@@ -296,7 +296,7 @@ step "download the new CRL (public endpoint)" curl -fsS "http://127.0.0.1:$V4_PO
 step "CRL signature verifies with the original CA certificate (openssl)" openssl crl -in "$RUN/ca1.crl" -CAfile "$RUN/ca1-v3.pem" -noout -verify
 step "new leaf from the migrated RSA-4096 CA" leaf "$CA2" new.rehearsal.test server ECDSA-P256
 step "renewal with key reuse of a migrated leaf key" post "/certificates/$L1R/renew" '{"generateNewKey":false}'
-step "PKCS#12 export of a migrated leaf key" dl "$API/certificates/$L3R/download?format=p12" "$RUN/l3r.p12" -H 'x-export-password: Rehearsal-1' 
+step "PKCS#12 export of a migrated leaf key" dl "$API/certificates/$L3R/download?format=p12" "$RUN/l3r.p12" -H 'x-export-password: Rehearsal-1'
 step "PKCS#12 private key matches the migrated leaf certificate" p12_match
 step "CA keystore export of a migrated CA key (ALLOW_CA_KEY_EXPORT=true)" dl "$API/cas/$CA1/download?format=p12-keystore" "$RUN/ca1.p12" -H 'x-export-password: Rehearsal-1'
 step "exported CA private key belongs to the v3 CA certificate" ca_p12_match
