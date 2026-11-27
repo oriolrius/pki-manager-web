@@ -20,7 +20,7 @@ import { MigrationError } from './util.ts';
 
 export const CONTENT_DIGEST_FORMAT = 'pki-migrate-content/1';
 
-/** One SQLite value, typed, so that 1, 1.0, '1' and x'01' never collide. */
+/** Encode SQLite values by type. Whole numeric values compare equal (1 and 1.0). */
 export function canonicalValue(v: SQLOutputValue): string {
   if (v === null) return 'n';
   if (typeof v === 'bigint') return `i${v.toString()}`;

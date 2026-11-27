@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T08:39:00Z'
+updated_date: '2026-11-27T08:42:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -68,4 +68,6 @@ Independent migration review on c309a137 found release blockers. Cutover can omi
 Offline migration and CLI validation. At 0ab3dfd8, a clean synthetic v3.19.1 run passed 79 checks. All 10 keys transferred with Cosmian stopped. A system-call trace showed zero connections to its port. Incomplete and changed certificate bundles stopped apply before any key import or target database change. The v4 backend also issued and renewed X.509 certificates, signed a CRL and an SSH host certificate, and signed and recovered an RA session key on custom mounts with separate runtime credentials. At ff2e1df6 an empty inventory reads back its own empty certificate bundle. All 19 migration tests and typecheck passed. The CLI at 2577d7bc covers 108 API operations, including key-store diagnostics. All 65 CLI tests passed. Independent review and the remaining cutover and restore corrections are in progress.
 
 At ff096d11 all 43 migration tests passed. On synthetic v3.19.1 data the signed fork passed 94 cutover checks twice (10 keys, 80 rows). A complete later backup passed; earlier Raft with later SQLite failed as intended. Independent review reproduced a release blocker in the other direction: earlier SQLite + later Raft accepted and lost X.509 and SSH revocations. A second reviewer verified 200 concurrent revocations and ordered CRLs across six processes, but found a serial lost when a revoked certificate is deleted during an outage, and full synchronous scans on unchanged public CRL downloads. Hold the major until fixes and independent checks pass. The split RA roles and offline CLI/material review passed; new regression checks cover immediate SCEP retry after credential recovery and an SSH-only migration with an empty certificate bundle.
+
+The full backend on ff096d11 passed 1110/1110 tests (118 files) against the signed fork with separate runtime credentials. The site at 6cf132b9 passed the 189-page link check. Reconciliation now checks the success status and recorded approver of extra migration audit entries; a change to either field is a mismatch.
 <!-- SECTION:NOTES:END -->

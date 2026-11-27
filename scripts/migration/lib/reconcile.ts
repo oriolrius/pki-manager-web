@@ -143,10 +143,10 @@ function migrationAllowances(manifest: Manifest, approval: Approval): Allowances
 /** New target rows the migration writes. */
 function migrationRow(table: string, row: Row, approval: Approval): boolean {
   if (table === 'audit_log') {
-    if (typeof row.operation !== 'string' || !row.operation.startsWith('migration.')) return false;
+    if (row.status !== 'success' || typeof row.operation !== 'string' || !row.operation.startsWith('migration.')) return false;
     try {
-      const d = JSON.parse(String(row.details)) as { tool?: string; approval?: string };
-      return d.tool === 'scripts/migration' && d.approval === approval.manifestSha256.slice(0, 16);
+      const d = JSON.parse(String(row.details)) as { tool?: string; approval?: string; approvedBy?: string };
+      return d.tool === 'scripts/migration' && d.approvedBy === approval.approvedBy && d.approval === approval.manifestSha256.slice(0, 16);
     } catch { return false; }
   }
   if (table === 'keystore_objects') {

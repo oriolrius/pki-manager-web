@@ -232,6 +232,8 @@ test('every authoritative table is reconciled: each lost or changed v3 value fai
   assert.deepEqual(failed(reconcileCopy(s, s.targetPath)), [], 'the migration writes alone are accepted');
   const cases: [string, string][] = [
     ['audit_log', "DELETE FROM audit_log WHERE id = 'audit-v3-1'"],
+    ['audit_log', "UPDATE audit_log SET status = 'failure' WHERE operation = 'migration.key.map'"],
+    ['audit_log', "UPDATE audit_log SET details = json_set(details, '$.approvedBy', 'another-approver') WHERE operation = 'migration.key.map'"],
     ['audit_log', "UPDATE audit_log SET details = '{}' WHERE id = 'audit-v3-1'"],
     ['audit_log', `INSERT INTO audit_log (id, timestamp, operation, entity_type, status) VALUES ('${randomUUID()}', ${now}, 'certificate.issue', 'certificate', 'success')`],
     ['audit_log', `INSERT INTO audit_log (id, timestamp, operation, entity_type, status, details) VALUES ('${randomUUID()}', ${now}, 'migration.key.map', 'ssh_ca', 'success', '{"tool":"scripts/migration","approval":"0000000000000000"}')`],
