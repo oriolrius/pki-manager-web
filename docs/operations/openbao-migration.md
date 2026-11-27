@@ -455,10 +455,8 @@ Effects on devices and requests:
 - GetCACert serves the new RA certificate. Every SCEP client must fetch the CA/RA
   certificates again before its next request. For Intune or another MDM, update the SCEP
   profile when it pins the RA certificate.
-- A request encrypted to an old RA certificate fails: the gateway answers a CertRep FAILURE
-  signed by the new RA, and issues nothing. A client that verifies the reply with a cached old
-  RA certificate rejects it. The gateway keeps no pending requests, so a request sent around the
-  cutover only has to start again from GetCACert.
+- A request encrypted to an old RA certificate gets a CertRep FAILURE signed by the new RA.
+  The gateway issues no certificate. Fetch GetCACert again before retrying.
 - Revoke the retired RA certificates (`POST /api/v1/certificates/:id/revoke`, ids in the audit
   row): their key is gone.
 
@@ -530,8 +528,10 @@ from a run on 2026-11-27 from commit `18c63475` with the same fork (42 steps pas
 rehearses an approved RA key replacement (`reprovision`) with synthetic data: v3.19.1 with a
 SCEP RA renewed once with the same key, the migration, then the v4 backend and the real SCEP
 gateway (built from `scep/`) with Cosmian stopped. It needs Go as well. It ran on 2026-11-27
-from commit `92e8a64d` with the changes of this section, fork image digest
-`sha256:4ea3dfec…6b2`:
+from clean commit `0ca54bf2` with the signed fork image
+`sha256:4ea3dfec698abe0feb041444f87942d37c103f92f4011d9756df4fed1e6d96b2`. All 18 steps passed.
+An independent run also started the backend and gateway on the restored pair. The gateway
+replaced its cached v3 state, enrolled a device, restarted and enrolled a second time.
 
 | Check | Result |
 |---|---|

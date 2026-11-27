@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T09:31:00Z'
+updated_date: '2026-11-27T09:36:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -20,7 +20,7 @@ Deliver decision-018 and doc-012. Release the next major only after migration, r
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 X.509, CRL, SSH and SCEP operate against OpenBao with Cosmian disconnected.
-- [ ] #2 Existing installations can rehearse migration, reconcile identities and restore their data.
+- [x] #2 Existing installations can rehearse migration, reconcile identities and restore their data.
 - [ ] #3 Development, tests, deployment and current product documentation use the fork and clients retain their supported operations.
 - [ ] #4 Independent review and required release checks pass on the release candidate.
 - [ ] #5 A major GitHub release and its required installable artifacts are published and verified.
@@ -78,4 +78,8 @@ Integrated migration 0019 in 07a8f787. On that clean commit, all 1122 backend te
 Paired restore on clean d4d0ba8f passed 42 rehearsal steps with schema 0019 and the signed fork. Two backups had the same keys and differed by one X.509 and one SSH revocation. Both matching pairs passed. Both mixed pairs failed, whichever backup directory was named. Cutover and its restore each passed 94 checks (80 rows, 10 keys), with Cosmian stopped for restored runtime operations. All 59 migration tests and typecheck passed. Regression tests found that overlapping Raft snapshots and incomplete digest records could be accepted; backup now checks the marker across the snapshot, validates the required files and takes exclusive ownership of its output directory. The SSH fixture waits for its server banner before checking the original host CA. Site checked 189 pages at 92e8a64d. Use the Raft file from the verified managed backup directory; a raw snapshot of a restored cluster can inherit its marker. Independent review, SCEP reprovision and final release checks remain in progress.
 
 At runtime commit 0ca54bf2 the v3.19.1 SCEP reprovision rehearsal passed all 18 steps with disposable keys. Cutover reconciled 23 rows and passed 43 checks. With Cosmian stopped, the gateway enrolled devices, rejected requests encrypted to both retired certificates, restarted and enrolled again. The restored pair passed verification. All 63 migration tests and typecheck passed, as did Go race tests and 166 frontend tests. Independent review confirmed ordered CRLs and preserved revocations during outages on migration 0019. Paired restore code passed independent checks with a non-root operator token. The documentation objection was closed at 38345448. Recovery requires the managed snapshot from the checked backup directory. The site link check passed on 189 pages. Final product acceptance, SCEP review and release checks are in progress.
+
+Independent SCEP review on clean 0ca54bf2 repeated the 18-step rehearsal with the real fork. The restored gateway enrolled twice with Cosmian stopped. Two later same-key renewals preserved usable overlap and separate integrations retained isolated RA keys. Both legacy certificates received signed failures. The frozen-source migration, reconciliation and paired recovery criterion is complete.
+
+Clean runtime 0ca54bf2 passed all 1,125 backend tests in 119 files against the signed fork. All 166 frontend tests passed. In strict product acceptance, 171 passed and the SCEP suite failed its zero-skips check. The new stale-RA test needs a fixture that was supplied in the separate passing migration rehearsal but absent from the standard stack. ACCEPT_BUILD=1 also exits early on clean source; the tester built the images using the same targets. Final release remains gated on a clean strict rerun after both harness fixes. Ansible, real kind, SSH login and backup/restore passed in this run.
 <!-- SECTION:NOTES:END -->
