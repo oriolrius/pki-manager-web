@@ -4,8 +4,10 @@
 # rule below, which accepts `deletion_allowed` and nothing else: the backend cannot turn
 # on `exportable` or `allow_plaintext_backup`, which are irreversible.
 #
-# Denied by omission: backup/, restore/, rotate, trim, decrypt/, encrypt/, rewrap/,
-# random/, sys/*, auth/*. The mount path is the backend OPENBAO_TRANSIT_MOUNT value.
+# Denied by omission: wrapping_key, keys/<name>/import and import_version (only the
+# migration token, policy pki-manager-migration, imports keys), backup/, restore/,
+# rotate, trim, decrypt/, encrypt/, rewrap/, random/, sys/*, auth/*.
+# The mount path is the backend OPENBAO_TRANSIT_MOUNT value.
 
 # Create (generate) and read keys; delete a key whose deletion was allowed first.
 path "pki-manager/keys/+" {
@@ -20,14 +22,6 @@ path "pki-manager/keys/+/config" {
   allowed_parameters = {
     "deletion_allowed" = []
   }
-}
-
-# Import a key (migration, uploaded CA keys): wrap with the mount wrapping key.
-path "pki-manager/wrapping_key" {
-  capabilities = ["read"]
-}
-path "pki-manager/keys/+/import" {
-  capabilities = ["create", "update"]
 }
 
 # Sign: sign/<name> and sign/<name>/<hash>.

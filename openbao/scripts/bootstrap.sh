@@ -15,13 +15,22 @@
 #                        $SECRETS_DIR/backend-token (reused while it is valid)
 #   approle-credentials  write role-id and a new secret-id for the OpenBao Agent to
 #                        $SECRETS_DIR/approle/ (production path)
+#   migration-setup      write the migration policy (HCL on stdin: the file
+#                        scripts/migration/policies/pki-manager-migration.hcl) and the
+#                        token role pki-manager-migration; the backend never gets it
+#   migration-token      print a new short-lived token for the v3 -> v4 migration tool
+#                        (policy pki-manager-migration, not renewable, TTL
+#                        $MIGRATION_TOKEN_TTL, default 1h, at most 8h) to stdout, which
+#                        must be a file; its accessor and expiry go to stderr
+#   migration-revoke     revoke the migration token whose accessor is in
+#                        $MIGRATION_TOKEN_ACCESSOR (refused for any other token)
 #   dev                  DEV/TEST ONLY: wait, init-dev, unseal-dev, configure, backend-token
 #   status               seal status, mounts and the backend token policies
 #
 # Environment: BAO_ADDR (https://openbao:8200), BAO_CACERT (/openbao/tls/ca.pem),
 # SECRETS_DIR (/openbao/secrets), POLICY_DIR (/openbao/policies),
 # OPENBAO_TRANSIT_MOUNT (pki-manager), OPENBAO_SSH_MOUNT (pki-manager-ssh),
-# OPENBAO_RA_MOUNT (pki-manager-ra), SECRETS_OWNER
+# OPENBAO_RA_MOUNT (pki-manager-ra), MIGRATION_TOKEN_TTL (1h), SECRETS_OWNER
 # (uid:gid; when it runs as root, test stacks only: hand $SECRETS_DIR to the backend user).
 #
 # Production never runs the DEV/TEST commands: it initializes with several key shares
@@ -41,6 +50,7 @@ export BAO_ADDR BAO_CACERT
 umask 077
 
 ROLE=pki-manager-backend
+MIGRATION_ROLE=pki-manager-migration
 log() { echo "openbao-bootstrap: $*" >&2; }
 die() { log "error: $*"; exit 1; }
 
@@ -114,10 +124,12 @@ enable_transit() {
 }
 
 # The policy files name the default mounts; rewrite them for other mount paths.
+# write_policy NAME [FILE]: FILE defaults to $POLICY_DIR/NAME.hcl.
 write_policy() {
+  src="${2:-$POLICY_DIR/$1.hcl}"
   sed -e 's#"pki-manager-ra/#"@RA@/#g; s#"pki-manager-ssh/#"@SSH@/#g; s#"pki-manager/#"@X509@/#g' \
-      -e 's#sys/mounts/pki-manager-ra"#sys/mounts/@RA@"#g; s#sys/mounts/pki-manager-ssh"#sys/mounts/@SSH@"#g; s#sys/mounts/pki-manager"#sys/mounts/@X509@"#g' \
-      -e "s#@RA@#$OPENBAO_RA_MOUNT#g; s#@SSH@#$OPENBAO_SSH_MOUNT#g; s#@X509@#$OPENBAO_TRANSIT_MOUNT#g" "$POLICY_DIR/$1.hcl" \
+      -e 's#/mounts/pki-manager-ra"#/mounts/@RA@"#g; s#/mounts/pki-manager-ssh"#/mounts/@SSH@"#g; s#/mounts/pki-manager"#/mounts/@X509@"#g' \
+      -e "s#@RA@#$OPENBAO_RA_MOUNT#g; s#@SSH@#$OPENBAO_SSH_MOUNT#g; s#@X509@#$OPENBAO_TRANSIT_MOUNT#g" "$src" \
     | bao policy write "$1" - >/dev/null
   log "policy '$1' written"
 }
@@ -152,6 +164,60 @@ cmd_configure() {
     orphan=true renewable=true token_no_default_policy=true \
     token_period="$BACKEND_TOKEN_PERIOD" >/dev/null
   log "AppRole and token role '$ROLE' written"
+}
+
+# The migration policy belongs to the migration tool (scripts/migration/policies), which
+# the bootstrap container does not mount: the operator pipes the file in. Token role:
+# short, not renewable, no `default` policy. The backend AppRole and token role above
+# never list pki-manager-migration.
+cmd_migration_setup() {
+  admin_token
+  [ "$(seal_state)" = unsealed ] || die "OpenBao is $(seal_state)"
+  [ ! -t 0 ] || die "pipe the migration policy on stdin (< scripts/migration/policies/pki-manager-migration.hcl)"
+  tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+  cat > "$tmp"
+  grep -q '^path ' "$tmp" || die "stdin holds no policy"
+  ! grep -E '^ *path|capabilities' "$tmp" | grep -Eq 'sudo|"\*"|auth/approle|auth/token/(create|roles)|sys/(policies|storage|mounts"|auth|seal|audit)|/(export|backup|restore)/' \
+    || die "the migration policy on stdin names an administrative or export path: refused"
+  write_policy pki-manager-migration "$tmp"
+  bao write "auth/token/roles/$MIGRATION_ROLE" \
+    allowed_policies="pki-manager-migration" disallowed_policies="root" \
+    orphan=true renewable=false token_no_default_policy=true token_type=service \
+    token_explicit_max_ttl=8h >/dev/null
+  log "token role '$MIGRATION_ROLE' written"
+}
+
+# Prints the token to stdout only, so the operator chooses the file (mode 0600 by the
+# caller's umask) and the token never lands in OpenBao's shared secrets directory.
+cmd_migration_token() {
+  admin_token
+  [ ! -t 1 ] || die "stdout is a terminal: redirect it to the token file (> FILE)"
+  ttl="${MIGRATION_TOKEN_TTL:-1h}"
+  case "$ttl" in ""|*[!0-9smh]*) die "MIGRATION_TOKEN_TTL must be a duration such as 30m or 2h" ;; esac
+  out="$(bao token create -role="$MIGRATION_ROLE" -policy=pki-manager-migration \
+    -ttl="$ttl" -display-name=pki-migrate -format=json)"
+  token="$(echo "$out" | sed -n 's/.*"client_token": *"\([^"]*\)".*/\1/p')"
+  accessor="$(echo "$out" | sed -n 's/.*"accessor": *"\([^"]*\)".*/\1/p')"
+  ttl_s="$(echo "$out" | sed -n 's/.*"lease_duration": *\([0-9]*\).*/\1/p' | tail -n 1)"
+  [ -n "$token" ] && [ -n "$accessor" ] || die "could not read the token create output"
+  printf '%s\n' "$token"
+  log "migration token issued: accessor $accessor, expires in ${ttl_s}s, not renewable"
+}
+
+cmd_migration_revoke() {
+  admin_token
+  acc="${MIGRATION_TOKEN_ACCESSOR:-}"
+  case "$acc" in ""|*[!A-Za-z0-9._-]*) die "set MIGRATION_TOKEN_ACCESSOR to the accessor that migration-token printed" ;; esac
+  set +e; info="$(bao token lookup -accessor -format=json "$acc" 2>&1)"; rc=$?; set -e
+  if [ "$rc" -ne 0 ]; then
+    if echo "$info" | grep -qi 'invalid accessor\|bad token'; then log "accessor $acc is not valid (expired or revoked already)"; return 0; fi
+    die "lookup of accessor $acc failed: $(echo "$info" | tail -n 1)"
+  fi
+  # Revoke only migration tokens: never the backend token or an operator token.
+  pols="$(echo "$info" | tr -d ' \n' | sed -n 's/.*"policies":\[\([^]]*\)\].*/\1/p')"
+  [ "$pols" = '"pki-manager-migration"' ] || die "accessor $acc is not a migration token (policies $pols)"
+  bao token revoke -accessor "$acc" >/dev/null
+  log "migration token $acc revoked"
 }
 
 cmd_backend_token() {
@@ -211,6 +277,9 @@ case "${1:-}" in
   configure) cmd_configure ;;
   backend-token) cmd_backend_token; own_secrets ;;
   approle-credentials) cmd_approle_credentials ;;
+  migration-setup) cmd_migration_setup ;;
+  migration-token) cmd_migration_token ;;
+  migration-revoke) cmd_migration_revoke ;;
   dev) dev_only dev; cmd_wait; cmd_init_dev; cmd_unseal_dev; cmd_configure; cmd_backend_token; own_secrets ;;
   status) cmd_status ;;
   *) sed -n 's/^#   //p' "$0" >&2; exit 2 ;;

@@ -141,6 +141,45 @@ The configured SecretID has unlimited uses and no expiry. To replace it, take th
    unset BAO_TOKEN old_accessor
    ```
 
+## Issue and revoke a migration token
+
+The v3 key migration (`pki-migrate`) uses its own short-lived identity, never the backend AppRole. Its policy is `pki-manager-migration`, from [scripts/migration/policies/pki-manager-migration.hcl](../../scripts/migration/policies/pki-manager-migration.hcl). It reads the wrapping keys, imports new keys, reads them and signs a challenge on the three mounts. It cannot export, back up, configure, rotate or delete keys, recover RA session keys, read `sys/` or create tokens. The backend policies have no import path and no wrapping-key read. The backend token cannot create a migration token.
+
+| Operation | Identity |
+|---|---|
+| `approve-template`, `preflight`, `apply`, `verify` | migration token |
+| `verify --ra-session-check` (SCEP session-key recovery) | backend token |
+| `backup --openbao-*` (Raft snapshot) | operator token |
+
+1. Obtain an operator token as above. Install the policy and the token role once. The helper reads the policy from stdin and rewrites the mount names from `OPENBAO_*_MOUNT`.
+
+   ```bash
+   dc run --rm --no-deps -T -e BAO_TOKEN openbao-bootstrap migration-setup \
+     < scripts/migration/policies/pki-manager-migration.hcl
+   ```
+
+2. Issue a token for one migration window. The token has no `default` policy and cannot be renewed. `MIGRATION_TOKEN_TTL` defaults to `1h`. The token role limits it to `8h`. The helper writes only the token to stdout and refuses a terminal. Record the accessor that it prints on stderr.
+
+   ```bash
+   install -d -m 0700 "$HOME/pki-migration"
+   (umask 077; MIGRATION_TOKEN_TTL=2h dc run --rm --no-deps -T -e BAO_TOKEN \
+     -e MIGRATION_TOKEN_TTL openbao-bootstrap migration-token \
+     > "$HOME/pki-migration/openbao-token")
+   ```
+
+   Give the file to the migration tool with `--openbao-token-file`.
+
+3. Revoke the token when the run ends, also before its expiry. The helper revokes only a token whose policy list is exactly `pki-manager-migration`. Then delete the file.
+
+   ```bash
+   MIGRATION_TOKEN_ACCESSOR='<accessor>' dc run --rm --no-deps -T -e BAO_TOKEN \
+     -e MIGRATION_TOKEN_ACCESSOR openbao-bootstrap migration-revoke
+   rm -f "$HOME/pki-migration/openbao-token"
+   unset BAO_TOKEN
+   ```
+
+On a disposable rehearsal stack, `node openbao/scripts/check-migration-token.mts` proves these limits and the separation from the backend token. It imports throw-away keys that nobody can delete. Never run it against production.
+
 ## Back up and restore SQLite and Raft together
 
 1. Record the application image IDs, fork image ID, mount names, TLS trust, current CA certificates and SSH CA fingerprints. Secure the deployment configuration, TLS credentials and audit records under your backup policy. Keep Shamir shares in separate custody.

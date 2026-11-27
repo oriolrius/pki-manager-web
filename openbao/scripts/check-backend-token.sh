@@ -36,7 +36,8 @@ expect '200|204' "create exportable rsa-2048 key"      POST "$mount/keys/$k" '{"
 expect 200       "read key"                             GET  "$mount/keys/$k"
 expect 200       "sign sha2-256 (PKCS#1 v1.5)"          POST "$mount/sign/$k/sha2-256" '{"input":"aGVsbG8=","signature_algorithm":"pkcs1v15"}'
 expect 200       "export the exportable key"            GET  "$mount/export/signing-key/$k"
-expect 200       "read wrapping key (import)"           GET  "$mount/wrapping_key"
+expect 403       "read the wrapping key (import is migration-only)" GET "$mount/wrapping_key"
+expect 403       "import a key (migration-only)"        POST "$mount/keys/check-import-$(random_hex 4)/import" '{"ciphertext":"AAAA","type":"rsa-2048"}'
 expect 403       "turn on plaintext backup"             POST "$mount/keys/$k/config" '{"allow_plaintext_backup":true}'
 expect 403       "backup a key"                         GET  "$mount/backup/$k"
 expect 403       "rotate a key"                         POST "$mount/keys/$k/rotate" '{}'
