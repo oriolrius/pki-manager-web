@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-26T21:37:00Z'
+updated_date: '2026-11-27T07:16:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -52,4 +52,6 @@ Runtime commit f4d85339 and bootstrap commit 9618168c. Isolated OpenBao candidat
 Application acceptance: all-in-cluster kind deployment issued a real dual-use test leaf through the in-cluster issuer, backend and OpenBao, with matching key, SAN and chain. A second deployment reused its Raft and SQLite volumes. Real Ansible SSH sessions and both KRL delivery paths passed. Playwright passed 23/23 RBAC tests and both demo login/renewal tests; all seven documented API examples ran. Production Compose AppRole initialization, scoped self-renewal, restart, SecretID rotation and revocation were verified. CLI snapshot 6ab01e0 matches the now-required sessionKeyLength; 62 Rust tests passed. The website checked 186 pages. Dependencies and original v3 keys still need end-to-end migration verification before the application release.
 
 Additional controls: removal of the openssl executable from a disposable backend image left 102/102 live checks green (including X.509, CRL, SSH, SCEP, zero skips). The backend rerun after tightening the RA OpenAPI contract passed 1040/1040. An independent synthetic wrapped-transfer probe imported eight source keys across X.509 CA/leaf RSA and EC, Sensitive SSH and SCEP; public keys, signatures and import policies matched. A non-transferable ninth key stayed at its source. This proves the key transport, not the database mapping or the complete v3 cutover.
+
+Scope of the 102 checks without the openssl executable: X.509 issuance, renewal, revocation, CRLs, CSR signing, SSH and SCEP. The run omitted x509_exports. PKCS#12, JKS via PKCS#12, and password-protected PKCS#8 used the executable at commit 23b37825; their interoperability checks ran separately with the normal image. The 08:00 independent review found duplicate CRL numbers under concurrency, stale CRLs after outages and X.509 error/diagnostic gaps. Release is pending corrections and independent re-verification.
 <!-- SECTION:NOTES:END -->

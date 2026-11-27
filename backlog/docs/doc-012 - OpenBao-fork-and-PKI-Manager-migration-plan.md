@@ -3,7 +3,7 @@ id: doc-012
 title: OpenBao fork and PKI Manager migration plan
 type: specification
 created_date: '2026-11-26T16:59:00Z'
-updated_date: '2026-11-26T17:03:00Z'
+updated_date: '2026-11-27T07:09:00Z'
 ---
 Decision 018 selects the downstream OpenBao build for PKI Manager. This is the implementation and release plan. Cosmian still serves the application. The previous run recorded 33/33 spike checks. One check passed because stock Transit rejected a required SCEP operation. That result establishes a baseline, not release readiness. The working spike report is Backlog doc-011, “KeyStore contract and OpenBao spike”.
 
@@ -26,7 +26,7 @@ PKI Manager compatibility determines the release. Upstream contribution is a sep
 
 ## 1. Freeze the compatibility baseline
 
-Use the ten KMIP operations and their call sites in doc-011 as the checklist. Its recording covered 731 requests on Cosmian 5.28.0. One backend test timed out through the recorder. The RA paths came from code inspection. Run current backend tests directly against Cosmian and retain their results. Generate synthetic fixtures for each CA, leaf profile, imported CSR, SSH zone and SCEP integration. Record public fingerprints, serials, expiry, chains, expected exports and roles. Keep private material out of test reports.
+Use the ten KMIP operations and their call sites in doc-011 as the checklist. The recording on Cosmian 5.28.0 contained 718 KMIP requests and 13 HTTP version checks. One backend test timed out through the recorder. The RA paths came from code inspection. Run current backend tests directly against Cosmian and retain their results. Generate synthetic fixtures for each CA, leaf profile, imported CSR, SSH zone and SCEP integration. Record public fingerprints, serials, expiry, chains, expected exports and roles. Keep private material out of test reports.
 
 ## 2. Implement the SCEP operation in the fork
 

@@ -9,7 +9,7 @@
 #   ACCEPT_STACK=none API=http://... run.sh     an already running stack (no backup/restore check)
 #   ACCEPT_COMPOSE_FILES=a.yml:b.yml run.sh     any compose stack that keeps its state in named volumes
 #   ACCEPT_CHECKS="x509_ca_profiles ssh" run.sh only these checks (default: all core checks)
-#   ACCEPT_SUITES="scep k8s ansible cli" run.sh also run the existing live suites (see checks/suites.sh)
+#   ACCEPT_SUITES="scep k8s ansible_collection cli" run.sh also run the existing live suites (see checks/suites.sh)
 #   ACCEPT_STRICT=1 run.sh                      a SKIP counts as a failure (release mode)
 #   KEEP=1 run.sh                               leave the stack up at the end
 #

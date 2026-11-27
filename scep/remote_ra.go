@@ -17,7 +17,7 @@ type backendKey struct {
 	ctx     context.Context
 	// sessionKeyLength is the CMS session key length (16, 24 or 32) of the
 	// envelope that this request decrypts. The backend enforces it exactly.
-	// Zero leaves the backend on its legacy 16/24/32 check.
+	// The v4 backend requires the length on every decrypt request.
 	sessionKeyLength int
 }
 
