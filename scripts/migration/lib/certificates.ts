@@ -45,6 +45,5 @@ export function loadCertificateBundle(path: string): Map<string, Buffer> {
     try { der = new X509Certificate(b[0]).raw; } catch { throw new MigrationError('CERT_BUNDLE', `certificate bundle block ${i + 1} does not parse`); }
     out.set(sha256Hex(der), der);
   });
-  if (out.size === 0) throw new MigrationError('CERT_BUNDLE', 'certificate bundle holds no certificate');
   return out;
 }
