@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T08:42:00Z'
+updated_date: '2026-11-27T08:56:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -70,4 +70,6 @@ Offline migration and CLI validation. At 0ab3dfd8, a clean synthetic v3.19.1 run
 At ff096d11 all 43 migration tests passed. On synthetic v3.19.1 data the signed fork passed 94 cutover checks twice (10 keys, 80 rows). A complete later backup passed; earlier Raft with later SQLite failed as intended. Independent review reproduced a release blocker in the other direction: earlier SQLite + later Raft accepted and lost X.509 and SSH revocations. A second reviewer verified 200 concurrent revocations and ordered CRLs across six processes, but found a serial lost when a revoked certificate is deleted during an outage, and full synchronous scans on unchanged public CRL downloads. Hold the major until fixes and independent checks pass. The split RA roles and offline CLI/material review passed; new regression checks cover immediate SCEP retry after credential recovery and an SSH-only migration with an empty certificate bundle.
 
 The full backend on ff096d11 passed 1110/1110 tests (118 files) against the signed fork with separate runtime credentials. The site at 6cf132b9 passed the 189-page link check. Reconciliation now checks the success status and recorded approver of extra migration audit entries; a change to either field is a mismatch.
+
+On clean b01287e8, restore verification checked the live policy and version of every X.509, SSH and SCEP RA key owned by SQLite. The migration typecheck and all 50 tests passed. A synthetic v3.19.1 migration and its restored copy each passed 94 checks, including 80 reconciled rows, 10 live keys and one RA unwrap. The restored v4 backend issued X.509 and SSH certificates with Cosmian stopped. A later matching pair passed with 12 keys, and a later database with an earlier Raft snapshot failed. The reverse mismatch, the SCEP gateway after non-transferable RA reprovision, and CRL publication during an outage remain release blockers.
 <!-- SECTION:NOTES:END -->
