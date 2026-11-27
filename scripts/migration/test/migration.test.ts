@@ -213,7 +213,7 @@ test('cutover gate passes when every key is resolved (rotated CA removed before 
   await run(s, approval);
   const target = openReadOnly(s.targetPath);
   const source = openReadOnly(s.sourcePath);
-  const v = await verifyMigration({ manifest: s.manifest, approval, target, store: s.store, profile: DEFAULT_PROFILE, source });
+  const v = await verifyMigration({ manifest: s.manifest, approval, target, store: s.store, profile: DEFAULT_PROFILE, source, raSessionCheck: true });
   target.close(); source.close();
   assert.equal(v.cutoverReady, true, JSON.stringify(v.checks.filter(c => !c.ok)));
   assert.equal(v.cosmianRequired, false);

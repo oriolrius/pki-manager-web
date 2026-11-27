@@ -152,10 +152,15 @@ export class FakeCosmian implements CosmianSource {
   }
 }
 
+/** A Transit key of the fake. `version` is the latest (and only listed) version; `policy` overrides fields of the read response. */
+export interface FakeKey { type: string; priv: KeyObject; exportable: boolean; allowPkcs1v15SessionKey: boolean; imported: boolean; version?: number; policy?: Record<string, unknown> }
+
 let sharedWrapping: { privateKey: KeyObject; publicKey: KeyObject } | undefined;
 
 export class FakeTransit implements TargetStore {
-  keys = new Map<string, { type: string; priv: KeyObject; exportable: boolean; allowPkcs1v15SessionKey: boolean; imported: boolean }>();
+  keys = new Map<string, FakeKey>();
+  /** Every sign and session-key call: mount/name and the key version asked for. */
+  calls: string[] = [];
   wrapping: { privateKey: KeyObject; publicKey: KeyObject };
   policies = ['pki-migration'];
   imports = 0;
@@ -171,10 +176,35 @@ export class FakeTransit implements TargetStore {
   async mountType() { return 'transit'; }
   async wrappingKeyPem() { return this.wrapping.publicKey.export({ format: 'pem', type: 'spki' }) as string; }
 
+  /** The `data` of `GET <mount>/keys/<name>`, with the fields the OpenBao fork returns (path_keys.go formatKeyPolicy). */
+  keyData(k: FakeKey): Record<string, unknown> {
+    const pem = createPublicKey(k.priv).export({ format: 'pem', type: 'spki' }) as string;
+    const latest = k.version ?? 1;
+    return {
+      name: 'fake', type: k.type, derived: false, deletion_allowed: false,
+      min_available_version: 0, min_decryption_version: 1, min_encryption_version: 0, latest_version: latest,
+      exportable: k.exportable, allow_plaintext_backup: false,
+      supports_encryption: k.type.startsWith('rsa-'), supports_decryption: k.type.startsWith('rsa-'), supports_signing: true, supports_derivation: false,
+      auto_rotate_period: 0, imported_key: k.imported, soft_deleted: false,
+      ...(k.type === 'rsa-3072' ? { allow_pkcs1v15_session_key: k.allowPkcs1v15SessionKey } : {}),
+      ...(k.imported ? { imported_key_allow_rotation: false } : {}),
+      keys: { [String(latest)]: { public_key: pem, name: k.type } },
+      ...k.policy,
+    };
+  }
+
   async readKey(mount: string, name: string): Promise<TransitKey | null> {
     const k = this.keys.get(`${mount}/${name}`);
     if (!k) return null;
-    return { type: k.type, latestVersion: 1, exportable: k.exportable, allowPlaintextBackup: false, importedKey: k.imported, deletionAllowed: false, allowPkcs1v15SessionKey: k.allowPkcs1v15SessionKey, publicKeyPem: createPublicKey(k.priv).export({ format: 'pem', type: 'spki' }) as string, publicKeys: { 1: createPublicKey(k.priv).export({ format: 'pem', type: 'spki' }) as string } };
+    const data = this.keyData(k);
+    const keys = (data.keys ?? {}) as Record<string, { public_key?: string }>;
+    return {
+      type: String(data.type), latestVersion: Number(data.latest_version), exportable: data.exportable === true, allowPlaintextBackup: data.allow_plaintext_backup === true,
+      importedKey: data.imported_key === true, deletionAllowed: data.deletion_allowed === true, allowPkcs1v15SessionKey: data.allow_pkcs1v15_session_key === true,
+      publicKeyPem: keys['1']?.public_key ?? null,
+      publicKeys: Object.fromEntries(Object.entries(keys).flatMap(([v, e]) => (e?.public_key ? [[Number(v), e.public_key]] : []))),
+      data,
+    };
   }
 
   async importKey(mount: string, name: string, body: Record<string, unknown>) {
@@ -192,17 +222,41 @@ export class FakeTransit implements TargetStore {
   }
 
   /** A generated (not imported) key, to test conflicts. */
-  plant(mount: string, name: string, type: string, priv: KeyObject) {
-    this.keys.set(`${mount}/${name}`, { type, priv, exportable: false, allowPkcs1v15SessionKey: false, imported: false });
+  plant(mount: string, name: string, type: string, priv: KeyObject, o: Partial<Omit<FakeKey, 'type' | 'priv'>> = {}) {
+    this.keys.set(`${mount}/${name}`, { type, priv, exportable: false, allowPkcs1v15SessionKey: false, imported: false, ...o });
   }
 
-  async sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean }) {
+  /** Transit's refusals for an operation on `version` (sdk/helper/keysutil policy.go). */
+  private usable(mount: string, name: string, version: number, op: 'sign' | 'decrypt'): FakeKey {
     const k = this.keys.get(`${mount}/${name}`);
     if (!k) throw new MigrationError('OPENBAO_ERROR', 'no key');
+    const d = this.keyData(k);
+    if (d.soft_deleted === true) throw new MigrationError('OPENBAO_ERROR', 'refusing to use soft-deleted key');
+    if (version > Number(d.latest_version) || version < Number(d.min_available_version)) throw new MigrationError('OPENBAO_ERROR', 'invalid key version');
+    if (op === 'sign' && Number(d.min_encryption_version) > 0 && version < Number(d.min_encryption_version)) throw new MigrationError('OPENBAO_ERROR', 'requested version for signing is less than the minimum encryption key version');
+    if (op === 'decrypt' && version < Number(d.min_decryption_version)) throw new MigrationError('OPENBAO_ERROR', 'requested version for decryption is less than the minimum decryption key version');
+    return k;
+  }
+
+  async sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean; version?: number }) {
+    const version = opts.version ?? 1;
+    this.calls.push(`sign:${mount}/${name}:v${version}`);
+    const k = this.usable(mount, name, version, 'sign');
     return nodeSign(opts.hash === 'sha2-384' ? 'sha384' : 'sha256', input, { key: k.priv, dsaEncoding: 'der' });
   }
 
-  async sessionKey(): Promise<Buffer> { throw new Error('not in the fake'); }
+  async sessionKey(mount: string, name: string, ciphertext: Buffer, length: 16 | 24 | 32, version = 1): Promise<Buffer> {
+    this.calls.push(`session-key:${mount}/${name}:v${version}`);
+    const k = this.usable(mount, name, version, 'decrypt');
+    if (!k.allowPkcs1v15SessionKey) throw new MigrationError('OPENBAO_ERROR', 'key is not enabled for PKCS#1 v1.5 session-key transport');
+    // Node refuses RSA_PKCS1_PADDING for decryption: undo the EME-PKCS1-v1_5 block by hand (test only).
+    const em = privateDecrypt({ key: k.priv, padding: constants.RSA_NO_PADDING }, ciphertext);
+    const sep = em.indexOf(0, 2);
+    if (em[0] !== 0 || em[1] !== 2 || sep < 10) throw new MigrationError('OPENBAO_ERROR', 'session key decryption failed');
+    const key = Buffer.from(em.subarray(sep + 1));
+    if (key.length !== length) throw new MigrationError('OPENBAO_ERROR', 'session key length mismatch');
+    return key;
+  }
 
   async raftSnapshot(dest: string) { writeFileSync(dest, Buffer.from(`fake-snapshot:${[...this.keys.keys()].join(',')}`), { mode: 0o600 }); }
 }

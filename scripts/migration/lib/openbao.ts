@@ -38,6 +38,8 @@ export interface TransitKey {
   publicKeyPem: string | null; // of version 1
   /** Public key PEM of every version OpenBao returns (`keys.<n>.public_key`), by version. */
   publicKeys: Record<number, string>;
+  /** The raw `data` of the read response: the per-purpose runtime policy is checked on it (key-policy.ts). */
+  data: Record<string, unknown>;
 }
 
 export interface TargetStore {
@@ -47,8 +49,9 @@ export interface TargetStore {
   wrappingKeyPem(mount: string): Promise<string>;
   readKey(mount: string, name: string): Promise<TransitKey | null>;
   importKey(mount: string, name: string, body: Json): Promise<void>;
-  sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean }): Promise<Buffer>;
-  sessionKey(mount: string, name: string, ciphertext: Buffer, length: 16 | 24 | 32): Promise<Buffer>;
+  /** `version` is the pinned key version (default 1); the signature must come from it. */
+  sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean; version?: number }): Promise<Buffer>;
+  sessionKey(mount: string, name: string, ciphertext: Buffer, length: 16 | 24 | 32, version?: number): Promise<Buffer>;
   raftSnapshot(destPath: string): Promise<void>;
 }
 
@@ -185,6 +188,7 @@ export class OpenBaoClient implements TargetStore {
       allowPkcs1v15SessionKey: d.allow_pkcs1v15_session_key === true,
       publicKeyPem: v1 && typeof v1.public_key === 'string' ? v1.public_key : null,
       publicKeys: Object.fromEntries(Object.entries(keys).flatMap(([v, k]) => (isObject(k) && typeof k.public_key === 'string' && /^[1-9][0-9]*$/.test(v) ? [[Number(v), k.public_key]] : []))),
+      data: d,
     };
   }
 
@@ -193,19 +197,24 @@ export class OpenBaoClient implements TargetStore {
     await this.call('POST', `${mount}/keys/${name}/import`, body);
   }
 
-  async sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean }) {
-    const body: Json = { input: input.toString('base64'), key_version: 1, marshaling_algorithm: 'asn1' };
+  async sign(mount: string, name: string, input: Buffer, opts: { hash: 'sha2-256' | 'sha2-384'; rsa: boolean; version?: number }) {
+    const version = opts.version ?? 1;
+    if (!Number.isInteger(version) || version < 1) throw new MigrationError('OPENBAO_SIGN', `invalid key version ${version}`);
+    const body: Json = { input: input.toString('base64'), key_version: version, marshaling_algorithm: 'asn1' };
     if (opts.rsa) body.signature_algorithm = 'pkcs1v15';
     const { json } = await this.call('POST', `${mount}/sign/${name}/${opts.hash}`, body);
     const sig = isObject(json.data) ? json.data.signature : undefined;
-    if (typeof sig !== 'string' || !sig.startsWith('vault:v1:')) throw new MigrationError('OPENBAO_SIGN', 'signature missing or not from key version 1');
-    return Buffer.from(sig.slice('vault:v1:'.length), 'base64');
+    const prefix = `vault:v${version}:`;
+    if (typeof sig !== 'string' || !sig.startsWith(prefix)) throw new MigrationError('OPENBAO_SIGN', `signature missing or not from key version ${version}`);
+    return Buffer.from(sig.slice(prefix.length), 'base64');
   }
 
-  async sessionKey(mount: string, name: string, ciphertext: Buffer, length: 16 | 24 | 32) {
-    const { json } = await this.call('POST', `${mount}/session-key/pkcs1v15/${name}`, { ciphertext: ciphertext.toString('base64'), key_version: 1, session_key_length: length });
+  async sessionKey(mount: string, name: string, ciphertext: Buffer, length: 16 | 24 | 32, version = 1) {
+    if (!Number.isInteger(version) || version < 1) throw new MigrationError('OPENBAO_SESSION_KEY', `invalid key version ${version}`);
+    const { json } = await this.call('POST', `${mount}/session-key/pkcs1v15/${name}`, { ciphertext: ciphertext.toString('base64'), key_version: version, session_key_length: length });
     const key = isObject(json.data) ? json.data.session_key : undefined;
     if (typeof key !== 'string') throw new MigrationError('OPENBAO_SESSION_KEY', 'no session key returned');
+    if (!isObject(json.data) || json.data.key_version !== version) throw new MigrationError('OPENBAO_SESSION_KEY', 'session key has the wrong key version');
     return Buffer.from(key, 'base64');
   }
 

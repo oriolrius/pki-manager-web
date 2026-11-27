@@ -248,8 +248,8 @@ pki-migrate verify --manifest "$W/manifest.json" --approval "$W/approval.json" \
   --target-db "$W/target/pki.db" --source-db "$W/backup-v3/pki.db" $BAO --cutover --out "$W/verify.json"
 ```
 
-`verify` never contacts Cosmian. It checks every key in OpenBao (flags, public key, a new
-signature), every `keystore_objects` row and link, the SSH references and fingerprints, the
+`verify` never contacts Cosmian. It checks every key in OpenBao (the key policy, public key, a
+new signature), every `keystore_objects` row and link, the SSH references and fingerprints, the
 RA bindings, every certificate PEM (digest, serial, public key). From the database side, it
 checks that every key the target database owns (`keystore_objects` key rows that are
 active or revoked, `ssh_cas` references, RA bindings in OpenBao) is in OpenBao at the
@@ -276,7 +276,29 @@ run `verify` on all three mounts. To check with the v4 runtime identities instea
 X.509 and SSH token (policy `pki-manager-backend`) as `--openbao-token-file` and the SCEP RA
 token (policy `pki-manager-ra`) as `--openbao-ra-token-file`: every RA mount call then uses the
 RA token. `--ra-session-check` also tests the RA session-key operation; it needs the RA token,
-because the migration policy has no session-key right.
+because the migration policy has no session-key right. The gate needs it: while an RA key
+(transferred or already in OpenBao) has no passed session-key test, `cutoverReady=false` with
+the check `cutover: RA session-key transport tested for <key>`. `counts.raUnwrapped` gives the
+number of RA keys that passed it.
+
+The key policy is the one the v4 clients require for their purpose, and `apply` checks it too,
+before it imports, adopts or writes anything (`TARGET_CONFLICT`, nothing changed):
+
+| Purpose | Every key | Also |
+|---|---|---|
+| X.509 (CA and leaf) | type `rsa-2048`/`rsa-3072`/`rsa-4096`/`ecdsa-p256`/`ecdsa-p384`; `derived`, `deletion_allowed`, `soft_deleted`, `allow_plaintext_backup` false; `supports_signing` true; `auto_rotate_period` 0; an imported key has `imported_key_allow_rotation` false; the version is between `min_available_version` and `latest_version` and not below `min_encryption_version` (Transit refuses to sign with it); its public key matches the type | `exportable` as approved |
+| SSH CA | as X.509 | `ecdsa-p256`, not exportable |
+| SCEP RA | as X.509 | `rsa-3072`, not exportable, `allow_pkcs1v15_session_key` true, the version not below `min_decryption_version` (session key) |
+
+A migrated key is also an imported key with only version 1 and the source public key. The
+fork always returns these fields: a missing field fails the check.
+
+An RA key that is already in OpenBao (`already-target`, a v3.19 binding with
+`key_provider = openbao`) is never imported. Its binding must name the key and a key version,
+with no Cosmian public key id, and hold the inventoried RA certificate. The key must pass the
+RA policy above for that version (a generated key or an imported one), hold the public key of
+the RA certificate, and sign with that version; with `--ra-session-check` it must also recover
+a session key wrapped to the certificate key.
 
 Then revoke the migration token, take a backup pair, and start v4 on the target copy:
 

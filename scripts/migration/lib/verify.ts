@@ -21,7 +21,7 @@
  * verifyRestore checks a LATER restore (after v4 accepted writes): the pair
  * and the gate from the database side, and the audit history of the source.
  */
-import { constants, createPublicKey, publicEncrypt, randomBytes, X509Certificate } from 'node:crypto';
+import { X509Certificate } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { TargetStore } from './openbao.ts';
 import { approvedTarget } from './policy.ts';
@@ -30,7 +30,7 @@ import { reconcile } from './reconcile.ts';
 import { checkBinding } from './source.ts';
 import { all, columnsOf, tableExists } from './sqlite.ts';
 import { sshKeyRef, SSH_KEY_REF_PREFIX, type TargetProfile } from './target-db.ts';
-import { challenge, checkTargetKey } from './transfer.ts';
+import { challenge, checkAlreadyTargetRa, checkTargetKey, raBindingRow, raSessionCheck } from './transfer.ts';
 import type { Approval, Manifest } from './types.ts';
 import { normalizeSerial, sha256Hex, spkiDer, spkiFingerprint, sshFingerprintOfP256 } from './util.ts';
 
@@ -64,6 +64,9 @@ export async function verifyMigration(o: {
   const counts: Record<string, number> = { keysVerified: 0, keystoreRowsVerified: 0, rowsVerified: 0, pemVerified: 0, raUnwrapped: 0 };
   const ks = (id: string) => (tableExists(o.target, 'keystore_objects') ? o.target.prepare('SELECT * FROM keystore_objects WHERE id = ?').get(id) as Ks | undefined : undefined);
   let rotateOpen = 0;
+  // SCEP needs two RA operations: sign (checked above for every RA key) and the fork's
+  // session-key transport. The cutover gate needs proof of both for every RA key it keeps.
+  const needsRaSession = (name: string) => add(`cutover: RA session-key transport tested for ${name}`, false, 'run verify with --ra-session-check and the RA token (--openbao-ra-token-file)');
 
   for (const key of o.manifest.keys) {
     const a = o.approval.keys[key.sourceKeyId];
@@ -71,10 +74,13 @@ export async function verifyMigration(o: {
     if (a.action === 'rotate') { rotateOpen++; add(`${key.class} ${key.sourceKeyId} resolved before cutover`, false, 'approved action is rotate: run the rotation procedure, then a new inventory'); continue; }
     if (a.action === 'history-only') continue;
     if (a.action === 'already-target') {
-      const ref = key.references.find(r => r.role === 'scep-ra-openbao-key');
-      const name = ref ? ref.sourceId.replace(/^openbao:/, '') : '';
-      const k = name ? await storeFor('scep-ra').readKey(o.profile.mounts.ra, name) : null;
-      add(`RA key already in OpenBao ${name}`, !!k && !!k.publicKeyPem, k ? '' : 'not readable');
+      // Pinned binding + inventoried RA certificate, v4 RA policy of the pinned version, the
+      // certified public key, a signature with that version (and the session key, when asked).
+      const r = await checkAlreadyTargetRa({ store: storeFor('scep-ra'), mount: o.profile.mounts.ra, key, approval: a, manifest: o.manifest, binding: id => raBindingRow(o.target, id), sessionCheck: o.raSessionCheck });
+      for (const c of r.checks) add(c.name, c.ok, c.detail);
+      if (r.checks.every(c => c.ok)) { counts.keysVerified++; counts.rowsVerified++; }
+      if (r.unwrapped) counts.raUnwrapped++;
+      if (!o.raSessionCheck) needsRaSession(r.name);
       continue;
     }
     if (a.action === 'drop-key') {
@@ -86,7 +92,7 @@ export async function verifyMigration(o: {
     const spec = approvedTarget(key, a, o.approval);
     const st = storeFor(key.class);
     const k = await st.readKey(spec.mount, spec.name);
-    const bad = k ? checkTargetKey(k, spec, key.spkiSha256!) : ['missing in OpenBao'];
+    const bad = k ? checkTargetKey(k, spec, key.spkiSha256!, key.class) : ['missing in OpenBao'];
     add(`${key.class} key ${spec.mount}/${spec.name}`, bad.length === 0, bad.join('; '));
     if (!k || bad.length) continue;
     try { await challenge(st, spec, k.publicKeyPem!); counts.keysVerified++; add(`challenge ${spec.name}`, true); }
@@ -123,15 +129,8 @@ export async function verifyMigration(o: {
         const row = o.target.prepare('SELECT kms_key_id FROM certificates WHERE id = ?').get(r.rowId) as { kms_key_id: string | null } | undefined;
         add(`certificates:${r.rowId} RA alias cleared`, !!row && row.kms_key_id === null);
       }
-      if (o.raSessionCheck) {
-        try {
-          const sessionKey = randomBytes(32);
-          const ct = publicEncrypt({ key: createPublicKey(k.publicKeyPem!), padding: constants.RSA_PKCS1_PADDING }, sessionKey);
-          const got = await st.sessionKey(spec.mount, spec.name, ct, 32);
-          add(`RA session-key unwrap ${spec.name}`, got.equals(sessionKey));
-          if (got.equals(sessionKey)) counts.raUnwrapped++;
-        } catch (error) { add(`RA session-key unwrap ${spec.name}`, false, (error as Error).message); }
-      }
+      if (o.raSessionCheck) { if (await raSessionCheck(st, spec.mount, spec.name, k.publicKeyPem!, 1, add)) counts.raUnwrapped++; }
+      else needsRaSession(spec.name);
     }
   }
 

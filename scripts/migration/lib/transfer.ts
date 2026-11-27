@@ -14,7 +14,7 @@
  * Nothing here writes the source database. The only source-KMS write is the
  * registration (and removal) of the OpenBao wrapping public key, when approved.
  */
-import { createPublicKey, randomBytes, verify as nodeVerify } from 'node:crypto';
+import { constants, createPublicKey, publicEncrypt, randomBytes, verify as nodeVerify, X509Certificate } from 'node:crypto';
 import { readFileSync, realpathSync as realpath, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -26,7 +26,8 @@ import { approvedTarget, validateApproval } from './policy.ts';
 import { openReadOnly, openWritable } from './sqlite.ts';
 import { checkBinding } from './source.ts';
 import { applyToTargetDb, missingColumns, type DbResult, type TargetProfile } from './target-db.ts';
-import type { Approval, KeyEntry, Manifest, TargetSpec } from './types.ts';
+import { purposeOf, runtimeKeyProblems } from './key-policy.ts';
+import type { Approval, KeyClass, KeyEntry, Manifest, ObjectApproval, TargetSpec } from './types.ts';
 import { MigrationError, derToPem, documentDigest, isoNow, log, sha256Hex, spkiFingerprint } from './util.ts';
 
 export interface LiveTarget { addr: string; wrappingKeys: Record<string, string> }
@@ -123,29 +124,105 @@ export async function preflight(o: {
   return { ok: checks.every(c => c.ok), checks, live, certificates };
 }
 
-/** Checks a Transit key against the approved spec and the source fingerprint. */
-export function checkTargetKey(k: TransitKey, spec: TargetSpec, spkiSha256: string): string[] {
+/**
+ * Checks a Transit key against the approved spec and the source fingerprint: the
+ * v4 runtime policy of its purpose (key-policy.ts: what the X.509, SSH CA or RA
+ * client accepts and can use for version 1), and the migration result (an
+ * imported key, version 1 only, the approved export flag, the source public key).
+ */
+export function checkTargetKey(k: TransitKey, spec: TargetSpec, spkiSha256: string, cls: KeyClass): string[] {
   const bad: string[] = [];
   if (k.type !== spec.type) bad.push(`type ${k.type} != ${spec.type}`);
   if (!k.importedKey) bad.push('not an imported key (a generated key cannot hold the source identity)');
   if (k.latestVersion !== 1) bad.push(`latest_version ${k.latestVersion} != 1`);
   if (k.exportable !== spec.exportable) bad.push(`exportable ${k.exportable} != ${spec.exportable}`);
-  if (k.allowPlaintextBackup) bad.push('allow_plaintext_backup is true');
   if (spec.allowPkcs1v15SessionKey && !k.allowPkcs1v15SessionKey) bad.push('RA key not opted in to PKCS#1 v1.5 session-key transport');
   if (!spec.allowPkcs1v15SessionKey && k.allowPkcs1v15SessionKey) bad.push('unexpected PKCS#1 v1.5 session-key opt-in');
-  if (!k.publicKeyPem) bad.push('no public key for version 1');
-  else if (spkiFingerprint(k.publicKeyPem) !== spkiSha256) bad.push('public key differs from the source key');
-  return bad;
+  // Migrated SSH CA and RA keys are imported: the runtime accepts them (allowImported).
+  const runtime = runtimeKeyProblems(purposeOf(cls), spec.name, k.data, 1, { allowImported: true });
+  for (const p of runtime.problems) if (!bad.includes(p)) bad.push(`v4 ${purposeOf(cls)} policy: ${p}`);
+  const pem = runtime.publicKeyPem ?? k.publicKeyPem;
+  if (!pem) bad.push('no public key for version 1');
+  else if (spkiFingerprint(pem) !== spkiSha256) bad.push('public key differs from the source key');
+  return [...new Set(bad)];
 }
 
-/** Signs fresh random data in OpenBao and verifies it locally with the key's public key. */
-export async function challenge(store: TargetStore, spec: TargetSpec, publicKeyPem: string): Promise<void> {
+/** Signs fresh random data in OpenBao with key `version` and verifies it locally with `publicKeyPem`. */
+export async function challenge(store: TargetStore, spec: Pick<TargetSpec, 'mount' | 'name' | 'type'>, publicKeyPem: string, version = 1): Promise<void> {
   const data = randomBytes(48);
   const rsa = spec.type.startsWith('rsa-');
   const hash = spec.type === 'ecdsa-p384' ? 'sha2-384' : 'sha2-256';
-  const sig = await store.sign(spec.mount, spec.name, data, { hash, rsa });
+  const sig = await store.sign(spec.mount, spec.name, data, { hash, rsa, version });
   const ok = nodeVerify(hash === 'sha2-384' ? 'sha384' : 'sha256', data, { key: createPublicKey(publicKeyPem), dsaEncoding: 'der' }, sig);
-  if (!ok) throw new MigrationError('CHALLENGE_FAILED', `challenge signature of ${spec.mount}/${spec.name} does not verify with the source public key`);
+  if (!ok) throw new MigrationError('CHALLENGE_FAILED', `challenge signature of ${spec.mount}/${spec.name} v${version} does not verify with the expected public key`);
+}
+
+/** The RA binding columns an already-target RA key is pinned by. */
+export interface RaBindingRow { key_provider: string | null; key_id: string | null; key_version: number | null; public_key_id: string | null; certificate_pem: string | null }
+
+export function raBindingRow(db: DatabaseSync, integrationId: string): RaBindingRow | undefined {
+  return db.prepare('SELECT key_provider, key_id, key_version, public_key_id, certificate_pem FROM integration_ras WHERE integration_id = ?').get(integrationId) as RaBindingRow | undefined;
+}
+
+/**
+ * An RA key that is already in OpenBao (a v3.19 opt-in binding): it is checked,
+ * never imported. The binding must be pinned (provider openbao, this key name, a
+ * version, no Cosmian public key id) to the inventoried RA certificate (PEM
+ * digest and SPKI = the manifest and approval fingerprint); the key must pass the
+ * v4 RA client policy for the pinned version and hold the certified public key;
+ * a fresh signature with that version must verify with the certificate key; with
+ * `sessionCheck` (RA identity only) a session key wrapped to the certificate key
+ * must come back from the fork operation. Every result is a named check.
+ */
+export async function checkAlreadyTargetRa(o: {
+  store: TargetStore; mount: string; key: KeyEntry; approval: ObjectApproval; manifest: Manifest; binding: (integrationId: string) => RaBindingRow | undefined; sessionCheck?: boolean;
+}): Promise<{ name: string; version: number | null; checks: { name: string; ok: boolean; detail: string }[]; unwrapped: boolean }> {
+  const checks: { name: string; ok: boolean; detail: string }[] = [];
+  const add = (name: string, ok: boolean, detail = '') => { checks.push({ name, ok, detail }); return ok; };
+  const ref = o.key.references.find(r => r.role === 'scep-ra-openbao-key');
+  const name = ref ? ref.sourceId.replace(/^openbao:/, '') : '';
+  const label = `RA key already in OpenBao ${name}`;
+  if (!ref) { add(`${label} has its binding reference`, false, 'no scep-ra-openbao-key reference'); return { name, version: null, checks, unwrapped: false }; }
+  const row = o.binding(ref.rowId);
+  const version = row && Number.isInteger(row.key_version) && Number(row.key_version) >= 1 ? Number(row.key_version) : null;
+  let cert: X509Certificate | null = null;
+  try { cert = row?.certificate_pem ? new X509Certificate(row.certificate_pem) : null; } catch { cert = null; }
+  const inventoried = o.manifest.certificates.find(c => c.table === 'integration_ras' && c.rowId === ref.rowId);
+  const certFp = cert ? spkiFingerprint(cert) : null;
+  const pinned = !!row && row.key_provider === 'openbao' && row.key_id === name && version !== null && row.public_key_id === null;
+  add(`integration_ras:${ref.rowId} binding pinned to ${name} and a key version`, pinned, row ? `${row.key_provider}:${row.key_id}#${row.key_version} public_key_id ${row.public_key_id}` : 'row missing');
+  const certOk = !!cert && !!o.key.spkiSha256 && certFp === o.key.spkiSha256 && o.approval.spkiSha256 === o.key.spkiSha256
+    && !!inventoried && inventoried.pemSha256 === sha256Hex(cert.raw);
+  add(`integration_ras:${ref.rowId} RA certificate is the inventoried and approved one`, certOk, cert ? '' : 'binding has no RA certificate (an already-target RA needs one)');
+  if (!pinned || !certOk || version === null || !cert) return { name, version, checks, unwrapped: false };
+
+  const k = await o.store.readKey(o.mount, name);
+  if (!add(`${label} exists`, !!k, k ? '' : 'missing in OpenBao')) return { name, version, checks, unwrapped: false };
+  const runtime = runtimeKeyProblems('scep-ra', name, k!.data, version, { allowImported: true });
+  add(`${label} v${version} passes the v4 RA key policy`, runtime.problems.length === 0, runtime.problems.join('; '));
+  const same = !!runtime.publicKeyPem && spkiFingerprint(runtime.publicKeyPem) === certFp;
+  // The name kept from the first fix: the key must be the one the RA certificate certifies.
+  add(`${label} matches its RA certificate`, same, runtime.publicKeyPem ? (same ? '' : `public key of v${version} differs from the RA certificate`) : `no public key for v${version}`);
+  if (runtime.problems.length || !same) return { name, version, checks, unwrapped: false };
+  const certPem = cert.publicKey.export({ format: 'pem', type: 'spki' }) as string;
+  try { await challenge(o.store, { mount: o.mount, name, type: 'rsa-3072' }, certPem, version); add(`challenge ${name} v${version} (RA certificate key)`, true); }
+  catch (error) { add(`challenge ${name} v${version} (RA certificate key)`, false, (error as Error).message); }
+  let unwrapped = false;
+  if (o.sessionCheck) unwrapped = await raSessionCheck(o.store, o.mount, name, certPem, version, add);
+  return { name, version, checks, unwrapped };
+}
+
+/** Wraps a fresh session key to `publicKeyPem` (PKCS#1 v1.5, as a SCEP client does) and recovers it with the fork operation. */
+export async function raSessionCheck(store: TargetStore, mount: string, name: string, publicKeyPem: string, version: number, add: (name: string, ok: boolean, detail?: string) => unknown): Promise<boolean> {
+  const label = `RA session-key unwrap ${name}${version === 1 ? '' : ` v${version}`}`;
+  try {
+    const sessionKey = randomBytes(32);
+    const ct = publicEncrypt({ key: createPublicKey(publicKeyPem), padding: constants.RSA_PKCS1_PADDING }, sessionKey);
+    const got = await store.sessionKey(mount, name, ct, 32, version);
+    const ok = got.equals(sessionKey);
+    add(label, ok, ok ? '' : 'recovered session key differs');
+    return ok;
+  } catch (error) { add(label, false, (error as Error).message); return false; }
 }
 
 export interface ApplyReport {
@@ -183,7 +260,19 @@ export async function apply(o: {
     const ordered = [...o.manifest.keys].sort((a, b) => a.sourceKeyId.localeCompare(b.sourceKeyId));
     for (const key of ordered) {
       const a = o.approval.keys[key.sourceKeyId];
-      if (a.action === 'already-target') { ready.add(key.sourceKeyId); continue; }
+      if (a.action === 'already-target') {
+        // Checked before the database is written: the binding, the v4 RA policy of the
+        // pinned version and a signature that verifies with the RA certificate key.
+        const t = openReadOnly(o.targetDbPath);
+        let r: Awaited<ReturnType<typeof checkAlreadyTargetRa>>;
+        try { r = await checkAlreadyTargetRa({ store: o.store, mount: o.profile.mounts.ra, key, approval: a, manifest: o.manifest, binding: id => raBindingRow(t, id) }); }
+        finally { t.close(); }
+        const failed = r.checks.filter(c => !c.ok);
+        if (failed.length) throw new MigrationError('TARGET_CONFLICT', `${o.profile.mounts.ra}/${r.name}: ${failed.map(c => `${c.name}${c.detail ? ` (${c.detail})` : ''}`).join('; ')}. Nothing was changed.`);
+        journal.event('key.already_target.verified', key.sourceKeyId, { mount: o.profile.mounts.ra, name: r.name, version: r.version });
+        ready.add(key.sourceKeyId);
+        continue;
+      }
       if (a.action !== 'transfer') { report.skipped[a.action] = (report.skipped[a.action] ?? 0) + 1; continue; }
       const spec = approvedTarget(key, a, o.approval);
       const spki = key.spkiSha256!;
@@ -191,7 +280,7 @@ export async function apply(o: {
       let existing = await o.store.readKey(spec.mount, spec.name);
       let adoptedNow = false;
       if (existing) {
-        const bad = checkTargetKey(existing, spec, spki);
+        const bad = checkTargetKey(existing, spec, spki, key.class);
         if (bad.length) throw new MigrationError('TARGET_CONFLICT', `${spec.mount}/${spec.name} exists and does not match: ${bad.join('; ')}. Nothing is overwritten; investigate before any retry.`);
         if (wasState === 'verified' || wasState === 'mapped') report.alreadyVerified++;
         else { report.adopted++; adoptedNow = true; journal.event('key.adopted', key.sourceKeyId, { mount: spec.mount, name: spec.name }); }
@@ -207,7 +296,7 @@ export async function apply(o: {
         importsThisRun++;
         o.fault?.(`after-import:${importsThisRun}`);
         existing = await o.store.readKey(spec.mount, spec.name);
-        const bad = existing ? checkTargetKey(existing, spec, spki) : ['not readable after import'];
+        const bad = existing ? checkTargetKey(existing, spec, spki, key.class) : ['not readable after import'];
         if (bad.length) throw new MigrationError('IMPORT_MISMATCH', `${spec.mount}/${spec.name} after import: ${bad.join('; ')}`);
         report.imported++;
         journal.event('key.imported', key.sourceKeyId, { mount: spec.mount, name: spec.name, type: spec.type, exportable: spec.exportable });
