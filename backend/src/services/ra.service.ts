@@ -13,11 +13,27 @@ import {
 type Identity = { id: string; caId: string; kind: string };
 type Previous = { id: string; certificatePem: string };
 type Binding = typeof integrationRAs.$inferSelect;
+/**
+ * The overlap entries that the SCEP gateway can use with the RA certificate `pem`: not expired,
+ * and certifying the same key. The gateway refuses to start when an unexpired overlap entry
+ * certifies another key (scep/main.go), and it could not decrypt for it. An RA key that was
+ * replaced (migration `reprovision`) leaves no usable overlap: its certificates stay as rows.
+ */
+function sameKeyOverlap(list: Previous[], pem: string): Previous[] {
+  const key = new X509Certificate(pem).publicKey.export({ format: 'der', type: 'spki' });
+  const now = new Date();
+  return list.filter(p => {
+    try {
+      const c = new X509Certificate(p.certificatePem);
+      return new Date(c.validTo) > now && c.publicKey.export({ format: 'der', type: 'spki' }).equals(key);
+    } catch { return false; }
+  });
+}
 function publicState(binding: Binding) {
   if (!binding.certificatePem) throw new RAError(409, 'RA provisioning is incomplete');
   return {
     certificatePem: binding.certificatePem,
-    previousCertificatesPem: (JSON.parse(binding.previous) as Previous[]).map(p => p.certificatePem),
+    previousCertificatesPem: sameKeyOverlap(JSON.parse(binding.previous || '[]') as Previous[], binding.certificatePem).map(p => p.certificatePem),
   };
 }
 export class RAError extends Error {
@@ -229,7 +245,13 @@ export class RAService {
     if (metadata.validity.notBefore > new Date() || metadata.validity.notAfter <= new Date() || metadata.validity.notAfter > ca.notAfter) throw new RAError(409, 'RA validity is outside issuing CA validity');
     if (binding.certificatePem && new X509Certificate(binding.certificatePem).serialNumber === parsed.serialNumber) throw new RAError(409, 'The new RA certificate has the same serial number as the current certificate');
     if (binding.certificatePem && metadata.validity.notAfter <= new Date(new X509Certificate(binding.certificatePem).validTo)) throw new RAError(409, 'RA renewal does not extend validity');
-    const previous = (JSON.parse(binding.previous) as Previous[]).filter(p => new Date(new X509Certificate(p.certificatePem).validTo) > new Date());
+    // Only unexpired certificates of this key stay in the overlap list (a first provisioning
+    // after a key replacement starts with none of the old key's).
+    const stored = JSON.parse(binding.previous || '[]') as Previous[];
+    const previous = sameKeyOverlap(stored, pem);
+    if (previous.length !== stored.filter(p => { try { return new Date(new X509Certificate(p.certificatePem).validTo) > new Date(); } catch { return true; } }).length) {
+      logger.warn({ integrationId: identity.id }, 'RA overlap list held certificates of another key; they are not kept (the certificate rows stay)');
+    }
     if (binding.certificatePem && binding.certificateId) previous.unshift({ id: binding.certificateId, certificatePem: binding.certificatePem });
     const updated = { certificateId: id, certificatePem: pem, previous: JSON.stringify(previous) };
     // Publish the certificate record and its binding atomically. Only the lease

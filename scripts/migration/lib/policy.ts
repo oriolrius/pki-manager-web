@@ -72,13 +72,25 @@ function keyNoLongerNeeded(key: KeyEntry): boolean {
   return rows.every(r => r.rowStatus === 'revoked');
 }
 
+/** What the inventory knows about the RA bindings (integration_ras rows). */
+export interface RaFacts {
+  /** integration_ras rows that hold an RA certificate (certificate_pem). */
+  bindingsWithCertificate: Set<string>;
+}
+
 /** Fills allowed / proposed / reasons / target of a key entry (pure). */
-export function decide(key: KeyEntry, mounts: Mounts, kmsRead: boolean): KeyEntry {
+export function decide(key: KeyEntry, mounts: Mounts, kmsRead: boolean, ra?: RaFacts): KeyEntry {
   const reasons: string[] = [];
   const onlyHistory = key.references.every(r => r.role === 'ssh-cert-signer');
   if (onlyHistory) return { ...key, allowed: ['history-only'], proposed: 'history-only', reasons: ['referenced only by issued SSH certificates (history)'], target: null };
 
-  if (key.references.some(r => r.role === 'scep-ra-openbao-key')) {
+  const openbaoBindings = key.references.filter(r => r.role === 'scep-ra-openbao-key');
+  if (openbaoBindings.length > 1) {
+    // v4 binds one RA key to one integration, and the already-target check pins ONE binding
+    // to its RA certificate. A shared OpenBao RA key is not supported: rotate in v3.
+    return { ...key, allowed: ['rotate'], proposed: 'rotate', reasons: [`one OpenBao RA key backs ${openbaoBindings.length} RA bindings (${openbaoBindings.map(r => `integration_ras:${r.rowId}`).join(', ')}); v4 binds one RA key to one integration: register a new SCEP integration for all but one, then a new inventory`], target: null };
+  }
+  if (openbaoBindings.length === 1) {
     return { ...key, allowed: ['already-target'], proposed: 'already-target', reasons: ['RA key already in OpenBao'], target: null };
   }
 
@@ -101,6 +113,14 @@ export function decide(key: KeyEntry, mounts: Mounts, kmsRead: boolean): KeyEntr
   if (!key.transitType) { transferable = false; reasons.push('key type not supported by Transit import here'); }
   if (key.class === 'scep-ra' && key.transitType && key.transitType !== 'rsa-3072') { transferable = false; reasons.push('RA key must be rsa-3072'); }
   if (key.class === 'ssh-ca' && key.transitType && key.transitType !== 'ecdsa-p256') { transferable = false; reasons.push('SSH CA key must be ecdsa-p256'); }
+  if (key.class === 'scep-ra' && ra) {
+    // An RA binding whose v3 provisioning never finished has a key but no RA certificate. v4
+    // finishes such a binding with `ra/provision`, which accepts only a key that OpenBao
+    // generated (it never adopts an imported key), and `ra/renew` needs a certificate. An
+    // imported key would leave the binding stuck: it gets a new RA key instead.
+    const unfinished = key.references.filter(r => r.role === 'scep-ra-key' && !ra.bindingsWithCertificate.has(r.rowId));
+    if (unfinished.length) { transferable = false; reasons.push(`${unfinished.map(r => `integration_ras:${r.rowId}`).join(', ')} has no RA certificate (v3 provisioning never finished): v4 provisioning generates its own RA key and cannot adopt an imported one`); }
+  }
 
   const target = key.transitType ? targetSpec(key, key.transitType, mounts) : null;
   if (transferable) return { ...key, allowed: ['transfer', ...fallback], proposed: 'transfer', reasons, target };

@@ -15,6 +15,7 @@
  *   certificate_authorities.kms_key_id   certificate id -> private key id (link repair)
  *   ssh_cas.kms_key_id/kms_public_key_id Cosmian ids -> openbao-transit:<mount>:<name>:1
  *   integration_ras key columns          transfer, drop-key or reprovision of the RA key
+ *                                        (reprovision: no key, no certificate, empty overlap list)
  *   audit_log                            new rows of operation migration.* written by this approval
  *   keystore_objects                     new rows written by the migration (when the source has the table)
  *
@@ -119,12 +120,10 @@ function migrationAllowances(manifest: Manifest, approval: Approval): Allowances
         } else if (action === 'reprovision') {
           al.is('integration_ras', r.rowId, 'key_provider', 'openbao');
           for (const c of ['key_id', 'public_key_id', 'key_version', 'certificate_id', 'certificate_pem', 'lease', 'lease_until']) al.is('integration_ras', r.rowId, c, null);
-          // The current RA certificate moves to the front of the overlap list; the rest is kept.
-          al.add('integration_ras', r.rowId, 'previous', (t, s) => {
-            const prev = JSON.parse(typeof s.previous === 'string' && s.previous ? s.previous : '[]') as unknown[];
-            const want = s.certificate_pem && s.certificate_id ? [{ id: s.certificate_id, certificatePem: s.certificate_pem }, ...prev] : prev;
-            return typeof t === 'string' && JSON.stringify(JSON.parse(t)) === JSON.stringify(want);
-          });
+          // The old key does not reach v4: no certificate of it stays in the live overlap list
+          // (the gateway refuses one that does not certify the active key). The list is empty;
+          // the certificate rows (reconciled unchanged) and the audit row keep the history.
+          al.add('integration_ras', r.rowId, 'previous', t => typeof t === 'string' && Array.isArray(JSON.parse(t)) && (JSON.parse(t) as unknown[]).length === 0);
         }
       }
       if (key.class === 'scep-ra' && r.role === 'scep-ra-cert-alias' && (spec || action === 'reprovision' || action === 'drop-key')) {

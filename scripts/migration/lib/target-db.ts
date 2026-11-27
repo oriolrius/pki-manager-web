@@ -153,6 +153,10 @@ export async function applyToTargetDb(opts: {
         } else if (key.class === 'scep-ra') {
           for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
             const pub = key.references.find(x => x.role === 'scep-ra-public-key' && x.rowId === r.rowId)?.sourceId ?? null;
+            // An imported key needs the RA certificate that certifies it: v4 never adopts an
+            // imported key at provisioning (policy.ts proposes reprovision for such a binding).
+            const has = db.prepare('SELECT certificate_pem AS pem FROM integration_ras WHERE integration_id = ?').get(r.rowId) as { pem: string | null } | undefined;
+            if (has && !has.pem) throw new MigrationError('RA_UNFINISHED', `integration_ras:${r.rowId} has no RA certificate: an imported RA key cannot be adopted by v4 provisioning; approve reprovision instead`);
             if (casRow(db, 'integration_ras', 'integration_id', r.rowId, { key_provider: 'cosmian', key_id: r.sourceId, public_key_id: pub, key_version: null }, { key_provider: 'openbao', key_id: spec.name, public_key_id: null, key_version: 1 })) {
               result.rowsChanged++; audit.push({ op: 'migration.key.map', entityType: 'integration_ra', entityId: r.rowId, details: { sourceKeyId: key.sourceKeyId, class: key.class, spkiSha256: key.spkiSha256, target } });
             }
@@ -191,8 +195,15 @@ export async function applyToTargetDb(opts: {
         for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
           const pub = key.references.find(x => x.role === 'scep-ra-public-key' && x.rowId === r.rowId)?.sourceId ?? null;
           const pemSha = manifest.certificates.find(c => c.table === 'integration_ras' && c.rowId === r.rowId)?.pemSha256 ?? null;
-          if (reprovisionBinding(db, r.rowId, r.sourceId, pub, pemSha)) {
-            result.rowsChanged++; audit.push({ op: 'migration.ra.reprovision', entityType: 'integration_ra', entityId: r.rowId, details: { sourceKeyId: key.sourceKeyId, previousRaCertificateSha256: pemSha, approvedBy: approval.approvedBy } });
+          const reset = reprovisionBinding(db, r.rowId, r.sourceId, pub, pemSha);
+          if (reset.changed) {
+            result.rowsChanged++;
+            audit.push({ op: 'migration.ra.reprovision', entityType: 'integration_ra', entityId: r.rowId, details: {
+              sourceKeyId: key.sourceKeyId, sourceSpkiSha256: key.spkiSha256, previousRaCertificateSha256: pemSha,
+              // Every RA certificate the new key retires from the live overlap list (history).
+              retiredRaCertificates: reset.retired,
+              effect: 'new RA key at the first v4 ra/provision; clients must fetch the new RA certificate (GetCACert); requests encrypted to a retired RA certificate cannot be decrypted',
+            } });
           }
           rows.push({ table: 'integration_ras', rowId: r.rowId, column: 'key_id' });
         }
@@ -306,27 +317,79 @@ function recordOnce(db: DatabaseSync, op: string, entityType: string, entityId: 
   return db.prepare('SELECT 1 FROM audit_log WHERE operation = ? AND entity_type = ? AND entity_id = ? LIMIT 1').get(op, entityType, entityId) === undefined;
 }
 
+/** An RA certificate that leaves the live overlap list when the RA gets a new key. */
+export interface RetiredRaCertificate {
+  /** certificates row id (NULL for an overlap entry of an older v3 that has none). */
+  id: string | null;
+  /** `current` is the binding's RA certificate; `previous` an overlap entry. */
+  slot: 'current' | 'previous';
+  serialNumber: string | null;
+  sha256: string | null;
+  spkiSha256: string | null;
+  notAfter: string | null;
+  /** The PEM itself: public data, kept so the identity stays auditable without the row. */
+  certificatePem: string;
+}
+
+/** Parses the overlap list of a binding (`previous`); legacy rows may hold NULL or ''. */
+export function overlapList(value: unknown): { id?: string | null; certificatePem: string }[] {
+  if (value === null || value === undefined || value === '') return [];
+  let list: unknown;
+  try { list = JSON.parse(String(value)); } catch { throw new MigrationError('RA_PREVIOUS_INVALID', 'integration_ras.previous is not JSON'); }
+  if (!Array.isArray(list) || !list.every(e => e && typeof e === 'object' && typeof (e as { certificatePem?: unknown }).certificatePem === 'string')) {
+    throw new MigrationError('RA_PREVIOUS_INVALID', 'integration_ras.previous is not a list of {id, certificatePem}');
+  }
+  return list as { id?: string | null; certificatePem: string }[];
+}
+
+function describeRetired(id: string | null, pem: string, slot: RetiredRaCertificate['slot']): RetiredRaCertificate {
+  let cert: X509Certificate | null = null;
+  try { cert = new X509Certificate(pem); } catch { cert = null; }
+  return {
+    id, slot, certificatePem: pem,
+    serialNumber: cert ? cert.serialNumber : null,
+    sha256: cert ? sha256Hex(cert.raw) : null,
+    spkiSha256: cert ? spkiFingerprint(cert) : null,
+    notAfter: cert ? new Date(cert.validTo).toISOString() : null,
+  };
+}
+
+/** The RA certificates of a v3 binding (current, then the overlap list) that a new RA key retires. */
+export function retiredRaCertificates(row: { certificate_id: unknown; certificate_pem: unknown; previous: unknown }): RetiredRaCertificate[] {
+  const out: RetiredRaCertificate[] = [];
+  if (typeof row.certificate_pem === 'string' && row.certificate_pem) out.push(describeRetired(row.certificate_id === null || row.certificate_id === undefined ? null : String(row.certificate_id), row.certificate_pem, 'current'));
+  for (const p of overlapList(row.previous)) out.push(describeRetired(p.id === undefined || p.id === null ? null : String(p.id), p.certificatePem, 'previous'));
+  return out;
+}
+
 /**
  * Resets an RA binding for a new key: v4 `ra/provision` then generates the key in OpenBao.
- * The current RA certificate moves to the front of `previous` (GetCACert keeps serving it
- * in the overlap list until it expires); the certificate rows stay as history.
- * Idempotent: a binding already reset with that certificate in `previous` is left alone.
+ *
+ * The old private key does not reach v4, so no certificate of the old key can stay in the
+ * live overlap list (`previous`): the gateway refuses to start when an unexpired overlap
+ * certificate does not certify the active RA key, and it could not decrypt for it anyway.
+ * The list is cleared. The old identity stays auditable: the certificate rows are kept as
+ * history, and the audit row of the reset lists every retired certificate (with its PEM).
+ *
+ * Idempotent: a binding already reset (openbao, no key, no certificate, empty list) is left
+ * alone. A binding that v4 has provisioned since is a conflict (the reset is pre-cutover).
  */
-function reprovisionBinding(db: DatabaseSync, id: string, sourceKeyId: string, sourcePub: string | null, pemSha: string | null): boolean {
+function reprovisionBinding(db: DatabaseSync, id: string, sourceKeyId: string, sourcePub: string | null, pemSha: string | null): { changed: boolean; retired: RetiredRaCertificate[] } {
   const cur = db.prepare('SELECT key_provider, key_id, public_key_id, key_version, certificate_id, certificate_pem, previous FROM integration_ras WHERE integration_id = ?').get(id) as
-    { key_provider: string; key_id: string | null; public_key_id: string | null; key_version: number | null; certificate_id: string | null; certificate_pem: string | null; previous: string } | undefined;
+    { key_provider: string; key_id: string | null; public_key_id: string | null; key_version: number | null; certificate_id: string | null; certificate_pem: string | null; previous: string | null } | undefined;
   if (!cur) throw new MigrationError('ROW_GONE', `integration_ras:${id} is not in the target database`);
-  const prev = JSON.parse(cur.previous || '[]') as { id: string; certificatePem: string }[];
-  const hasOld = (list: { certificatePem: string }[]) => !!pemSha && list.some(p => sha256Hex(new X509Certificate(p.certificatePem).raw) === pemSha);
-  if (cur.key_provider === 'openbao' && cur.key_id === null && cur.public_key_id === null && cur.certificate_pem === null && hasOld(prev)) return false;
+  if (cur.key_provider === 'openbao' && cur.key_id === null && cur.public_key_id === null && cur.key_version === null && cur.certificate_pem === null && overlapList(cur.previous).length === 0) {
+    return { changed: false, retired: [] };
+  }
   if (cur.key_provider !== 'cosmian' || cur.key_id !== sourceKeyId || cur.public_key_id !== sourcePub) {
     throw new MigrationError('TARGET_ROW_CONFLICT', `integration_ras:${id} holds ${cur.key_provider}:${cur.key_id}, not the v3 RA key; refusing to reset it`);
   }
   if (cur.certificate_pem && pemSha && sha256Hex(new X509Certificate(cur.certificate_pem).raw) !== pemSha) throw new MigrationError('PEM_CONFLICT', `integration_ras:${id} has another RA certificate than the inventoried one`);
-  const next = cur.certificate_pem && cur.certificate_id ? [{ id: cur.certificate_id, certificatePem: cur.certificate_pem }, ...prev] : prev;
-  db.prepare("UPDATE integration_ras SET key_provider = 'openbao', key_id = NULL, public_key_id = NULL, key_version = NULL, certificate_id = NULL, certificate_pem = NULL, previous = ?, lease = NULL, lease_until = NULL WHERE integration_id = ?")
-    .run(JSON.stringify(next), id);
-  return true;
+  if (!cur.certificate_pem !== !pemSha) throw new MigrationError('PEM_CONFLICT', `integration_ras:${id} RA certificate presence differs from the inventory`);
+  const retired = retiredRaCertificates(cur);
+  db.prepare("UPDATE integration_ras SET key_provider = 'openbao', key_id = NULL, public_key_id = NULL, key_version = NULL, certificate_id = NULL, certificate_pem = NULL, previous = '[]', lease = NULL, lease_until = NULL WHERE integration_id = ?")
+    .run(id);
+  return { changed: true, retired };
 }
 
 /**

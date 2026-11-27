@@ -14,7 +14,7 @@ import { buildManifest } from '../lib/inventory.ts';
 import { approvalTemplate, validateApproval, DEFAULT_MOUNTS } from '../lib/policy.ts';
 import { backupTo, openReadOnly } from '../lib/sqlite.ts';
 import { DEFAULT_PROFILE, sshKeyRef } from '../lib/target-db.ts';
-import { apply, liveTarget, preflight } from '../lib/transfer.ts';
+import { apply, checkAlreadyTargetRa, liveTarget, preflight } from '../lib/transfer.ts';
 import { verifyMigration } from '../lib/verify.ts';
 import { backupPair, checkBackup } from '../lib/backup.ts';
 import { rotationPlan } from '../lib/rotation.ts';
@@ -380,33 +380,170 @@ test('an SSH CA key shared by a retired row and an active row maps both rows to 
   assert.equal(v.cutoverReady, true, failedChecks(v));
 });
 
-test('a non-extractable RA key: reprovision (explicit), binding reset, old RA certificate kept for clients', async () => {
-  const s = await setup({ seed: (db, kms, ids) => { kms.objects.get(ids.raKey)!.extractable = false; db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
+/** The CA key and certificate of the seed (to make RA certificates as v3 and v4 do). */
+function seedCa(kms: FakeCosmian, ids: Record<string, string>, db: DatabaseSync) {
+  const caCertId = String((db.prepare("SELECT kms_certificate_id AS c FROM certificate_authorities WHERE id = 'ca-1'").get() as { c: string }).c);
+  return { caKey: kms.objects.get(ids.caKey)!.privateKey!, caPem: derToPem(kms.objects.get(caCertId)!.certDer!, 'CERTIFICATE') };
+}
+
+/** v3.19.1 after one RA renewal: an earlier, unexpired certificate of the SAME RA key in the overlap list. */
+function earlierSameKeyRaCert(db: DatabaseSync, kms: FakeCosmian, ids: Record<string, string>) {
+  const { caKey, caPem } = seedCa(kms, ids, db);
+  const now = Math.floor(Date.now() / 1000);
+  const pem = makeCert({ cn: 'SCEP Registration Authority', key: kms.objects.get(ids.raKey)!.privateKey!, issuerKey: caKey, issuerCert: caPem, serial: '3000' });
+  db.prepare("INSERT INTO certificates (id, ca_id, kms_certificate_id, kms_key_id, subject_dn, serial_number, certificate_type, not_before, not_after, status, certificate_pem) VALUES ('ra-cert-0', 'ca-1', ?, ?, 'CN=SCEP Registration Authority', '3000', 'client', ?, ?, 'active', ?)")
+    .run(kms.addCertificate(pem, ids.raKey), ids.raKey, now - 3600, now + 86400, pem);
+  db.prepare("UPDATE integration_ras SET previous = ? WHERE integration_id = 'int-1'").run(JSON.stringify([{ id: 'ra-cert-0', certificatePem: pem }]));
+  return pem;
+}
+
+/** What v4 `ra/provision` (and later `ra/renew`, same key) write: a NEW key, its certificate, same-key overlap only. */
+function v4Provisions(targetPath: string, kms: FakeCosmian, ids: Record<string, string>, renewals = 0) {
+  const t = new DatabaseSync(targetPath);
+  const { caKey, caPem } = seedCa(kms, ids, t);
+  const newKey = generateKeyPairSync('rsa', { modulusLength: 3072 });
+  const certs = Array.from({ length: renewals + 1 }, (_, i) => makeCert({ cn: 'SCEP Registration Authority', key: newKey.privateKey, issuerKey: caKey, issuerCert: caPem, serial: `40${i}0` }));
+  const current = certs[certs.length - 1];
+  const previous = certs.slice(0, -1).reverse().map((pem, i) => ({ id: `v4-ra-${i}`, certificatePem: pem }));
+  t.prepare("UPDATE integration_ras SET key_id = 'scep-ra-00000000-0000-4000-8000-00000000c0de', key_version = 1, certificate_id = 'v4-ra-cur', certificate_pem = ?, previous = ? WHERE integration_id = 'int-1'").run(current, JSON.stringify(previous));
+  t.close();
+  return { current, previous };
+}
+
+const raRow = (path: string) => {
+  const t = new DatabaseSync(path, { readOnly: true });
+  try { return t.prepare("SELECT key_provider, key_id, public_key_id, key_version, certificate_id, certificate_pem, previous FROM integration_ras WHERE integration_id = 'int-1'").get() as Record<string, string | null>; }
+  finally { t.close(); }
+};
+
+test('a non-extractable RA key: reprovision (explicit), binding reset, no old-key certificate left in the overlap list', async () => {
+  let earlier = '';
+  const s = await setup({ seed: (db, kms, ids) => { kms.objects.get(ids.raKey)!.extractable = false; earlier = earlierSameKeyRaCert(db, kms, ids); db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
   const ra = key(s.manifest, s.ids.raKey);
   assert.equal(ra.proposed, 'reprovision');
   assert.ok(!ra.allowed.includes('transfer'));
   const unacked = await approve(s.manifest, s.store);
   assert.ok(validateApproval(s.manifest, unacked).problems.some(p => p.code === 'APPROVAL_NEW_KEY'), 'a new RA key needs acknowledgeNewKey');
   const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey].acknowledgeNewKey = true; });
+  // An interrupted run (failure inside the DB transaction) leaves the binding as it was.
+  await assert.rejects(run(s, approval, { fault: p => { if (p === 'db-mid-transaction') throw new MigrationError('FAULT', 'simulated'); } }));
+  assert.equal(raRow(s.targetPath).key_provider, 'cosmian', 'rolled back');
   const r = await run(s, approval);
-  assert.equal(r.imported, 3, 'the RA key is not transferred');
+  assert.equal(r.imported + r.adopted + r.alreadyVerified, 3, 'the RA key is not transferred (the interrupted run imported the others)');
   assert.ok(!s.kms.calls.includes(`WrappedGet:${s.ids.raKey}`), 'no export attempt of the non-extractable key');
+  const b = raRow(s.targetPath);
+  // The state v4 `ra/provision` turns into a new OpenBao key (unassigned, not legacy), with an
+  // EMPTY overlap list: the gateway refuses an overlap certificate of another key.
+  assert.deepEqual({ p: b.key_provider, k: b.key_id, pub: b.public_key_id, v: b.key_version, c: b.certificate_id, pem: b.certificate_pem, prev: JSON.parse(String(b.previous)) },
+    { p: 'openbao', k: null, pub: null, v: null, c: null, pem: null, prev: [] });
   const t = new DatabaseSync(s.targetPath, { readOnly: true });
-  const b = t.prepare("SELECT key_provider, key_id, public_key_id, key_version, certificate_id, certificate_pem, previous FROM integration_ras WHERE integration_id = 'int-1'").get() as Record<string, string | null>;
-  // The state v4 `ra/provision` turns into a new OpenBao key (unassigned, not legacy).
-  assert.deepEqual({ p: b.key_provider, k: b.key_id, pub: b.public_key_id, v: b.key_version, c: b.certificate_id, pem: b.certificate_pem }, { p: 'openbao', k: null, pub: null, v: null, c: null, pem: null });
-  const prev = JSON.parse(String(b.previous)) as { id: string; certificatePem: string }[];
-  assert.equal(prev[0].id, 'ra-cert-1', 'the old RA certificate is first in the overlap list');
-  assert.equal((t.prepare("SELECT kms_key_id FROM certificates WHERE id = 'ra-cert-1'").get() as { kms_key_id: string | null }).kms_key_id, null);
-  assert.equal((t.prepare("SELECT status FROM certificates WHERE id = 'ra-cert-1'").get() as { status: string }).status, 'active', 'history kept');
+  for (const id of ['ra-cert-0', 'ra-cert-1']) {
+    const c = t.prepare('SELECT kms_key_id, status, certificate_pem FROM certificates WHERE id = ?').get(id) as { kms_key_id: string | null; status: string; certificate_pem: string };
+    assert.equal(c.kms_key_id, null, `${id}: RA alias cleared`);
+    assert.equal(c.status, 'active', `${id}: history kept`);
+  }
+  const audit = t.prepare("SELECT details FROM audit_log WHERE operation = 'migration.ra.reprovision' AND entity_id = 'int-1'").all() as { details: string }[];
   t.close();
+  assert.equal(audit.length, 1);
+  const retired = (JSON.parse(audit[0].details) as { retiredRaCertificates: { id: string; slot: string; sha256: string; certificatePem: string }[] }).retiredRaCertificates;
+  assert.deepEqual(retired.map(c => [c.id, c.slot]), [['ra-cert-1', 'current'], ['ra-cert-0', 'previous']], 'both old-key certificates are recorded, with their PEM');
+  assert.equal(retired[1].sha256, sha256Hex(new X509Certificate(earlier).raw));
   const v = await verifyNow(s, approval);
   assert.equal(v.cutoverReady, true, failedChecks(v));
+  assert.ok(v.checks.some(c => c.ok && c.name === 'integration_ras:int-1 retired RA certificates recorded in the audit log' && /frozen source/.test(c.detail ?? '')));
   const again = await run(s, approval);
   assert.equal(again.noOp, true);
+  assert.equal(again.db.auditRows, 0, 'a repeated run writes no second audit row');
   const plan = rotationPlan(s.manifest, approval);
-  assert.ok(plan.includes('scep-server provision') && plan.includes('previousCertificatesPem'), plan);
+  assert.ok(plan.includes('scep-server provision') && plan.includes('GetCACert') && /overlap list \(`previous`\) is empty/.test(plan), plan);
   assert.ok(!plan.includes('SCEP_RA_KEY_PROVIDER'), 'no setting that v3.19.1 and v4 do not have');
+});
+
+test('after reprovision: v4 provisioning and same-key renewals verify; an old-key certificate in the overlap list does not', async () => {
+  const s = await setup({ seed: (db, kms, ids) => { kms.objects.get(ids.raKey)!.extractable = false; earlierSameKeyRaCert(db, kms, ids); db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
+  const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey].acknowledgeNewKey = true; });
+  await run(s, approval);
+  const named = (v: Awaited<ReturnType<typeof verifyNow>>, suffix: string) => v.checks.find(c => c.name === `integration_ras:int-1 ${suffix}`);
+  // v4 provisioned a new key and renewed twice (same key): the overlap list holds two certificates of that key.
+  v4Provisions(s.targetPath, s.kms, s.ids, 2);
+  let v = await verifyNow(s, approval);
+  assert.equal(named(v, 'reprovisioned (new RA key; the old key\'s RA certificate is not active)')?.ok, true, failedChecks(v));
+  assert.equal(named(v, 'overlap list holds no certificate of the replaced RA key')?.ok, true, failedChecks(v));
+  assert.match(named(v, 'overlap list holds no certificate of the replaced RA key')!.detail!, /2 same-key entries/);
+  // The representation the earlier tool wrote: the old RA certificate in the overlap list.
+  const t = new DatabaseSync(s.targetPath);
+  const src = new DatabaseSync(s.sourcePath, { readOnly: true });
+  const old = src.prepare("SELECT certificate_id AS id, certificate_pem AS pem FROM integration_ras WHERE integration_id = 'int-1'").get() as { id: string; pem: string };
+  src.close();
+  const cur = JSON.parse(String(raRow(s.targetPath).previous)) as unknown[];
+  t.prepare("UPDATE integration_ras SET previous = ? WHERE integration_id = 'int-1'").run(JSON.stringify([...cur, { id: old.id, certificatePem: old.pem }]));
+  t.close();
+  v = await verifyNow(s, approval);
+  assert.equal(named(v, 'overlap list holds no certificate of the replaced RA key')?.ok, false);
+  const pair = v.checks.find(c => c.name === 'pair: integration_ras:int-1 overlap list');
+  assert.equal(pair?.ok, false, 'the pair check (restore mode too) refuses what the gateway refuses');
+  assert.match(pair!.detail!, /gateway would refuse to start/);
+});
+
+test('an RA binding with a key and no certificate (unfinished v3 provisioning) cannot be transferred', async () => {
+  const s = await setup({ seed: db => { db.exec("UPDATE integration_ras SET certificate_id = NULL, certificate_pem = NULL WHERE integration_id = 'int-1'; DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
+  const ra = key(s.manifest, s.ids.raKey);
+  assert.equal(ra.proposed, 'reprovision', ra.reasons.join('; '));
+  assert.ok(!ra.allowed.includes('transfer'));
+  assert.ok(ra.reasons.some(x => /cannot adopt an imported one/.test(x)), ra.reasons.join('; '));
+  const forced = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey] = { action: 'transfer', spkiSha256: ra.spkiSha256 }; });
+  assert.ok(validateApproval(s.manifest, forced).problems.some(p => p.code === 'APPROVAL_ACTION' && p.subject === s.ids.raKey));
+  const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey].acknowledgeNewKey = true; });
+  await run(s, approval);
+  const b = raRow(s.targetPath);
+  assert.deepEqual([b.key_provider, b.key_id, b.certificate_pem, JSON.parse(String(b.previous))], ['openbao', null, null, []]);
+  const v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+});
+
+test('an RA key shared by two bindings: reprovision checks each binding with its own certificate', async () => {
+  const s = await setup({ seed: (db, kms, ids) => {
+    kms.objects.get(ids.raKey)!.extractable = false;
+    const { caKey, caPem } = seedCa(kms, ids, db);
+    const pem = makeCert({ cn: 'SCEP Registration Authority', key: kms.objects.get(ids.raKey)!.privateKey!, issuerKey: caKey, issuerCert: caPem, serial: '3002' });
+    const raPub = String((db.prepare("SELECT public_key_id AS p FROM integration_ras WHERE integration_id = 'int-1'").get() as { p: string }).p);
+    db.prepare("INSERT INTO integrations (id, name, ca_id, kind, token_hash, token_prefix) VALUES ('int-2', 'scep-2', 'ca-1', 'scep', 'h2', 'pkimg_y')").run();
+    db.prepare("INSERT INTO integration_ras (integration_id, ca_id, key_id, public_key_id, certificate_id, certificate_pem) VALUES ('int-2', 'ca-1', ?, ?, NULL, ?)").run(ids.raKey, raPub, pem);
+    db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'");
+  } });
+  const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey].acknowledgeNewKey = true; });
+  await run(s, approval);
+  let v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+  for (const id of ['int-1', 'int-2']) assert.ok(v.checks.some(c => c.ok && c.name === `integration_ras:${id} retired RA certificates recorded in the audit log`), id);
+  // The second binding gets an overlap entry of the old key: only that binding fails.
+  const src = new DatabaseSync(s.sourcePath, { readOnly: true });
+  const pem2 = String((src.prepare("SELECT certificate_pem AS p FROM integration_ras WHERE integration_id = 'int-2'").get() as { p: string }).p);
+  src.close();
+  const t = new DatabaseSync(s.targetPath);
+  t.prepare("UPDATE integration_ras SET previous = ? WHERE integration_id = 'int-2'").run(JSON.stringify([{ id: null, certificatePem: pem2 }]));
+  t.close();
+  v = await verifyNow(s, approval);
+  assert.equal(v.checks.find(c => c.name === 'integration_ras:int-1 overlap list holds no certificate of the replaced RA key')?.ok, true);
+  assert.equal(v.checks.find(c => c.name === 'integration_ras:int-2 overlap list holds no certificate of the replaced RA key')?.ok, false);
+});
+
+test('an OpenBao RA key shared by two bindings is not verified by its first binding: rotate', async () => {
+  const name = 'scep-ra-00000000-0000-4000-8000-0000000000bb';
+  const s = await setup({ v4Source: true, seed: db => {
+    db.exec(`UPDATE integration_ras SET key_provider = 'openbao', key_id = '${name}', public_key_id = NULL, key_version = 1; UPDATE certificates SET kms_key_id = NULL WHERE id = 'ra-cert-1'; DELETE FROM ssh_cas WHERE id = 'sshca-b'`);
+    db.prepare("INSERT INTO integrations (id, name, ca_id, kind, token_hash, token_prefix) VALUES ('int-2', 'scep-2', 'ca-1', 'scep', 'h2', 'pkimg_y')").run();
+    db.prepare(`INSERT INTO integration_ras (integration_id, ca_id, key_provider, key_id, public_key_id, key_version, certificate_id, certificate_pem) VALUES ('int-2', 'ca-1', 'openbao', '${name}', NULL, 1, NULL, NULL)`).run();
+  } });
+  const k = s.manifest.keys.find(x => x.sourceKeyId === `openbao:${name}`)!;
+  assert.deepEqual([k.proposed, k.allowed], ['rotate', ['rotate']]);
+  assert.ok(s.manifest.problems.some(p => p.code === 'SHARED_RA_KEY' && p.severity === 'blocker'));
+  const forced = await approve(s.manifest, s.store, a => { a.keys[k.sourceKeyId] = { action: 'already-target', spkiSha256: k.spkiSha256 }; });
+  assert.ok(validateApproval(s.manifest, forced).problems.some(p => p.code === 'APPROVAL_ACTION'));
+  // Even with a manifest that allowed it, the check refuses a shared key instead of checking its first row.
+  const r = await checkAlreadyTargetRa({ store: s.store, mount: 'pki-manager-ra', key: { ...k, allowed: ['already-target'] }, approval: forced.keys[k.sourceKeyId], manifest: s.manifest, binding: () => undefined });
+  assert.equal(r.checks.find(c => c.name.endsWith('backs exactly one RA binding'))?.ok, false);
+  assert.equal(r.checks.length, 1, 'nothing else is checked');
 });
 
 test('the RA key of a revoked integration can be dropped; its certificates stay', async () => {

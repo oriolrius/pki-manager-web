@@ -8,7 +8,9 @@
  * - X.509: keystore_objects rows for every key and certificate id the CA and
  *   certificate rows hold, with the right links, PEMs and Transit key;
  * - SSH: ssh_cas references are versioned OpenBao references, the OpenSSH
- *   fingerprint is unchanged; SCEP: bindings use OpenBao (optional unwrap test);
+ *   fingerprint is unchanged; SCEP: bindings use OpenBao (optional unwrap test); a
+ *   replaced RA key (reprovision) leaves no old-key certificate in the overlap list and its
+ *   retired certificates are in the audit log and the certificate rows;
  * - the frozen source copy is the one the manifest binds (file and content
  *   digests, no pending WAL commits), and every row of every table of it is
  *   in the target, unchanged except for the writes of the migration
@@ -32,7 +34,7 @@ import { checkPair } from './pair.ts';
 import { reconcile } from './reconcile.ts';
 import { checkBinding } from './source.ts';
 import { all, columnsOf, tableExists } from './sqlite.ts';
-import { sshKeyRef, SSH_KEY_REF_PREFIX, type TargetProfile } from './target-db.ts';
+import { overlapList, retiredRaCertificates, sshKeyRef, SSH_KEY_REF_PREFIX, type RetiredRaCertificate, type TargetProfile } from './target-db.ts';
 import { challenge, checkAlreadyTargetRa, checkTargetKey, raBindingRow, raSessionCheck } from './transfer.ts';
 import type { Approval, Manifest } from './types.ts';
 import { normalizeSerial, sha256Hex, spkiDer, spkiFingerprint, sshFingerprintOfP256 } from './util.ts';
@@ -106,17 +108,9 @@ export async function verifyMigration(o: {
       continue;
     }
     if (a.action === 'reprovision') {
-      const pemSha = o.manifest.certificates.find(c => c.table === 'integration_ras' && key.references.some(r => r.role === 'scep-ra-key' && r.rowId === c.rowId))?.pemSha256;
       for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
-        const row = o.target.prepare('SELECT key_provider, key_id, public_key_id, certificate_pem, previous FROM integration_ras WHERE integration_id = ?').get(r.rowId) as { key_provider: string; key_id: string | null; public_key_id: string | null; certificate_pem: string | null; previous: string } | undefined;
-        // Before v4 runs: reset, the old RA certificate in the overlap list. After v4 provisioned:
-        // a NEW OpenBao key whose certificate differs from the old one, the old one still listed.
-        const prev = row ? (JSON.parse(row.previous || '[]') as { certificatePem: string }[]) : [];
-        const listed = !!pemSha && prev.some(p => sha256Hex(new X509Certificate(p.certificatePem).raw) === pemSha);
-        const reset = !!row && row.key_provider === 'openbao' && row.key_id === null && row.public_key_id === null && row.certificate_pem === null;
-        const provisioned = !!row && row.key_provider === 'openbao' && !!row.key_id && !!row.certificate_pem && sha256Hex(new X509Certificate(row.certificate_pem).raw) !== pemSha;
-        add(`integration_ras:${r.rowId} reprovisioned (new RA key; old RA certificate kept in the overlap list)`, (reset || provisioned) && listed, row ? `${row.key_provider}:${row.key_id}` : 'row missing');
-        if (reset || provisioned) counts.rowsVerified++;
+        for (const c of checkReprovisioned(o.target, key, r.rowId, o.manifest, o.approval, o.source)) add(c.name, c.ok, c.detail);
+        counts.rowsVerified++;
       }
       for (const r of key.references.filter(x => x.role === 'scep-ra-cert-alias')) {
         const row = o.target.prepare('SELECT kms_key_id FROM certificates WHERE id = ?').get(r.rowId) as { kms_key_id: string | null } | undefined;
@@ -263,6 +257,67 @@ export async function verifyRestore(o: {
   const unresolved = cosmianGate(o.target, new Set(o.approval?.acceptMissingPem ?? []), add, o);
   if (o.source) counts.rowsReconciled = reconcile({ source: o.source, target: o.target, add, mode: 'history' }).rows;
   return { mode: 'restore', ok: checks.every(c => c.ok), cutoverReady: false, cosmianRequired: unresolved > 0, reconciled: false, pairBound, checks, counts, warnings };
+}
+
+/**
+ * One binding whose RA key was replaced (`reprovision`), checked on its own (a key shared by
+ * several bindings gives each binding its own inventoried certificate):
+ * - the binding: before v4 runs, reset (OpenBao provider, no key, no certificate, EMPTY overlap
+ *   list); after v4 provisioned, a new key whose certificate does not certify the old public
+ *   key, and an overlap list that holds only certificates of that new key (same-key renewals);
+ * - no retired certificate in the live overlap list, in either state;
+ * - the old identity stays auditable: one migration.ra.reprovision audit row of this approval
+ *   lists the retired certificates (the inventoried one; with the frozen source, every
+ *   certificate of the v3 binding, current and overlap), and each retired certificate that has
+ *   a certificates row still has it, with the same PEM.
+ */
+function checkReprovisioned(target: DatabaseSync, key: Manifest['keys'][number], rowId: string, manifest: Manifest, approval: Approval, source?: DatabaseSync): Check[] {
+  const out: Check[] = [];
+  const add = (name: string, ok: boolean, detail = '') => out.push({ name, ok, detail });
+  const where = `integration_ras:${rowId}`;
+  const pemSha = manifest.certificates.find(c => c.table === 'integration_ras' && c.rowId === rowId)?.pemSha256 ?? null;
+  const row = target.prepare('SELECT key_provider, key_id, public_key_id, key_version, certificate_pem, previous FROM integration_ras WHERE integration_id = ?').get(rowId) as
+    { key_provider: string; key_id: string | null; public_key_id: string | null; key_version: number | null; certificate_pem: string | null; previous: string | null } | undefined;
+  if (!row) { add(`${where} reprovisioned (new RA key)`, false, 'row missing'); return out; }
+  const digest = (pem: string) => { try { return sha256Hex(new X509Certificate(pem).raw); } catch { return null; } };
+  const spki = (pem: string) => { try { return spkiFingerprint(new X509Certificate(pem)); } catch { return null; } };
+  let prev: { certificatePem: string }[] = [];
+  let prevOk = true;
+  try { prev = overlapList(row.previous); } catch { prevOk = false; }
+  const reset = row.key_provider === 'openbao' && row.key_id === null && row.public_key_id === null && row.certificate_pem === null;
+  const curSpki = row.certificate_pem ? spki(row.certificate_pem) : null;
+  const provisioned = row.key_provider === 'openbao' && !!row.key_id && !!row.certificate_pem && !!curSpki && curSpki !== key.spkiSha256 && digest(row.certificate_pem) !== pemSha;
+  add(`${where} reprovisioned (new RA key; the old key's RA certificate is not active)`, reset || provisioned, `${row.key_provider}:${row.key_id}${row.certificate_pem ? ' (provisioned)' : ' (reset)'}`);
+  // What GetCACert serves and what the gateway checks at startup: only certificates of the active key.
+  const foreign = prev.filter(p => (reset ? true : spki(p.certificatePem) !== curSpki));
+  add(`${where} overlap list holds no certificate of the replaced RA key`, prevOk && foreign.length === 0 && !prev.some(p => spki(p.certificatePem) === key.spkiSha256),
+    prevOk ? (foreign.length ? `${foreign.length} entr${foreign.length === 1 ? 'y' : 'ies'} the active RA key cannot use` : `${prev.length} same-key entr${prev.length === 1 ? 'y' : 'ies'}`) : 'previous is not a valid list');
+
+  // The old identity: the audit row of the reset, and the certificate rows.
+  const wanted = new Set<string>(pemSha ? [pemSha] : []);
+  const srcRow = source && tableExists(source, 'integration_ras')
+    ? source.prepare('SELECT certificate_id, certificate_pem, previous FROM integration_ras WHERE integration_id = ?').get(rowId) as { certificate_id: unknown; certificate_pem: unknown; previous: unknown } | undefined
+    : undefined;
+  if (srcRow) { try { for (const c of retiredRaCertificates(srcRow)) if (c.sha256) wanted.add(c.sha256); } catch { /* reported by reconcile */ } }
+  let recorded: RetiredRaCertificate[] | null = null;
+  if (tableExists(target, 'audit_log') && columnsOf(target, 'audit_log').has('operation')) {
+    for (const a of all(target, "SELECT details FROM audit_log WHERE operation = 'migration.ra.reprovision' AND entity_id = ? AND status = 'success'", rowId)) {
+      try {
+        const d = JSON.parse(String(a.details)) as { approval?: string; approvedBy?: string; tool?: string; retiredRaCertificates?: RetiredRaCertificate[] };
+        if (d.tool === 'scripts/migration' && d.approval === approval.manifestSha256.slice(0, 16) && d.approvedBy === approval.approvedBy && Array.isArray(d.retiredRaCertificates)) recorded = d.retiredRaCertificates;
+      } catch { /* not ours */ }
+    }
+  }
+  const have = new Set((recorded ?? []).map(c => c.sha256).filter(Boolean));
+  const lost = [...wanted].filter(h => !have.has(h));
+  add(`${where} retired RA certificates recorded in the audit log`, recorded !== null && lost.length === 0,
+    recorded === null ? 'no migration.ra.reprovision audit row of this approval' : lost.length ? `${lost.length} retired certificate(s) not listed` : `${recorded.length} certificate(s)${srcRow ? ' (checked against the frozen source)' : ''}`);
+  for (const c of recorded ?? []) {
+    if (!c.id || !tableExists(target, 'certificates')) continue;
+    const cert = target.prepare('SELECT certificate_pem, status FROM certificates WHERE id = ?').get(c.id) as { certificate_pem: string | null; status: string } | undefined;
+    add(`certificates:${c.id} retired RA certificate kept as history`, !!cert && (!cert.certificate_pem || digest(cert.certificate_pem) === c.sha256), cert ? `status ${cert.status}` : 'row missing');
+  }
+  return out;
 }
 
 /** Every id the v4 runtime looks up must resolve without Cosmian. Returns the number that do not. */

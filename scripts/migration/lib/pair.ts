@@ -179,8 +179,12 @@ export async function checkPair(o: {
   if (tableExists(target, 'integration_ras') && columnsOf(target, 'integration_ras').has('key_provider')) {
     const st = o.raStore ?? o.store;
     const mount = profile.mounts.ra;
-    for (const r of all(target, "SELECT integration_id, key_id, key_version, certificate_pem FROM integration_ras WHERE key_provider = 'openbao' ORDER BY integration_id")) {
+    for (const r of all(target, "SELECT integration_id, key_id, key_version, certificate_pem, previous FROM integration_ras WHERE key_provider = 'openbao' ORDER BY integration_id")) {
       const where = `integration_ras:${r.integration_id}`;
+      // The SCEP gateway refuses to start when an unexpired overlap certificate does not certify
+      // the active RA key (scep/main.go, renew.go); v4 keeps the unexpired list at provisioning.
+      const foreign = overlapProblems(r.previous, r.certificate_pem);
+      if (foreign) { fail(`pair: ${where} overlap list`, foreign); continue; }
       if (r.key_id === null) { warnings.push(`${where} has no RA key yet: v4 provisions one at the first SCEP request or ra/provision`); continue; }
       const version = Number(r.key_version);
       if (!Number.isInteger(version) || version < 1) { fail(`pair: ${where} key version`, `key_version ${String(r.key_version)}`); continue; }
@@ -201,4 +205,25 @@ export async function checkPair(o: {
   }
   if (ok) add('pair: every key the database owns is in OpenBao with the same public key and the v4 runtime policy', true, `${counts.liveKeysVerified} keys`);
   return { ok };
+}
+
+/**
+ * Unexpired entries of an RA overlap list (`previous`) that the active RA key cannot use:
+ * with no RA certificate yet, any unexpired entry; else an entry that certifies another key.
+ * Returns a description, or null when the list is usable.
+ */
+export function overlapProblems(previous: unknown, currentPem: unknown): string | null {
+  let list: unknown;
+  try { list = previous === null || previous === undefined || previous === '' ? [] : JSON.parse(String(previous)); } catch { return 'previous is not JSON'; }
+  if (!Array.isArray(list)) return 'previous is not a list';
+  let current: string | null = null;
+  if (typeof currentPem === 'string' && currentPem) { try { current = spkiFingerprint(new X509Certificate(currentPem)); } catch { return 'RA certificate does not parse'; } }
+  let bad = 0;
+  for (const e of list as { certificatePem?: unknown }[]) {
+    let cert: X509Certificate;
+    try { cert = new X509Certificate(String(e?.certificatePem)); } catch { return 'an overlap entry does not parse'; }
+    if (new Date(cert.validTo) <= new Date()) continue;
+    if (current === null || spkiFingerprint(cert) !== current) bad++;
+  }
+  return bad ? `${bad} unexpired overlap certificate(s) do not certify the active RA key (the SCEP gateway would refuse to start)` : null;
 }

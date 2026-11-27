@@ -178,6 +178,39 @@ describe('OpenBao-bound SCEP RA', () => {
     expect(attempts.find(r => r.status === 'success')?.details).toBe(JSON.stringify({ phase: 'completed', provider: 'openbao' }));
   });
 
+  it('a binding reset for a new key (migration reprovision) gets a generated key and no overlap of the old key', async () => {
+    // What an earlier migration tool wrote: reset binding, the old-key RA certificate in `previous`.
+    const reset = await new IntegrationService().register({ db }, { name: 'RA reprovisioned', caId, kind: 'scep' });
+    try {
+      const oldKey = generateKeyPairSync('rsa', { modulusLength: 3072 });
+      const oldPem = issueFrom(forge.pki.publicKeyFromPem(oldKey.publicKey.export({ type: 'spki', format: 'pem' }).toString()));
+      await db.insert(integrationRAs).values({ integrationId: reset.id, caId, keyProvider: 'openbao', keyId: null, publicKeyId: null, keyVersion: null, certificateId: null, certificatePem: null, previous: JSON.stringify([{ id: randomUUID(), certificatePem: oldPem }]) });
+      const res = await request(reset.token, 'provision');
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().previousCertificatesPem).toEqual([]);
+      const binding = await bindingOf(reset.id);
+      expect(binding.keyId).toMatch(/^scep-ra-/);
+      expect(transit.ensureKey).toHaveBeenCalledWith(binding.keyId, 1); // generated, never adopted
+      expect(JSON.parse(binding.previous)).toEqual([]);
+      // A same-key renewal keeps the overlap of the new key; the old key never comes back.
+      const pub = forge.pki.publicKeyFromPem(baoKeys.get(binding.keyId!)!.pub.export({ type: 'spki', format: 'pem' }).toString());
+      const before = new Date(Date.now() - 80 * 86400e3); const after = new Date(Date.now() + 10 * 86400e3);
+      const aging = issueFrom(pub, before, after);
+      await db.update(integrationRAs).set({ certificatePem: aging, previous: JSON.stringify([{ id: randomUUID(), certificatePem: oldPem }]) }).where(eq(integrationRAs.integrationId, reset.id));
+      await db.update(certificates).set({ certificatePem: aging, notBefore: before, notAfter: after }).where(eq(certificates.id, binding.certificateId!));
+      expect((await request(reset.token, 'state')).json().previousCertificatesPem).toEqual([]);
+      const renewed = await request(reset.token, 'renew');
+      expect(renewed.statusCode, renewed.body).toBe(200);
+      expect(renewed.json().previousCertificatesPem).toEqual([aging]);
+      expect((JSON.parse((await bindingOf(reset.id)).previous) as { certificatePem: string }[]).map(p => p.certificatePem)).toEqual([aging]);
+    } finally {
+      await db.delete(integrationRAs).where(eq(integrationRAs.integrationId, reset.id));
+      await db.delete(certificates).where(eq(certificates.integrationId, reset.id));
+      await db.delete(auditLog).where(eq(auditLog.entityId, reset.id));
+      await db.delete(integrations).where(eq(integrations.id, reset.id));
+    }
+  });
+
   it('signs and unwraps with the bound key and fixed version only', async () => {
     const binding = await bindingOf(bao.id);
     const digest = randomBytes(32);

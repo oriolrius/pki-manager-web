@@ -211,6 +211,7 @@ export async function buildManifest(opts: InventoryOptions): Promise<Manifest> {
   }
 
   // 4. Key entries.
+  const raRowsWithCertificate = new Set(certificates.filter(c => c.table === 'integration_ras').map(c => c.rowId));
   const sshFpByRow = new Map<string, string>();
   if (tableExists(db, 'ssh_cas')) for (const r of all(db, 'SELECT id, fingerprint_sha256 FROM ssh_cas')) sshFpByRow.set(String(r.id), String(r.fingerprint_sha256));
 
@@ -225,6 +226,8 @@ export async function buildManifest(opts: InventoryOptions): Promise<Manifest> {
     const signingRows = group.filter(r => r.role !== 'ssh-cert-signer' && !r.role.endsWith('public-key') && r.role !== 'scep-ra-cert-alias');
     const aliasRows = group.filter(r => r.role === 'scep-ra-cert-alias');
     const shared = signingRows.length > 1;
+    const openbaoRa = group.filter(r => r.role === 'scep-ra-openbao-key');
+    if (openbaoRa.length > 1) subjectProblems.push({ severity: 'blocker', code: 'SHARED_RA_KEY', message: `one OpenBao RA key backs ${openbaoRa.length} RA bindings; v4 binds one RA key to one integration: register a new SCEP integration for all but one before migration`, subject: id });
     // v4 binds one SSH CA key to one CA (SshCaKeyExistsError): a v3 key imported into two
     // zones cannot keep both rows. Rotate one of them first.
     // A shared key is a conflict only while more than one of its CA rows can issue: v4 checks
@@ -294,7 +297,7 @@ export async function buildManifest(opts: InventoryOptions): Promise<Manifest> {
       spkiSha256: fps.size === 1 ? [...fps][0] : null, sshFingerprint, transitType,
       allowed: [], proposed: 'rotate', reasons: [], target: null,
     };
-    keys.push(decide(entry, mounts, !!kms));
+    keys.push(decide(entry, mounts, !!kms, { bindingsWithCertificate: raRowsWithCertificate }));
   }
 
   // 4b. How each certificate links to its key in the target.

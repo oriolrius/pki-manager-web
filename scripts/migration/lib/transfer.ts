@@ -117,6 +117,12 @@ export async function preflight(o: {
     try {
       const missing = missingColumns(db);
       check('target database has the v4 schema (keystore_objects, RA provider columns)', missing.length === 0, missing.length ? `missing: ${missing.join(', ')} (run the v4 migrations on the copy first)` : '');
+      // An RA key is transferred only with the RA certificate that certifies it (see policy.ts).
+      const unfinished = missing.length ? [] : o.manifest.keys.filter(k => k.class === 'scep-ra' && o.approval.keys[k.sourceKeyId]?.action === 'transfer')
+        .flatMap(k => k.references.filter(r => r.role === 'scep-ra-key'))
+        .filter(r => !(db.prepare('SELECT certificate_pem AS pem FROM integration_ras WHERE integration_id = ?').get(r.rowId) as { pem: string | null } | undefined)?.pem)
+        .map(r => `integration_ras:${r.rowId}`);
+      check('every transferred RA key has its RA certificate (v4 provisioning never adopts an imported key)', unfinished.length === 0, unfinished.length ? `${unfinished.join(', ')}: approve reprovision` : '');
     } finally { db.close(); }
   } catch (error) {
     check('target database opens', false, (error as Error).message);
@@ -179,10 +185,16 @@ export async function checkAlreadyTargetRa(o: {
 }): Promise<{ name: string; version: number | null; checks: { name: string; ok: boolean; detail: string }[]; unwrapped: boolean }> {
   const checks: { name: string; ok: boolean; detail: string }[] = [];
   const add = (name: string, ok: boolean, detail = '') => { checks.push({ name, ok, detail }); return ok; };
-  const ref = o.key.references.find(r => r.role === 'scep-ra-openbao-key');
+  const refs = o.key.references.filter(r => r.role === 'scep-ra-openbao-key');
+  const ref = refs[0];
   const name = ref ? ref.sourceId.replace(/^openbao:/, '') : '';
   const label = `RA key already in OpenBao ${name}`;
   if (!ref) { add(`${label} has its binding reference`, false, 'no scep-ra-openbao-key reference'); return { name, version: null, checks, unwrapped: false }; }
+  // One key, one binding: the check pins that binding to its approved RA certificate. A key
+  // shared by several bindings is not supported (policy.ts: rotate), never checked by its first row.
+  if (!add(`${label} backs exactly one RA binding`, refs.length === 1, refs.length === 1 ? '' : `${refs.map(r => `integration_ras:${r.rowId}`).join(', ')} share it: register a new SCEP integration for all but one`)) {
+    return { name, version: null, checks, unwrapped: false };
+  }
   const row = o.binding(ref.rowId);
   const version = row && Number.isInteger(row.key_version) && Number(row.key_version) >= 1 ? Number(row.key_version) : null;
   let cert: X509Certificate | null = null;

@@ -32,10 +32,11 @@ const STEPS: Record<KeyEntry['class'], { rotate: string[]; drop?: string[]; repr
   },
   'scep-ra': {
     reprovision: [
-      'In the approval: action `reprovision` and `acknowledgeNewKey: true`. The migration resets the binding: no key, no current certificate; the current RA certificate moves to the overlap list (`previous`). Its certificate rows stay as history.',
-      'After cutover, run the gateway once with `scep-server provision` (or start it with auto-provisioning): v4 generates a new RA key in OpenBao and issues a new RA certificate. The gateway state file (SCEP_STATE_FILE) then holds the new certificate.',
-      'GetCACert serves the new RA certificate and keeps the old one in `previousCertificatesPem` until it expires, so clients pick up the new one. Run a test enrollment.',
-      'Revoke the old RA certificate (POST /api/v1/certificates/:id/revoke) when the clients have moved.',
+      'In the approval: action `reprovision` and `acknowledgeNewKey: true`. The old RA private key does not reach v4 (it cannot, or the admin chose not to move it), so nothing can decrypt or sign for the old RA certificates any more.',
+      'The migration resets the binding: no key, no current RA certificate, and the overlap list (`previous`) is empty: a certificate of the old key cannot stay live (the v4 gateway refuses to start when an unexpired overlap certificate does not certify the active RA key). The certificate rows stay as history, and the audit row `migration.ra.reprovision` lists every retired RA certificate (id, serial, SHA-256, PEM). verify checks both.',
+      'After cutover, run the gateway once with `scep-server provision` (or start it with `SCEP_AUTO_PROVISION=true`): v4 generates a new RA key in OpenBao (a generated key; provisioning never adopts an imported one) and issues a new RA certificate. The gateway state file (SCEP_STATE_FILE) then holds the new certificate; later renewals keep that key and its same-key overlap list.',
+      'Devices: every SCEP client must fetch the CA/RA certificates again (GetCACert) before its next request. A request encrypted to the old RA certificate fails (the gateway answers a CertRep FAILURE: the old key is not there), and a client that verifies CertRep with a cached old RA certificate rejects the reply of the new RA. Requests sent around the cutover must start again from GetCACert (the gateway keeps no pending requests). For Intune or another MDM, update the SCEP profile when it pins the RA certificate. Run a test enrollment.',
+      'Revoke the retired RA certificates (POST /api/v1/certificates/:id/revoke, ids in the audit row) when the clients have moved: their key is gone.',
     ],
     rotate: [
       'In v3.19.1, before the final inventory: register a new SCEP integration on the same CA (UI, or tRPC integration.register with kind "scep") and provision its RA with `scep-server provision` and the new token.',

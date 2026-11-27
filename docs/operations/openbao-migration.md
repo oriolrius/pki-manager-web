@@ -180,10 +180,11 @@ nothing signs with any more, so no key in use loses a function:
 | SSH CA | the CA is **revoked** (`POST /api/v1/ssh/cas/:caId/revoke`). A CA that is only retired keeps signing its own KRL, and the KRL client refuses an unsigned KRL | the row keeps its v3 ids; one `migration.key.drop` audit row |
 | SCEP RA | the integration is revoked | `key_id` and `public_key_id` become NULL; the RA certificates stay |
 
-`reprovision` (SCEP RA only) resets the binding so that v4 generates a new RA key in OpenBao:
-no key, no current certificate, `key_provider='openbao'`, and the current RA certificate moves
-to the front of the overlap list (`previous`). The RA certificate rows stay. It is proposed for
-an RA key that cannot move; an administrator may also choose it for a key that can.
+`reprovision` (SCEP RA only) replaces the RA key: v4 generates a new one in OpenBao. It is
+proposed for an RA key that cannot move, and for an RA binding with a key but no RA
+certificate (v3 provisioning never finished: v4 provisioning accepts only a key that OpenBao
+generated, so an imported key could never be finished there). An administrator may also choose
+it for a key that can move. See [SCEP RA with a new key](#scep-ra-with-a-new-key).
 
 One SSH CA key behind several CA rows is a blocker while two or more of those rows can issue
 (active or rotating). When at most one can, all rows map to the one Transit key.
@@ -313,7 +314,10 @@ A migrated key is also an imported key with only version 1 and the source public
 fork always returns these fields: a missing field fails the check.
 
 An RA key that is already in OpenBao (`already-target`, a v3.19 binding with
-`key_provider = openbao`) is never imported. Its binding must name the key and a key version,
+`key_provider = openbao`) is never imported. One such key must back exactly one RA binding:
+a key shared by several bindings is a blocker (`SHARED_RA_KEY`, action `rotate`: register a
+new SCEP integration for all but one in v3), and the check refuses it instead of checking only
+its first binding. Its binding must name the key and a key version,
 with no Cosmian public key id, and hold the inventoried RA certificate. The key must pass the
 RA policy above for that version (a generated key or an imported one), hold the public key of
 the RA certificate, and sign with that version; with `--ra-session-check` it must also recover
@@ -429,8 +433,36 @@ nothing signs with it.
 | X.509 CA | New CA, publish its certificate next to the old one, re-issue the active leaves, revoke the old CA when nothing depends on it, new inventory (old key: `drop-key`) |
 | X.509 leaf | Renew with `generateNewKey: true` before the final inventory |
 | SSH CA | `POST /api/v1/ssh/cas/:caId/rotate`, distribute both trust anchors, re-issue; when no certificate of the old CA must stay valid, `POST /api/v1/ssh/cas/:caId/revoke`; new inventory (old key: `drop-key`) |
-| SCEP RA, on v4 | `reprovision` in the approval. After cutover run the gateway once with `scep-server provision` (or with auto-provisioning): v4 creates the new key and RA certificate. GetCACert serves the new certificate and keeps the old one in `previousCertificatesPem` until it expires. Revoke the old RA certificate when the clients have moved |
+| SCEP RA, on v4 | `reprovision` in the approval. After cutover run the gateway once with `scep-server provision` (or with auto-provisioning): v4 creates the new key and RA certificate. Every client fetches the RA certificate again. Revoke the retired RA certificates. See [SCEP RA with a new key](#scep-ra-with-a-new-key) |
 | SCEP RA, on v3.19.1 | Register a new SCEP integration on the same CA, provision its RA with the new token, switch the gateway to it, revoke the old integration; new inventory (new key: `transfer`, old key: `drop-key`) |
+
+### SCEP RA with a new key
+
+With `reprovision`, the old RA private key does not reach v4. Nothing can decrypt or sign for
+the old RA certificates any more. The migration and v4 do this:
+
+| Where | What happens |
+|---|---|
+| Binding (`integration_ras`) | `key_provider='openbao'`, no key, no current certificate, and an **empty** overlap list (`previous`). An old-key certificate cannot stay in the list: the gateway refuses to start when an unexpired overlap certificate does not certify the active RA key. This also clears an earlier certificate of the same old key (a v3 RA renewal) |
+| History | The RA certificate rows stay, unchanged. The audit row `migration.ra.reprovision` lists every retired RA certificate (current and overlap): id, serial, SHA-256, end of validity and PEM |
+| First `ra/provision` on v4 | A new key generated in OpenBao (never an imported one) and a new RA certificate. The overlap list starts empty; later renewals keep the same key and its overlap list |
+| v4 backend | `ra/state`, `ra/provision` and `ra/renew` serve and keep only unexpired overlap certificates of the active key. A database written by an earlier version of the tool (old-key certificate in `previous`) then still starts the gateway |
+| `verify` | Per binding: the reset (or, after v4 provisioning, a new key), no certificate of the old key in the overlap list, the audit row with every retired certificate (with `--source-db`, checked against the frozen v3 binding), the retired certificate rows. The pair check (`--restore` too) fails when an unexpired overlap certificate does not certify the active key |
+
+Effects on devices and requests:
+
+- GetCACert serves the new RA certificate. Every SCEP client must fetch the CA/RA
+  certificates again before its next request. For Intune or another MDM, update the SCEP
+  profile when it pins the RA certificate.
+- A request encrypted to an old RA certificate fails: the gateway answers a CertRep FAILURE
+  signed by the new RA, and issues nothing. A client that verifies the reply with a cached old
+  RA certificate rejects it. The gateway keeps no pending requests, so a request sent around the
+  cutover only has to start again from GetCACert.
+- Revoke the retired RA certificates (`POST /api/v1/certificates/:id/revoke`, ids in the audit
+  row): their key is gone.
+
+[scripts/migration/rehearsal/rehearse-ra-reprovision.sh](../../scripts/migration/rehearsal/rehearse-ra-reprovision.sh)
+runs this path end to end with synthetic data: see [Rehearsal](#rehearsal).
 
 ## Rehearsal
 
@@ -493,11 +525,37 @@ from a run on 2026-11-27 from commit `18c63475` with the same fork (42 steps pas
 | `verify --restore` without `--backup-dir` | exit 1, `verified=false pairBound=false` |
 | Cutover-time snapshot + B2 database | exit 1: pair evidence and 2 keys made after the snapshot missing |
 
+[scripts/migration/rehearsal/rehearse-ra-reprovision.sh](../../scripts/migration/rehearsal/rehearse-ra-reprovision.sh)
+rehearses an approved RA key replacement (`reprovision`) with synthetic data: v3.19.1 with a
+SCEP RA renewed once with the same key, the migration, then the v4 backend and the real SCEP
+gateway (built from `scep/`) with Cosmian stopped. It needs Go as well. It ran on 2026-11-27
+from commit `92e8a64d` with the changes of this section, fork image digest
+`sha256:4ea3dfec…6b2`:
+
+| Check | Result |
+|---|---|
+| v3 binding | current RA certificate and one unexpired earlier certificate of the same key in the overlap list |
+| `apply` with a crash inside the database transaction | exit 75, binding unchanged; the next `apply` reset it, a third `apply` was a no-op (0 audit rows) |
+| Binding after `apply` | `openbao`, no key, no certificate, overlap list `[]`; the audit row lists the current and the earlier RA certificate (SHA-256 and PEM); both certificate rows kept |
+| `verify --cutover` | 43 checks passed, 23 rows reconciled |
+| Gateway with auto-provisioning | started; new RA key generated in OpenBao (`imported_key=false`, non-exportable, session-key opt-in); state file replaced; GetCACert serves the new RA certificate and no certificate of the old key |
+| Enrollment | live enrollment with the new RA; a request encrypted to the old current or the old earlier RA certificate got a CertRep FAILURE signed by the new RA, nothing issued; gateway restart without provisioning and a second enrollment |
+| Old identity | both old RA certificates readable through the v4 API and revoked (`superseded`); enrollment still works |
+| After the v4 writes | `verify`: new key, usable overlap list, retired certificates in the audit row and the rows. A quiesced paired backup restored into a new OpenBao passes `verify --restore` (pair bound) |
+| Negative control | an old-key certificate put back in the overlap list fails the reprovision and pair checks; the v4 backend does not serve it, and the gateway still starts |
+
+The old RA private key was never available to v4: no decryption for it is claimed.
+
 The unit tests (`cd scripts/migration && npm test`) cover what the rehearsal data does not
 have: a CA row that holds its certificate id (repaired to its private key), a non-extractable
 SSH CA key (rotate only, `drop-key` once revoked), an SSH key shared by two issuing zones and by
-a retired row, a non-extractable RA key (`reprovision`, and `drop-key` for a revoked
-integration), an already-migrated RA key that does not match its certificate, no `drop-key`
+a retired row, a non-extractable RA key (`reprovision` with an earlier same-key certificate in
+the overlap list, an interrupted and a repeated run, the state after v4 provisioning and two
+same-key renewals, and an old-key overlap entry that verify refuses; `drop-key` for a revoked
+integration), an RA binding with a key but no certificate (no transfer), an RA key shared by two
+bindings (each binding checked with its own certificate), an OpenBao RA key shared by two
+bindings (rotate, never checked by its first binding), an already-migrated RA key that does
+not match its certificate, no `drop-key`
 for keys in use, an RA alias that certifies another key, approval refusals, a
 planted conflicting OpenBao key, a conflicting target row, a failure inside the database
 transaction, a source key that becomes non-extractable before transfer, a root token, a
