@@ -356,7 +356,18 @@ pki-migrate verify --restore --target-db /restored/pki.db $BAO --openbao-ra-toke
 
 `--restore` needs no manifest. It starts from the database: every key the database owns
 must be in OpenBao at its version with the same public key, certificate rows must certify
-their keys, and no id may need Cosmian. With `--source-db`, every `audit_log` row of the v3
+their keys, and no id may need Cosmian. Each key version must also pass the v4 runtime
+policy of its purpose, the same check as the migration (`lib/key-policy.ts`): a key whose
+policy changed after the snapshot with the same key material (soft-deleted, a
+`min_encryption_version` or `min_decryption_version` above the pinned version, deletion
+allowed, plaintext backup, the RA session-key opt-in removed) fails. What the runtime takes
+from the row must match the key too: an X.509 key must be in the X.509 mount of
+`--target-profile` (the backend token reaches no other mount), with the type of its
+`key_algorithm` and the `exportable` flag of its row; an SSH CA reference must be in the SSH
+mount, with `kms_public_key_id` equal to `kms_key_id` and the key of `openssh_public_key`;
+RA keys are read in the RA mount, and an imported RA key needs the RA certificate that pins
+it. A `revoked` X.509 key is only read from its row, so its policy findings are `WARN`
+lines; it must still be in OpenBao with the same public key. With `--source-db`, every `audit_log` row of the v3
 copy must still be there, unchanged. It fails when a snapshot older than the database is
 restored: the keys made after the snapshot (an X.509 issue, a new SSH CA, an RA key) are
 missing. Keys that v4 deleted (rows in state `destroyed`) need nothing; a deleted key that

@@ -314,7 +314,7 @@ function postCutoverWrites(s: Migrated): { x509: string; ssh: string; ra: string
   db.prepare("INSERT INTO certificates (id, ca_id, kms_certificate_id, kms_key_id, subject_dn, serial_number, certificate_type, not_before, not_after, status, certificate_pem) VALUES ('cert-v4', 'ca-1', 'v4-cert', 'v4-priv', 'CN=after.example', '5001', 'server', ?, ?, 'active', ?)").run(now, now + 86400, leafPem);
   // SSH: a new user CA in a new zone.
   const sshKey = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-  const ssh = `v4-ssh-${randomUUID().slice(0, 8)}`;
+  const ssh = 'ssh-ca-sshca-v4'; // createSshCaKey: ssh-ca-<caId>
   s.store.plant('pki-manager-ssh', ssh, 'ecdsa-p256', sshKey.privateKey);
   const line = sshLine(sshKey.publicKey);
   db.exec("INSERT INTO zones (id, name, display_name) VALUES ('zone-v4', 'lab', 'Lab')");
@@ -323,7 +323,7 @@ function postCutoverWrites(s: Migrated): { x509: string; ssh: string; ra: string
   // SCEP: a second integration whose RA key v4 provisioned in OpenBao.
   const raKey = generateKeyPairSync('rsa', { modulusLength: 3072 });
   const ra = `scep-ra-${randomUUID()}`;
-  s.store.plant('pki-manager-ra', ra, 'rsa-3072', raKey.privateKey);
+  s.store.plant('pki-manager-ra', ra, 'rsa-3072', raKey.privateKey, { allowPkcs1v15SessionKey: true }); // ra-transit ensureKey
   const raPem = makeCert({ cn: 'SCEP RA 2', key: raKey.privateKey, issuerKey: caPriv, issuerCert: caPem, serial: '5002' });
   db.exec("INSERT INTO integrations (id, name, ca_id, kind, token_hash, token_prefix) VALUES ('int-v4', 'scep-2', 'ca-1', 'scep', 'h2', 'pkimg_y')");
   db.prepare("INSERT INTO integration_ras (integration_id, ca_id, key_provider, key_id, key_version, certificate_id, certificate_pem) VALUES ('int-v4', 'ca-1', 'openbao', ?, 1, NULL, ?)").run(ra, raPem);
