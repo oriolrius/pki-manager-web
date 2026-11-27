@@ -152,11 +152,9 @@ RUN mkdir -p /app/backend/data && \
 # Switch to non-root user
 USER nodejs
 
-# Build-time checks as the runtime user: every folder of backend/dist can be entered and
-# read and every file read, and the migrations apply to an empty database. A packaging
-# error then fails the image build, not the first container start.
-RUN node -e "const fs=require('fs'),path=require('path'),{R_OK,X_OK}=fs.constants;(function walk(d){fs.accessSync(d,R_OK|X_OK);for(const e of fs.readdirSync(d,{withFileTypes:true})){const f=path.join(d,e.name);if(e.isDirectory())walk(f);else fs.accessSync(f,R_OK)}})('/app/backend/dist')" && \
-    DATABASE_PATH=:memory: node /app/backend/dist/db/migrate.js
+# Build-time smoke test as the runtime user: the migrations apply to an empty database, so
+# a folder or file the nodejs user cannot read fails the image build, not the first start.
+RUN DATABASE_PATH=:memory: node /app/backend/dist/db/migrate.js
 
 # Set environment variables with production defaults.
 # NODE_OPTIONS=--use-openssl-ca makes Node verify outbound TLS (KMS, OIDC discovery/JWKS)
