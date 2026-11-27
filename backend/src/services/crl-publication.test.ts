@@ -13,15 +13,15 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import * as schema from '../db/schema.js';
-import { auditLog, certificateAuthorities, certificates, crlPublication, crls } from '../db/schema.js';
+import { auditLog, certificateAuthorities, certificates, crlDeletedRevocations, crlEntryRemovals, crlPublication, crls } from '../db/schema.js';
 import { controlledKeyStore as store } from '../test/controlled-keystore.js';
 import { getKMSService } from '../kms/service.js';
 import { parseCRL, verifyCRL, generateCRLWithSigner, normalizeSerialHex } from '../crypto/crl.js';
 import { CRLReason } from '../crypto/types.js';
-import { CRLService, crlEntriesSha256, getCRLService, CRL_PENDING_MAX_AGE_SECONDS } from './crl.service.js';
+import { CRLService, CRLPublicationBusyError, crlEntriesSha256, getCRLService, CRL_LEASE_SECONDS, CRL_PENDING_MAX_AGE_SECONDS } from './crl.service.js';
 import { startCrlReconciler } from './crl-reconciler.js';
 import { getCAService } from './ca.service.js';
-import { getCertificateService } from './certificate.service.js';
+import { deleteCertificateRow, getCertificateService } from './certificate.service.js';
 import { publicCrlRoutes } from '../rest/routes/public-crl.routes.js';
 import { OpenBaoTransitError } from '../openbao/x509-transit.js';
 import { keyStoreErrorResponse } from '../keystore/errors.js';
@@ -511,5 +511,237 @@ describe('CRL publication: CRLs written before migration 0018', () => {
     // Both list the same (no) entries: the newest is current, nothing is published.
     const result = await getCRLService().refreshForDistribution(ctx, ca.id);
     expect(result).toMatchObject({ status: 'current', crl: { id: newer.id } });
+  });
+});
+
+describe('CRL publication: a revocation deleted before any CRL lists it', () => {
+  const server = Fastify({ logger: false });
+  beforeAll(async () => {
+    await server.register(publicCrlRoutes, { reconciler: false });
+    await server.ready();
+  });
+  afterAll(async () => {
+    await server.close();
+  });
+
+  const entryOf = (pem: string, serial: string) => parseCRL(pem).revokedCertificates.find((e) => e.serialNumber === norm(serial));
+
+  it('service delete and bulk delete keep serial, date and reason; the first CRL after unseal and a restart lists them', async () => {
+    const ca = await makeCa('Deleted Pending CA');
+    const [viaService, viaBulk] = makeLeaves(ca.id, 2);
+    store.failure = sealedError();
+    await getCertificateService().revoke(ctx, { id: viaService.id, reason: 'keyCompromise' });
+    await getCertificateService().revoke(ctx, { id: viaBulk.id, reason: 'superseded' });
+    const revokedAt = new Map(
+      db.select().from(certificates).where(eq(certificates.caId, ca.id)).all().map((c) => [c.id, c.revocationDate!]),
+    );
+    const before = crlRows(ca.id).length;
+
+    // Both deleted with removeFromCrl=false while OpenBao is still sealed: no CRL lists them yet.
+    await getCertificateService().delete(ctx, { id: viaService.id, removeFromCrl: false });
+    deleteCertificateRow(db, viaBulk.id, { removeFromCrl: false }); // the bulk tRPC and REST paths
+    expect(db.select().from(certificates).where(eq(certificates.caId, ca.id)).all()).toHaveLength(0);
+    expect(crlRows(ca.id)).toHaveLength(before);
+    expect(db.select().from(crlDeletedRevocations).where(eq(crlDeletedRevocations.caId, ca.id)).all()).toHaveLength(2);
+
+    // "Restart": a new service instance (no memory of this one), then unseal.
+    store.failure = null;
+    db.update(crlPublication).set({ retryAfter: new Date(Date.now() - 1_000) }).where(eq(crlPublication.caId, ca.id)).run();
+    const restarted = new CRLService();
+    const pass = await restarted.reconcile(ctx, { full: true });
+    expect(pass.published).toBeGreaterThanOrEqual(1);
+    const rows = expectOrderedHistory(ca.id, ca.pem);
+    expect(rows).toHaveLength(before + 1); // the first signed CRL after unseal
+    const first = rows[rows.length - 1].crlPem;
+    const a = entryOf(first, viaService.serial)!;
+    const b = entryOf(first, viaBulk.serial)!;
+    expect(a.reason).toBe(CRLReason.KEY_COMPROMISE);
+    expect(b.reason).toBe(CRLReason.SUPERSEDED);
+    expect(a.revocationDate.getTime()).toBe(Math.floor(revokedAt.get(viaService.id)!.getTime() / 1000) * 1000);
+    expect(b.revocationDate.getTime()).toBe(Math.floor(revokedAt.get(viaBulk.id)!.getTime() / 1000) * 1000);
+
+    // Later CRLs keep them.
+    await getCRLService().generate(ctx, { caId: ca.id });
+    const latest = expectOrderedHistory(ca.id, ca.pem).at(-1)!.crlPem;
+    expect(serialsOf(latest)).toEqual(new Set([norm(viaService.serial), norm(viaBulk.serial)]));
+  });
+
+  it('an explicit removeFromCrl during the outage leaves the serial out of the first CRL after unseal', async () => {
+    const ca = await makeCa('Removed Pending CA');
+    const [kept, removed, removedBulk] = makeLeaves(ca.id, 3);
+    store.failure = sealedError();
+    for (const l of [kept, removed, removedBulk]) await getCertificateService().revoke(ctx, { id: l.id, reason: 'keyCompromise' });
+    await getCertificateService().delete(ctx, { id: removed.id, removeFromCrl: true });
+    deleteCertificateRow(db, removedBulk.id, { removeFromCrl: true });
+    expect(db.select().from(crlEntryRemovals).where(eq(crlEntryRemovals.caId, ca.id)).all()).toHaveLength(2);
+    expect(db.select().from(crlDeletedRevocations).where(eq(crlDeletedRevocations.caId, ca.id)).all()).toHaveLength(0);
+
+    store.failure = null;
+    db.update(crlPublication).set({ retryAfter: new Date(Date.now() - 1_000) }).where(eq(crlPublication.caId, ca.id)).run();
+    const res = await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    expect(serialsOf(res.body)).toEqual(new Set([norm(kept.serial)]));
+  });
+});
+
+describe('CRL publication: fast path of unchanged downloads', () => {
+  const server = Fastify({ logger: false });
+  beforeAll(async () => {
+    await server.register(publicCrlRoutes, { reconciler: false });
+    await server.ready();
+  });
+  afterAll(async () => {
+    await server.close();
+  });
+
+  /** Counts the full reads of the CA state (certificates, removals, deleted revocations). */
+  function countSnapshots() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return vi.spyOn(CRLService.prototype as any, 'snapshot');
+  }
+
+  it('a download of an unchanged CRL reads no certificate; any write, also from another connection, invalidates it', async () => {
+    const ca = await makeCa('Fast Path CA');
+    const leaves = makeLeaves(ca.id, 4);
+    await getCertificateService().revoke(ctx, { id: leaves[0].id, reason: 'keyCompromise' });
+    await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` }); // verifies
+    const state = stateOf(ca.id);
+    expect(state.verifiedGeneration).toBe(state.changeGeneration);
+
+    const spy = countSnapshots();
+    try {
+      for (let i = 0; i < 5; i++) {
+        const res = await server.inject({ method: 'GET', url: `/crl/${ca.id}.der` });
+        expect(res.statusCode).toBe(200);
+        expect(Number(/max-age=(\d+)/.exec(String(res.headers['cache-control']))![1])).toBeGreaterThan(CRL_PENDING_MAX_AGE_SECONDS);
+      }
+      expect(spy).not.toHaveBeenCalled();
+      // A non-revoked change does not invalidate it.
+      db.update(certificates).set({ subjectDn: 'CN=renamed,O=CRL Test,C=ES' }).where(eq(certificates.id, leaves[1].id)).run();
+      await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+      expect(spy).not.toHaveBeenCalled();
+
+      // A revocation written by another process (second connection, raw SQL, no service call).
+      const sqlite2 = new Database(process.env.DATABASE_PATH!);
+      try {
+        sqlite2.prepare(`UPDATE certificates SET status = 'revoked', revocation_date = unixepoch(), revocation_reason = 'superseded' WHERE id = ?`).run(leaves[2].id);
+      } finally {
+        sqlite2.close();
+      }
+      const res = await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+      expect(serialsOf(res.body)).toEqual(new Set([norm(leaves[0].serial), norm(leaves[2].serial)]));
+      expect(spy).toHaveBeenCalled();
+      spy.mockClear();
+      await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a revocation written while the CRL is signed is not covered by that CRL: the next download publishes it', async () => {
+    const ca = await makeCa('Fast Race CA');
+    const [first, second] = makeLeaves(ca.id, 2);
+    db.update(certificates).set({ status: 'revoked', revocationDate: new Date(), revocationReason: 'keyCompromise' }).where(eq(certificates.id, first.id)).run();
+    const release = store.holdNextSign();
+    const calls = store.signCalls;
+    const publishing = getCRLService().refreshForDistribution(ctx, ca.id);
+    await vi.waitFor(() => expect(store.signCalls).toBe(calls + 1));
+    // Written after the snapshot, before the commit.
+    db.update(certificates).set({ status: 'revoked', revocationDate: new Date(), revocationReason: 'keyCompromise' }).where(eq(certificates.id, second.id)).run();
+    release();
+    const published = await publishing;
+    expect(published.status).toBe('published');
+    expect(serialsOf(published.crl!.crlPem)).toEqual(new Set([norm(first.serial)]));
+    const state = stateOf(ca.id);
+    expect(state.verifiedCrlId).toBe(published.crl!.id);
+    expect(state.verifiedGeneration).toBeLessThan(state.changeGeneration);
+    const res = await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    expect(serialsOf(res.body)).toEqual(new Set([norm(first.serial), norm(second.serial)]));
+    expectOrderedHistory(ca.id, ca.pem);
+  });
+
+  it('an expired verified CRL, a CRL row from elsewhere and a deleted CRL row leave the fast path', async () => {
+    const ca = await makeCa('Fast Expiry CA');
+    await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    const verified = stateOf(ca.id);
+    expect(verified.verifiedGeneration).toBe(verified.changeGeneration);
+    // Expired: nextUpdate in the past (the trigger also counts the update; the check reads nextUpdate itself).
+    db.update(crls).set({ nextUpdate: new Date(Date.now() - 1_000) }).where(eq(crls.caId, ca.id)).run();
+    const count = crlRows(ca.id).length;
+    await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    expect(crlRows(ca.id)).toHaveLength(count + 1);
+    // The newest row is not the verified one: full check (and no new CRL when it is current).
+    const top = crlRows(ca.id).at(-1)!;
+    db.insert(crls).values({ ...top, id: randomUUID(), crlNumber: top.crlNumber + 1, createdAt: new Date() }).run();
+    const spy = countSnapshots();
+    try {
+      await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('the first background pass of a process checks a verified CRL against the database once', async () => {
+    const ca = await makeCa('Full Pass CA');
+    const [leaf] = makeLeaves(ca.id, 1);
+    await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    // A wrong verification (for example made by an older version): the generation matches, the entries do not.
+    db.update(certificates).set({ status: 'revoked', revocationDate: new Date(), revocationReason: 'keyCompromise' }).where(eq(certificates.id, leaf.id)).run();
+    const g = stateOf(ca.id).changeGeneration;
+    db.update(crlPublication).set({ verifiedGeneration: g }).where(eq(crlPublication.caId, ca.id)).run();
+    const stale = await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    expect(serialsOf(stale.body).has(norm(leaf.serial))).toBe(false);
+    await new CRLService().reconcile(ctx, { full: true });
+    const fresh = await server.inject({ method: 'GET', url: `/crl/${ca.id}.crl` });
+    expect(serialsOf(fresh.body).has(norm(leaf.serial))).toBe(true);
+  });
+});
+
+describe('CRL publication: waits while the lease is busy or the signing fails', () => {
+  it('a revocation and a manual generation do not wait 30 s behind a lease while the signing fails; busy gives a safe Retry-After', async () => {
+    const ca = await makeCa('Failing Lease CA');
+    const [leaf] = makeLeaves(ca.id, 1);
+    // Another process holds the lease (it hangs on OpenBao), and the last signing failed.
+    db.update(crlPublication)
+      .set({ lease: 'other-process', leaseUntil: new Date(Date.now() + 20_000), failureCount: 1, lastFailureAt: new Date(Date.now() - 60_000) })
+      .where(eq(crlPublication.caId, ca.id))
+      .run();
+    let started = Date.now();
+    const revoked = await getCertificateService().revoke(ctx, { id: leaf.id, reason: 'keyCompromise' });
+    expect(revoked.status).toBe('revoked');
+    expect(Date.now() - started).toBeLessThan(5_000);
+
+    started = Date.now();
+    const busy = await getCRLService().generate(ctx, { caId: ca.id }).catch((e: unknown) => e);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(busy).toBeInstanceOf(CRLPublicationBusyError);
+    const retry = (busy as CRLPublicationBusyError).retryAfterSeconds;
+    expect(retry).toBeGreaterThanOrEqual(15);
+    expect(retry).toBeLessThanOrEqual(CRL_LEASE_SECONDS);
+
+    // The lease ends: the revocation is published by the next download.
+    db.update(crlPublication).set({ lease: null, leaseUntil: null }).where(eq(crlPublication.caId, ca.id)).run();
+    const result = await getCRLService().refreshForDistribution(ctx, ca.id);
+    expect(serialsOf(result.crl!.crlPem).has(norm(leaf.serial))).toBe(true);
+  });
+
+  it('the holder renews its lease while it signs', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const ca = await makeCa('Renew Lease CA');
+      const release = store.holdNextSign();
+      const calls = store.signCalls;
+      const call = getCRLService().generate(ctx, { caId: ca.id });
+      await vi.waitFor(() => expect(store.signCalls).toBe(calls + 1));
+      db.update(crlPublication).set({ leaseUntil: new Date(Date.now() + 1_000) }).where(eq(crlPublication.caId, ca.id)).run();
+      vi.advanceTimersByTime(5_000);
+      expect(stateOf(ca.id).leaseUntil!.getTime()).toBeGreaterThan(Date.now() + (CRL_LEASE_SECONDS - 2) * 1000);
+      release();
+      await call;
+      expect(stateOf(ca.id).lease).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

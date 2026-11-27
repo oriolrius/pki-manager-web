@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS = resolve(here, 'migrations');
 const work = mkdtempSync(join(tmpdir(), 'mig-0018-'));
+/** Every migration of the journal (0018 and the later ones) runs. */
+const ALL = (JSON.parse(readFileSync(join(MIGRATIONS, 'meta', '_journal.json'), 'utf8')) as { entries: unknown[] }).entries.length;
 
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
@@ -91,7 +93,7 @@ describe('migration 0018 (CRL publication)', () => {
         expect(sqlite.prepare(`SELECT count(*) AS n FROM crls WHERE entries_sha256 IS NOT NULL`).get()).toEqual({ n: 0 });
         expect(sqlite.prepare(`SELECT count(*) AS n FROM crl_publication`).get()).toEqual({ n: 0 });
         const applied = sqlite.prepare(`SELECT count(*) AS n FROM __drizzle_migrations`).get() as { n: number };
-        expect(applied.n).toBe(19);
+        expect(applied.n).toBe(ALL);
 
         // New rows (with a digest) are unique per CA and number; old rows are not touched.
         const insert = sqlite.prepare(
@@ -103,7 +105,7 @@ describe('migration 0018 (CRL publication)', () => {
         expect(sqlite.prepare(`PRAGMA foreign_key_check`).all()).toEqual([]);
         // Running the runner again changes nothing.
         runMigrations(sqlite, MIGRATIONS);
-        expect((sqlite.prepare(`SELECT count(*) AS n FROM __drizzle_migrations`).get() as { n: number }).n).toBe(19);
+        expect((sqlite.prepare(`SELECT count(*) AS n FROM __drizzle_migrations`).get() as { n: number }).n).toBe(ALL);
       } finally {
         sqlite.close();
       }

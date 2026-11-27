@@ -18,6 +18,7 @@ import {
   CRLNotFoundError,
   CRLInvalidCAStatusError,
   CRLOperationError,
+  CRLPublicationBusyError,
 } from '../../services/crl.service.js';
 import {
   getCertificateService,
@@ -161,6 +162,11 @@ function handleServiceError(error: unknown, reply: FastifyReply) {
   }
   if (error instanceof CRLInvalidCAStatusError) {
     return sendError(reply, 409, 'INVALID_CA_STATUS', error.message);
+  }
+  if (error instanceof CRLPublicationBusyError) {
+    // Another publication holds the CA: retry after its lease or retry time (1-120 s).
+    reply.header('Retry-After', String(error.retryAfterSeconds));
+    return sendError(reply, 503, 'CRL_PUBLICATION_BUSY', error.message);
   }
   if (error instanceof CRLOperationError) {
     return sendError(reply, 500, 'CRL_OPERATION_FAILED', error.message);

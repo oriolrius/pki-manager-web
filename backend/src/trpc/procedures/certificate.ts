@@ -2205,6 +2205,8 @@ export const certificateRouter = router({
 
       let successful = 0;
       let failed = 0;
+      /** CAs whose CRL leaves out a serial on request (removeFromCrl): published after the loop. */
+      const removedFromCrl = new Set<string>();
 
       // Process each certificate
       for (const certId of input.certificateIds) {
@@ -2240,7 +2242,8 @@ export const certificateRouter = router({
 
           // 1. The row first, with its renewals detached (issue #117). If this fails,
           //    no key is destroyed and no success audit row is written.
-          deleteCertificateRow(ctx.db, certId);
+          deleteCertificateRow(ctx.db, certId, { removeFromCrl: input.removeFromCrl });
+          if (input.removeFromCrl && isRevoked) removedFromCrl.add(cert.caId);
 
           // 2. Optional: destroy the KMS key.
           let keyDestroyed = false;
@@ -2302,6 +2305,11 @@ export const certificateRouter = router({
 
           failed++;
         }
+      }
+
+      // Best-effort: when the signing fails, downloads and the background job publish it.
+      for (const caId of removedFromCrl) {
+        await getCRLService().regenerateForCa({ db: ctx.db, ipAddress: ctx.req.ip }, caId);
       }
 
       // Create overall audit log entry

@@ -1100,6 +1100,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
     let successful = 0;
     let failed = 0;
+    /** CAs whose CRL leaves out a serial on request (removeFromCrl): published after the loop. */
+    const removedFromCrl = new Set<string>();
 
     const kmsService = getKMSService();
 
@@ -1137,7 +1139,8 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
         // 1. The row first, with its renewals detached (issue #117). If this fails,
         //    no key is destroyed and no success audit row is written.
-        deleteCertificateRow(db, certId);
+        deleteCertificateRow(db, certId, { removeFromCrl });
+        if (removeFromCrl && isRevoked) removedFromCrl.add(cert.caId);
 
         // 2. Optional: destroy the KMS key.
         let keyDestroyed = false;
@@ -1198,6 +1201,11 @@ export async function bulkRoutes(fastify: FastifyInstance): Promise<void> {
 
         failed++;
       }
+    }
+
+    // Best-effort: when the signing fails, downloads and the background job publish it.
+    for (const caId of removedFromCrl) {
+      await getCRLService().regenerateForCa({ db, ipAddress: request.ip }, caId);
     }
 
     // Create overall audit log entry

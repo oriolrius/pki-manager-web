@@ -90,8 +90,13 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
   Transit signs it with the CA key. It publishes one CRL at a time per CA: a lease on the
   `crl_publication` row, the Transit request with no transaction open, then a compare-and-set
   insert (lease + next number) in a short IMMEDIATE transaction. Never hold a SQLite write lock
-  over a network call. Each CRL keeps the entries of the one before it (`crl_entry_removals` is
-  the only way out). `regenerateForCa` publishes only when the newest CRL is not current;
+  over a network call. The holder renews the lease every 5 s (30 s lease). Each CRL keeps the
+  entries of the one before it, plus `crl_deleted_revocations` (written by `deleteCertificateRow`
+  in the delete transaction); `crl_entry_removals` is the only way out. Migration 0019 triggers
+  bump `crl_publication.change_generation` on every write that can change the entries; a check
+  that finds the CRL current records `verified_generation` + `verified_crl_id`, and a matching
+  pair skips the full read (`verifiedRow`). A new write path needs no extra code, but a new table
+  that feeds the CRL needs a trigger. `regenerateForCa` publishes only when the newest CRL is not current;
   `generate` always makes a new number. The public route `/crl/:caId.crl|.der` and the background
   job (`crl-reconciler.ts`, started on `onListen` by the route plugin) publish what an outage
   left pending. Rows from before migration 0018 can share a number (NULL `entries_sha256`):

@@ -29,9 +29,11 @@ links:
   database transaction. Then PKI Manager signs a new CRL of that CA that lists them. The response
   field `crlGenerated` tells if the CRL was signed. When OpenBao cannot sign at that moment, the
   CA stays revoked, and the next request for its CRL signs the list.
-- Delete a revoked certificate. Its serial stays in the CRL. To take the serial out of the CRL,
-  delete with `removeFromCrl=true`. Do not do this while the certificate is still valid: a client
-  then accepts it again.
+- Delete a revoked certificate. Its serial stays in the CRL, with its revocation date and reason,
+  also when no CRL listed it yet (OpenBao was sealed at the revocation) and after a restart. The
+  delete keeps them in the same database transaction. To take the serial out of the CRL, delete
+  with `removeFromCrl=true` (single and bulk delete). Do not do this while the certificate is
+  still valid: a client then accepts it again.
 
 ## How it works
 
@@ -49,7 +51,15 @@ The backend builds the list and sends the data to OpenBao Transit for signing. A
 - Each new CRL lists all the entries of the CRL before it, and all the revoked certificates of the
   CA. Only `removeFromCrl` takes an entry out.
 - When a revocation does not change the list, no new CRL is made. A CRL generate request
-  (`POST /api/v1/cas/<caId>/crls`) always makes a new one.
+  (`POST /api/v1/cas/<caId>/crls`) always makes a new one. When another publication holds the CA
+  longer than the request waits, the request fails with 503 `CRL_PUBLICATION_BUSY` and a
+  `Retry-After` header (1 to 30 seconds).
+- A download of a CRL that did not change since its last check does not read the certificates.
+  Database triggers count each change that can alter the list (revocation, delete, removal, CRL
+  row change), for every backend process and every write path. The download compares that count
+  with the one of the last check: two small reads, then the CRL bytes. Only a changed count reads
+  all the revoked certificates of the CA again. The first background pass after a start checks
+  each CA in full once.
 - Version 3 could give the same number to two different CRLs when revocations came at the same
   time. Those CRLs stay in the history as they are. The first new CRL has a number above the
   highest old one, and it lists the entries of all the old CRLs with that number.
@@ -63,6 +73,10 @@ again:
 - at the next request for the CRL (`/crl/<caId>.crl` or `.der`),
 - every minute in the background, also after a restart of the backend,
 - at the next revocation of that CA.
+
+While the signing fails, a revocation or a CRL generate request waits at most 2 seconds for a
+publication in progress, not 30. A publication renews its lease every 5 seconds; the lease of a
+stopped backend process ends after 30 seconds.
 
 After a failure, the CRL requests and the background job wait before they try again: 5 seconds,
 then double the time after each failure, at most 60 seconds. While the CRL does not list all the

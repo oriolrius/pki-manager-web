@@ -14,7 +14,7 @@ import {
 } from '../crypto/validation.js';
 import { logger } from '../lib/logger.js';
 import { crlDistributionUrl } from '../lib/crl-url.js';
-import { getCRLService } from './crl.service.js';
+import { CRLService, getCRLService } from './crl.service.js';
 import type { ServiceContext } from './types.js';
 import { isKeyStoreUnavailable } from '../keystore/errors.js';
 
@@ -43,12 +43,20 @@ export async function kmsKeyUsedByOtherCertificate(
  * row in ONE synchronous better-sqlite3 transaction: both happen or neither.
  * Callers run it BEFORE any side effect (KMS key destruction, success audit row),
  * so a failed delete leaves nothing half done.
+ *
+ * A revoked certificate keeps its revocation in the same transaction
+ * (`CRLService.recordCertificateDelete`): its serial, date and reason stay in the
+ * next CRL of the CA, also when no signed CRL lists it yet (OpenBao sealed) and
+ * after a restart. With `removeFromCrl`, its serial leaves the CRL on purpose.
  */
 export function deleteCertificateRow(
   database: Pick<typeof import('../db/client.js').db, 'transaction'>,
   certId: string,
+  options: { removeFromCrl?: boolean } = {},
 ): void {
   database.transaction((tx) => {
+    const row = tx.select().from(certificates).where(eq(certificates.id, certId)).get();
+    if (row) CRLService.recordCertificateDelete(tx, row, options.removeFromCrl === true);
     tx.update(certificates)
       .set({ renewedFromId: null })
       .where(eq(certificates.renewedFromId, certId))
@@ -1390,7 +1398,7 @@ export class CertificateService {
 
       // 1. The row first (with its renewals detached). If this fails, no key is
       //    destroyed and no success audit row is written.
-      deleteCertificateRow(ctx.db, params.id);
+      deleteCertificateRow(ctx.db, params.id, { removeFromCrl: params.removeFromCrl });
       logger.info(
         { certId: params.id, serialNumber: cert.serialNumber },
         'Certificate deleted successfully'
@@ -1421,16 +1429,12 @@ export class CertificateService {
         }
       }
 
-      // A deleted revoked certificate stays in the CRL: each CRL keeps the entries of the one
-      // before it. removeFromCrl takes its serial out on purpose (best-effort republish).
+      // A deleted revoked certificate stays in the CRL (the delete recorded its revocation).
+      // removeFromCrl recorded the removal with the delete: publish the CRL without the serial
+      // now (best-effort; when it fails, downloads and the background job publish it).
       if (params.removeFromCrl && isRevoked) {
-        try {
-          await getCRLService().removeEntry(ctx, cert.caId, cert.serialNumber, params.id);
-          logger.info({ caId: cert.caId, serialNumber: cert.serialNumber }, 'Serial removed from the CRL on request');
-        } catch (error) {
-          // The row is already gone; the serial stays in the CRL (the safe side).
-          logger.warn({ error, caId: cert.caId, serialNumber: cert.serialNumber }, 'Could not record the CRL removal');
-        }
+        await getCRLService().regenerateForCa(ctx, cert.caId);
+        logger.info({ caId: cert.caId, serialNumber: cert.serialNumber }, 'Serial removed from the CRL on request');
       }
 
       // 3. The success audit row, only after the delete really happened.

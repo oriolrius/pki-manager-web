@@ -226,7 +226,38 @@ export const crlPublication = sqliteTable('crl_publication', {
   lastFailureAt: integer('last_failure_at', { mode: 'timestamp' }),
   retryAfter: integer('retry_after', { mode: 'timestamp' }),
   lastPublishedAt: integer('last_published_at', { mode: 'timestamp' }),
+  // Migration 0019: database triggers add 1 to `change_generation` on every write that can change
+  // the entries of the next CRL of the CA (a revoked certificate, a removal, a deleted
+  // revocation, a deleted or changed CRL row). `verified_generation` and `verified_crl_id` record
+  // that the CRL row `verified_crl_id` was current at that generation, so a download of an
+  // unchanged CRL reads two rows and no certificate (crl.service.ts).
+  changeGeneration: integer('change_generation').notNull().default(0),
+  verifiedGeneration: integer('verified_generation'),
+  verifiedCrlId: text('verified_crl_id'),
 });
+
+// Revoked certificates whose row was deleted (migration 0019). The delete writes this row in the
+// same transaction (`deleteCertificateRow`), so a revocation that no signed CRL lists yet (the
+// signing failed while OpenBao was sealed) is still in the next CRL of the CA, also after a
+// restart. `serial_number` is normalized hex (crypto/crl.ts); `revocation_date` is never null.
+export const crlDeletedRevocations = sqliteTable(
+  'crl_deleted_revocations',
+  {
+    caId: text('ca_id')
+      .notNull()
+      .references(() => certificateAuthorities.id, { onDelete: 'cascade' }),
+    serialNumber: text('serial_number').notNull(),
+    revocationDate: integer('revocation_date', { mode: 'timestamp' }).notNull(),
+    revocationReason: text('revocation_reason'),
+    certificateId: text('certificate_id'),
+    deletedAt: integer('deleted_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.caId, table.serialNumber] }),
+  })
+);
 
 // Serials that an operator took out of the CRL on purpose (certificate delete with
 // removeFromCrl). Every other entry of a published CRL stays in the next CRL of its CA, also
