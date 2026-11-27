@@ -1,3 +1,13 @@
+## v4.1.0 (2026-11-27)
+
+**Links to the source code and the website, and a clear account of the key store**
+
+The web UI has a footer with the version and two icon links: the source code on GitHub and the project website. The website now explains that PKI Manager runs a fork of OpenBao, what the fork adds, and why Cosmian KMS was replaced (its BUSL-1.1 licence does not fit the Apache-2.0 licence of PKI Manager). PKI Manager still does not use Cosmian KMS for anything. No migration: upgrade the backend and frontend images from 4.0.0.
+
+### Feat
+
+- **frontend**: add a footer with links to the GitHub project and the website
+
 ## v4.0.0 (2026-11-27)
 
 **OpenBao replaces Cosmian KMS: no Cosmian dependency any more**
