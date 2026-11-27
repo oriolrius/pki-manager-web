@@ -570,3 +570,39 @@ test('backup: a SQLite-only backup (v3) needs no OpenBao and no --quiesced, and 
   assert.equal(v.status, 2, v.stderr);
   assert.match(v.stderr, /--openbao-operator-token-file/);
 });
+
+test('overlapping snapshots cannot publish a backup with another run’s marker', async () => {
+  const s = await setup();
+  const saveSnapshot = s.store.raftSnapshot.bind(s.store);
+  const first = join(s.dir, 'first');
+  const second = join(s.dir, 'second');
+  s.store.raftSnapshot = async (dest) => {
+    s.store.raftSnapshot = saveSnapshot;
+    await backupPair({ dbPath: s.targetPath, outDir: second, label: 'second', store: s.store, quiesced: true });
+    await saveSnapshot(dest);
+  };
+  await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: first, label: 'first', store: s.store, quiesced: true }), /marker/i);
+  assert.equal(existsSync(first), false);
+  assert.equal(checkBackup(second).ok, true);
+  const live = await s.store.kvRead(MARKER_MOUNT, MARKER_PATH);
+  assert.equal(live?.backupId, checkBackup(second).record.pair?.backupId);
+  assert.equal(live?.state, 'released');
+});
+
+test('backup records require a database file digest and the configured marker location', async () => {
+  const s = await setup();
+  const dest = join(s.dir, 'pair');
+  const rec = await backupPair({ dbPath: s.targetPath, outDir: dest, label: 'test', store: s.store, quiesced: true });
+  for (const fields of [
+    { files: { 'openbao.snap': rec.files['openbao.snap'] } },
+    { files: {} },
+    { sqliteContentSha256: '' },
+    { pair: { ...rec.pair, markerMount: 'other' } },
+    { pair: { ...rec.pair, markerPath: 'other' } },
+    { pair: { ...rec.pair, quiesced: false } },
+    { pair: undefined },
+  ]) {
+    writeFileSync(join(dest, 'backup.json'), JSON.stringify({ ...rec, ...fields }));
+    assert.equal(checkBackup(dest).ok, false);
+  }
+});

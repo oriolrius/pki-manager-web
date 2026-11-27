@@ -34,7 +34,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { OpenBaoHttpError, type TargetStore } from './openbao.ts';
 import { contentDigest } from './source.ts';
@@ -85,12 +85,23 @@ function markerError(error: unknown): unknown {
   return error;
 }
 
+async function holdsSnapshotMarker(store: TargetStore, marker: PairMarker): Promise<boolean> {
+  const current = markerOf(await store.kvRead(MARKER_MOUNT, MARKER_PATH));
+  return current?.backupId === marker.backupId && current.state === 'snapshot'
+    && current.sqliteContentSha256 === marker.sqliteContentSha256;
+}
+
 export async function backupPair(o: { dbPath: string; outDir: string; label: string; store?: TargetStore; quiesced?: boolean }): Promise<BackupRecord> {
   if (o.store && o.quiesced !== true) {
     throw new MigrationError('NOT_QUIESCED', 'a database + OpenBao backup needs every writer stopped (the v4 backend, its OpenBao Agents, any script with a runtime token); stop them, then pass --quiesced');
   }
-  if (existsSync(o.outDir)) throw new MigrationError('BACKUP_EXISTS', `refusing to write into existing ${o.outDir}`);
-  mkdirSync(o.outDir, { recursive: true, mode: 0o700 });
+  mkdirSync(dirname(o.outDir), { recursive: true, mode: 0o700 });
+  try {
+    mkdirSync(o.outDir, { mode: 0o700 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new MigrationError('BACKUP_EXISTS', `refusing to write into existing ${o.outDir}`);
+    throw error;
+  }
   const files: Record<string, string> = {};
   let openbao: BackupRecord['openbao'];
   let pair: BackupRecord['pair'];
@@ -107,12 +118,15 @@ export async function backupPair(o: { dbPath: string; outDir: string; label: str
       marker = { format: MARKER_FORMAT, backupId: randomUUID(), state: 'snapshot', sqliteContentSha256, label: o.label, createdAt: isoNow() };
       try {
         await o.store.kvWrite(MARKER_MOUNT, MARKER_PATH, markerFields(marker));
-        const back = markerOf(await o.store.kvRead(MARKER_MOUNT, MARKER_PATH));
-        if (!back || back.backupId !== marker.backupId || back.state !== 'snapshot' || back.sqliteContentSha256 !== sqliteContentSha256) throw new MigrationError('PAIR_MARKER', 'the pair marker read back differs from the one written (another backup running?)');
+        if (!await holdsSnapshotMarker(o.store, marker)) throw new MigrationError('PAIR_MARKER', 'the pair marker read back differs from the one written (another backup running?)');
       } catch (error) { throw markerError(error); }
       await o.store.raftSnapshot(join(o.outDir, 'openbao.snap'));
       files['openbao.snap'] = fileSha256(join(o.outDir, 'openbao.snap'));
-      try { await o.store.kvWrite(MARKER_MOUNT, MARKER_PATH, markerFields({ ...marker, state: 'released' })); } catch (error) { throw markerError(error); }
+      try {
+        // The snapshot can take minutes. A second backup can replace the marker during that time.
+        if (!await holdsSnapshotMarker(o.store, marker)) throw new MigrationError('PAIR_MARKER', 'the backup marker changed during the Raft snapshot; take the backup again');
+        await o.store.kvWrite(MARKER_MOUNT, MARKER_PATH, markerFields({ ...marker, state: 'released' }));
+      } catch (error) { throw markerError(error); }
       released = true;
       openbao = { version: h.version };
       pair = { backupId: marker.backupId, markerMount: MARKER_MOUNT, markerPath: MARKER_PATH, quiesced: true };
@@ -133,7 +147,11 @@ export async function backupPair(o: { dbPath: string; outDir: string; label: str
     // never leave a `snapshot` marker behind (a later snapshot would hold it).
     rmSync(o.outDir, { recursive: true, force: true });
     if (o.store && marker && !released) {
-      try { await o.store.kvWrite(MARKER_MOUNT, MARKER_PATH, markerFields({ ...marker, state: 'aborted' })); } catch { /* reported by the original error */ }
+      try {
+        if (await holdsSnapshotMarker(o.store, marker)) {
+          await o.store.kvWrite(MARKER_MOUNT, MARKER_PATH, markerFields({ ...marker, state: 'aborted' }));
+        }
+      } catch { /* reported by the original error */ }
     }
     throw error;
   }
@@ -148,7 +166,24 @@ export function checkBackup(dir: string): { ok: boolean; problems: string[]; rec
   }
   const record = JSON.parse(readFileSync(join(dir, 'backup.json'), 'utf8')) as BackupRecord;
   if (record.format !== BACKUP_FORMAT && record.format !== 'pki-manager-migration-backup/1') problems.push(`unknown backup format ${String(record.format)}`);
-  for (const [name, sha] of Object.entries(record.files)) {
+  const files = record.files;
+  if (!files || typeof files !== 'object' || Array.isArray(files)) {
+    return { ok: false, problems: ['backup.json has no file digest map'], record, pairEvidence: false };
+  }
+  const isDigest = (value: unknown) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  if (!isDigest(files['pki.db'])) problems.push('pki.db digest missing or invalid');
+  const hasSnapshot = Object.hasOwn(files, 'openbao.snap');
+  if (record.format === BACKUP_FORMAT) {
+    if (!isDigest(record.sqliteContentSha256)) problems.push('SQLite content digest missing or invalid');
+    if (hasSnapshot || record.pair || record.openbao) {
+      const pair = record.pair;
+      if (!hasSnapshot || !pair?.backupId || pair.quiesced !== true || pair.markerMount !== MARKER_MOUNT || pair.markerPath !== MARKER_PATH) {
+        problems.push('invalid backup pair record: snapshot, backup id, quiescence and configured marker location required');
+      }
+    }
+  }
+  for (const [name, sha] of Object.entries(files)) {
+    if (name !== 'pki.db' && name !== 'openbao.snap') { problems.push('unexpected file in backup record'); continue; }
     const path = join(dir, name);
     if (!existsSync(path)) { problems.push(`${name} missing`); continue; }
     if (fileSha256(path) !== sha) problems.push(`${name} digest differs`);
@@ -160,7 +195,7 @@ export function checkBackup(dir: string): { ok: boolean; problems: string[]; rec
       if (record.sqliteContentSha256 && contentDigest(db) !== record.sqliteContentSha256) problems.push('pki.db content digest differs');
     } finally { db.close(); }
   }
-  const pairEvidence = record.format === BACKUP_FORMAT && !!record.pair?.backupId && !!record.sqliteContentSha256 && 'openbao.snap' in record.files;
+  const pairEvidence = problems.length === 0 && record.format === BACKUP_FORMAT && hasSnapshot;
   return { ok: problems.length === 0, problems, record, pairEvidence };
 }
 
@@ -172,7 +207,7 @@ export function checkBackup(dir: string): { ok: boolean; problems: string[]; rec
 export async function checkPairEvidence(o: { dir: string; target: DatabaseSync; operator: TargetStore }): Promise<{ problems: string[]; backupId?: string }> {
   const b = checkBackup(o.dir);
   const problems = b.problems.map(p => `backup directory: ${p}`);
-  if (!existsSync(join(o.dir, 'backup.json'))) return { problems };
+  if (!b.ok) return { problems };
   if (!b.pairEvidence) {
     problems.push(`${o.dir} has no pair evidence (${b.record.format}${b.record.pair ? '' : ', no pair marker'}${'openbao.snap' in b.record.files ? '' : ', no Raft snapshot'}): a backup made before pair markers, or a SQLite-only backup, cannot prove which OpenBao state belongs to it. Take a new backup pair`);
     return { problems };
@@ -183,7 +218,7 @@ export async function checkPairEvidence(o: { dir: string; target: DatabaseSync; 
     problems.push(`the restored database is not the database of backup ${expected} (content ${content.slice(0, 16)}... != ${b.record.sqliteContentSha256!.slice(0, 16)}...): it comes from another backup, or it changed after the restore (verify before v4 starts)`);
   }
   let raw: Record<string, string> | null;
-  try { raw = await o.operator.kvRead(b.record.pair!.markerMount, b.record.pair!.markerPath); } catch (error) {
+  try { raw = await o.operator.kvRead(MARKER_MOUNT, MARKER_PATH); } catch (error) {
     problems.push(`cannot read the pair marker ${b.record.pair!.markerMount}/${b.record.pair!.markerPath} in the restored OpenBao: ${(error as Error).message} (use an operator token: --openbao-operator-token-file)`);
     return { problems, backupId: expected };
   }
