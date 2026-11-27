@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T08:56:00Z'
+updated_date: '2026-11-27T09:06:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -72,4 +72,6 @@ At ff096d11 all 43 migration tests passed. On synthetic v3.19.1 data the signed 
 The full backend on ff096d11 passed 1110/1110 tests (118 files) against the signed fork with separate runtime credentials. The site at 6cf132b9 passed the 189-page link check. Reconciliation now checks the success status and recorded approver of extra migration audit entries; a change to either field is a mismatch.
 
 On clean b01287e8, restore verification checked the live policy and version of every X.509, SSH and SCEP RA key owned by SQLite. The migration typecheck and all 50 tests passed. A synthetic v3.19.1 migration and its restored copy each passed 94 checks, including 80 reconciled rows, 10 live keys and one RA unwrap. The restored v4 backend issued X.509 and SSH certificates with Cosmian stopped. A later matching pair passed with 12 keys, and a later database with an earlier Raft snapshot failed. The reverse mismatch, the SCEP gateway after non-transferable RA reprovision, and CRL publication during an outage remain release blockers.
+
+Integrated migration 0019 in 07a8f787. On that clean commit, all 1122 backend tests passed with the signed OpenBao fork, all 50 migrator tests passed, and Drizzle validated the migration history. The v3.19.1 rehearsal passed 94/94 checks at cutover and after restore with Cosmian stopped. The site link check passed on 189 pages at 6b9ecade. A two-process regression reproduced SQLITE_BUSY when a delete raced an ongoing revocation. At d0a1b3e3 the delete acquires its SQLite write lock before reading and retains the committed revocation. All 24 CRL publication tests, backend typecheck and lint for the changed files passed. A local HTTP fixture confirmed one POST per client after a busy 503 with retries configured; the CLI displayed Retry-After, and Ansible preserved the application error. Independent CRL review is in progress.
 <!-- SECTION:NOTES:END -->
