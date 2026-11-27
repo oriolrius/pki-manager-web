@@ -96,6 +96,12 @@ trusts only its own zone's user CAs (`ssh-host-krl.service` narrows the composed
   isolated fixture with `scripts/openbao-test.sh` at the repository root. Set
   `OPENBAO_TEST_REQUIRED=1` for a run that requires the fixture. See
   [Testing](../docs/development/testing.md#unit-tests-and-checks).
+- Key exports (`src/crypto/pkcs12.ts`): an encrypted PKCS#8 key uses Node crypto. JKS stores
+  and PKCS#12 truststores use the Java KeyStore API through `KeyStoreExport.java` (needs
+  `java`; the image compiles it, a source checkout runs it in source-file mode). Only a PKCS#12
+  bundle with a private key runs the `openssl` CLI: Java lowercases its friendlyName and
+  encodes non-ASCII passwords wrongly for legacy 3DES. A legacy PKCS#12 truststore therefore
+  rejects a non-ASCII password. `src/crypto/keystore-export.test.ts` runs without `openssl`.
 - CORS reads the comma-separated origins in `FRONTEND_URL` through `src/lib/cors-origins.ts`.
   An unset value permits every origin.
 

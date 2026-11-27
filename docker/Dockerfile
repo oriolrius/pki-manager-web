@@ -97,8 +97,9 @@ RUN pnpm run build:docker
 FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS backend
 
 # Patch base-image OS packages (libexpat, c-ares, ...) flagged by the image scan, then
-# install dumb-init for signal handling, the openssl CLI (PKCS#12 export + encrypted key
-# downloads, see backend/src/crypto/pkcs12.ts) and OpenJDK for keytool (JKS generation).
+# install dumb-init for signal handling, the openssl CLI (only PKCS#12 bundles with a private
+# key, see backend/src/crypto/pkcs12.ts) and OpenJDK (the KeyStoreExport helper and keytool:
+# JKS stores and PKCS#12 truststores).
 # The runtime is pure `node` (see entrypoint + CMD), so pnpm is never installed here and
 # the bundled npm/npx are removed — this keeps their vulnerable transitive deps
 # (sigstore, tar, ...) and the corepack pnpm cache out of the shipped image.
@@ -122,6 +123,12 @@ COPY --from=dependencies --chown=nodejs:nodejs --chmod=644 /app/backend/package.
 
 # Copy built backend
 COPY --from=build-backend --chown=nodejs:nodejs /app/backend/dist ./backend/dist
+
+# Java key store helper (backend/src/crypto/KeyStoreExport.java): compile it next to pkcs12.js
+# once, so an export does not compile it again (the JRE has the jdk.compiler module, not javac).
+COPY --from=build-backend --chown=nodejs:nodejs --chmod=644 /app/backend/src/crypto/KeyStoreExport.java ./backend/dist/crypto/
+RUN java -m jdk.compiler/com.sun.tools.javac.Main -d /app/backend/dist/crypto /app/backend/dist/crypto/KeyStoreExport.java && \
+    chmod 644 /app/backend/dist/crypto/KeyStoreExport.class
 
 # Copy database migrations (SQL files not copied by TypeScript)
 COPY --from=build-backend --chown=nodejs:nodejs --chmod=u=rwX,go=rX /app/backend/src/db/migrations ./backend/dist/db/migrations

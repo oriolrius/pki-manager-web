@@ -11,18 +11,15 @@
  * - Used when an application needs to verify certificates signed by a CA
  */
 
-import { createPkcs12Bundle } from '../crypto/pkcs12.js';
+import { createJavaKeyStore } from '../crypto/pkcs12.js';
 import { execFile } from 'node:child_process';
-import * as fs from 'fs/promises';
-import * as os from 'os';
-import * as path from 'path';
 
 /**
  * Runs keytool without a shell, so no argument (password, alias, path) is ever
  * parsed as shell syntax. Pass passwords as `-storepass:env NAME` with the value
  * in `secrets`: they reach keytool through its environment and never appear in
  * argv or the process list. stdin is closed so a missing password fails instead
- * of waiting on an interactive prompt.
+ * of waiting on an interactive prompt. Used by the multi-entry bulk JKS downloads.
  */
 export function runKeytool(args: string[], secrets: Record<string, string> = {}): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -55,8 +52,8 @@ export class JKSKeytoolError extends JKSError {
   constructor(operation: 'keystore' | 'truststore') {
     super(
       operation === 'keystore'
-        ? 'Failed to convert to JKS format. Ensure Java keytool is available on the server.'
-        : 'Failed to create JKS truststore. Ensure Java keytool is available on the server.'
+        ? 'Failed to convert to JKS format. Ensure Java is available on the server.'
+        : 'Failed to create JKS truststore. Ensure Java is available on the server.'
     );
     this.name = 'JKSKeytoolError';
   }
@@ -70,7 +67,7 @@ export interface JKSKeystoreInput {
   privateKeyPem: string;
   /** CA certificate PEM content (for chain) */
   caCertificatePem: string;
-  /** Password for the JKS file (minimum 6 chars, defaults to 'changeit') */
+  /** Store password (defaults to 'changeit'); the key entry password (defaults to empty) */
   password?: string;
   /** Friendly name/alias for the certificate entry */
   alias?: string;
@@ -85,7 +82,7 @@ export interface JKSTruststoreInput {
   caCertificatePem: string;
   /** CA subject DN (to extract CN for alias) */
   caSubjectDn: string;
-  /** Password for the JKS file (minimum 6 chars, defaults to 'changeit') */
+  /** Store password (defaults to 'changeit') */
   password?: string;
   /** Common name from certificate (for filename) */
   commonName: string;
@@ -107,7 +104,7 @@ export interface JKSResult {
  *
  * @param input - The keystore input parameters
  * @returns JKS result with base64-encoded data
- * @throws JKSKeytoolError if keytool conversion fails
+ * @throws JKSKeytoolError if Java cannot write the key store
  */
 export async function generateJKSKeystore(input: JKSKeystoreInput): Promise<JKSResult> {
   const {
@@ -120,56 +117,27 @@ export async function generateJKSKeystore(input: JKSKeystoreInput): Promise<JKSR
     serialShort,
   } = input;
 
-  // Create PKCS#12 as intermediate format (certificate + private key + CA chain).
-  // Uses openssl so EC keys are supported (node-forge cannot encode them).
-  const p12Buffer = await createPkcs12Bundle({
-    certPem: certificatePem,
-    privateKeyPem,
-    chainPems: [caCertificatePem],
-    password: password || '',
-    friendlyName: alias || commonName,
-  });
-
-  // Create temp directory for keytool operations
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-keystore-'));
-  const p12Path = path.join(tempDir, 'temp.p12');
-  const jksPath = path.join(tempDir, 'keystore.jks');
-
+  // One Java KeyStore API call (RSA and EC). Without a password the store password is
+  // 'changeit' and the key entry password is empty, as the earlier keytool conversion made it.
+  let jksBuffer: Buffer;
   try {
-    await fs.writeFile(p12Path, p12Buffer);
-
-    // JKS requires a password (minimum 6 characters)
-    // If no password provided, use a default one
-    const jksPassword = password || 'changeit';
-    const srcPassword = password || '';
-
-    // Import the certificate with its private key from PKCS#12
-    try {
-      await runKeytool(
-        ['-importkeystore', '-srckeystore', p12Path, '-srcstoretype', 'PKCS12', '-srcstorepass:env', 'KEYTOOL_SRC_PASS',
-          '-destkeystore', jksPath, '-deststoretype', 'JKS', '-deststorepass:env', 'KEYTOOL_DEST_PASS', '-noprompt'],
-        { KEYTOOL_SRC_PASS: srcPassword, KEYTOOL_DEST_PASS: jksPassword },
-      );
-    } catch {
-      throw new JKSKeytoolError('keystore');
-    }
-
-    // Read the JKS file
-    const jksBuffer = await fs.readFile(jksPath);
-
-    return {
-      data: jksBuffer.toString('base64'),
-      mimeType: 'application/x-java-keystore',
-      filename: `${commonName}-${serialShort}-keystore.jks`,
-    };
-  } finally {
-    // Clean up temp files
-    try {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    jksBuffer = await createJavaKeyStore({
+      type: 'JKS',
+      storePassword: password || 'changeit',
+      keyPassword: password || '',
+      alias: alias || commonName,
+      privateKeyPem,
+      certPems: [certificatePem, caCertificatePem],
+    });
+  } catch {
+    throw new JKSKeytoolError('keystore');
   }
+
+  return {
+    data: jksBuffer.toString('base64'),
+    mimeType: 'application/x-java-keystore',
+    filename: `${commonName}-${serialShort}-keystore.jks`,
+  };
 }
 
 /**
@@ -177,54 +145,33 @@ export async function generateJKSKeystore(input: JKSKeystoreInput): Promise<JKSR
  *
  * @param input - The truststore input parameters
  * @returns JKS result with base64-encoded data
- * @throws JKSKeytoolError if keytool import fails
+ * @throws JKSKeytoolError if Java cannot write the key store
  */
 export async function generateJKSTruststore(input: JKSTruststoreInput): Promise<JKSResult> {
   const { caCertificatePem, caSubjectDn, password, commonName, serialShort } = input;
 
-  // Create temp directory for keytool operations
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'jks-truststore-'));
-  const jksPath = path.join(tempDir, 'truststore.jks');
-  const caCertPath = path.join(tempDir, 'ca.pem');
+  // Extract CA CN for alias
+  const caCnMatch = caSubjectDn.match(/CN=([^,]+)/);
+  const caCn = caCnMatch ? caCnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca';
+  const caAlias = `ca-${caCn}`.toLowerCase();
 
+  // CA certificate as a trusted certificate entry
+  let jksBuffer: Buffer;
   try {
-    await fs.writeFile(caCertPath, caCertificatePem);
-
-    // JKS requires a password (minimum 6 characters)
-    const jksPassword = password || 'changeit';
-
-    // Extract CA CN for alias
-    const caCnMatch = caSubjectDn.match(/CN=([^,]+)/);
-    const caCn = caCnMatch ? caCnMatch[1].replace(/[^a-zA-Z0-9-_.]/g, '_') : 'ca';
-    const caAlias = `ca-${caCn}`.toLowerCase();
-
-    // Import CA certificate as trusted certificate entry
-    // Note: -storetype JKS is required since Java 9+ defaults to PKCS#12
-
-    try {
-      await runKeytool(
-        ['-importcert', '-alias', caAlias, '-file', caCertPath, '-keystore', jksPath, '-storetype', 'JKS',
-          '-storepass:env', 'KEYTOOL_STORE_PASS', '-noprompt'],
-        { KEYTOOL_STORE_PASS: jksPassword },
-      );
-    } catch {
-      throw new JKSKeytoolError('truststore');
-    }
-
-    // Read the JKS file
-    const jksBuffer = await fs.readFile(jksPath);
-
-    return {
-      data: jksBuffer.toString('base64'),
-      mimeType: 'application/x-java-keystore',
-      filename: `${commonName}-${serialShort}-truststore.jks`,
-    };
-  } finally {
-    // Clean up temp files
-    try {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    jksBuffer = await createJavaKeyStore({
+      type: 'JKS',
+      storePassword: password || 'changeit',
+      alias: caAlias,
+      privateKeyPem: null,
+      certPems: [caCertificatePem],
+    });
+  } catch {
+    throw new JKSKeytoolError('truststore');
   }
+
+  return {
+    data: jksBuffer.toString('base64'),
+    mimeType: 'application/x-java-keystore',
+    filename: `${commonName}-${serialShort}-truststore.jks`,
+  };
 }

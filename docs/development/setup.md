@@ -9,6 +9,8 @@ run `just` to list the recipes.
   major version (`nvm use`, `fnm use`). CI reads the same file, and `docker/Dockerfile` uses
   `node:22-alpine`. The website in `site/` pins its own exact version in `site/.nvmrc`.
 - Docker with Compose v2 for OpenBao and Keycloak, and OpenSSL for the dev TLS certificates
+  and the PKCS#12 downloads that contain a private key
+- A Java 17+ JDK (`java` and `keytool`) for the JKS and PKCS#12 truststore downloads
 - [just](https://just.systems), [tmux](https://github.com/tmux/tmux) and [mprocs](https://github.com/pvolok/mprocs) for the dev stack
 - Optional: the [Backlog.md](https://backlog.md) CLI (`npm install -g backlog.md`) and
   [socat](http://www.dest-unreach.org/socat/) for the task board

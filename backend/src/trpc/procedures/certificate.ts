@@ -40,7 +40,7 @@ import {
 import { getCRLService } from '../../services/crl.service.js';
 import { crlDistributionUrl } from '../../lib/crl-url.js';
 import { findForgeExtension, convertCertificateFormat } from '../../crypto/x509.js';
-import { createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
+import { createJavaKeyStore, createPkcs12Bundle, encryptPrivateKeyPem } from '../../crypto/pkcs12.js';
 import { X509Certificate, createHash } from 'node:crypto';
 
 export const certificateRouter = router({
@@ -971,7 +971,7 @@ export const certificateRouter = router({
                   // Add certificate as .pem file
                   zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
 
-                  // Add private key as .priv file (encrypted or unencrypted; openssl handles RSA + EC)
+                  // Add private key as .priv file (encrypted or unencrypted; Node crypto handles RSA + EC)
                   if (input.encryptPrivateKey && input.password) {
                     const encryptedKeyPem = await encryptPrivateKeyPem(privateKeyPem, input.password);
                     zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
@@ -1083,7 +1083,7 @@ export const certificateRouter = router({
             // Add certificate as .pem file
             zip.file(`${commonName}-${serialShort}.pem`, certificatePem);
 
-            // Add private key as .priv file (encrypted or unencrypted; openssl handles RSA + EC)
+            // Add private key as .priv file (encrypted or unencrypted; Node crypto handles RSA + EC)
             if (input.encryptPrivateKey && input.password) {
               const encryptedKeyPem = await encryptPrivateKeyPem(privateKeyPem, input.password);
               zip.file(`${commonName}-${serialShort}.priv`, encryptedKeyPem);
@@ -1261,7 +1261,7 @@ export const certificateRouter = router({
             const outputStream = new PassThrough();
             tarPack.pipe(outputStream);
 
-            // Prepare private key (encrypted or unencrypted; openssl handles RSA + EC)
+            // Prepare private key (encrypted or unencrypted; Node crypto handles RSA + EC)
             let keyContent: string;
             if (input.encryptPrivateKey && input.password) {
               keyContent = await encryptPrivateKeyPem(privateKeyPem, input.password);
@@ -2573,13 +2573,13 @@ export const certificateRouter = router({
                 continue;
               }
 
-              // Create PKCS#12 for this certificate (with CA chain) — openssl supports RSA + EC.
-              const p12Buffer = await createPkcs12Bundle({
-                certPem: certificatePem,
+              // PKCS#12 for this certificate (with CA chain), from the Java KeyStore API (RSA + EC).
+              const p12Buffer = await createJavaKeyStore({
+                type: 'PKCS12',
+                storePassword: password,
+                alias,
                 privateKeyPem,
-                chainPems: [caData.pem],
-                password,
-                friendlyName: alias,
+                certPems: [certificatePem, caData.pem],
               });
 
               // Write PKCS#12 to temp file
@@ -2823,7 +2823,7 @@ export const certificateRouter = router({
               certificate.id
             );
 
-            // Prepare private key (encrypted or unencrypted; openssl handles RSA + EC)
+            // Prepare private key (encrypted or unencrypted; Node crypto handles RSA + EC)
             let keyContent: string;
             if (input.encryptPrivateKey && input.password) {
               keyContent = await encryptPrivateKeyPem(privateKeyPem, input.password);

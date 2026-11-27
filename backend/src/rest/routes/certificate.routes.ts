@@ -947,7 +947,7 @@ export async function certificateRoutes(fastify: FastifyInstance): Promise<void>
           try {
             const kmsService = getKMSService();
             const privateKeyPem = await kmsService.getPrivateKey(cert.kmsKeyId, cert.id);
-            // Encrypt with password via openssl (supports RSA + EC).
+            // Encrypt with password via Node crypto (supports RSA + EC).
             const encryptedPem = await encryptPrivateKeyPem(privateKeyPem, password!);
             mimeType = 'application/x-pem-file';
             filename = `${baseName}_encrypted.key`;
