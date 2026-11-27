@@ -2,7 +2,7 @@
  * Certificate Download Format Integration Tests
  *
  * Tests for GET /api/v1/certificates/:id/download endpoint with real KMS integration.
- * These tests require KMS to be running (docker compose up in kms/ directory).
+ * Run these tests with the scoped OpenBao test instance.
  *
  * Tests validate:
  * 1. PEM format download
@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import { spawnSync } from 'node:child_process';
-import { createPrivateKey, X509Certificate } from 'node:crypto';
+import { createPrivateKey, randomBytes, X509Certificate } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import forge from 'node-forge';
@@ -30,6 +30,8 @@ import { certificateAuthorities, certificates } from '../../db/schema.js';
 import { isKmsAvailable } from '../../test/kms-helper.js';
 import { eq } from 'drizzle-orm';
 import type { FastifyRequest, FastifyReply } from 'fastify';
+
+const exportPassword = randomBytes(24).toString('hex');
 
 // Store created entity IDs for cleanup
 const createdCaIds: string[] = [];
@@ -311,7 +313,7 @@ describe('Certificate Download - KMS Integration', () => {
 
       const response = await server.inject({
         method: 'GET',
-        url: `/api/v1/certificates/${testCertId}/download?format=pkcs8-encrypted&password=testpassword123`,
+        url: `/api/v1/certificates/${testCertId}/download?format=pkcs8-encrypted&password=${exportPassword}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -325,7 +327,7 @@ describe('Certificate Download - KMS Integration', () => {
       expect(pemContent).toMatch(/-----BEGIN.*ENCRYPTED.*PRIVATE KEY-----/);
 
       // Try to decrypt it with the password
-      const privateKey = forge.pki.decryptRsaPrivateKey(pemContent, 'testpassword123');
+      const privateKey = forge.pki.decryptRsaPrivateKey(pemContent, exportPassword);
       expect(privateKey).not.toBeNull();
 
       console.log('✅ pkcs8-encrypted format download works');
@@ -360,7 +362,7 @@ describe('Certificate Download - KMS Integration', () => {
       const response = await server.inject({
         method: 'GET',
         url: `/api/v1/certificates/${testCertId}/download?format=p12${legacy ? '&legacy=true' : ''}`,
-        headers: { 'x-export-password': 'testpassword123' },
+        headers: { 'x-export-password': exportPassword },
       });
 
       expect(response.statusCode).toBe(200);
@@ -370,7 +372,7 @@ describe('Certificate Download - KMS Integration', () => {
       expect(body.filename).toContain('.p12');
 
       const input = Buffer.from(body.data, 'base64');
-      const args = ['pkcs12', '-passin', 'pass:testpassword123'];
+      const args = ['pkcs12', '-passin', `pass:${exportPassword}`];
       const info = spawnSync('openssl', [...args, '-info', '-noout'], { input, encoding: 'utf8' });
       expect(info.status, info.stderr).toBe(0);
       const pbe = legacy ? 'pbeWithSHA1And3-KeyTripleDES-CBC' : 'PBES2, PBKDF2, AES-256-CBC';
@@ -379,7 +381,7 @@ describe('Certificate Download - KMS Integration', () => {
       expect(info.stderr).toContain(`Shrouded Keybag: ${pbe}`);
       if (legacy) {
         const asn1 = forge.asn1.fromDer(input.toString('binary'));
-        expect(forge.pkcs12.pkcs12FromAsn1(asn1, 'testpassword123').safeContents.length).toBeGreaterThan(0);
+        expect(forge.pkcs12.pkcs12FromAsn1(asn1, exportPassword).safeContents.length).toBeGreaterThan(0);
       } else {
         expect(info.stderr.match(/PRF hmacWithSHA256/g)).toHaveLength(2);
       }
@@ -404,7 +406,7 @@ describe('Certificate Download - KMS Integration', () => {
 
       const response = await server.inject({
         method: 'GET',
-        url: `/api/v1/certificates/${testCertId}/download?format=pfx&includeChain=false&password=testpassword123`,
+        url: `/api/v1/certificates/${testCertId}/download?format=pfx&includeChain=false&password=${exportPassword}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -412,7 +414,7 @@ describe('Certificate Download - KMS Integration', () => {
       expect(body.data).toBeDefined();
       expect(body.mimeType).toBe('application/x-pkcs12');
 
-      const issuer = spawnSync('openssl', ['pkcs12', '-passin', 'pass:testpassword123', '-cacerts', '-nokeys'], { input: Buffer.from(body.data, 'base64') });
+      const issuer = spawnSync('openssl', ['pkcs12', '-passin', `pass:${exportPassword}`, '-cacerts', '-nokeys'], { input: Buffer.from(body.data, 'base64') });
       expect(issuer.status).toBe(0);
       expect(issuer.stdout.toString()).not.toContain('BEGIN CERTIFICATE');
     });
@@ -492,7 +494,7 @@ describe('Certificate Download - KMS Integration', () => {
 
       const response = await server.inject({
         method: 'GET',
-        url: `/api/v1/certificates/${testCertId}/download?format=jks-keystore&password=testpassword123`,
+        url: `/api/v1/certificates/${testCertId}/download?format=jks-keystore&password=${exportPassword}`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -539,7 +541,7 @@ describe('Certificate Download - KMS Integration', () => {
 
       const response = await server.inject({
         method: 'GET',
-        url: `/api/v1/certificates/${testCertId}/download?format=jks-truststore&password=testpassword123`,
+        url: `/api/v1/certificates/${testCertId}/download?format=jks-truststore&password=${exportPassword}`,
       });
 
       expect(response.statusCode).toBe(200);

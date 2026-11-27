@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@codex'
 created_date: '2026-11-26T20:25:00Z'
-updated_date: '2026-11-27T07:16:00Z'
+updated_date: '2026-11-27T07:26:00Z'
 labels: []
 dependencies: []
 ordinal: 4000
@@ -54,4 +54,6 @@ Application acceptance: all-in-cluster kind deployment issued a real dual-use te
 Additional controls: removal of the openssl executable from a disposable backend image left 102/102 live checks green (including X.509, CRL, SSH, SCEP, zero skips). The backend rerun after tightening the RA OpenAPI contract passed 1040/1040. An independent synthetic wrapped-transfer probe imported eight source keys across X.509 CA/leaf RSA and EC, Sensitive SSH and SCEP; public keys, signatures and import policies matched. A non-transferable ninth key stayed at its source. This proves the key transport, not the database mapping or the complete v3 cutover.
 
 Scope of the 102 checks without the openssl executable: X.509 issuance, renewal, revocation, CRLs, CSR signing, SSH and SCEP. The run omitted x509_exports. PKCS#12, JKS via PKCS#12, and password-protected PKCS#8 used the executable at commit 23b37825; their interoperability checks ran separately with the normal image. The 08:00 independent review found duplicate CRL numbers under concurrency, stale CRLs after outages and X.509 error/diagnostic gaps. Release is pending corrections and independent re-verification.
+
+Verified v3.19.1 directly with Cosmian 5.28.0 and the v3 Keycloak realm. Vitest exited 0: 110 files and 1,018 tests passed, zero failures or pending tests. The signed-image Ansible collection run also passed and found five Transit keys. The public release draft is PR #120. Its CodeQL finding at x509-extensions.ts refers to the public key identifier from RFC 5280 §4.2.1.2 method 1. Certificate signatures use SHA-256 or stronger and an independent issuer-key verification. GitGuardian identified a synthetic export-test password; the test now generates a fresh value per run.
 <!-- SECTION:NOTES:END -->
