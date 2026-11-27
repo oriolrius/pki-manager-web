@@ -7,7 +7,7 @@ Use this procedure for a **new PKI Manager v4 installation**. The backend stores
 | X.509 and SSH | `pki-manager-backend` | `openbao-agent` | `OPENBAO_TOKEN_FILE` | X.509 and SSH mounts only |
 | SCEP RA | `pki-manager-ra` | `openbao-agent-ra` (profile `scep`) | `OPENBAO_RA_TOKEN_FILE` | RA mount only |
 
-Only the RA credential can recover a CMS session key or sign with an RA key. The X.509/SSH token gets HTTP 403 on the RA mount. The RA token gets HTTP 403 on the X.509 and SSH mounts. The backend binds each RA operation to the authenticated SCEP integration and to the key name and version of its RA binding. A client cannot select the key. An installation without SCEP does not run the RA Agent. Its X.509 and SSH functions work, and the RA endpoints answer HTTP 503. The backend refuses to start when `OPENBAO_RA_TOKEN_FILE` names the same file as `OPENBAO_TOKEN_FILE`.
+Only the RA credential can recover a CMS session key or sign with an RA key. The X.509/SSH token gets HTTP 403 on the RA mount. The RA token gets HTTP 403 on the X.509 and SSH mounts. The backend binds each RA operation to the authenticated SCEP integration and to the key name and version of its RA binding. A client cannot select the key. An installation without SCEP does not run the RA Agent. Its X.509 and SSH functions work, and the RA endpoints answer HTTP 503. The backend refuses to start when both variables specify the same normalized path. Use separate token files. If an alias or a copy supplies the X.509/SSH token to SCEP, the RA policy denies the operation.
 
 A v3 installation has its keys in Cosmian. Keep its matched application and KMS backups. Starting this stack against an existing v3 database does not transfer any keys. See [Docker deployment](deployment.md).
 
@@ -129,7 +129,7 @@ Run these commands in Bash from the repository root on the deployment host. Use 
 Earlier v4 builds gave the `pki-manager-backend` AppRole both policies, `pki-manager-backend` and `pki-manager-ra`. With that AppRole, an X.509 or SSH token can also recover SCEP session keys. Apply the split as follows:
 
 1. Update the repository files (policies, Agent configuration and Compose file) together. Create `openbao/state/approle-ra` and `openbao/state/token-ra` as in [Prepare the host](#prepare-the-host). Obtain an operator token. Run `configure` again, and for SCEP run `approle-credentials ra`. The operator policy must be the new one: `configure` writes it, so the first run needs the root token or an identity that can write `sys/policies/acl/pki-manager-operator`.
-2. A renewed AppRole token keeps the policies of its login. Revoke the existing Agent tokens, then restart the Agents. Until the restart, the backend gets HTTP 403.
+2. A renewed AppRole token keeps the policies of its login. On the dedicated OpenBao instance, the command below revokes **every login token issued by the `approle/` auth mount**. If other applications share that mount, have its administrator identify all active PKI Agent logins by role name and revoke their accessors individually with `bao token revoke -accessor <accessor>`. Skip the prefix revocation on a shared mount. Restart the PKI Agents to obtain new credentials. While OpenBao refuses an old RA token with HTTP 403, the SCEP API returns HTTP 502. A missing RA credential returns HTTP 503.
 
    ```bash
    dc run --rm --no-deps -T -e BAO_TOKEN openbao-bootstrap revoke-agent-tokens
@@ -171,7 +171,7 @@ The configured SecretIDs have unlimited uses and no expiry. To replace one, take
    dc logs --since=1m openbao-agent
    ```
 
-3. Destroy the old SecretID by accessor. This prevents new logins with that SecretID. Its previously issued tokens retain their own expiry. For incident response, run `revoke-agent-tokens` (it revokes the tokens of both AppRoles) and restart the Agents, as in the upgrade procedure.
+3. Destroy the old SecretID by accessor. This prevents new logins with that SecretID. Its previously issued tokens retain their own expiry. For incident response, follow the token revocation and Agent restart procedure for your auth mount in [Upgrade an installation that has one backend AppRole](#upgrade-an-installation-that-has-one-backend-approle).
 
    ```bash
    dc exec -T -e BAO_TOKEN openbao bao write "$role/secret-id-accessor/destroy" \

@@ -138,12 +138,19 @@ export class RAService {
       if (!claimed.length) throw new RAError(409, 'RA provisioning lease is still active; retry after expiry');
       binding = claimed[0];
     }
+    const clearLease = () => db.update(integrationRAs).set({ lease: null, leaseUntil: null })
+      .where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease)));
+    const provisionFailure = async (error: unknown) => {
+      // A missing credential can be restored immediately. A retry reuses the recorded key name.
+      if (error instanceof OpenBaoConfigError) await clearLease();
+      return openBaoFailure(error, 'provision');
+    };
     {
       assertNotLegacy(binding);
       if (unassigned(binding)) {
         // Record the generated name before the key exists: a retry after a lost
         // response then reads the same key instead of creating an orphan.
-        try { assertRAKeyProviderSetting(); } catch (error) { throw openBaoFailure(error, 'provision'); }
+        try { assertRAKeyProviderSetting(); } catch (error) { throw await provisionFailure(error); }
         const keyId = `scep-ra-${randomUUID()}`;
         const recorded = db.update(integrationRAs).set({ keyProvider: 'openbao', keyId, publicKeyId: null, keyVersion: 1 })
           .where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease), isNull(integrationRAs.keyId), isNull(integrationRAs.publicKeyId))).run();
@@ -154,11 +161,9 @@ export class RAService {
       const key = openBaoKey(binding);
       // ensureKey creates the key only when it does not exist, and accepts only a
       // generated key: a provisioning never adopts an imported key.
-      try { await getOpenBaoRATransit().ensureKey(key.name, key.version); } catch (error) { throw openBaoFailure(error, 'provision'); }
+      try { await getOpenBaoRATransit().ensureKey(key.name, key.version); } catch (error) { throw await provisionFailure(error); }
       const result = await this.issue(identity, binding, lease);
-      // On failure retain the lease until expiry. Retries then reuse recorded keys;
-      // an unrecorded allocation can be reconciled by its integration audit trail.
-      await db.update(integrationRAs).set({ lease: null, leaseUntil: null }).where(and(eq(integrationRAs.integrationId, identity.id), eq(integrationRAs.lease, lease)));
+      await clearLease();
       return result;
     }
   }

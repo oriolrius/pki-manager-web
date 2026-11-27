@@ -185,7 +185,11 @@ to `preflight` and `apply`. The rules:
 - A file with the right digest but the key of **another** row is imported, then refused: its
   public key differs from the source key (`IMPORT_MISMATCH`). The wrong key stays under that
   Transit name, and the next run stops on it (`TARGET_CONFLICT`); nothing is overwritten.
-  Delete that Transit key with an operator token, fix the approval, and run again.
+  Confirm the target mount, key name and public key from the failed import before removing it.
+  Use an administrator credential with config and delete rights on that key. The migration
+  token and the supplied operator policy lack those rights. Run
+  `bao write <mount>/keys/<name>/config deletion_allowed=true`, then
+  `bao delete <mount>/keys/<name>`. Correct the material and its approval, then run apply again.
 
 v3 keeps CA certificates (and a leaf PEM when its row has none) only in Cosmian, and `apply`
 writes every certificate into the target. Without Cosmian, give them in a bundle:

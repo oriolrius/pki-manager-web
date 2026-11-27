@@ -7,7 +7,7 @@ import { db } from '../../db/client.js';
 import { auditLog, certificateAuthorities, certificates, integrationRAs, integrations } from '../../db/schema.js';
 import { externalRoutes } from './external.routes.js';
 import { IntegrationService } from '../../services/integration.service.js';
-import { OpenBaoError, OpenBaoResponseError, verifyDigestSignature } from '../../openbao/ra-transit.js';
+import { OpenBaoConfigError, OpenBaoError, OpenBaoResponseError, verifyDigestSignature } from '../../openbao/ra-transit.js';
 
 // The RA key goes to a fake OpenBao Transit with real RSA-3072 keys (the live fork
 // run is in scep/README.md). The issuing CA facade is mocked. `operation` is the old
@@ -151,11 +151,17 @@ describe('OpenBao-bound SCEP RA', () => {
 
   it('provisions a new binding in OpenBao and issues its RA certificate from an OpenBao-signed CSR', async () => {
     delete process.env.SCEP_RA_KEY_PROVIDER;
+    transit.ensureKey.mockRejectedValueOnce(new OpenBaoConfigError('RA token file unavailable'));
+    const missing = await request(bao.token, 'provision');
+    expect(missing.statusCode).toBe(503);
+    const pending = await bindingOf(bao.id);
+    expect(pending.lease).toBeNull();
     const res = await request(bao.token, 'provision');
     expect(res.statusCode, res.body).toBe(200);
     expect(Object.keys(res.json()).sort()).toEqual(['certificatePem', 'previousCertificatesPem']);
     const binding = await bindingOf(bao.id);
     expect(binding.keyProvider).toBe('openbao');
+    expect(binding.keyId).toBe(pending.keyId);
     expect(binding.keyId).toMatch(/^scep-ra-[0-9a-f-]{36}$/);
     expect(binding.keyVersion).toBe(1); expect(binding.publicKeyId).toBeNull(); expect(binding.lease).toBeNull();
     expect(operation).not.toHaveBeenCalled(); // no Cosmian RA key operation
@@ -167,7 +173,9 @@ describe('OpenBao-bound SCEP RA', () => {
     expect(row.kmsKeyId).toBeNull(); // the RA key belongs to the binding, not to the certificate row
     expect(JSON.stringify(res.json())).not.toContain(binding.keyId);
     const audit = await db.select().from(auditLog).where(eq(auditLog.entityId, bao.id));
-    expect(audit.find(r => r.operation === 'scep.ra.provision')?.details).toBe(JSON.stringify({ phase: 'completed', provider: 'openbao' }));
+    const attempts = audit.filter(r => r.operation === 'scep.ra.provision');
+    expect(attempts.find(r => r.status === 'failure')?.details).toBe(JSON.stringify({ phase: 'failed', statusCode: 503, code: 'RA_OPERATION_FAILED', provider: 'openbao' }));
+    expect(attempts.find(r => r.status === 'success')?.details).toBe(JSON.stringify({ phase: 'completed', provider: 'openbao' }));
   });
 
   it('signs and unwraps with the bound key and fixed version only', async () => {
@@ -248,7 +256,6 @@ describe('OpenBao-bound SCEP RA', () => {
     await db.update(integrationRAs).set({ keyId: null, keyProvider: 'cosmian', keyVersion: null, certificateId: null, certificatePem: null }).where(eq(integrationRAs.integrationId, bao.id));
     for (const value of ['cosmian', 'vault']) {
       process.env.SCEP_RA_KEY_PROVIDER = value;
-      await db.update(integrationRAs).set({ lease: null, leaseUntil: null }).where(eq(integrationRAs.integrationId, bao.id));
       const res = await request(bao.token, 'provision');
       expect(res.statusCode, value).toBe(503);
     }
