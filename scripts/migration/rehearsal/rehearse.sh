@@ -18,7 +18,7 @@
 #      migrated keys: CRL, new leaf, renewal with key reuse, PKCS#12, SSH host
 #      certificate, SCEP RA state and renewal.
 #
-# Needs: docker, jq, curl, openssl, ssh-keygen, python3 (free ports), Node >= 22.18, and
+# Needs: docker, jq, curl, openssl, ssh, ssh-keygen, python3 (free ports), Node >= 22.18, and
 # `pnpm install` done (the v4 migration runner and server run from backend/). Images,
 # pulled when missing:
 #   PKI_V3_IMAGE   (default ghcr.io/oriolrius/pki-manager-web/backend:3.19.1)
@@ -43,8 +43,21 @@ RUN="${1:-$(mktemp -d "${TMPDIR:-/tmp}/pki-migration-rehearsal.XXXXXX")}"
 # A unique prefix per run: teardown removes only this run's containers and network.
 P="${PREFIX:-pkimig-$(date -u +%Y%m%d%H%M%S)-$$}"
 NET="$P-net"
-free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'; }
-KMS_PORT="${KMS_PORT:-$(free_port)}"; V3_PORT="${V3_PORT:-$(free_port)}"; BAO_PORT="${BAO_PORT:-$(free_port)}"; BAO2_PORT="${BAO2_PORT:-$(free_port)}"; V4_PORT="${V4_PORT:-$(free_port)}"
+NET_ID=
+V4_PID=
+ports=$(python3 - "${KMS_PORT:-0}" "${V3_PORT:-0}" "${BAO_PORT:-0}" "${BAO2_PORT:-0}" "${V4_PORT:-0}" <<'PY'
+import socket
+import sys
+
+sockets = []
+for port in sys.argv[1:]:
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", int(port)))
+    sockets.append(listener)
+print(*(s.getsockname()[1] for s in sockets))
+PY
+)
+read -r KMS_PORT V3_PORT BAO_PORT BAO2_PORT V4_PORT <<< "$ports"
 mkdir -p "$RUN"; umask 077
 EVIDENCE="$RUN/evidence.txt"
 : > "$EVIDENCE"
@@ -55,12 +68,17 @@ ok() { log "PASS  $*"; }
 migrate() { node --disable-warning=ExperimentalWarning "$MIG/pki-migrate.ts" "$@"; }
 
 teardown() {
-  if [ -n "${V4_PORT:-}" ]; then
-    for pid in $(ss -ltnpH "sport = :$V4_PORT" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do kill "$pid" 2>/dev/null || true; done
+  if [[ -n "$V4_PID" ]]; then
+    kill "$V4_PID" 2>/dev/null || true
+    wait "$V4_PID" 2>/dev/null || true
   fi
-  [ -n "${V4_PID:-}" ] && kill "$V4_PID" 2>/dev/null || true
-  docker rm -f "$P-kms" "$P-v3" "$P-bao" "$P-bao2" >/dev/null 2>&1 || true
-  docker network rm "$NET" >/dev/null 2>&1 || true
+  if [[ -n "$NET_ID" ]]; then
+    local id
+    while IFS= read -r id; do
+      if [[ -n "$id" ]]; then docker rm -f "$id" >/dev/null || true; fi
+    done < <(docker ps -aq --filter "label=pki-manager.rehearsal=$NET_ID")
+    docker network rm "$NET_ID" >/dev/null || true
+  fi
 }
 cleanup() {
   if [ "${KEEP:-0}" = 1 ]; then log "KEEP=1: containers left running (prefix $P)"; return; fi
@@ -68,19 +86,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for c in docker jq curl openssl ssh-keygen node; do command -v "$c" >/dev/null || die "missing $c"; done
+for c in docker jq curl openssl ssh ssh-keygen node python3; do command -v "$c" >/dev/null || die "missing $c"; done
 for img in "$PKI_V3_IMAGE" "$OPENBAO_IMAGE" "$KMS_IMAGE"; do docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null || die "image $img not available"; done
 log "run dir $RUN; prefix $P; images v3=$PKI_V3_IMAGE openbao=$OPENBAO_IMAGE kms=$KMS_IMAGE"
 log "OpenBao image: $(docker run --rm --entrypoint bao "$OPENBAO_IMAGE" version)"
-log "tool commit: $(git -C "$WEB" rev-parse --short HEAD)$(git -C "$WEB" diff --quiet -- backend scripts/migration || echo ' (+ local changes in backend or scripts/migration)')"
-teardown
-docker network create "$NET" >/dev/null
+if rev=$(git -C "$WEB" rev-parse --short HEAD 2>/dev/null); then
+  log "tool commit: $rev$(git -C "$WEB" diff --quiet HEAD -- backend scripts/migration || echo ' (+ local changes in backend or scripts/migration)')"
+else
+  log "tool source: archive without Git metadata"
+fi
+NET_ID=$(docker network create "$NET")
 
 # ───────────────────────── 1. v3 installation with synthetic data ─────────────────────────
 mkdir -p "$RUN/kms-data" "$RUN/v3-data"; chmod 777 "$RUN/kms-data" "$RUN/v3-data"
-docker run -d --name "$P-kms" --network "$NET" -p "127.0.0.1:$KMS_PORT:9998" \
+docker run -d --name "$P-kms" --label "pki-manager.rehearsal=$NET_ID" --network "$NET_ID" -p "127.0.0.1:$KMS_PORT:9998" \
   -v "$WEB/kms/kms.toml:/etc/cosmian/kms.toml:ro" -v "$RUN/kms-data:/cosmian-kms" -e COSMIAN_KMS_CONF=/etc/cosmian/kms.toml "$KMS_IMAGE" >/dev/null
-docker run -d --name "$P-v3" --network "$NET" -p "127.0.0.1:$V3_PORT:3000" -v "$RUN/v3-data:/app/backend/data" \
+docker run -d --name "$P-v3" --label "pki-manager.rehearsal=$NET_ID" --network "$NET_ID" -p "127.0.0.1:$V3_PORT:3000" -v "$RUN/v3-data:/app/backend/data" \
   -e KMS_URL="http://$P-kms:9998" -e ALLOW_UNAUTHENTICATED_SSH_CA=true -e FRONTEND_URL="http://localhost:$V3_PORT" \
   -e CRL_DISTRIBUTION_URL="http://localhost:$V3_PORT/crl" "$PKI_V3_IMAGE" >/dev/null
 for _ in $(seq 1 60); do curl -fsS "http://127.0.0.1:$V3_PORT/api/v1/health" >/dev/null 2>&1 && break; sleep 1; done
@@ -106,7 +127,8 @@ openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj /CN=ex
 j -X POST "$API/external/sign" -H "authorization: Bearer $GEN_TOKEN" -d "$(jq -n --rawfile c "$RUN/ext.csr" '{csrPem:$c, requestUid:"rehearsal-ext-1", durationDays:30, sanDns:["ext.rehearsal.test"]}')" >/dev/null
 USER_CA=$(post /ssh/cas '{"caType":"user","label":"rehearsal-user-ca"}' | jq -r .id)
 post /ssh/cas '{"caType":"host","label":"rehearsal-host-ca"}' > "$RUN/host-ca.json"
-HOST_CA=$(jq -r .id "$RUN/host-ca.json"); HOST_CA_FP=$(jq -r .fingerprintSha256 "$RUN/host-ca.json")
+HOST_CA=$(jq -er .id "$RUN/host-ca.json")
+jq -er .opensshPublicKey "$RUN/host-ca.json" > "$RUN/host-ca-v3.pub"
 post "/ssh/cas/$USER_CA/rotate" '{}' >/dev/null
 ssh-keygen -q -t ecdsa -b 256 -N '' -f "$RUN/host_key" -C host1 >/dev/null
 HOST=$(post /ssh/hosts "$(jq -n --arg k "$(cat "$RUN/host_key.pub")" '{fqdn:"host1.rehearsal.test", addresses:["host1.rehearsal.test"], opensshHostPubkey:$k}')" | jq -r .id)
@@ -134,7 +156,7 @@ ok "frozen v3 backup + target copy migrated to the v4 schema"
 start_bao() { # name port statedir
   mkdir -p "$3/data" "$3/logs" "$3/secrets"; chmod 777 "$3/data" "$3/logs" "$3/secrets"
   bash "$WEB/openbao/scripts/dev-tls.sh" "$3/tls" "DNS:$1" >/dev/null; chmod 755 "$3/tls"; chmod 644 "$3/tls/"*
-  docker run -d --name "$1" --network "$NET" -p "127.0.0.1:$2:8200" --user "$(id -u):$(id -g)" \
+  docker run -d --name "$1" --label "pki-manager.rehearsal=$NET_ID" --network "$NET_ID" -p "127.0.0.1:$2:8200" --user "$(id -u):$(id -g)" \
     -v "$WEB/openbao/config:/openbao/config:ro" -v "$3/data:/openbao/data" -v "$3/logs:/openbao/logs" -v "$3/tls:/openbao/tls:ro" \
     -e BAO_API_ADDR="https://$1:8200" -e BAO_CLUSTER_ADDR="https://$1:8201" "$OPENBAO_IMAGE" server -config=/openbao/config >/dev/null
   local rc
@@ -246,27 +268,22 @@ migrate "${VERIFY[@]}" --target-db "$RUN/restored.db" --openbao-addr "$RADDR" --
 ok "restored pair (new OpenBao from the Raft snapshot + SQLite backup) verifies with Cosmian stopped"
 
 # ───────────────────────── 6. v4 backend on the restored pair ─────────────────────────
-# A backend with OPENBAO_RA_TOKEN_FILE gets the split identities; an older one gets a
-# token with both runtime policies (the restored cluster keeps the tokens of the snapshot).
-if grep -rqs OPENBAO_RA_TOKEN_FILE "$WEB/backend/src/openbao"; then
-  RUNTIME_ENV=(OPENBAO_TOKEN_FILE="$RUN/bao/secrets/backend.token" OPENBAO_RA_TOKEN_FILE="$RUN/bao/secrets/ra.token")
-else
-  BAO_TOKEN="$(cat "$RUN/bao/secrets/operator.token")" bao "$P-bao2" token create -policy=pki-manager-backend -policy=pki-manager-ra -no-default-policy -ttl=1h -field=token > "$RUN/bao/secrets/runtime.token"
-  RUNTIME_ENV=(OPENBAO_TOKEN_FILE="$RUN/bao/secrets/runtime.token")
-  log "backend has no OPENBAO_RA_TOKEN_FILE yet: one runtime token with both policies"
-fi
-(cd "$WEB/backend" && env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production PORT="$V4_PORT" HOST=127.0.0.1 DATABASE_PATH="$RUN/restored.db" \
-  OPENBAO_ADDR="$RADDR" OPENBAO_CACERT="$RCACERT" "${RUNTIME_ENV[@]}" ALLOW_UNAUTHENTICATED_SSH_CA=true ALLOW_CA_KEY_EXPORT=true \
+(cd "$WEB/backend" && exec env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production PORT="$V4_PORT" HOST=127.0.0.1 DATABASE_PATH="$RUN/restored.db" \
+  OPENBAO_ADDR="$RADDR" OPENBAO_CACERT="$RCACERT" OPENBAO_TOKEN_FILE="$RUN/bao/secrets/backend.token" \
+  OPENBAO_RA_TOKEN_FILE="$RUN/bao/secrets/ra.token" ALLOW_UNAUTHENTICATED_SSH_CA=true ALLOW_CA_KEY_EXPORT=true \
   FRONTEND_URL="http://localhost:$V4_PORT" CRL_DISTRIBUTION_URL="http://localhost:$V4_PORT/crl" \
-  ./node_modules/.bin/tsx src/server.ts > "$RUN/v4-backend.log" 2>&1) & V4_PID=$!
-for _ in $(seq 1 60); do curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null 2>&1 && break; sleep 1; done
+  node --import tsx src/server.ts > "$RUN/v4-backend.log" 2>&1) & V4_PID=$!
+for _ in $(seq 1 60); do
+  kill -0 "$V4_PID" 2>/dev/null || die "v4 backend exited at startup; see $RUN/v4-backend.log"
+  curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null 2>&1 && break
+  sleep 1
+done
 curl -fsS "http://127.0.0.1:$V4_PORT/api/v1/health" >/dev/null || { tail -30 "$RUN/v4-backend.log"; die "v4 backend did not start"; }
 API="http://127.0.0.1:$V4_PORT/api/v1"
 step() { local name=$1; shift; if out=$("$@" 2>&1); then ok "v4 runtime: $name"; else log "$out" | head -5; die "v4 runtime: $name"; fi; }
 host_cert() {
-  j -X POST "$API/ssh/hosts/issue" -d "{\"hostId\":\"$HOST\"}" > "$RUN/host-cert.json"
-  jq -r '[.. | strings | select(startswith("ecdsa-sha2-nistp256-cert-v01@openssh.com"))][0]' "$RUN/host-cert.json" > "$RUN/host-cert.pub"
-  ssh-keygen -Lf "$RUN/host-cert.pub" | grep -F "Signing CA: ECDSA $HOST_CA_FP"
+  j -X POST "$API/ssh/hosts/issue" -d "{\"hostId\":\"$HOST\"}" | jq -er .cert.certOpenssh > "$RUN/host-cert.pub" || return 1
+  bash "$HERE/verify-ssh-host.sh" "$RUN" "$NET_ID"
 }
 ra_state() { j "$API/external/ra/state" -H "authorization: Bearer $SCEP_TOKEN" | jq -er .certificatePem > "$RUN/ra.pem" && same_cert "$RUN/ra.pem" "$RUN/ra-v3.pem" && openssl x509 -in "$RUN/ra-v3.pem" -pubkey -noout > "$RUN/ra.pub"; }
 ra_sign() {
@@ -300,7 +317,7 @@ step "PKCS#12 export of a migrated leaf key" dl "$API/certificates/$L3R/download
 step "PKCS#12 private key matches the migrated leaf certificate" p12_match
 step "CA keystore export of a migrated CA key (ALLOW_CA_KEY_EXPORT=true)" dl "$API/cas/$CA1/download?format=p12-keystore" "$RUN/ca1.p12" -H 'x-export-password: Rehearsal-1'
 step "exported CA private key belongs to the v3 CA certificate" ca_p12_match
-step "SSH host certificate signed by the v3 host CA key (ssh-keygen: $HOST_CA_FP)" host_cert
+step "OpenSSH accepts the new host certificate with the original v3 host CA" host_cert
 step "SCEP RA state: same RA certificate as v3" ra_state
 step "RA signature with the migrated key verifies with the original RA certificate (openssl)" ra_sign
 step "RA recovers a PKCS#1 v1.5 CMS session key with the migrated key (fork operation)" ra_decrypt

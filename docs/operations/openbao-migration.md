@@ -199,8 +199,9 @@ key) and one report per run.
 **Restart.** Run the same `apply` command again after any failure. OpenBao and the target
 database are the source of truth: each key is read again, a key imported just before a crash
 is adopted, and rows that already hold the result are left as they are. A run that has
-nothing to do reports `"noOp": true`. A second run directory for the same manifest is
-refused, and so is a concurrent run on the same directory.
+nothing to do reports `"noOp": true`. Reuse the original run directory to keep the full
+checkpoint history. The tool refuses a directory bound to a different manifest and a
+directory locked by another running process.
 
 ### 6. Verify and cut over
 
@@ -267,7 +268,7 @@ pnpm install
 scripts/migration/rehearsal/rehearse.sh "$(mktemp -d)"
 ```
 
-It needs Docker, jq, curl, OpenSSL, ssh-keygen and python3. The images are the released
+It needs Docker, jq, curl, OpenSSL, ssh, ssh-keygen and python3. The images are the released
 v3.19.1 backend, Cosmian 5.28.0 and the OpenBao fork from `scripts/openbao-image.sh ensure`
 (the signed release pinned by digest in `openbao/image.env`). The steps:
 
@@ -284,7 +285,9 @@ v3.19.1 backend, Cosmian 5.28.0 and the OpenBao fork from `scripts/openbao-image
 5. Backup pair, stop Cosmian, restore the Raft snapshot into a new OpenBao, unseal it with
    the original key, verify the restored pair.
 6. Start the v4 backend on the restored pair with Cosmian stopped, with separate X.509/SSH
-   and RA tokens. Use the migrated keys, then provision the RA of a new SCEP integration.
+   and RA tokens. Use the migrated keys, connect to a test SSH server that presents a new
+   host certificate, then provision the RA of a new SCEP integration. The SSH client
+   checks the host certificate against the original v3 host CA.
 
 Result of the run on 2026-11-27, from a clean checkout of `c309a137` (separate X.509/SSH and
 RA runtime tokens) with this script, fork `fcf3d59`, image digest `sha256:4ea3dfec…6b2`:
