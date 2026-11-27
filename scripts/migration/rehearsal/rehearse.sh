@@ -305,4 +305,21 @@ step "SCEP RA state: same RA certificate as v3" ra_state
 step "RA signature with the migrated key verifies with the original RA certificate (openssl)" ra_sign
 step "RA recovers a PKCS#1 v1.5 CMS session key with the migrated key (fork operation)" ra_decrypt
 step "external CSR signing by the migrated CA" j -X POST "$API/external/sign" -H "authorization: Bearer $GEN_TOKEN" -d "$(jq -n --rawfile c "$RUN/ext.csr" '{csrPem:$c, requestUid:"rehearsal-ext-2", durationDays:30, sanDns:["ext.rehearsal.test"]}')"
+# First provisioning after cutover: a new SCEP integration gets a NEW RA key, generated in
+# OpenBao (not imported), and signs with it; Cosmian is still stopped.
+ra_first_provision() {
+  local tok
+  tok=$(j -X POST "http://127.0.0.1:$V4_PORT/trpc/integration.register" -d "{\"name\":\"rehearsal-scep-v4\",\"caId\":\"$CA1\",\"kind\":\"scep\"}" | jq -er .result.data.token)
+  j -X POST "$API/external/ra/provision" -H "authorization: Bearer $tok" -d '{}' >/dev/null
+  j "$API/external/ra/state" -H "authorization: Bearer $tok" | jq -er .certificatePem > "$RUN/ra-v4.pem"
+  openssl x509 -in "$RUN/ra-v4.pem" -pubkey -noout > "$RUN/ra-v4.pub"
+  head -c 64 /dev/urandom | openssl dgst -sha256 -binary > "$RUN/ra-v4.digest"
+  j -X POST "$API/external/ra/sign" -H "authorization: Bearer $tok" -d "{\"digest\":\"$(base64 -w0 "$RUN/ra-v4.digest")\"}" | jq -er .data | base64 -d > "$RUN/ra-v4.sig"
+  openssl pkeyutl -verify -pubin -inkey "$RUN/ra-v4.pub" -pkeyopt digest:sha256 -in "$RUN/ra-v4.digest" -sigfile "$RUN/ra-v4.sig" >/dev/null
+  local name; name=$(node -e 'const {DatabaseSync}=require("node:sqlite");const d=new DatabaseSync(process.argv[1],{readOnly:true});const r=d.prepare("SELECT key_provider p, key_id k FROM integration_ras r JOIN integrations i ON i.id=r.integration_id WHERE i.name=?").get("rehearsal-scep-v4");if(r.p!=="openbao")process.exit(1);console.log(r.k)' "$RUN/restored.db" 2>/dev/null)
+  [ -n "$name" ] || return 1
+  curl -fsS --cacert "$RCACERT" -H "X-Vault-Token: $(cat "$RUN/bao/secrets/ra.token")" "$RADDR/v1/pki-manager-ra/keys/$name" | jq -e '.data.imported_key == false and .data.exportable == false and .data.allow_pkcs1v15_session_key == true' >/dev/null
+  ! cmp -s "$RUN/ra-v4.pub" "$RUN/ra.pub"
+}
+step "first SCEP RA provisioning on v4: generated OpenBao key, signs, distinct from the migrated RA" ra_first_provision
 ok "rehearsal complete: $RUN"

@@ -283,11 +283,11 @@ v3.19.1 backend, Cosmian 5.28.0 and the OpenBao fork from `scripts/openbao-image
    migration token.
 5. Backup pair, stop Cosmian, restore the Raft snapshot into a new OpenBao, unseal it with
    the original key, verify the restored pair.
-6. Start the v4 backend on the restored pair with Cosmian stopped and use the migrated keys.
+6. Start the v4 backend on the restored pair with Cosmian stopped, with separate X.509/SSH
+   and RA tokens. Use the migrated keys, then provision the RA of a new SCEP integration.
 
-Result of the run on 2026-11-27 (the tool as committed with this guide, the worktree backend
-with separate X.509/SSH and RA runtime tokens, fork `fcf3d59`, image digest
-`sha256:4ea3dfec…6b2`):
+Result of the run on 2026-11-27, from a clean checkout of `c309a137` (separate X.509/SSH and
+RA runtime tokens) with this script, fork `fcf3d59`, image digest `sha256:4ea3dfec…6b2`:
 
 | Check | Result |
 |---|---|
@@ -298,6 +298,7 @@ with separate X.509/SSH and RA runtime tokens, fork `fcf3d59`, image digest
 | `verify --cutover` (migrated, then restored pair, Cosmian stopped) | 78 checks, 0 failed, cutover ready, RA session key recovered |
 | Runtime tokens on the import path, across X.509/SSH and RA mounts / migration token after revoke | HTTP 403 / HTTP 403 |
 | v4 backend, Cosmian stopped | CA certificate identical to v3; new CRL verifies with the v3 CA certificate (`openssl crl -verify`); new leaf from the migrated RSA-4096 CA; renewal with key reuse; leaf PKCS#12 and CA keystore keys match the v3 certificates; SSH host certificate signed by the v3 host CA fingerprint (`ssh-keygen -L`); RA certificate unchanged, RA signature verifies with the v3 RA certificate, RA recovers a PKCS#1 v1.5 session key; external CSR signing |
+| First RA provisioning on v4, Cosmian stopped | new SCEP integration: RA key generated in OpenBao (`imported_key=false`, non-exportable, session-key opt-in), binding `key_provider=openbao`, signature verifies with the new RA certificate |
 
 The unit tests (`cd scripts/migration && npm test`) cover what the rehearsal data does not
 have: a CA row that holds its certificate id, a non-extractable SSH CA key (rotate only), an
