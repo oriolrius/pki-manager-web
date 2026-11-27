@@ -339,8 +339,8 @@ token; run `bootstrap.sh configure` once, it enables the marker mount). The comm
 2. writes a pair marker (a new backup id and that digest) to the KV entry
    `pki-manager-backup/pair-marker`, and reads it back;
 3. takes the Raft snapshot: the marker is inside it, encrypted by the OpenBao barrier;
-4. sets the live marker to `released`, so a later snapshot of the cluster never looks like
-   this backup;
+4. sets the marker on the source cluster to `released`. The archived snapshot keeps the
+   marker in state `snapshot`;
 5. fails when the live database changed during the backup (a writer was running);
 6. writes `backup.json` last: file digests, the content digest and the backup id.
 
@@ -393,7 +393,8 @@ This holds when two backups have the same keys (only rows changed between them, 
 revocation): an older database next to a newer snapshot, or the reverse, fails whichever backup
 is named. After a restore, the cluster carries the archived marker. Use `pki-migrate backup`
 for its next backup. A raw Raft snapshot of that cluster can inherit the old marker, even after
-new writes. Restore the checked `openbao.snap` from the named backup directory.
+new writes. In that case `pairBound=true` can still appear. Restore only the `openbao.snap`
+whose SHA-256 matches the record in the named backup directory.
 
 Without `--backup-dir` the report is never `ok` (`pairBound=false`). A backup made
 before pair markers (format `/1`) or a SQLite-only backup cannot prove its pair: `check-backup`
