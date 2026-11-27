@@ -61,10 +61,15 @@ export function targetSpec(key: Pick<KeyEntry, 'class' | 'sourceKeyId' | 'attrib
 /** Row statuses for which a key may be dropped instead of moved (no longer used to sign). */
 function keyNoLongerNeeded(key: KeyEntry): boolean {
   const rows = key.references.filter(r => r.role !== 'ssh-cert-signer' && r.role !== 'ssh-ca-public-key' && r.role !== 'scep-ra-public-key' && r.role !== 'scep-ra-cert-alias');
-  if (key.class === 'x509-leaf') return true; // a leaf certificate stays valid without our copy of its key
+  // No degradation for keys in use: a leaf key can be dropped only when every certificate
+  // that uses it is revoked or expired (otherwise downloads and key-reuse renewals break).
+  if (key.class === 'x509-leaf') return rows.every(r => r.rowStatus === 'revoked' || r.rowStatus === 'expired');
   if (key.class === 'x509-ca') return rows.every(r => r.rowStatus === 'revoked' || r.rowStatus === 'expired');
-  if (key.class === 'ssh-ca') return rows.every(r => r.rowStatus === 'retired');
-  return false; // an RA key is always in use while its binding exists
+  // A retired SSH CA still signs its own KRL (hosts keep trusting it, and the KRL client
+  // refuses an unsigned KRL): only a REVOKED SSH CA can lose its key.
+  if (key.class === 'ssh-ca') return rows.every(r => r.rowStatus === 'revoked');
+  // An RA key is in use while its integration is: only a revoked integration can lose it.
+  return rows.every(r => r.rowStatus === 'revoked');
 }
 
 /** Fills allowed / proposed / reasons / target of a key entry (pure). */
@@ -78,7 +83,7 @@ export function decide(key: KeyEntry, mounts: Mounts, kmsRead: boolean): KeyEntr
   }
 
   const dropOk = keyNoLongerNeeded(key);
-  const fallback: Action[] = dropOk ? ['rotate', 'drop-key'] : ['rotate'];
+  const fallback: Action[] = [...(key.class === 'scep-ra' ? ['reprovision' as Action] : []), 'rotate', ...(dropOk ? ['drop-key' as Action] : [])];
   let transferable = true;
   if (!kmsRead) { transferable = false; reasons.push('KMS not read: attributes unknown (inventory without --kms-url)'); }
   else if (key.missing) { transferable = false; reasons.push('key not found in the KMS'); }
@@ -99,7 +104,8 @@ export function decide(key: KeyEntry, mounts: Mounts, kmsRead: boolean): KeyEntr
 
   const target = key.transitType ? targetSpec(key, key.transitType, mounts) : null;
   if (transferable) return { ...key, allowed: ['transfer', ...fallback], proposed: 'transfer', reasons, target };
-  return { ...key, allowed: fallback, proposed: 'rotate', reasons, target };
+  // A non-transferable RA key has a supported v4 path: a new RA key (explicit acknowledgement).
+  return { ...key, allowed: fallback, proposed: key.class === 'scep-ra' ? 'reprovision' : 'rotate', reasons, target };
 }
 
 /** An approval template: proposed actions, empty approver (the admin must fill it in). */
@@ -108,6 +114,7 @@ export function approvalTemplate(manifest: Manifest, target: { addr: string; wra
   for (const k of manifest.keys) {
     keys[k.sourceKeyId] = { action: k.proposed, spkiSha256: k.spkiSha256 };
     if (k.proposed === 'transfer' && k.attributes?.sensitive === true) keys[k.sourceKeyId].acknowledgeSensitive = false;
+    if (k.proposed === 'reprovision') keys[k.sourceKeyId].acknowledgeNewKey = false;
   }
   return {
     format: APPROVAL_FORMAT,
@@ -153,6 +160,7 @@ export function validateApproval(manifest: Manifest, approval: Approval, live?: 
     if (!a) { bad('APPROVAL_MISSING_KEY', 'no approved action', k.sourceKeyId); continue; }
     if (!k.allowed.includes(a.action)) bad('APPROVAL_ACTION', `action ${a.action} not allowed (allowed: ${k.allowed.join(', ')})`, k.sourceKeyId);
     if (a.spkiSha256 !== k.spkiSha256) bad('APPROVAL_FINGERPRINT', 'approved fingerprint differs from the manifest', k.sourceKeyId);
+    if (a.action === 'reprovision' && a.acknowledgeNewKey !== true) bad('APPROVAL_NEW_KEY', 'reprovision gives the RA a new key and certificate: set acknowledgeNewKey=true', k.sourceKeyId);
     if (a.action === 'transfer') {
       if (k.attributes?.sensitive === true && a.acknowledgeSensitive !== true) bad('APPROVAL_SENSITIVE', 'Sensitive key: transfer needs acknowledgeSensitive=true', k.sourceKeyId);
       if (a.exportable === true && k.target && !k.target.exportable) bad('APPROVAL_EXPORT_ESCALATION', 'approval cannot make this key exportable', k.sourceKeyId);
@@ -175,7 +183,7 @@ export function validateApproval(manifest: Manifest, approval: Approval, live?: 
   for (const p of manifest.problems) {
     if (p.severity !== 'blocker' || !p.subject) continue;
     const a = approval.keys[p.subject];
-    // A key-level blocker is resolved only by rotate or drop-key, never by transfer.
+    // A key-level blocker is resolved only by rotate, reprovision or drop-key, never by transfer.
     if (!a || a.action === 'transfer') problems.push(p);
   }
   return { ok: problems.length === 0, problems };

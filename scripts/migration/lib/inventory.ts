@@ -42,7 +42,8 @@ function collectReferences(db: DatabaseSync, problems: Problem[]): Reference[] {
     }
   }
   if (tableExists(db, 'ssh_cas')) {
-    for (const r of all(db, 'SELECT id, kms_key_id, kms_public_key_id, status FROM ssh_cas ORDER BY id')) {
+    // `revoked` = retired with a revocation date (POST /ssh/cas/:id/revoke); plain `retired` keeps trust.
+    for (const r of all(db, "SELECT id, kms_key_id, kms_public_key_id, CASE WHEN revocation_date IS NOT NULL THEN 'revoked' ELSE status END AS status FROM ssh_cas ORDER BY id")) {
       const id = String(r.id);
       add({ table: 'ssh_cas', column: 'kms_key_id', rowId: id, role: 'ssh-ca-key', sourceId: String(r.kms_key_id), rowStatus: str(r.status) ?? undefined });
       add({ table: 'ssh_cas', column: 'kms_public_key_id', rowId: id, role: 'ssh-ca-public-key', sourceId: String(r.kms_public_key_id), rowStatus: str(r.status) ?? undefined });
@@ -56,12 +57,13 @@ function collectReferences(db: DatabaseSync, problems: Problem[]): Reference[] {
   if (tableExists(db, 'integration_ras')) {
     const cols = columnsOf(db, 'integration_ras');
     const provider = cols.has('key_provider') ? 'key_provider' : "'cosmian'";
-    for (const r of all(db, `SELECT integration_id, key_id, public_key_id, ${provider} AS provider FROM integration_ras ORDER BY integration_id`)) {
+    const revoked = tableExists(db, 'integrations') ? "(SELECT CASE WHEN i.revoked_at IS NOT NULL THEN 'revoked' ELSE 'active' END FROM integrations i WHERE i.id = integration_ras.integration_id)" : "'active'";
+    for (const r of all(db, `SELECT integration_id, key_id, public_key_id, ${provider} AS provider, ${revoked} AS status FROM integration_ras ORDER BY integration_id`)) {
       const id = String(r.integration_id);
       if (!r.key_id) { problems.push({ severity: 'warning', code: 'RA_NOT_PROVISIONED', message: 'RA binding has no key (provisioning never finished); nothing to migrate', subject: `integration_ras:${id}` }); continue; }
       if (r.provider === 'openbao') { add({ table: 'integration_ras', column: 'key_id', rowId: id, role: 'scep-ra-openbao-key', sourceId: `openbao:${r.key_id}` }); continue; }
-      add({ table: 'integration_ras', column: 'key_id', rowId: id, role: 'scep-ra-key', sourceId: String(r.key_id) });
-      if (r.public_key_id) add({ table: 'integration_ras', column: 'public_key_id', rowId: id, role: 'scep-ra-public-key', sourceId: String(r.public_key_id) });
+      add({ table: 'integration_ras', column: 'key_id', rowId: id, role: 'scep-ra-key', sourceId: String(r.key_id), rowStatus: str(r.status) ?? undefined });
+      if (r.public_key_id) add({ table: 'integration_ras', column: 'public_key_id', rowId: id, role: 'scep-ra-public-key', sourceId: String(r.public_key_id), rowStatus: str(r.status) ?? undefined });
     }
   }
   return refs;
@@ -225,7 +227,12 @@ export async function buildManifest(opts: InventoryOptions): Promise<Manifest> {
     const shared = signingRows.length > 1;
     // v4 binds one SSH CA key to one CA (SshCaKeyExistsError): a v3 key imported into two
     // zones cannot keep both rows. Rotate one of them first.
-    if (shared && cls === 'ssh-ca') subjectProblems.push({ severity: 'blocker', code: 'SHARED_SSH_CA_KEY', message: `one SSH CA key backs ${signingRows.length} CA rows; v4 allows one CA per key: rotate all but one before migration`, subject: id });
+    // A shared key is a conflict only while more than one of its CA rows can issue: v4 checks
+    // key uniqueness when a CA is created or imported. Retired and revoked rows keep the key
+    // for their KRL signatures and history; they can share the one Transit key.
+    const issuing = signingRows.filter(r => r.rowStatus !== 'retired' && r.rowStatus !== 'revoked');
+    if (shared && cls === 'ssh-ca' && issuing.length > 1) subjectProblems.push({ severity: 'blocker', code: 'SHARED_SSH_CA_KEY', message: `one SSH CA key backs ${issuing.length} issuing CA rows; v4 allows one CA per key: rotate all but one before migration`, subject: id });
+    else if (shared && cls === 'ssh-ca') subjectProblems.push({ severity: 'warning', code: 'SHARED_SSH_CA_KEY_RETIRED', message: `one SSH CA key backs ${signingRows.length} CA rows, at most one of them issuing; all rows map to one Transit key`, subject: id });
 
     // Public views of the key.
     const fps = new Set<string>();

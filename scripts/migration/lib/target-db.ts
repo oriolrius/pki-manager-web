@@ -169,9 +169,51 @@ export async function applyToTargetDb(opts: {
           if (putKeystoreRow(db, row)) { result.keystoreRows++; audit.push({ op: 'migration.key.drop', entityType: 'keystore_object', entityId: x.id, details: { sourceKeyId: key.sourceKeyId, class: key.class, approvedBy: approval.approvedBy } }); }
           rows.push({ table: 'keystore_objects', rowId: x.id, column: 'id' });
         }
+      } else if (a.action === 'drop-key' && key.class === 'ssh-ca') {
+        // Only revoked SSH CAs (policy.ts). The row keeps its v3 ids as provenance; nothing
+        // signs with a revoked CA. The decision is recorded per row.
+        for (const r of key.references.filter(x => x.role === 'ssh-ca-key')) {
+          const row = db.prepare('SELECT revocation_date AS d FROM ssh_cas WHERE id = ?').get(r.rowId) as { d: number | null } | undefined;
+          if (!row || row.d === null) throw new MigrationError('TARGET_ROW_CONFLICT', `ssh_cas:${r.rowId} is not revoked; its key cannot be dropped`);
+          if (recordOnce(db, 'migration.key.drop', 'ssh_ca', r.rowId)) audit.push({ op: 'migration.key.drop', entityType: 'ssh_ca', entityId: r.rowId, details: { sourceKeyId: key.sourceKeyId, class: key.class } });
+          rows.push({ table: 'ssh_cas', rowId: r.rowId, column: 'kms_key_id' });
+        }
+      } else if (a.action === 'drop-key' && key.class === 'scep-ra') {
+        // Only RA keys of revoked integrations: the binding keeps its certificates (history).
+        for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
+          const pub = key.references.find(x => x.role === 'scep-ra-public-key' && x.rowId === r.rowId)?.sourceId ?? null;
+          if (casRow(db, 'integration_ras', 'integration_id', r.rowId, { key_id: r.sourceId, public_key_id: pub }, { key_id: null, public_key_id: null })) {
+            result.rowsChanged++; audit.push({ op: 'migration.key.drop', entityType: 'integration_ra', entityId: r.rowId, details: { sourceKeyId: key.sourceKeyId, class: key.class } });
+          }
+          rows.push({ table: 'integration_ras', rowId: r.rowId, column: 'key_id' });
+        }
+      } else if (a.action === 'reprovision' && key.class === 'scep-ra') {
+        for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
+          const pub = key.references.find(x => x.role === 'scep-ra-public-key' && x.rowId === r.rowId)?.sourceId ?? null;
+          const pemSha = manifest.certificates.find(c => c.table === 'integration_ras' && c.rowId === r.rowId)?.pemSha256 ?? null;
+          if (reprovisionBinding(db, r.rowId, r.sourceId, pub, pemSha)) {
+            result.rowsChanged++; audit.push({ op: 'migration.ra.reprovision', entityType: 'integration_ra', entityId: r.rowId, details: { sourceKeyId: key.sourceKeyId, previousRaCertificateSha256: pemSha, approvedBy: approval.approvedBy } });
+          }
+          rows.push({ table: 'integration_ras', rowId: r.rowId, column: 'key_id' });
+        }
+      }
+      // X.509 rows that hold the certificate id as key id (older v3): point them at the
+      // private key, but only when the certificate of the row certifies exactly that key.
+      if (isX509 && (a.action === 'transfer' ? opts.ready.has(key.sourceKeyId) : a.action === 'drop-key')) {
+        for (const r of key.references.filter(x => (x.role === 'x509-ca-key' || x.role === 'x509-leaf-key') && x.sourceId !== key.sourceKeyId)) {
+          const cert = manifest.certificates.find(c => c.table === r.table && c.rowId === r.rowId);
+          if (!key.spkiSha256 || !cert?.spkiSha256 || cert.spkiSha256 !== key.spkiSha256) {
+            throw new MigrationError('KEY_LINK_UNPROVEN', `${r.table}:${r.rowId} holds ${r.sourceId}; its certificate does not prove the key ${key.sourceKeyId}`);
+          }
+          if (casRow(db, r.table, 'id', r.rowId, { kms_key_id: r.sourceId }, { kms_key_id: key.sourceKeyId })) {
+            result.rowsChanged++; audit.push({ op: 'migration.key.link_repair', entityType: r.table === 'certificates' ? 'certificate' : 'ca', entityId: r.rowId, details: { from: r.sourceId, to: key.sourceKeyId, spkiSha256: key.spkiSha256 } });
+          }
+          rows.push({ table: r.table, rowId: r.rowId, column: 'kms_key_id' });
+        }
       }
       // RA certificate alias rows: the v4 RA certificate row has no X.509 key id.
-      if (key.class === 'scep-ra' && (a.action === 'transfer' ? opts.ready.has(key.sourceKeyId) : false)) {
+      const raDone = a.action === 'transfer' ? opts.ready.has(key.sourceKeyId) : a.action === 'reprovision' || a.action === 'drop-key';
+      if (key.class === 'scep-ra' && raDone) {
         for (const r of key.references.filter(x => x.role === 'scep-ra-cert-alias')) {
           if (casRow(db, 'certificates', 'id', r.rowId, { kms_key_id: r.sourceId }, { kms_key_id: null })) {
             result.rowsChanged++; audit.push({ op: 'migration.ra.certificate_alias', entityType: 'certificate', entityId: r.rowId, details: { sourceKeyId: key.sourceKeyId, spkiSha256: key.spkiSha256 } });
@@ -255,6 +297,35 @@ function putKeystoreRow(db: DatabaseSync, row: KsRow): boolean {
     // idx_keystore_objects_key: the Transit key already belongs to another row.
     throw new MigrationError('TARGET_ROW_CONFLICT', `keystore_objects:${row.id} cannot be inserted: ${(error as Error).message}`);
   }
+  return true;
+}
+
+/** True when no audit row of this operation exists yet for the entity (idempotent records). */
+function recordOnce(db: DatabaseSync, op: string, entityType: string, entityId: string): boolean {
+  if (!columnsOf(db, 'audit_log').has('operation')) return true;
+  return db.prepare('SELECT 1 FROM audit_log WHERE operation = ? AND entity_type = ? AND entity_id = ? LIMIT 1').get(op, entityType, entityId) === undefined;
+}
+
+/**
+ * Resets an RA binding for a new key: v4 `ra/provision` then generates the key in OpenBao.
+ * The current RA certificate moves to the front of `previous` (GetCACert keeps serving it
+ * in the overlap list until it expires); the certificate rows stay as history.
+ * Idempotent: a binding already reset with that certificate in `previous` is left alone.
+ */
+function reprovisionBinding(db: DatabaseSync, id: string, sourceKeyId: string, sourcePub: string | null, pemSha: string | null): boolean {
+  const cur = db.prepare('SELECT key_provider, key_id, public_key_id, key_version, certificate_id, certificate_pem, previous FROM integration_ras WHERE integration_id = ?').get(id) as
+    { key_provider: string; key_id: string | null; public_key_id: string | null; key_version: number | null; certificate_id: string | null; certificate_pem: string | null; previous: string } | undefined;
+  if (!cur) throw new MigrationError('ROW_GONE', `integration_ras:${id} is not in the target database`);
+  const prev = JSON.parse(cur.previous || '[]') as { id: string; certificatePem: string }[];
+  const hasOld = (list: { certificatePem: string }[]) => !!pemSha && list.some(p => sha256Hex(new X509Certificate(p.certificatePem).raw) === pemSha);
+  if (cur.key_provider === 'openbao' && cur.key_id === null && cur.public_key_id === null && cur.certificate_pem === null && hasOld(prev)) return false;
+  if (cur.key_provider !== 'cosmian' || cur.key_id !== sourceKeyId || cur.public_key_id !== sourcePub) {
+    throw new MigrationError('TARGET_ROW_CONFLICT', `integration_ras:${id} holds ${cur.key_provider}:${cur.key_id}, not the v3 RA key; refusing to reset it`);
+  }
+  if (cur.certificate_pem && pemSha && sha256Hex(new X509Certificate(cur.certificate_pem).raw) !== pemSha) throw new MigrationError('PEM_CONFLICT', `integration_ras:${id} has another RA certificate than the inventoried one`);
+  const next = cur.certificate_pem && cur.certificate_id ? [{ id: cur.certificate_id, certificatePem: cur.certificate_pem }, ...prev] : prev;
+  db.prepare("UPDATE integration_ras SET key_provider = 'openbao', key_id = NULL, public_key_id = NULL, key_version = NULL, certificate_id = NULL, certificate_pem = NULL, previous = ?, lease = NULL, lease_until = NULL WHERE integration_id = ?")
+    .run(JSON.stringify(next), id);
   return true;
 }
 

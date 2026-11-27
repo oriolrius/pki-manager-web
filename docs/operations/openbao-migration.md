@@ -34,8 +34,11 @@ and has no dependencies. It reads the v3 database copy only. It never writes tha
 
 The v3 ids in the `kms_*` columns of the X.509 tables keep their values: v4 looks them up in
 `keystore_objects`. A shared key (a renewal that reused its key) becomes one Transit key with
-one pair of key rows. A CA row that holds its certificate id as key id is resolved through the
-certificate's private key link.
+one pair of key rows. A CA row that holds its certificate id as key id (older v3) is resolved
+through the certificate's private key link. The migration then points `kms_key_id` at the
+private key, but only when the certificate of the row certifies exactly that key (same SPKI);
+otherwise it stops (`KEY_LINK_UNPROVEN`). CRL signing and the CA keystore download then use
+that key row.
 
 Use other mount names with `--target-profile FILE`, a JSON file
 `{"mounts": {"x509": "...", "ssh": "...", "ra": "..."}}` with the backend `OPENBAO_*_MOUNT` values.
@@ -45,8 +48,9 @@ Use other mount names with `--target-profile FILE`, a JSON file
 The source policy is never bypassed:
 
 - **`Extractable=false`** (or `NeverExtractable=true`), a missing key, or a state other than
-  `Active` or `PreActive`: the key cannot move. The only actions are `rotate`, and `drop-key`
-  where it is safe (see below). The tool never tries another export method.
+  `Active` or `PreActive`: the key cannot move. The actions are `rotate`, `reprovision` for an
+  RA key, and `drop-key` where it is safe (see below). The tool never tries another export
+  method.
 - **`Sensitive=true`** (SSH CA and RA keys from v3): the key moves only wrapped, and only when
   the approval sets `acknowledgeSensitive: true` for that key.
 - `Sensitive=false` keys also move wrapped. The tool checks the source attributes again just
@@ -156,18 +160,33 @@ The template binds the manifest digest and the fingerprint of each OpenBao wrapp
 administrator then edits it:
 
 - `approvedBy` and `approvedAt` (ISO date): required.
-- One entry per key: `transfer`, `rotate`, `drop-key`, `already-target` or `history-only`,
-  from the key's `allowed` list in the manifest.
+- One entry per key: `transfer`, `rotate`, `reprovision`, `drop-key`, `already-target` or
+  `history-only`, from the key's `allowed` list in the manifest.
 - `acknowledgeSensitive: true` on each Sensitive key to transfer.
+- `acknowledgeNewKey: true` on each RA key to `reprovision`.
 - `caKeyExport`: `preserve` or `deny`.
 - `allowSourceWrappingKeyRegistration: true`. This is the only write on the source KMS: it
   registers the OpenBao wrapping public key in Cosmian. The tool removes it at the end of the
   run, also after a failed run.
 - `acceptMissingPem`: rows whose certificate is in neither the database nor the KMS.
 
-`drop-key` keeps the certificate rows and records the key as destroyed. It is allowed for
-leaf keys, for revoked or expired CAs and for retired SSH CAs. After a drop, key downloads
-and renewals that reuse that key are no longer possible.
+`drop-key` keeps the rows and records that the key is gone. It is offered only for a key that
+nothing signs with any more, so no key in use loses a function:
+
+| Class | `drop-key` allowed when | Target |
+|---|---|---|
+| X.509 leaf | every certificate of the key is revoked or expired | key rows in state `destroyed`; key downloads and key-reuse renewals end |
+| X.509 CA | the CA is revoked or expired | key rows in state `destroyed`; no new CRL for that CA |
+| SSH CA | the CA is **revoked** (`POST /api/v1/ssh/cas/:caId/revoke`). A CA that is only retired keeps signing its own KRL, and the KRL client refuses an unsigned KRL | the row keeps its v3 ids; one `migration.key.drop` audit row |
+| SCEP RA | the integration is revoked | `key_id` and `public_key_id` become NULL; the RA certificates stay |
+
+`reprovision` (SCEP RA only) resets the binding so that v4 generates a new RA key in OpenBao:
+no key, no current certificate, `key_provider='openbao'`, and the current RA certificate moves
+to the front of the overlap list (`previous`). The RA certificate rows stay. It is proposed for
+an RA key that cannot move; an administrator may also choose it for a key that can.
+
+One SSH CA key behind several CA rows is a blocker while two or more of those rows can issue
+(active or rotating). When at most one can, all rows map to the one Transit key.
 
 **Offline material.** Instead of the online wrapped export, the approval can list one file of
 wrapped key material for each key to transfer: `"material": {"<key id>": {"file": "...",
@@ -349,16 +368,17 @@ snapshot newer than the database) is not found: Transit keys are not listed.
 ## Controlled rotation
 
 A key that cannot move is never replaced in silence. `rotation-plan` prints the steps for each
-key whose action is `rotate` or `drop-key`. Do the rotation on v3 before the final inventory
-(or on v4 after cutover for the X.509 and SSH cases), then run a new inventory: the new
-manifest no longer has the old key, or has it as `drop-key` once it is retired.
+key whose action is `rotate`, `reprovision` or `drop-key`. Do a rotation on v3 before the final
+inventory, then run a new inventory: the new key is `transfer`, the old one `drop-key` once
+nothing signs with it.
 
-| Class | Rotation |
+| Class | Procedure |
 |---|---|
-| X.509 CA | New CA, publish its certificate next to the old one, re-issue the active leaves, revoke the old CA when nothing depends on it |
-| X.509 leaf | Renew with `generateNewKey: true` |
-| SSH CA | `POST /api/v1/ssh/cas/:caId/rotate`, distribute both trust anchors, re-issue, then `POST /api/v1/ssh/cas/:caId/retire` |
-| SCEP RA | New RA key in OpenBao for the integration; clients fetch the new RA certificate with GetCACert; the previous RA certificate stays in the overlap list |
+| X.509 CA | New CA, publish its certificate next to the old one, re-issue the active leaves, revoke the old CA when nothing depends on it, new inventory (old key: `drop-key`) |
+| X.509 leaf | Renew with `generateNewKey: true` before the final inventory |
+| SSH CA | `POST /api/v1/ssh/cas/:caId/rotate`, distribute both trust anchors, re-issue; when no certificate of the old CA must stay valid, `POST /api/v1/ssh/cas/:caId/revoke`; new inventory (old key: `drop-key`) |
+| SCEP RA, on v4 | `reprovision` in the approval. After cutover run the gateway once with `scep-server provision` (or with auto-provisioning): v4 creates the new key and RA certificate. GetCACert serves the new certificate and keeps the old one in `previousCertificatesPem` until it expires. Revoke the old RA certificate when the clients have moved |
+| SCEP RA, on v3.19.1 | Register a new SCEP integration on the same CA, provision its RA with the new token, switch the gateway to it, revoke the old integration; new inventory (new key: `transfer`, old key: `drop-key`) |
 
 ## Rehearsal
 
@@ -409,8 +429,11 @@ and RA credentials. It used fork `fcf3d59` at image digest `sha256:4ea3dfec…6b
 | First RA provisioning on v4, Cosmian stopped | new SCEP integration: RA key generated in OpenBao (`imported_key=false`, non-exportable, session-key opt-in), binding `key_provider=openbao`, signature verifies with the new RA certificate |
 
 The unit tests (`cd scripts/migration && npm test`) cover what the rehearsal data does not
-have: a CA row that holds its certificate id, a non-extractable SSH CA key (rotate only), an
-SSH key shared by two zones, an RA alias that certifies another key, approval refusals, a
+have: a CA row that holds its certificate id (repaired to its private key), a non-extractable
+SSH CA key (rotate only, `drop-key` once revoked), an SSH key shared by two issuing zones and by
+a retired row, a non-extractable RA key (`reprovision`, and `drop-key` for a revoked
+integration), an already-migrated RA key that does not match its certificate, no `drop-key`
+for keys in use, an RA alias that certifies another key, approval refusals, a
 planted conflicting OpenBao key, a conflicting target row, a failure inside the database
 transaction, a source key that becomes non-extractable before transfer, a root token, a
 changed source copy, `caKeyExport: "deny"`, `drop-key`, backup tampering, offline material

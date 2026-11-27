@@ -25,17 +25,19 @@ import { FakeCosmian, FakeTransit, makeCert, migrateToV4, seedV3, tempDir, v3Dat
 
 const ADDR = 'https://openbao.test:8200';
 
-async function setup(opts: { seed?: (db: DatabaseSync, kms: FakeCosmian, ids: Record<string, string>) => void } = {}) {
+async function setup(opts: { seed?: (db: DatabaseSync, kms: FakeCosmian, ids: Record<string, string>) => void; v4Source?: boolean } = {}) {
   const dir = tempDir();
   const sourcePath = join(dir, 'v3.db');
   const kms = new FakeCosmian();
   const db = v3Database(sourcePath);
   const ids = seedV3(db, kms);
-  opts.seed?.(db, kms, ids);
-  db.close();
+  if (opts.v4Source) { db.close(); migrateToV4(sourcePath); }
+  const w = opts.v4Source ? new DatabaseSync(sourcePath) : db;
+  opts.seed?.(w, kms, ids);
+  w.close();
   const targetPath = join(dir, 'v4.db');
   await backupTo(sourcePath, targetPath);
-  migrateToV4(targetPath);
+  if (!opts.v4Source) migrateToV4(targetPath);
   const source = openReadOnly(sourcePath);
   const manifest = await buildManifest({ sourcePath, db: source, kms });
   source.close();
@@ -106,7 +108,7 @@ test('RA alias mismatch is a blocker', async () => {
   } });
   const blockers = s.manifest.problems.filter(p => p.severity === 'blocker').map(p => p.code);
   assert.ok(blockers.includes('RA_ALIAS_MISMATCH'), blockers.join(','));
-  assert.deepEqual(key(s.manifest, s.ids.raKey).allowed, ['rotate'], 'no transfer while the public views disagree');
+  assert.ok(!key(s.manifest, s.ids.raKey).allowed.includes('transfer'), 'no transfer while the public views disagree');
   const forced = await approve(s.manifest, s.store, x => { x.keys[s.ids.raKey].action = 'transfer'; });
   const codes = validateApproval(s.manifest, forced).problems.map(p => p.code);
   assert.ok(codes.includes('APPROVAL_ACTION') && codes.includes('RA_ALIAS_MISMATCH'), codes.join(','));
@@ -152,7 +154,7 @@ test('apply writes the v4 target; a second run is a verified no-op', async () =>
   const t = new DatabaseSync(s.targetPath, { readOnly: true });
   const ks = (id: string) => t.prepare('SELECT * FROM keystore_objects WHERE id = ?').get(id) as Record<string, unknown>;
   const ca = t.prepare("SELECT kms_key_id, kms_certificate_id FROM certificate_authorities WHERE id = 'ca-1'").get() as Record<string, string>;
-  assert.equal(ca.kms_key_id, ca.kms_certificate_id, 'v3 ids are kept as they are');
+  assert.equal(ca.kms_key_id, s.ids.caKey, 'the certificate-id fallback is repaired to the private key id');
   const caCert = ks(ca.kms_certificate_id);
   assert.equal(caCert.object_type, 'certificate');
   assert.equal(caCert.private_key_id, s.ids.caKey, 'certificate links to the canonical private key');
@@ -290,7 +292,8 @@ test('preflight: v3 schema target, changed source, root token', async () => {
 });
 
 test('caKeyExport=deny imports CA keys non-exportable; drop-key keeps the certificates', async () => {
-  const s = await setup();
+  // drop-key needs every certificate of the key revoked or expired.
+  const s = await setup({ seed: db => { db.exec("UPDATE certificates SET status = 'revoked' WHERE id = 'cert-2'"); } });
   const approval = await approve(s.manifest, s.store, a => { a.caKeyExport = 'deny'; a.keys[s.ids.leafKey].action = 'drop-key'; });
   const r = await run(s, approval);
   assert.equal(r.imported, 3);
@@ -321,6 +324,137 @@ test('a refused snapshot leaves no half backup', async () => {
   const out = join(s.dir, 'backup-denied');
   await assert.rejects(backupPair({ dbPath: s.targetPath, outDir: out, label: 'denied', store: s.store }), /403/);
   assert.equal(existsSync(out), false);
+});
+
+const verifyNow = async (s: Awaited<ReturnType<typeof setup>>, approval: Approval) => {
+  const target = openReadOnly(s.targetPath);
+  const source = openReadOnly(s.sourcePath);
+  // The cutover gate needs the RA session-key operation for every RA key (the fake implements it).
+  try { return await verifyMigration({ manifest: s.manifest, approval, target, store: s.store, profile: DEFAULT_PROFILE, source, raSessionCheck: true }); }
+  finally { target.close(); source.close(); }
+};
+const failedChecks = (v: { checks: { ok: boolean; name: string; detail?: string }[] }) => JSON.stringify(v.checks.filter(c => !c.ok));
+
+test('no drop-key for keys in use: an active leaf and a retired (trusted) SSH CA', async () => {
+  const s = await setup({ seed: (db, kms, ids) => {
+    kms.objects.get(ids.leafKey)!.extractable = false;
+    db.exec("UPDATE ssh_cas SET status = 'retired' WHERE id = 'sshca-b'");
+  } });
+  assert.deepEqual(key(s.manifest, s.ids.leafKey).allowed, ['rotate'], 'cert-2 is active: renew with a new key');
+  assert.deepEqual(key(s.manifest, s.ids.sshHostKey).allowed, ['rotate'], 'a retired SSH CA still signs its KRL');
+});
+
+test('a revoked SSH CA with a non-extractable key: drop-key, verify and cutover', async () => {
+  const s = await setup({ seed: db => { db.exec("UPDATE ssh_cas SET status = 'retired', revocation_date = unixepoch() WHERE id = 'sshca-b'"); } });
+  const host = key(s.manifest, s.ids.sshHostKey);
+  assert.deepEqual(host.allowed, ['rotate', 'drop-key']);
+  const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.sshHostKey].action = 'drop-key'; });
+  const first = await run(s, approval);
+  assert.equal(first.imported, 4);
+  const v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  assert.equal(Number((t.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE operation = 'migration.key.drop' AND entity_id = 'sshca-b'").get() as { n: number }).n), 1);
+  t.close();
+  const second = await run(s, approval);
+  assert.equal(second.noOp, true);
+  assert.equal(second.db.auditRows, 0, 'the drop decision is recorded once');
+});
+
+test('an SSH CA key shared by a retired row and an active row maps both rows to one Transit key', async () => {
+  const s = await setup({ seed: (db, _kms, ids) => {
+    const row = db.prepare("SELECT kms_public_key_id, openssh_public_key, fingerprint_sha256 FROM ssh_cas WHERE id = 'sshca-a'").get() as Record<string, string>;
+    db.exec("INSERT INTO zones (id, name, display_name) VALUES ('zone-c', 'lab', 'Lab'); DELETE FROM ssh_cas WHERE id = 'sshca-b'");
+    db.prepare("INSERT INTO ssh_cas (id, zone_id, ca_type, kms_key_id, kms_public_key_id, openssh_public_key, fingerprint_sha256, status) VALUES ('sshca-c', 'zone-c', 'user', ?, ?, ?, ?, 'retired')")
+      .run(ids.sshKey, row.kms_public_key_id, row.openssh_public_key, row.fingerprint_sha256);
+  } });
+  assert.ok(s.manifest.problems.some(p => p.code === 'SHARED_SSH_CA_KEY_RETIRED' && p.severity === 'warning'));
+  assert.ok(!s.manifest.problems.some(p => p.code === 'SHARED_SSH_CA_KEY'));
+  const approval = await approve(s.manifest, s.store);
+  await run(s, approval);
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  const refs = t.prepare("SELECT kms_key_id FROM ssh_cas WHERE id IN ('sshca-a', 'sshca-c')").all() as { kms_key_id: string }[];
+  t.close();
+  assert.equal(new Set(refs.map(r => r.kms_key_id)).size, 1);
+  const v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+});
+
+test('a non-extractable RA key: reprovision (explicit), binding reset, old RA certificate kept for clients', async () => {
+  const s = await setup({ seed: (db, kms, ids) => { kms.objects.get(ids.raKey)!.extractable = false; db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
+  const ra = key(s.manifest, s.ids.raKey);
+  assert.equal(ra.proposed, 'reprovision');
+  assert.ok(!ra.allowed.includes('transfer'));
+  const unacked = await approve(s.manifest, s.store);
+  assert.ok(validateApproval(s.manifest, unacked).problems.some(p => p.code === 'APPROVAL_NEW_KEY'), 'a new RA key needs acknowledgeNewKey');
+  const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey].acknowledgeNewKey = true; });
+  const r = await run(s, approval);
+  assert.equal(r.imported, 3, 'the RA key is not transferred');
+  assert.ok(!s.kms.calls.includes(`WrappedGet:${s.ids.raKey}`), 'no export attempt of the non-extractable key');
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  const b = t.prepare("SELECT key_provider, key_id, public_key_id, key_version, certificate_id, certificate_pem, previous FROM integration_ras WHERE integration_id = 'int-1'").get() as Record<string, string | null>;
+  // The state v4 `ra/provision` turns into a new OpenBao key (unassigned, not legacy).
+  assert.deepEqual({ p: b.key_provider, k: b.key_id, pub: b.public_key_id, v: b.key_version, c: b.certificate_id, pem: b.certificate_pem }, { p: 'openbao', k: null, pub: null, v: null, c: null, pem: null });
+  const prev = JSON.parse(String(b.previous)) as { id: string; certificatePem: string }[];
+  assert.equal(prev[0].id, 'ra-cert-1', 'the old RA certificate is first in the overlap list');
+  assert.equal((t.prepare("SELECT kms_key_id FROM certificates WHERE id = 'ra-cert-1'").get() as { kms_key_id: string | null }).kms_key_id, null);
+  assert.equal((t.prepare("SELECT status FROM certificates WHERE id = 'ra-cert-1'").get() as { status: string }).status, 'active', 'history kept');
+  t.close();
+  const v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+  const again = await run(s, approval);
+  assert.equal(again.noOp, true);
+  const plan = rotationPlan(s.manifest, approval);
+  assert.ok(plan.includes('scep-server provision') && plan.includes('previousCertificatesPem'), plan);
+  assert.ok(!plan.includes('SCEP_RA_KEY_PROVIDER'), 'no setting that v3.19.1 and v4 do not have');
+});
+
+test('the RA key of a revoked integration can be dropped; its certificates stay', async () => {
+  const s = await setup({ seed: (db, kms, ids) => {
+    kms.objects.get(ids.raKey)!.extractable = false;
+    db.exec("UPDATE integrations SET revoked_at = unixepoch() WHERE id = 'int-1'; DELETE FROM ssh_cas WHERE id = 'sshca-b'");
+  } });
+  assert.ok(key(s.manifest, s.ids.raKey).allowed.includes('drop-key'));
+  const approval = await approve(s.manifest, s.store, a => { a.keys[s.ids.raKey] = { action: 'drop-key', spkiSha256: key(s.manifest, s.ids.raKey).spkiSha256 }; });
+  await run(s, approval);
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  const b = t.prepare("SELECT key_id, public_key_id, certificate_pem FROM integration_ras WHERE integration_id = 'int-1'").get() as Record<string, string | null>;
+  t.close();
+  assert.equal(b.key_id, null); assert.equal(b.public_key_id, null); assert.ok(b.certificate_pem);
+  const v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+});
+
+test('a CA row that holds its certificate id is repaired to the private key it provably certifies', async () => {
+  const s = await setup({ seed: db => { db.exec("DELETE FROM ssh_cas WHERE id = 'sshca-b'"); } });
+  const approval = await approve(s.manifest, s.store);
+  await run(s, approval);
+  const t = new DatabaseSync(s.targetPath, { readOnly: true });
+  const ca = t.prepare("SELECT kms_key_id, kms_certificate_id FROM certificate_authorities WHERE id = 'ca-1'").get() as Record<string, string>;
+  const row = t.prepare('SELECT object_type, exportable FROM keystore_objects WHERE id = ?').get(ca.kms_key_id) as Record<string, unknown>;
+  const audit = Number((t.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE operation = 'migration.key.link_repair' AND entity_id = 'ca-1'").get() as { n: number }).n);
+  t.close();
+  assert.equal(ca.kms_key_id, s.ids.caKey, 'kms_key_id now names the private key (CA keystore export and CRL signing use it)');
+  assert.notEqual(ca.kms_key_id, ca.kms_certificate_id);
+  assert.equal(row.object_type, 'private_key');
+  assert.equal(row.exportable, 1);
+  assert.equal(audit, 1);
+  const v = await verifyNow(s, approval);
+  assert.equal(v.cutoverReady, true, failedChecks(v));
+});
+
+test('an already-migrated RA binding whose OpenBao key differs from its certificate fails verify', async () => {
+  const name = 'scep-ra-00000000-0000-4000-8000-0000000000aa';
+  // A source with the 0016 columns with an OpenBao RA binding (v3.19 opt-in provider).
+  const s = await setup({ v4Source: true, seed: db => { db.exec(`UPDATE integration_ras SET key_provider = 'openbao', key_id = '${name}', public_key_id = NULL, key_version = 1; UPDATE certificates SET kms_key_id = NULL WHERE id = 'ra-cert-1'; DELETE FROM ssh_cas WHERE id = 'sshca-b'`); } });
+  s.store.plant('pki-manager-ra', name, 'rsa-3072', generateKeyPairSync('rsa', { modulusLength: 3072 }).privateKey);
+  const approval = await approve(s.manifest, s.store);
+  // apply checks an already-target RA key before it writes the database.
+  await assert.rejects(run(s, approval), (e: MigrationError) => e.code === 'TARGET_CONFLICT' && /differs from the RA certificate/.test(e.message));
+  const v = await verifyNow(s, approval);
+  const c = v.checks.find(x => x.name.startsWith('RA key already in OpenBao') && x.name.endsWith('matches its RA certificate'));
+  assert.equal(c?.ok, false);
+  assert.equal(v.cutoverReady, false);
 });
 
 test('default mounts follow the backend', () => {

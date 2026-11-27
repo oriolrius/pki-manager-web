@@ -84,8 +84,39 @@ export async function verifyMigration(o: {
       continue;
     }
     if (a.action === 'drop-key') {
-      const r = ks(key.sourceKeyId);
-      add(`dropped key ${key.sourceKeyId} recorded as destroyed`, r?.state === 'destroyed' && r.object_type === 'private_key');
+      if (key.class === 'x509-ca' || key.class === 'x509-leaf') {
+        const r = ks(key.sourceKeyId);
+        add(`dropped key ${key.sourceKeyId} recorded as destroyed`, r?.state === 'destroyed' && r.object_type === 'private_key');
+      } else if (key.class === 'ssh-ca') {
+        for (const r of key.references.filter(x => x.role === 'ssh-ca-key')) {
+          const row = o.target.prepare('SELECT status, revocation_date AS d FROM ssh_cas WHERE id = ?').get(r.rowId) as { status: string; d: number | null } | undefined;
+          add(`ssh_cas:${r.rowId} dropped key belongs to a revoked SSH CA`, !!row && row.status === 'retired' && row.d !== null);
+        }
+      } else if (key.class === 'scep-ra') {
+        for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
+          const row = o.target.prepare('SELECT b.key_id, i.revoked_at FROM integration_ras b JOIN integrations i ON i.id = b.integration_id WHERE b.integration_id = ?').get(r.rowId) as { key_id: string | null; revoked_at: number | null } | undefined;
+          add(`integration_ras:${r.rowId} dropped RA key of a revoked integration`, !!row && row.key_id === null && row.revoked_at !== null);
+        }
+      }
+      continue;
+    }
+    if (a.action === 'reprovision') {
+      const pemSha = o.manifest.certificates.find(c => c.table === 'integration_ras' && key.references.some(r => r.role === 'scep-ra-key' && r.rowId === c.rowId))?.pemSha256;
+      for (const r of key.references.filter(x => x.role === 'scep-ra-key')) {
+        const row = o.target.prepare('SELECT key_provider, key_id, public_key_id, certificate_pem, previous FROM integration_ras WHERE integration_id = ?').get(r.rowId) as { key_provider: string; key_id: string | null; public_key_id: string | null; certificate_pem: string | null; previous: string } | undefined;
+        // Before v4 runs: reset, the old RA certificate in the overlap list. After v4 provisioned:
+        // a NEW OpenBao key whose certificate differs from the old one, the old one still listed.
+        const prev = row ? (JSON.parse(row.previous || '[]') as { certificatePem: string }[]) : [];
+        const listed = !!pemSha && prev.some(p => sha256Hex(new X509Certificate(p.certificatePem).raw) === pemSha);
+        const reset = !!row && row.key_provider === 'openbao' && row.key_id === null && row.public_key_id === null && row.certificate_pem === null;
+        const provisioned = !!row && row.key_provider === 'openbao' && !!row.key_id && !!row.certificate_pem && sha256Hex(new X509Certificate(row.certificate_pem).raw) !== pemSha;
+        add(`integration_ras:${r.rowId} reprovisioned (new RA key; old RA certificate kept in the overlap list)`, (reset || provisioned) && listed, row ? `${row.key_provider}:${row.key_id}` : 'row missing');
+        if (reset || provisioned) counts.rowsVerified++;
+      }
+      for (const r of key.references.filter(x => x.role === 'scep-ra-cert-alias')) {
+        const row = o.target.prepare('SELECT kms_key_id FROM certificates WHERE id = ?').get(r.rowId) as { kms_key_id: string | null } | undefined;
+        add(`certificates:${r.rowId} RA alias cleared`, !!row && row.kms_key_id === null);
+      }
       continue;
     }
     // transfer
@@ -107,6 +138,10 @@ export async function verifyMigration(o: {
       const okPub = rowOk(pub, 'public_key') && pub!.private_key_id === key.sourceKeyId;
       add(`keystore private key ${key.sourceKeyId}`, okPriv);
       add(`keystore public key ${key.sourcePublicKeyId}`, okPub);
+      for (const r of key.references.filter(x => x.role === 'x509-ca-key' || x.role === 'x509-leaf-key')) {
+        const row = o.target.prepare(`SELECT kms_key_id FROM ${r.table} WHERE id = ?`).get(r.rowId) as { kms_key_id: string | null } | undefined;
+        add(`${r.table}:${r.rowId} key id is the private key row`, row?.kms_key_id === key.sourceKeyId, row?.kms_key_id ?? 'row missing');
+      }
       if (okPriv && okPub) counts.keystoreRowsVerified += 2;
     } else if (key.class === 'ssh-ca') {
       const ref = sshKeyRef(spec.mount, spec.name);
@@ -137,8 +172,10 @@ export async function verifyMigration(o: {
   // Certificates: the store row and the cached PEM.
   const accepted = new Set(o.approval.acceptMissingPem ?? []);
   const keyOf = new Map(o.manifest.keys.map(k => [k.sourceKeyId, k]));
+  const reprovisioned = new Set(o.manifest.keys.filter(k => o.approval.keys[k.sourceKeyId]?.action === 'reprovision').flatMap(k => k.references.filter(r => r.role === 'scep-ra-key').map(r => r.rowId)));
   for (const c of o.manifest.certificates) {
     const id = `${c.table}:${c.rowId}`;
+    if (c.table === 'integration_ras' && reprovisioned.has(c.rowId)) continue; // checked in the overlap list above
     let pem: string | null = null;
     if (c.table === 'integration_ras') pem = (o.target.prepare('SELECT certificate_pem AS pem FROM integration_ras WHERE integration_id = ?').get(c.rowId) as { pem: string | null } | undefined)?.pem ?? null;
     else if (c.kmsCertificateId) {
@@ -232,14 +269,17 @@ export function cosmianGate(target: DatabaseSync, accepted: Set<string>, add: (n
     }
   }
   if (tableExists(target, 'ssh_cas')) {
-    for (const r of all(target, 'SELECT id, kms_key_id, kms_public_key_id FROM ssh_cas')) {
-      need(`ssh_cas:${r.id} key reference`, String(r.kms_key_id).startsWith(SSH_KEY_REF_PREFIX) && r.kms_key_id === r.kms_public_key_id);
+    const droppedSsh = new Set((o.manifest?.keys ?? []).filter(k => k.class === 'ssh-ca' && o.approval?.keys[k.sourceKeyId]?.action === 'drop-key').flatMap(k => k.references.filter(r => r.role === 'ssh-ca-key').map(r => r.rowId)));
+    for (const r of all(target, 'SELECT id, kms_key_id, kms_public_key_id, revocation_date FROM ssh_cas')) {
+      const dropped = droppedSsh.has(String(r.id)) && r.revocation_date !== null;
+      need(`ssh_cas:${r.id} key reference`, dropped || (String(r.kms_key_id).startsWith(SSH_KEY_REF_PREFIX) && r.kms_key_id === r.kms_public_key_id));
     }
   }
   if (tableExists(target, 'integration_ras') && columnsOf(target, 'integration_ras').has('key_provider')) {
-    for (const r of all(target, 'SELECT integration_id, key_provider, key_id, public_key_id, certificate_pem FROM integration_ras')) {
+    for (const r of all(target, 'SELECT b.integration_id, b.key_provider, b.key_id, b.public_key_id, b.certificate_pem, i.revoked_at FROM integration_ras b LEFT JOIN integrations i ON i.id = b.integration_id')) {
       const unassigned = r.key_id === null && r.public_key_id === null && r.certificate_pem === null;
-      need(`integration_ras:${r.integration_id} key provider`, r.key_provider === 'openbao' || unassigned);
+      const droppedRevoked = r.key_id === null && r.public_key_id === null && r.revoked_at !== null && r.revoked_at !== undefined;
+      need(`integration_ras:${r.integration_id} key provider`, r.key_provider === 'openbao' || unassigned || droppedRevoked);
     }
   }
   if (unresolved === 0) add('every key and certificate id resolves without Cosmian', true);

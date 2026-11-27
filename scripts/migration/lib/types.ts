@@ -35,11 +35,15 @@ export interface Reference {
 /**
  * transfer       wrapped transfer, same key (identity preserved)
  * already-target the key is already in OpenBao (verify only)
- * drop-key       keep the certificate rows, remove the key reference (no transfer)
- * rotate         cannot migrate: rotate with the documented procedure before cutover
+ * drop-key       keep the certificate rows, remove the key reference (no transfer);
+ *                only for keys nothing signs with any more (revoked CAs, retired leaves,
+ *                revoked SSH CAs, RA keys of revoked integrations)
+ * reprovision    SCEP RA only: reset the binding so v4 provisions a NEW RA key in OpenBao;
+ *                the current RA certificate moves to the overlap list (history kept)
+ * rotate         cannot migrate here: rotate with the documented procedure, then re-inventory
  * history-only   referenced only by history rows; nothing to transfer
  */
-export type Action = 'transfer' | 'already-target' | 'drop-key' | 'rotate' | 'history-only';
+export type Action = 'transfer' | 'already-target' | 'drop-key' | 'reprovision' | 'rotate' | 'history-only';
 
 export interface SourceAttributes {
   objectType: string | null;
@@ -140,6 +144,8 @@ export interface ObjectApproval {
   acknowledgeSensitive?: boolean;
   /** Optional tightening for exportable source keys; never true for a Sensitive source key. */
   exportable?: boolean;
+  /** Required for `reprovision`: the admin accepts a new RA key and RA certificate. */
+  acknowledgeNewKey?: boolean;
 }
 
 export interface Approval {
