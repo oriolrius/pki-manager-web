@@ -229,8 +229,8 @@ class. Keep Cosmian in service until the fork passes the live application suites
 and a restore rehearsal. Acceptance of this decision records the direction.
 It does not record a production cutover.
 
-See the [implementation plan](../docs/doc-012%20-%20OpenBao-fork-and-PKI-Manager-migration-plan.md) for the source references, tests,
-cutover criteria and rollback limits. The comparison above records the options
+The implementation plan (doc-012, now archived in `backlog/archive/docs/` because the work is done)
+has the source references, tests, cutover criteria and rollback limits. The comparison above records the options
 assessed before acceptance, including alternatives for SCEP that the fork replaces.
 
 ## Sources
