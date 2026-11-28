@@ -223,14 +223,14 @@ leaf exports. A later change to export policy requires a separate decision.
 
 ## Consequences
 
-The fork needs its own release and update process. PKI Manager needs a gateway
+The fork needs its own release and update process: [decision-019](../decisions/decision-019%20-%20Maintain-the-OpenBao-fork-as-a-downstream-distribution.md) sets it. PKI Manager needs a gateway
 change, an adapter, a certificate backfill and a verified migration for each key
 class. Keep Cosmian in service until the fork passes the live application suites
 and a restore rehearsal. Acceptance of this decision records the direction.
 It does not record a production cutover.
 
-See the [implementation plan](../docs/doc-012%20-%20OpenBao-fork-and-PKI-Manager-migration-plan.md) for the source references, tests,
-cutover criteria and rollback limits. The comparison above records the options
+The implementation plan (doc-012, now archived in `backlog/archive/docs/` because the work is done)
+has the source references, tests, cutover criteria and rollback limits. The comparison above records the options
 assessed before acceptance, including alternatives for SCEP that the fork replaces.
 
 ## Sources
